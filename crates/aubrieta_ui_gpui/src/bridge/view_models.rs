@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 
 use aubrieta_application::ActionId;
+use aubrieta_document::ContainerRole;
 use aubrieta_foundation::{ObjectId, SurfaceId};
 use serde::{Deserialize, Serialize};
 
@@ -91,6 +92,18 @@ pub struct LayerRowViewModel {
     pub is_selected: bool,
     /// Hierarchy nesting depth (0 = top-level child of surface).
     pub depth: usize,
+    /// Parent container object ID, if any.
+    pub parent_id: Option<ObjectId>,
+    /// Whether this object is a container (group, layer, clip group).
+    pub is_container: bool,
+    /// Container role if this object acts as a container.
+    pub role: Option<ContainerRole>,
+    /// Whether this object is a clipping mask boundary.
+    pub is_clip_mask: bool,
+    /// Target clipping mask object ID, if clipped.
+    pub clip_mask_id: Option<ObjectId>,
+    /// Number of direct children, if container.
+    pub children_count: usize,
     /// Semantic fill token, if any.
     pub fill_token: Option<String>,
     /// Semantic stroke token, if any.

@@ -72,6 +72,71 @@ impl Document {
             .find(|o| o.id == id)
     }
 
+    /// Finds a mutable object anywhere in the document by stable ID.
+    pub fn find_object_mut(&mut self, id: ObjectId) -> Option<&mut DocumentObject> {
+        self.surfaces
+            .iter_mut()
+            .flat_map(|s| s.objects.iter_mut())
+            .find(|o| o.id == id)
+    }
+
+    /// Finds the SurfaceId containing an object.
+    #[must_use]
+    pub fn find_object_surface(&self, id: ObjectId) -> Option<SurfaceId> {
+        for s in &self.surfaces {
+            if s.objects.iter().any(|o| o.id == id) {
+                return Some(s.id);
+            }
+        }
+        None
+    }
+
+    /// Checks if `candidate` is a descendant of `ancestor` (or is the ancestor itself).
+    #[must_use]
+    pub fn is_descendant(&self, candidate: ObjectId, ancestor: ObjectId) -> bool {
+        if candidate == ancestor {
+            return true;
+        }
+        let mut curr = Some(candidate);
+        while let Some(c) = curr {
+            if let Some(obj) = self.find_object(c) {
+                if let Some(p) = obj.parent {
+                    if p == ancestor {
+                        return true;
+                    }
+                    curr = Some(p);
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        false
+    }
+
+    /// Computes the accumulated world affine transform from root to this object.
+    pub fn world_transform(
+        &self,
+        id: ObjectId,
+    ) -> Result<aubrieta_geometry::GAffine, AubrietaError> {
+        let mut chain = Vec::new();
+        let mut curr = Some(id);
+        while let Some(c) = curr {
+            let obj = self
+                .find_object(c)
+                .ok_or_else(|| AubrietaError::not_found(format!("object `{c}` not found")))?;
+            chain.push(obj.local_transform());
+            curr = obj.parent;
+        }
+
+        let mut acc = aubrieta_geometry::GAffine::IDENTITY;
+        for local in chain.into_iter().rev() {
+            acc = acc.after(local);
+        }
+        Ok(acc)
+    }
+
     /// Serializes the document to canonical JSON.
     pub fn to_json(&self) -> Result<String, AubrietaError> {
         serde_json::to_string_pretty(self)

@@ -45,6 +45,43 @@ impl GAffine {
         }
     }
 
+    /// Pure rotation around the origin by `radians`.
+    #[must_use]
+    pub fn rotate(radians: f64) -> Self {
+        let (sin, cos) = radians.sin_cos();
+        Self {
+            coeffs: [cos, sin, -sin, cos, 0.0, 0.0],
+        }
+    }
+
+    /// Computes the determinant of the 2x2 linear portion (`a * d - b * c`).
+    #[must_use]
+    pub fn determinant(&self) -> f64 {
+        let [a, b, c, d, _, _] = self.coeffs;
+        a * d - b * c
+    }
+
+    /// Computes the inverse affine transform, or returns `None` if singular.
+    #[must_use]
+    pub fn inverse(&self) -> Option<Self> {
+        let det = self.determinant();
+        if det.abs() < 1e-12 {
+            return None;
+        }
+        let inv_det = 1.0 / det;
+        let [a, b, c, d, e, f] = self.coeffs;
+        Some(Self {
+            coeffs: [
+                d * inv_det,
+                -b * inv_det,
+                -c * inv_det,
+                a * inv_det,
+                (c * f - d * e) * inv_det,
+                (b * e - a * f) * inv_det,
+            ],
+        })
+    }
+
     /// Applies the transform to a point.
     #[must_use]
     pub fn apply(self, point: GPoint) -> GPoint {
@@ -82,5 +119,28 @@ mod tests {
         let composed = GAffine::scale(2.0, 2.0).after(GAffine::translate(1.0, 1.0));
         let point = composed.apply(GPoint::ORIGIN);
         assert_eq!(point, GPoint::new(2.0, 2.0));
+    }
+
+    #[test]
+    fn rotate_90_degrees_transforms_axis() {
+        use std::f64::consts::FRAC_PI_2;
+        let rot = GAffine::rotate(FRAC_PI_2);
+        let p = rot.apply(GPoint::new(1.0, 0.0));
+        assert!((p.x).abs() < 1e-10);
+        assert!((p.y - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn inverse_cancels_transform() {
+        let t = GAffine::translate(15.0, -25.0);
+        let r = GAffine::rotate(0.4);
+        let s = GAffine::scale(2.5, 1.8);
+        let composed = t.after(r).after(s);
+
+        let inv = composed.inverse().expect("invertible");
+        let roundtrip = composed.after(inv);
+        let p = roundtrip.apply(GPoint::new(42.0, -7.0));
+        assert!((p.x - 42.0).abs() < 1e-10);
+        assert!((p.y - (-7.0)).abs() < 1e-10);
     }
 }

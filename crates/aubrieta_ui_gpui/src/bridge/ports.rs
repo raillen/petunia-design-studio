@@ -105,3 +105,35 @@ pub trait InspectionPort {
     /// Returns whether there are unsaved modifications.
     fn is_dirty(&self) -> bool;
 }
+
+/// Hierarchy and grouping operations under the One-Tree invariant (10.5).
+pub trait HierarchyPort {
+    /// Groups the specified objects into a container object with a designated role.
+    fn group_objects(
+        &mut self,
+        surface: SurfaceId,
+        group_id: ObjectId,
+        child_ids: Vec<ObjectId>,
+        role: aubrieta_document::ContainerRole,
+    ) -> Result<ChangeSet, AubrietaError>;
+    /// Ungroups a container object.
+    fn ungroup(&mut self, group_id: ObjectId) -> Result<ChangeSet, AubrietaError>;
+    /// Reparents an object to a new container or root.
+    fn reparent_object(
+        &mut self,
+        id: ObjectId,
+        new_parent: Option<ObjectId>,
+        target_index: usize,
+        preserve_world_transform: bool,
+    ) -> Result<ChangeSet, AubrietaError>;
+    /// Creates a clipping mask group.
+    fn create_clip_group(
+        &mut self,
+        surface: SurfaceId,
+        group_id: ObjectId,
+        mask_id: ObjectId,
+        content_ids: Vec<ObjectId>,
+    ) -> Result<ChangeSet, AubrietaError>;
+    /// Releases a clipping mask group.
+    fn release_clip_group(&mut self, group_id: ObjectId) -> Result<ChangeSet, AubrietaError>;
+}

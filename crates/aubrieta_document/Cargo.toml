@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 aubrieta_foundation = { path = "../aubrieta_foundation" }
+aubrieta_geometry = { path = "../aubrieta_geometry" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

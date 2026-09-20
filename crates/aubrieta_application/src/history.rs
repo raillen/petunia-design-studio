@@ -158,6 +158,36 @@ impl Replayer {
                 Change::AppearanceChanged { id, next, .. } => {
                     mutator.set_appearance(id, next)?;
                 }
+                Change::Reparented {
+                    id, next_parent, ..
+                } => {
+                    if let Some(obj) = mutator.document_mut().find_object_mut(id) {
+                        obj.parent = next_parent;
+                    }
+                }
+                Change::ChildrenChanged {
+                    id, next_children, ..
+                } => {
+                    if let Some(obj) = mutator.document_mut().find_object_mut(id) {
+                        obj.children = next_children;
+                    }
+                }
+                Change::ContainerRoleChanged { id, next, .. } => {
+                    if let Some(obj) = mutator.document_mut().find_object_mut(id) {
+                        obj.role = next;
+                    }
+                }
+                Change::ClipMaskChanged {
+                    id,
+                    next_mask,
+                    next_is_mask,
+                    ..
+                } => {
+                    if let Some(obj) = mutator.document_mut().find_object_mut(id) {
+                        obj.clip_mask_id = next_mask;
+                        obj.is_clip_mask = next_is_mask;
+                    }
+                }
             }
         }
         Ok(())
@@ -203,5 +233,71 @@ mod tests {
         assert!(doc.find_object(object).is_none());
         assert!(history.redo(&mut doc).expect("redo"));
         assert!(doc.find_object(object).is_some());
+    }
+
+    #[test]
+    fn execute_undo_redo_grouping_and_reparenting() {
+        let mut gen = IdGenerator::new();
+        let mut doc = Document::default();
+        let mut history = History::new(100);
+        let surface = gen.next_surface();
+        let o1 = gen.next_object();
+        let o2 = gen.next_object();
+        let grp = gen.next_object();
+
+        history
+            .execute(
+                &mut doc,
+                &CommandRequest::new(Command::CreateSurface {
+                    id: surface,
+                    name: "Page".to_string(),
+                }),
+            )
+            .unwrap();
+        history
+            .execute(
+                &mut doc,
+                &CommandRequest::new(Command::CreateObject {
+                    surface,
+                    id: o1,
+                    name: "Obj1".to_string(),
+                }),
+            )
+            .unwrap();
+        history
+            .execute(
+                &mut doc,
+                &CommandRequest::new(Command::CreateObject {
+                    surface,
+                    id: o2,
+                    name: "Obj2".to_string(),
+                }),
+            )
+            .unwrap();
+
+        // Group objects
+        history
+            .execute(
+                &mut doc,
+                &CommandRequest::new(Command::GroupObjects {
+                    surface,
+                    group_id: grp,
+                    child_ids: vec![o1, o2],
+                    role: aubrieta_document::ContainerRole::Group,
+                }),
+            )
+            .unwrap();
+
+        assert_eq!(doc.find_object(o1).unwrap().parent, Some(grp));
+
+        // Undo grouping
+        history.undo(&mut doc).unwrap();
+        assert_eq!(doc.find_object(o1).unwrap().parent, None);
+        assert!(doc.find_object(grp).is_none());
+
+        // Redo grouping
+        history.redo(&mut doc).unwrap();
+        assert_eq!(doc.find_object(o1).unwrap().parent, Some(grp));
+        assert!(doc.find_object(grp).is_some());
     }
 }

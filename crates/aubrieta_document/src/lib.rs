@@ -9,6 +9,7 @@ pub mod appearance;
 mod changeset;
 mod document;
 mod document_object;
+pub mod hierarchy;
 mod mutator;
 
 pub use appearance::{
@@ -18,4 +19,5 @@ pub use appearance::{
 pub use changeset::{Change, ChangeSet};
 pub use document::{Document, Surface};
 pub use document_object::DocumentObject;
+pub use hierarchy::{ContainerRole, HierarchyValidation, MaskMode};
 pub use mutator::DocumentMutator;

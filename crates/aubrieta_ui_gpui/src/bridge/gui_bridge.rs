@@ -6,11 +6,12 @@
 use std::collections::HashMap;
 
 use aubrieta_application::{ActionId, ActionRequest, CapabilityRegistry, Command, CommandRequest};
-use aubrieta_document::{AppearanceStack, ChangeSet, Document};
+use aubrieta_document::{AppearanceStack, ChangeSet, ContainerRole, Document};
 use aubrieta_foundation::{AubrietaError, ObjectId, SurfaceId};
 
 use super::ports::{
-    ActionQueryPort, CommandPort, DocumentQueryPort, InspectionPort, PropertyPort, SelectionPort,
+    ActionQueryPort, CommandPort, DocumentQueryPort, HierarchyPort, InspectionPort, PropertyPort,
+    SelectionPort,
 };
 use super::session::DocumentSession;
 use super::view_models::{
@@ -254,6 +255,49 @@ impl AubrietaGuiBridge {
         appearance: Option<AppearanceStack>,
     ) -> Result<ChangeSet, AubrietaError> {
         PropertyPort::set_appearance(self, id, appearance)
+    }
+
+    /// Groups objects into a container with a designated role (10.5 One-Tree).
+    pub fn group_objects(
+        &mut self,
+        surface: SurfaceId,
+        group_id: ObjectId,
+        child_ids: Vec<ObjectId>,
+        role: ContainerRole,
+    ) -> Result<ChangeSet, AubrietaError> {
+        HierarchyPort::group_objects(self, surface, group_id, child_ids, role)
+    }
+
+    /// Ungroups a container object.
+    pub fn ungroup(&mut self, group_id: ObjectId) -> Result<ChangeSet, AubrietaError> {
+        HierarchyPort::ungroup(self, group_id)
+    }
+
+    /// Reparents an object to a new container or root.
+    pub fn reparent_object(
+        &mut self,
+        id: ObjectId,
+        new_parent: Option<ObjectId>,
+        target_index: usize,
+        preserve_world_transform: bool,
+    ) -> Result<ChangeSet, AubrietaError> {
+        HierarchyPort::reparent_object(self, id, new_parent, target_index, preserve_world_transform)
+    }
+
+    /// Creates a clipping mask group.
+    pub fn create_clip_group(
+        &mut self,
+        surface: SurfaceId,
+        group_id: ObjectId,
+        mask_id: ObjectId,
+        content_ids: Vec<ObjectId>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        HierarchyPort::create_clip_group(self, surface, group_id, mask_id, content_ids)
+    }
+
+    /// Releases a clipping mask group.
+    pub fn release_clip_group(&mut self, group_id: ObjectId) -> Result<ChangeSet, AubrietaError> {
+        HierarchyPort::release_clip_group(self, group_id)
     }
 
     /// Resolves snapshot.
@@ -626,5 +670,65 @@ impl InspectionPort for AubrietaGuiBridge {
 
     fn is_dirty(&self) -> bool {
         self.active_session.as_ref().is_some_and(|s| s.is_dirty())
+    }
+}
+
+impl HierarchyPort for AubrietaGuiBridge {
+    fn group_objects(
+        &mut self,
+        surface: SurfaceId,
+        group_id: ObjectId,
+        child_ids: Vec<ObjectId>,
+        role: ContainerRole,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::GroupObjects {
+            surface,
+            group_id,
+            child_ids,
+            role,
+        });
+        self.submit_command(cmd)
+    }
+
+    fn ungroup(&mut self, group_id: ObjectId) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::Ungroup { group_id });
+        self.submit_command(cmd)
+    }
+
+    fn reparent_object(
+        &mut self,
+        id: ObjectId,
+        new_parent: Option<ObjectId>,
+        target_index: usize,
+        preserve_world_transform: bool,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::ReparentObject {
+            id,
+            new_parent,
+            target_index,
+            preserve_world_transform,
+        });
+        self.submit_command(cmd)
+    }
+
+    fn create_clip_group(
+        &mut self,
+        surface: SurfaceId,
+        group_id: ObjectId,
+        mask_id: ObjectId,
+        content_ids: Vec<ObjectId>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::CreateClipGroup {
+            surface,
+            group_id,
+            mask_id,
+            content_ids,
+        });
+        self.submit_command(cmd)
+    }
+
+    fn release_clip_group(&mut self, group_id: ObjectId) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::ReleaseClipGroup { group_id });
+        self.submit_command(cmd)
     }
 }

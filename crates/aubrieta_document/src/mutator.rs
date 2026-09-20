@@ -20,6 +20,17 @@ impl<'doc> DocumentMutator<'doc> {
         Self { document }
     }
 
+    /// Borrows the underlying document immutably.
+    #[must_use]
+    pub fn document(&self) -> &Document {
+        self.document
+    }
+
+    /// Borrows the underlying document mutably.
+    pub fn document_mut(&mut self) -> &mut Document {
+        self.document
+    }
+
     /// Adds a surface with an explicit stable ID.
     pub fn add_surface(
         &mut self,
@@ -290,6 +301,374 @@ impl<'doc> DocumentMutator<'doc> {
         Ok(changes)
     }
 
+    /// Groups multiple objects under a new container object (10.5 One-Tree).
+    pub fn group_objects(
+        &mut self,
+        surface: SurfaceId,
+        group_id: ObjectId,
+        child_ids: Vec<ObjectId>,
+        role: crate::hierarchy::ContainerRole,
+    ) -> Result<ChangeSet, AubrietaError> {
+        if child_ids.is_empty() {
+            return Err(AubrietaError::invalid_input("cannot create empty group"));
+        }
+        if self.document.find_object(group_id).is_some() {
+            return Err(AubrietaError::invalid_input(format!(
+                "object `{group_id}` already exists"
+            )));
+        }
+
+        let surf = self.document.surface(surface)?;
+        for id in &child_ids {
+            if !surf.objects.iter().any(|o| o.id == *id) {
+                return Err(AubrietaError::invalid_input(format!(
+                    "child `{id}` not found on surface `{surface}`"
+                )));
+            }
+        }
+
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for id in &child_ids {
+            if let Some(obj) = self.document.find_object(*id) {
+                if let Some(b) = obj.bounds {
+                    min_x = min_x.min(b[0]);
+                    min_y = min_y.min(b[1]);
+                    max_x = max_x.max(b[0] + b[2]);
+                    max_y = max_y.max(b[1] + b[3]);
+                }
+            }
+        }
+
+        let group_bounds = if min_x.is_finite() && min_y.is_finite() {
+            Some([
+                min_x,
+                min_y,
+                (max_x - min_x).max(0.0),
+                (max_y - min_y).max(0.0),
+            ])
+        } else {
+            None
+        };
+
+        let mut group_obj = DocumentObject::new(
+            group_id,
+            match role {
+                crate::hierarchy::ContainerRole::Group => "Group",
+                crate::hierarchy::ContainerRole::Layer => "Layer",
+                crate::hierarchy::ContainerRole::ClipGroup => "Clip Group",
+            },
+        );
+        group_obj.role = Some(role);
+        group_obj.bounds = group_bounds;
+        group_obj.children = child_ids.clone();
+
+        let mut changes = ChangeSet::empty();
+
+        let target = self.document.surface_mut(surface)?;
+        target.objects.push(group_obj.clone());
+        changes.push(Change::ObjectAdded {
+            surface,
+            object: group_obj,
+        });
+
+        let (gx, gy) = group_bounds.map_or((0.0, 0.0), |b| (b[0], b[1]));
+        for (idx, child_id) in child_ids.into_iter().enumerate() {
+            if let Some(child) = self.document.find_object_mut(child_id) {
+                let prev_parent = child.parent;
+                let prev_bounds = child.bounds;
+                let prev_rot = child.rotation;
+
+                child.parent = Some(group_id);
+                if let Some(b) = child.bounds {
+                    child.bounds = Some([b[0] - gx, b[1] - gy, b[2], b[3]]);
+                    changes.push(Change::BoundsChanged {
+                        id: child_id,
+                        previous_bounds: prev_bounds,
+                        next_bounds: child.bounds,
+                        previous_rotation: prev_rot,
+                        next_rotation: prev_rot,
+                    });
+                }
+                changes.push(Change::Reparented {
+                    id: child_id,
+                    previous_parent: prev_parent,
+                    next_parent: Some(group_id),
+                    previous_index: idx,
+                    next_index: idx,
+                });
+            }
+        }
+
+        Ok(changes)
+    }
+
+    /// Ungroups a container object, moving its children to its parent container (or root).
+    pub fn ungroup_objects(&mut self, group_id: ObjectId) -> Result<ChangeSet, AubrietaError> {
+        let group = self
+            .document
+            .find_object(group_id)
+            .ok_or_else(|| AubrietaError::not_found(format!("group `{group_id}` not found")))?;
+        let surface_id = self.document.find_object_surface(group_id).ok_or_else(|| {
+            AubrietaError::not_found(format!("surface for `{group_id}` not found"))
+        })?;
+
+        let parent_id = group.parent;
+        let (gx, gy) = group.bounds.map_or((0.0, 0.0), |b| (b[0], b[1]));
+        let children = group.children.clone();
+
+        let mut changes = ChangeSet::empty();
+
+        for (idx, child_id) in children.iter().enumerate() {
+            if let Some(child) = self.document.find_object_mut(*child_id) {
+                let prev_parent = child.parent;
+                let prev_bounds = child.bounds;
+                let prev_rot = child.rotation;
+
+                child.parent = parent_id;
+                if let Some(b) = child.bounds {
+                    child.bounds = Some([b[0] + gx, b[1] + gy, b[2], b[3]]);
+                    changes.push(Change::BoundsChanged {
+                        id: *child_id,
+                        previous_bounds: prev_bounds,
+                        next_bounds: child.bounds,
+                        previous_rotation: prev_rot,
+                        next_rotation: prev_rot,
+                    });
+                }
+                changes.push(Change::Reparented {
+                    id: *child_id,
+                    previous_parent: prev_parent,
+                    next_parent: parent_id,
+                    previous_index: idx,
+                    next_index: idx,
+                });
+            }
+        }
+
+        if let Some(pid) = parent_id {
+            if let Some(parent_obj) = self.document.find_object_mut(pid) {
+                let prev_ch = parent_obj.children.clone();
+                if let Some(pos) = parent_obj.children.iter().position(|id| *id == group_id) {
+                    parent_obj.children.remove(pos);
+                    for (offset, cid) in children.iter().enumerate() {
+                        parent_obj.children.insert(pos + offset, *cid);
+                    }
+                } else {
+                    parent_obj.children.extend(children.iter().copied());
+                }
+                changes.push(Change::ChildrenChanged {
+                    id: pid,
+                    previous_children: prev_ch,
+                    next_children: parent_obj.children.clone(),
+                });
+            }
+        }
+
+        let surf = self.document.surface_mut(surface_id)?;
+        if let Some(pos) = surf.objects.iter().position(|o| o.id == group_id) {
+            let removed_group = surf.objects.remove(pos);
+            changes.push(Change::ObjectRemoved {
+                surface: surface_id,
+                object: removed_group,
+            });
+        }
+
+        Ok(changes)
+    }
+
+    /// Reparents an object to a new container (or root) with cycle validation and transform preservation.
+    pub fn reparent_object(
+        &mut self,
+        id: ObjectId,
+        new_parent: Option<ObjectId>,
+        target_index: usize,
+        preserve_world_transform: bool,
+    ) -> Result<ChangeSet, AubrietaError> {
+        if let Some(np) = new_parent {
+            if self.document.is_descendant(np, id) {
+                return Err(AubrietaError::invalid_input(format!(
+                    "cycle detected: cannot parent object `{id}` under its descendant `{np}`"
+                )));
+            }
+            if self.document.find_object(np).is_none() {
+                return Err(AubrietaError::not_found(format!(
+                    "target parent `{np}` not found"
+                )));
+            }
+        }
+
+        let world_tx = if preserve_world_transform {
+            Some(self.document.world_transform(id)?)
+        } else {
+            None
+        };
+
+        let new_parent_world = if preserve_world_transform {
+            match new_parent {
+                Some(np_id) => self.document.world_transform(np_id)?,
+                None => aubrieta_geometry::GAffine::IDENTITY,
+            }
+        } else {
+            aubrieta_geometry::GAffine::IDENTITY
+        };
+
+        let current_parent = self
+            .document
+            .find_object(id)
+            .ok_or_else(|| AubrietaError::not_found(format!("object `{id}` not found")))?
+            .parent;
+
+        if current_parent == new_parent {
+            return Ok(ChangeSet::empty());
+        }
+
+        let mut changes = ChangeSet::empty();
+
+        if let Some(cp_id) = current_parent {
+            if let Some(cp) = self.document.find_object_mut(cp_id) {
+                let prev_ch = cp.children.clone();
+                if let Some(pos) = cp.children.iter().position(|c| *c == id) {
+                    cp.children.remove(pos);
+                }
+                changes.push(Change::ChildrenChanged {
+                    id: cp_id,
+                    previous_children: prev_ch,
+                    next_children: cp.children.clone(),
+                });
+            }
+        }
+
+        if let Some(np_id) = new_parent {
+            if let Some(np) = self.document.find_object_mut(np_id) {
+                let prev_ch = np.children.clone();
+                let insert_pos = target_index.min(np.children.len());
+                np.children.insert(insert_pos, id);
+                changes.push(Change::ChildrenChanged {
+                    id: np_id,
+                    previous_children: prev_ch,
+                    next_children: np.children.clone(),
+                });
+            }
+        }
+
+        if let Some(obj) = self.document.find_object_mut(id) {
+            let prev_parent = obj.parent;
+            obj.parent = new_parent;
+            changes.push(Change::Reparented {
+                id,
+                previous_parent: prev_parent,
+                next_parent: new_parent,
+                previous_index: 0,
+                next_index: target_index,
+            });
+
+            if let Some(w) = world_tx {
+                let prev_bounds = obj.bounds;
+                let prev_rot = obj.rotation;
+
+                if let Some(inv_np) = new_parent_world.inverse() {
+                    let new_local = inv_np.after(w);
+                    let new_origin = new_local.apply(aubrieta_geometry::GPoint::ORIGIN);
+                    obj.set_local_origin(new_origin.x, new_origin.y);
+                    changes.push(Change::BoundsChanged {
+                        id,
+                        previous_bounds: prev_bounds,
+                        next_bounds: obj.bounds,
+                        previous_rotation: prev_rot,
+                        next_rotation: prev_rot,
+                    });
+                }
+            }
+        }
+
+        Ok(changes)
+    }
+
+    /// Creates a clipping mask group containing a mask object and masked content items.
+    pub fn create_clip_group(
+        &mut self,
+        surface: SurfaceId,
+        group_id: ObjectId,
+        mask_id: ObjectId,
+        content_ids: Vec<ObjectId>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let mut all_ids = vec![mask_id];
+        all_ids.extend(content_ids.iter().copied());
+
+        let mut changes = self.group_objects(
+            surface,
+            group_id,
+            all_ids,
+            crate::hierarchy::ContainerRole::ClipGroup,
+        )?;
+
+        if let Some(mask) = self.document.find_object_mut(mask_id) {
+            let prev_is_mask = mask.is_clip_mask;
+            let prev_mask_id = mask.clip_mask_id;
+            mask.is_clip_mask = true;
+            changes.push(Change::ClipMaskChanged {
+                id: mask_id,
+                previous_mask: prev_mask_id,
+                next_mask: None,
+                previous_is_mask: prev_is_mask,
+                next_is_mask: true,
+            });
+        }
+
+        for cid in content_ids {
+            if let Some(child) = self.document.find_object_mut(cid) {
+                let prev_mask = child.clip_mask_id;
+                let prev_is_mask = child.is_clip_mask;
+                child.clip_mask_id = Some(mask_id);
+                changes.push(Change::ClipMaskChanged {
+                    id: cid,
+                    previous_mask: prev_mask,
+                    next_mask: Some(mask_id),
+                    previous_is_mask: prev_is_mask,
+                    next_is_mask: false,
+                });
+            }
+        }
+
+        Ok(changes)
+    }
+
+    /// Releases a clipping group, freeing the mask boundary and content.
+    pub fn release_clip_group(&mut self, group_id: ObjectId) -> Result<ChangeSet, AubrietaError> {
+        let group = self
+            .document
+            .find_object(group_id)
+            .ok_or_else(|| AubrietaError::not_found(format!("group `{group_id}` not found")))?;
+        let children = group.children.clone();
+
+        let mut changes = ChangeSet::empty();
+        for cid in &children {
+            if let Some(child) = self.document.find_object_mut(*cid) {
+                let prev_mask = child.clip_mask_id;
+                let prev_is_mask = child.is_clip_mask;
+                child.is_clip_mask = false;
+                child.clip_mask_id = None;
+                changes.push(Change::ClipMaskChanged {
+                    id: *cid,
+                    previous_mask: prev_mask,
+                    next_mask: None,
+                    previous_is_mask: prev_is_mask,
+                    next_is_mask: false,
+                });
+            }
+        }
+
+        let ungroup_changes = self.ungroup_objects(group_id)?;
+        for c in ungroup_changes.changes {
+            changes.push(c);
+        }
+
+        Ok(changes)
+    }
+
     /// Reverts a change set in reverse order (undo primitive).
     pub fn revert(&mut self, changes: &ChangeSet) -> Result<(), AubrietaError> {
         for change in changes.changes.iter().rev() {
@@ -438,6 +817,68 @@ impl<'doc> DocumentMutator<'doc> {
                         })?;
                     found.appearance = previous;
                 }
+                Change::Reparented {
+                    id,
+                    previous_parent,
+                    ..
+                } => {
+                    let found = self
+                        .document
+                        .surfaces
+                        .iter_mut()
+                        .flat_map(|s| s.objects.iter_mut())
+                        .find(|o| o.id == id)
+                        .ok_or_else(|| {
+                            AubrietaError::not_found(format!("object `{id}` does not exist"))
+                        })?;
+                    found.parent = previous_parent;
+                }
+                Change::ChildrenChanged {
+                    id,
+                    previous_children,
+                    ..
+                } => {
+                    let found = self
+                        .document
+                        .surfaces
+                        .iter_mut()
+                        .flat_map(|s| s.objects.iter_mut())
+                        .find(|o| o.id == id)
+                        .ok_or_else(|| {
+                            AubrietaError::not_found(format!("object `{id}` does not exist"))
+                        })?;
+                    found.children = previous_children;
+                }
+                Change::ContainerRoleChanged { id, previous, .. } => {
+                    let found = self
+                        .document
+                        .surfaces
+                        .iter_mut()
+                        .flat_map(|s| s.objects.iter_mut())
+                        .find(|o| o.id == id)
+                        .ok_or_else(|| {
+                            AubrietaError::not_found(format!("object `{id}` does not exist"))
+                        })?;
+                    found.role = previous;
+                }
+                Change::ClipMaskChanged {
+                    id,
+                    previous_mask,
+                    previous_is_mask,
+                    ..
+                } => {
+                    let found = self
+                        .document
+                        .surfaces
+                        .iter_mut()
+                        .flat_map(|s| s.objects.iter_mut())
+                        .find(|o| o.id == id)
+                        .ok_or_else(|| {
+                            AubrietaError::not_found(format!("object `{id}` does not exist"))
+                        })?;
+                    found.clip_mask_id = previous_mask;
+                    found.is_clip_mask = previous_is_mask;
+                }
             }
         }
         Ok(())
@@ -493,5 +934,158 @@ mod tests {
         mutator.revert(&changes).unwrap();
         let obj_undone = mutator.document.find_object(obj_id).unwrap();
         assert!(obj_undone.appearance.is_none());
+    }
+
+    #[test]
+    fn group_and_ungroup_roundtrip_undo_redo() {
+        let mut gen = IdGenerator::new();
+        let mut doc = Document::new();
+        let surface = gen.next_surface();
+        let c1 = gen.next_object();
+        let c2 = gen.next_object();
+        let grp = gen.next_object();
+
+        let mut mutator = DocumentMutator::new(&mut doc);
+        mutator.add_surface(surface, "Canvas").unwrap();
+
+        let mut o1 = DocumentObject::new(c1, "Item1");
+        o1.bounds = Some([10.0, 10.0, 50.0, 50.0]);
+        let mut o2 = DocumentObject::new(c2, "Item2");
+        o2.bounds = Some([70.0, 70.0, 40.0, 40.0]);
+
+        mutator.add_object(surface, o1).unwrap();
+        mutator.add_object(surface, o2).unwrap();
+
+        // 1. Group objects
+        let grp_changes = mutator
+            .group_objects(
+                surface,
+                grp,
+                vec![c1, c2],
+                crate::hierarchy::ContainerRole::Group,
+            )
+            .unwrap();
+
+        let group_obj = mutator.document.find_object(grp).unwrap();
+        assert_eq!(group_obj.children, vec![c1, c2]);
+        assert_eq!(group_obj.role, Some(crate::hierarchy::ContainerRole::Group));
+        assert_eq!(group_obj.bounds, Some([10.0, 10.0, 100.0, 100.0]));
+
+        let child1 = mutator.document.find_object(c1).unwrap();
+        assert_eq!(child1.parent, Some(grp));
+        // local offset compensated: 10.0 - 10.0 = 0.0
+        assert_eq!(child1.bounds, Some([0.0, 0.0, 50.0, 50.0]));
+
+        // 2. Undo grouping
+        mutator.revert(&grp_changes).unwrap();
+        assert!(mutator.document.find_object(grp).is_none());
+        let c1_restored = mutator.document.find_object(c1).unwrap();
+        assert_eq!(c1_restored.parent, None);
+        assert_eq!(c1_restored.bounds, Some([10.0, 10.0, 50.0, 50.0]));
+    }
+
+    #[test]
+    fn reparent_cycle_detection_prevents_loops() {
+        let mut gen = IdGenerator::new();
+        let mut doc = Document::new();
+        let surface = gen.next_surface();
+        let parent = gen.next_object();
+        let child = gen.next_object();
+        let grandchild = gen.next_object();
+
+        let mut mutator = DocumentMutator::new(&mut doc);
+        mutator.add_surface(surface, "Canvas").unwrap();
+        mutator
+            .add_object(surface, DocumentObject::new(parent, "Parent"))
+            .unwrap();
+        mutator
+            .add_object(surface, DocumentObject::new(child, "Child"))
+            .unwrap();
+        mutator
+            .add_object(surface, DocumentObject::new(grandchild, "Grandchild"))
+            .unwrap();
+
+        // Build hierarchy: Parent -> Child -> Grandchild
+        mutator
+            .reparent_object(child, Some(parent), 0, false)
+            .unwrap();
+        mutator
+            .reparent_object(grandchild, Some(child), 0, false)
+            .unwrap();
+
+        // Try to reparent Parent under Grandchild (should fail with cycle detection!)
+        let err = mutator.reparent_object(parent, Some(grandchild), 0, false);
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("cycle detected"));
+    }
+
+    #[test]
+    fn reparent_world_transform_preservation() {
+        let mut gen = IdGenerator::new();
+        let mut doc = Document::new();
+        let surface = gen.next_surface();
+        let parent = gen.next_object();
+        let item = gen.next_object();
+
+        let mut mutator = DocumentMutator::new(&mut doc);
+        mutator.add_surface(surface, "Canvas").unwrap();
+
+        let mut p_obj = DocumentObject::new(parent, "Group");
+        p_obj.bounds = Some([100.0, 200.0, 300.0, 300.0]);
+        mutator.add_object(surface, p_obj).unwrap();
+
+        let mut item_obj = DocumentObject::new(item, "Item");
+        item_obj.bounds = Some([150.0, 250.0, 20.0, 20.0]);
+        mutator.add_object(surface, item_obj).unwrap();
+
+        // Reparent item under parent with world-transform preservation
+        mutator
+            .reparent_object(item, Some(parent), 0, true)
+            .unwrap();
+
+        // World transform of item should still place it at (150, 250)
+        let world = mutator.document.world_transform(item).unwrap();
+        let origin = world.apply(aubrieta_geometry::GPoint::ORIGIN);
+        assert!((origin.x - 150.0).abs() < 1e-10);
+        assert!((origin.y - 250.0).abs() < 1e-10);
+
+        // Local origin under parent should be (50, 50)
+        let item_ref = mutator.document.find_object(item).unwrap();
+        assert_eq!(item_ref.bounds, Some([50.0, 50.0, 20.0, 20.0]));
+    }
+
+    #[test]
+    fn create_and_release_clipping_group() {
+        let mut gen = IdGenerator::new();
+        let mut doc = Document::new();
+        let surface = gen.next_surface();
+        let mask = gen.next_object();
+        let content = gen.next_object();
+        let clip_grp = gen.next_object();
+
+        let mut mutator = DocumentMutator::new(&mut doc);
+        mutator.add_surface(surface, "Canvas").unwrap();
+        mutator
+            .add_object(surface, DocumentObject::new(mask, "CircleMask"))
+            .unwrap();
+        mutator
+            .add_object(surface, DocumentObject::new(content, "Photo"))
+            .unwrap();
+
+        mutator
+            .create_clip_group(surface, clip_grp, mask, vec![content])
+            .unwrap();
+
+        let mask_obj = mutator.document.find_object(mask).unwrap();
+        assert!(mask_obj.is_clip_mask);
+        let content_obj = mutator.document.find_object(content).unwrap();
+        assert_eq!(content_obj.clip_mask_id, Some(mask));
+
+        // Release clipping group
+        mutator.release_clip_group(clip_grp).unwrap();
+        let mask_released = mutator.document.find_object(mask).unwrap();
+        assert!(!mask_released.is_clip_mask);
+        let content_released = mutator.document.find_object(content).unwrap();
+        assert_eq!(content_released.clip_mask_id, None);
     }
 }

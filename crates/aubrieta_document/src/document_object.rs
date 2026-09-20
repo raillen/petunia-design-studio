@@ -44,6 +44,24 @@ pub struct DocumentObject {
     /// Canonical V1 Appearance Stack with multiple fills/strokes/effects.
     #[serde(default)]
     pub appearance: Option<crate::appearance::AppearanceStack>,
+    /// Parent container object in the canonical tree, if any.
+    #[serde(default)]
+    pub parent: Option<ObjectId>,
+    /// Child object identities in ordered z-index (back to front).
+    #[serde(default)]
+    pub children: Vec<ObjectId>,
+    /// Semantic container role (Group, Layer, ClipGroup).
+    #[serde(default)]
+    pub role: Option<crate::hierarchy::ContainerRole>,
+    /// Whether this object functions as a clipping mask boundary for its siblings in a ClipGroup.
+    #[serde(default)]
+    pub is_clip_mask: bool,
+    /// Target clipping mask object identity, if clipped directly.
+    #[serde(default)]
+    pub clip_mask_id: Option<ObjectId>,
+    /// Mask compositing mode when acting as or attached to a mask.
+    #[serde(default)]
+    pub mask_mode: crate::hierarchy::MaskMode,
 }
 
 impl DocumentObject {
@@ -62,6 +80,12 @@ impl DocumentObject {
             bounds: None,
             rotation: 0.0,
             appearance: None,
+            parent: None,
+            children: Vec::new(),
+            role: None,
+            is_clip_mask: false,
+            clip_mask_id: None,
+            mask_mode: crate::hierarchy::MaskMode::Vector,
         }
     }
 
@@ -86,6 +110,30 @@ impl DocumentObject {
                 ));
             }
             stack
+        }
+    }
+
+    /// Returns true if this object is a container (has children or an explicit container role).
+    #[must_use]
+    pub fn is_container(&self) -> bool {
+        !self.children.is_empty() || self.role.is_some()
+    }
+
+    /// Computes the local affine transformation for this object based on bounds origin and rotation.
+    #[must_use]
+    pub fn local_transform(&self) -> aubrieta_geometry::GAffine {
+        let (tx, ty) = self.bounds.map_or((0.0, 0.0), |b| (b[0], b[1]));
+        aubrieta_geometry::GAffine::translate(tx, ty)
+            .after(aubrieta_geometry::GAffine::rotate(self.rotation))
+    }
+
+    /// Updates the local translation origin (x, y) while preserving dimensions.
+    pub fn set_local_origin(&mut self, x: f64, y: f64) {
+        if let Some(b) = &mut self.bounds {
+            b[0] = x;
+            b[1] = y;
+        } else {
+            self.bounds = Some([x, y, 0.0, 0.0]);
         }
     }
 }

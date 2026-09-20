@@ -35,6 +35,27 @@
       "from": "PLANNED",
       "reason": "",
       "to": "LOCKED"
+    },
+    {
+      "at": "2026-09-20T04:29:41.270461913Z",
+      "event": "state-transition",
+      "from": "LOCKED",
+      "reason": "",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-20T05:05:04.111128823Z",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "",
+      "to": "VERIFYING"
+    },
+    {
+      "at": "2026-09-20T05:05:08.992161721Z",
+      "event": "state-transition",
+      "from": "VERIFYING",
+      "reason": "",
+      "to": "REVIEWING"
     }
   ],
   "id": "P06-G02",
@@ -47,6 +68,6 @@
   "objective": "Implementar agrupamento de nós sob a regra One-Tree, máscaras de corte de vetor e cálculo de transformações hierárquicas conforme 10.5",
   "phase": "P06",
   "revision": 1,
-  "state": "LOCKED",
+  "state": "REVIEWING",
   "title": "Hierarquia de Objetos, Grupos e Clipes"
 }

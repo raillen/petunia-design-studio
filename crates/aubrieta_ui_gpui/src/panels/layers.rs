@@ -95,4 +95,87 @@ impl LayersPanelController {
             "aubrieta.edit.delete",
         )))
     }
+
+    /// Groups currently selected objects into a container with a designated role (10.5 One-Tree).
+    pub fn group_selection(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        role: aubrieta_document::ContainerRole,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let sel_ids = bridge.selection().selected_ids;
+        if sel_ids.is_empty() {
+            return Err(AubrietaError::invalid_input("no objects selected to group"));
+        }
+        let surface = bridge
+            .active_surface()
+            .ok_or_else(|| AubrietaError::invalid_input("no active surface"))?;
+        let group_id = bridge.next_object_id()?;
+        let changes = bridge.group_objects(surface, group_id, sel_ids, role)?;
+        bridge.set_selection(vec![group_id]);
+        Ok(changes)
+    }
+
+    /// Ungroups currently selected container objects.
+    pub fn ungroup_selection(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let sel_ids = bridge.selection().selected_ids;
+        let mut combined = ChangeSet::empty();
+        for id in sel_ids {
+            let is_container = bridge
+                .session()
+                .and_then(|s| s.document.find_object(id))
+                .is_some_and(|o| o.is_container());
+            if is_container {
+                let changes = bridge.ungroup(id)?;
+                for c in changes.changes {
+                    combined.push(c);
+                }
+            }
+        }
+        Ok(combined)
+    }
+
+    /// Reparents an object to a new container or root with visual position preservation.
+    pub fn reparent_row(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        id: ObjectId,
+        new_parent: Option<ObjectId>,
+        target_index: usize,
+    ) -> Result<ChangeSet, AubrietaError> {
+        bridge.reparent_object(id, new_parent, target_index, true)
+    }
+
+    /// Creates a clipping mask where the first selected object clips the rest.
+    pub fn create_clipping_mask(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let sel_ids = bridge.selection().selected_ids;
+        if sel_ids.len() < 2 {
+            return Err(AubrietaError::invalid_input(
+                "clipping mask requires at least two selected objects (mask + content)",
+            ));
+        }
+        let surface = bridge
+            .active_surface()
+            .ok_or_else(|| AubrietaError::invalid_input("no active surface"))?;
+        let mask_id = sel_ids[0];
+        let content_ids = sel_ids[1..].to_vec();
+        let group_id = bridge.next_object_id()?;
+        let changes = bridge.create_clip_group(surface, group_id, mask_id, content_ids)?;
+        bridge.set_selection(vec![group_id]);
+        Ok(changes)
+    }
+
+    /// Releases a clipping mask group.
+    pub fn release_clipping_mask(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        group_id: ObjectId,
+    ) -> Result<ChangeSet, AubrietaError> {
+        bridge.release_clip_group(group_id)
+    }
 }

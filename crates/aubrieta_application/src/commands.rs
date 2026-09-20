@@ -47,6 +47,31 @@ pub enum Command {
         id: ObjectId,
         appearance: Option<aubrieta_document::AppearanceStack>,
     },
+    /// Groups objects into a container under the One-Tree invariant (10.5).
+    GroupObjects {
+        surface: SurfaceId,
+        group_id: ObjectId,
+        child_ids: Vec<ObjectId>,
+        role: aubrieta_document::ContainerRole,
+    },
+    /// Ungroups a container object, moving its children to its parent.
+    Ungroup { group_id: ObjectId },
+    /// Reparents an object to a new container or root.
+    ReparentObject {
+        id: ObjectId,
+        new_parent: Option<ObjectId>,
+        target_index: usize,
+        preserve_world_transform: bool,
+    },
+    /// Creates a clipping mask group where mask_id clips content_ids.
+    CreateClipGroup {
+        surface: SurfaceId,
+        group_id: ObjectId,
+        mask_id: ObjectId,
+        content_ids: Vec<ObjectId>,
+    },
+    /// Releases a clipping mask group.
+    ReleaseClipGroup { group_id: ObjectId },
 }
 
 /// Validated command ready for execution.
@@ -94,5 +119,25 @@ pub fn execute(
         Command::SetAppearance { id, appearance } => {
             mutator.set_appearance(*id, appearance.clone())
         }
+        Command::GroupObjects {
+            surface,
+            group_id,
+            child_ids,
+            role,
+        } => mutator.group_objects(*surface, *group_id, child_ids.clone(), *role),
+        Command::Ungroup { group_id } => mutator.ungroup_objects(*group_id),
+        Command::ReparentObject {
+            id,
+            new_parent,
+            target_index,
+            preserve_world_transform,
+        } => mutator.reparent_object(*id, *new_parent, *target_index, *preserve_world_transform),
+        Command::CreateClipGroup {
+            surface,
+            group_id,
+            mask_id,
+            content_ids,
+        } => mutator.create_clip_group(*surface, *group_id, *mask_id, content_ids.clone()),
+        Command::ReleaseClipGroup { group_id } => mutator.release_clip_group(*group_id),
     }
 }

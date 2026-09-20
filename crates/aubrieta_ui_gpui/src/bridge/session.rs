@@ -340,21 +340,34 @@ impl DocumentSession {
                 object_count: surface.objects.len(),
             });
 
+            let mut visited = std::collections::HashSet::new();
+
+            // First emit root-level objects and recursively their subtrees
             for obj in &surface.objects {
-                let is_selected = self.selection.selected_ids.contains(&obj.id);
-                rows.push(LayerRowViewModel {
-                    id: obj.id,
-                    surface_id: surface.id,
-                    name: obj.name.clone(),
-                    visible: obj.visible,
-                    locked: obj.locked,
-                    is_selected,
-                    depth: 0,
-                    fill_token: obj.fill.clone(),
-                    stroke_token: obj.stroke.clone(),
-                    opacity: obj.opacity,
-                    bounds: obj.bounds,
-                });
+                if obj.parent.is_none() {
+                    Self::push_layer_tree_rows(
+                        surface,
+                        obj,
+                        0,
+                        &self.selection.selected_ids,
+                        &mut rows,
+                        &mut visited,
+                    );
+                }
+            }
+
+            // Fallback for any unparented/orphaned nodes
+            for obj in &surface.objects {
+                if !visited.contains(&obj.id) {
+                    Self::push_layer_tree_rows(
+                        surface,
+                        obj,
+                        0,
+                        &self.selection.selected_ids,
+                        &mut rows,
+                        &mut visited,
+                    );
+                }
             }
         }
 
@@ -366,6 +379,52 @@ impl DocumentSession {
             rows,
             total_count,
             selected_count,
+        }
+    }
+
+    fn push_layer_tree_rows(
+        surface: &aubrieta_document::Surface,
+        obj: &aubrieta_document::DocumentObject,
+        depth: usize,
+        selected_ids: &[ObjectId],
+        rows: &mut Vec<LayerRowViewModel>,
+        visited: &mut std::collections::HashSet<ObjectId>,
+    ) {
+        if !visited.insert(obj.id) {
+            return;
+        }
+        let is_selected = selected_ids.contains(&obj.id);
+        rows.push(LayerRowViewModel {
+            id: obj.id,
+            surface_id: surface.id,
+            name: obj.name.clone(),
+            visible: obj.visible,
+            locked: obj.locked,
+            is_selected,
+            depth,
+            parent_id: obj.parent,
+            is_container: obj.is_container(),
+            role: obj.role,
+            is_clip_mask: obj.is_clip_mask,
+            clip_mask_id: obj.clip_mask_id,
+            children_count: obj.children.len(),
+            fill_token: obj.fill.clone(),
+            stroke_token: obj.stroke.clone(),
+            opacity: obj.opacity,
+            bounds: obj.bounds,
+        });
+
+        for child_id in &obj.children {
+            if let Some(child_obj) = surface.objects.iter().find(|o| o.id == *child_id) {
+                Self::push_layer_tree_rows(
+                    surface,
+                    child_obj,
+                    depth + 1,
+                    selected_ids,
+                    rows,
+                    visited,
+                );
+            }
         }
     }
 

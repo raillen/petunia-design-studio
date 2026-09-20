@@ -208,3 +208,116 @@ fn properties_panel_appearance_stack_multi_fill_stroke_and_gradient() {
     let redo_model = controller.query_model(&bridge);
     assert_eq!(redo_model.appearance, Some(app));
 }
+
+#[test]
+fn layers_panel_grouping_reparenting_and_clipping_masks() {
+    use aubrieta_document::ContainerRole;
+
+    let mut bridge = AubrietaGuiBridge::new();
+    bridge.new_document("Hierarchy Test").expect("doc");
+    let surface_id = bridge.active_surface().unwrap();
+
+    let mut gen = IdGenerator::new();
+    let id1 = gen.next_object();
+    let id2 = gen.next_object();
+    let id3 = gen.next_object();
+
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id: id1,
+            name: "Shape1".to_string(),
+        }))
+        .unwrap();
+
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id: id2,
+            name: "Shape2".to_string(),
+        }))
+        .unwrap();
+
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id: id3,
+            name: "Shape3".to_string(),
+        }))
+        .unwrap();
+
+    let controller = LayersPanelController::new();
+
+    // 1. Group Shape1 and Shape2
+    bridge.set_selection(vec![id1, id2]);
+    controller
+        .group_selection(&mut bridge, ContainerRole::Group)
+        .unwrap();
+
+    let model = controller.query_model(&bridge);
+    assert_eq!(model.surfaces.len(), 1);
+    // There are 4 rows now: Group, Shape1 (child), Shape2 (child), Shape3 (root)
+    assert_eq!(model.rows.len(), 4);
+
+    let grp_row = model.rows.iter().find(|r| r.is_container).unwrap();
+    assert_eq!(grp_row.depth, 0);
+    assert_eq!(grp_row.children_count, 2);
+    assert_eq!(grp_row.role, Some(ContainerRole::Group));
+    let grp_id = grp_row.id;
+
+    // Check children depth
+    let c1_row = model.rows.iter().find(|r| r.id == id1).unwrap();
+    assert_eq!(c1_row.depth, 1);
+    assert_eq!(c1_row.parent_id, Some(grp_id));
+
+    let c2_row = model.rows.iter().find(|r| r.id == id2).unwrap();
+    assert_eq!(c2_row.depth, 1);
+    assert_eq!(c2_row.parent_id, Some(grp_id));
+
+    let c3_row = model.rows.iter().find(|r| r.id == id3).unwrap();
+    assert_eq!(c3_row.depth, 0);
+    assert_eq!(c3_row.parent_id, None);
+
+    // 2. Reparent Shape3 into Group
+    controller
+        .reparent_row(&mut bridge, id3, Some(grp_id), 0)
+        .unwrap();
+    let reparented_model = controller.query_model(&bridge);
+    let c3_reparented = reparented_model.rows.iter().find(|r| r.id == id3).unwrap();
+    assert_eq!(c3_reparented.depth, 1);
+    assert_eq!(c3_reparented.parent_id, Some(grp_id));
+
+    // 3. Ungroup
+    bridge.set_selection(vec![grp_id]);
+    controller.ungroup_selection(&mut bridge).unwrap();
+    let ungrouped_model = controller.query_model(&bridge);
+    assert_eq!(ungrouped_model.rows.len(), 3);
+    for r in &ungrouped_model.rows {
+        assert_eq!(r.depth, 0);
+        assert_eq!(r.parent_id, None);
+    }
+
+    // 4. Create clipping mask between Shape1 and Shape2
+    bridge.set_selection(vec![id1, id2]);
+    controller.create_clipping_mask(&mut bridge).unwrap();
+    let clip_model = controller.query_model(&bridge);
+    let clip_grp = clip_model
+        .rows
+        .iter()
+        .find(|r| r.role == Some(ContainerRole::ClipGroup))
+        .unwrap();
+    assert_eq!(clip_grp.depth, 0);
+    let mask_row = clip_model.rows.iter().find(|r| r.id == id1).unwrap();
+    assert!(mask_row.is_clip_mask);
+    let content_row = clip_model.rows.iter().find(|r| r.id == id2).unwrap();
+    assert_eq!(content_row.clip_mask_id, Some(id1));
+
+    // 5. Release clipping mask
+    controller
+        .release_clipping_mask(&mut bridge, clip_grp.id)
+        .unwrap();
+    let released_model = controller.query_model(&bridge);
+    assert_eq!(released_model.rows.len(), 3);
+    let m_rel = released_model.rows.iter().find(|r| r.id == id1).unwrap();
+    assert!(!m_rel.is_clip_mask);
+}

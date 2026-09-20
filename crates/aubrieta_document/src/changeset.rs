@@ -73,6 +73,34 @@ pub enum Change {
         previous: Option<crate::appearance::AppearanceStack>,
         next: Option<crate::appearance::AppearanceStack>,
     },
+    /// An object's parent in the canonical tree changed.
+    Reparented {
+        id: ObjectId,
+        previous_parent: Option<ObjectId>,
+        next_parent: Option<ObjectId>,
+        previous_index: usize,
+        next_index: usize,
+    },
+    /// A container object's children list changed.
+    ChildrenChanged {
+        id: ObjectId,
+        previous_children: Vec<ObjectId>,
+        next_children: Vec<ObjectId>,
+    },
+    /// A container object's structural role changed.
+    ContainerRoleChanged {
+        id: ObjectId,
+        previous: Option<crate::hierarchy::ContainerRole>,
+        next: Option<crate::hierarchy::ContainerRole>,
+    },
+    /// An object's clip mask relationship changed.
+    ClipMaskChanged {
+        id: ObjectId,
+        previous_mask: Option<ObjectId>,
+        next_mask: Option<ObjectId>,
+        previous_is_mask: bool,
+        next_is_mask: bool,
+    },
 }
 
 /// Ordered list of changes produced by one mutation.

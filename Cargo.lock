@@ -79,6 +79,7 @@ name = "aubrieta_document"
 version = "0.1.0"
 dependencies = [
  "aubrieta_foundation",
+ "aubrieta_geometry",
  "proptest",
  "serde",
  "serde_json",
