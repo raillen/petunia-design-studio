@@ -77,6 +77,8 @@ fn populate_showcase_document(shell: &mut AubrietaShell) -> Result<(), AubrietaE
     let surface_1 = id_gen.next_surface();
     let rect_id = id_gen.next_object();
     let circle_id = id_gen.next_object();
+    let star_id = id_gen.next_object();
+    let text_id = id_gen.next_object();
 
     shell.bridge.submit_command(CommandRequest::new(Command::CreateSurface {
         id: surface_1,
@@ -87,21 +89,59 @@ fn populate_showcase_document(shell: &mut AubrietaShell) -> Result<(), AubrietaE
     shell.bridge.set_surface_margins(surface_1, Margins::uniform(36.0))?;
     shell.bridge.add_surface_guide(surface_1, Guide::new(1, GuideOrientation::Vertical, 200.0))?;
 
-    shell.bridge.submit_command(CommandRequest::new(Command::CreateObject {
-        surface: surface_1,
-        id: rect_id,
-        name: "Hero Card".to_string(),
-    }))?;
-    shell.bridge.set_bounds(rect_id, Some([100.0, 100.0, 300.0, 180.0]), 0.0)?;
-    shell.bridge.set_fill(rect_id, Some("aubrieta.blue/500".to_string()))?;
+    // Hero Card (Rectangle)
+    shell.bridge.create_shape_object(
+        surface_1,
+        rect_id,
+        "Hero Card".to_string(),
+        aubrieta_document::ShapeKind::Rectangle { corner_radii: [8.0; 4] },
+        Some([100.0, 100.0, 300.0, 180.0]),
+        Some("aubrieta.blue/500".to_string()),
+        Some("#2563eb".to_string()),
+        1.5,
+    )?;
 
-    shell.bridge.submit_command(CommandRequest::new(Command::CreateObject {
-        surface: surface_1,
-        id: circle_id,
-        name: "Accent Circle".to_string(),
-    }))?;
-    shell.bridge.set_bounds(circle_id, Some([450.0, 160.0, 140.0, 140.0]), 0.0)?;
-    shell.bridge.set_fill(circle_id, Some("aubrieta.yellow/500".to_string()))?;
+    // Accent Circle (Ellipse)
+    shell.bridge.create_shape_object(
+        surface_1,
+        circle_id,
+        "Accent Circle".to_string(),
+        aubrieta_document::ShapeKind::Ellipse,
+        Some([450.0, 140.0, 140.0, 140.0]),
+        Some("aubrieta.yellow/500".to_string()),
+        Some("#ca8a04".to_string()),
+        1.5,
+    )?;
+
+    // Golden Star (Star)
+    shell.bridge.create_shape_object(
+        surface_1,
+        star_id,
+        "Golden Star".to_string(),
+        aubrieta_document::ShapeKind::Star { points: 5, inner_ratio: 0.45 },
+        Some([450.0, 320.0, 130.0, 130.0]),
+        Some("aubrieta.rose/500".to_string()),
+        Some("#e11d48".to_string()),
+        1.5,
+    )?;
+
+    // Title Text (Text)
+    shell.bridge.create_shape_object(
+        surface_1,
+        text_id,
+        "Banner Text".to_string(),
+        aubrieta_document::ShapeKind::Text {
+            content: "Aubrieta Vector Studio".to_string(),
+            font_family: "Inter".to_string(),
+            font_size: 20.0,
+            line_height: 24.0,
+            letter_spacing: 0.5,
+        },
+        Some([100.0, 320.0, 300.0, 50.0]),
+        Some("aubrieta.purple/500".to_string()),
+        None,
+        0.0,
+    )?;
 
     shell.bridge.set_selection(vec![rect_id]);
     Ok(())
@@ -138,7 +178,19 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
                 if let Some(b) = obj.bounds {
                     let is_sel = selection.contains(obj.id);
                     let name_lower = obj.name.to_lowercase();
-                    let is_circle = name_lower.contains("circle") || name_lower.contains("ellipse");
+                    let (is_circle, is_path, is_text, text_content, svg_path) = match &obj.shape {
+                        Some(aubrieta_document::ShapeKind::Ellipse) => (true, false, false, String::new(), String::new()),
+                        Some(aubrieta_document::ShapeKind::Rectangle { .. }) => (false, false, false, String::new(), String::new()),
+                        Some(aubrieta_document::ShapeKind::Path(path)) => (false, true, false, String::new(), path.to_svg_path_data()),
+                        Some(aubrieta_document::ShapeKind::Polygon { .. }) | Some(aubrieta_document::ShapeKind::Star { .. }) => {
+                            (false, true, false, String::new(), obj.to_path().to_svg_path_data())
+                        }
+                        Some(aubrieta_document::ShapeKind::Text { content, .. }) => (false, false, true, content.clone(), String::new()),
+                        None => {
+                            let is_c = name_lower.contains("circle") || name_lower.contains("ellipse");
+                            (is_c, false, false, String::new(), String::new())
+                        }
+                    };
 
                     let bg_color = if let Some(fill) = &obj.fill {
                         if fill.contains("blue") {
@@ -176,6 +228,10 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
                         bg_color,
                         selected: is_sel,
                         is_circle,
+                        is_path,
+                        is_text,
+                        text_content: text_content.into(),
+                        svg_path: svg_path.into(),
                     });
                 }
             }
@@ -510,6 +566,184 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = st.shell.bridge.set_bounds(new_id, Some([360.0 + offset, 180.0 + offset, 130.0, 130.0]), 0.0);
                 let _ = st.shell.bridge.set_fill(new_id, Some("aubrieta.purple/500".to_string()));
                 st.shell.bridge.set_selection(vec![new_id]);
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Add star clicked
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_add_star_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let mut id_gen = IdGenerator::new();
+            if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                let new_id = id_gen.next_object();
+                let count = surface.objects.len() + 1;
+                let offset = (count as f64 * 35.0) % 250.0;
+                let _ = st.shell.bridge.create_shape_object(
+                    surface.id,
+                    new_id,
+                    format!("Star {}", count),
+                    aubrieta_document::ShapeKind::Star { points: 5, inner_ratio: 0.45 },
+                    Some([220.0 + offset, 160.0 + offset, 130.0, 130.0]),
+                    Some("aubrieta.rose/500".to_string()),
+                    Some("#e11d48".to_string()),
+                    1.5,
+                );
+                st.shell.bridge.set_selection(vec![new_id]);
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Add text clicked
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_add_text_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let mut id_gen = IdGenerator::new();
+            if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                let new_id = id_gen.next_object();
+                let count = surface.objects.len() + 1;
+                let offset = (count as f64 * 25.0) % 200.0;
+                let _ = st.shell.bridge.create_shape_object(
+                    surface.id,
+                    new_id,
+                    format!("Text {}", count),
+                    aubrieta_document::ShapeKind::Text {
+                        content: format!("Texto Vetorial {}", count),
+                        font_family: "Inter".to_string(),
+                        font_size: 18.0,
+                        line_height: 22.0,
+                        letter_spacing: 0.0,
+                    },
+                    Some([140.0 + offset, 240.0 + offset, 220.0, 40.0]),
+                    Some("aubrieta.purple/500".to_string()),
+                    None,
+                    0.0,
+                );
+                st.shell.bridge.set_selection(vec![new_id]);
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Boolean Union
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_boolean_union_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
+            if sel_ids.len() < 2 {
+                if let Some(session) = st.shell.bridge.session() {
+                    if let Some(surface) = session.document.surfaces.first() {
+                        if surface.objects.len() >= 2 {
+                            sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
+                        }
+                    }
+                }
+            }
+            if sel_ids.len() >= 2 {
+                let id_a = sel_ids[0];
+                let id_b = sel_ids[1];
+                let mut id_gen = IdGenerator::new();
+                let target_id = id_gen.next_object();
+                if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                    let _ = st.shell.bridge.apply_boolean(
+                        surface.id,
+                        target_id,
+                        id_a,
+                        id_b,
+                        aubrieta_geometry::BooleanOp::Union,
+                    );
+                    st.shell.bridge.set_selection(vec![target_id]);
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Boolean Subtract
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_boolean_subtract_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
+            if sel_ids.len() < 2 {
+                if let Some(session) = st.shell.bridge.session() {
+                    if let Some(surface) = session.document.surfaces.first() {
+                        if surface.objects.len() >= 2 {
+                            sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
+                        }
+                    }
+                }
+            }
+            if sel_ids.len() >= 2 {
+                let id_a = sel_ids[0];
+                let id_b = sel_ids[1];
+                let mut id_gen = IdGenerator::new();
+                let target_id = id_gen.next_object();
+                if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                    let _ = st.shell.bridge.apply_boolean(
+                        surface.id,
+                        target_id,
+                        id_a,
+                        id_b,
+                        aubrieta_geometry::BooleanOp::Difference,
+                    );
+                    st.shell.bridge.set_selection(vec![target_id]);
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Boolean Intersect
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_boolean_intersect_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
+            if sel_ids.len() < 2 {
+                if let Some(session) = st.shell.bridge.session() {
+                    if let Some(surface) = session.document.surfaces.first() {
+                        if surface.objects.len() >= 2 {
+                            sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
+                        }
+                    }
+                }
+            }
+            if sel_ids.len() >= 2 {
+                let id_a = sel_ids[0];
+                let id_b = sel_ids[1];
+                let mut id_gen = IdGenerator::new();
+                let target_id = id_gen.next_object();
+                if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                    let _ = st.shell.bridge.apply_boolean(
+                        surface.id,
+                        target_id,
+                        id_a,
+                        id_b,
+                        aubrieta_geometry::BooleanOp::Intersection,
+                    );
+                    st.shell.bridge.set_selection(vec![target_id]);
+                }
             }
             if let Some(win) = win_weak.upgrade() {
                 sync_ui_from_shell(&win, &st);
@@ -885,7 +1119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Some(start_doc) = st.drag_start_doc {
                 match st.shell.active_tool() {
-                    ToolKind::Rectangle | ToolKind::Ellipse => {
+                    ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Polygon | ToolKind::Pen => {
                         let min_x = start_doc.x.min(doc_pt.x);
                         let min_y = start_doc.y.min(doc_pt.y);
                         let w = (doc_pt.x - start_doc.x).abs();
@@ -954,17 +1188,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
                         let new_id = id_gen.next_object();
                         let count = surface.objects.len() + 1;
-                        let (name, fill) = match st.shell.active_tool() {
-                            ToolKind::Ellipse => (format!("Ellipse {}", count), "aubrieta.yellow/500"),
-                            _ => (format!("Rectangle {}", count), "aubrieta.green/500"),
+                        let (name, shape, fill) = match st.shell.active_tool() {
+                            ToolKind::Ellipse => (
+                                format!("Ellipse {}", count),
+                                aubrieta_document::ShapeKind::Ellipse,
+                                "aubrieta.yellow/500",
+                            ),
+                            ToolKind::Polygon => (
+                                format!("Star {}", count),
+                                aubrieta_document::ShapeKind::Star { points: 5, inner_ratio: 0.45 },
+                                "aubrieta.rose/500",
+                            ),
+                            ToolKind::Pen => (
+                                format!("Path {}", count),
+                                aubrieta_document::ShapeKind::Path(aubrieta_geometry::GPath::rect(
+                                    aubrieta_geometry::GRect::new(min_x, min_y, min_x + dx, min_y + dy),
+                                    0.0,
+                                    0.0,
+                                )),
+                                "aubrieta.purple/500",
+                            ),
+                            _ => (
+                                format!("Rectangle {}", count),
+                                aubrieta_document::ShapeKind::Rectangle { corner_radii: [4.0; 4] },
+                                "aubrieta.green/500",
+                            ),
                         };
-                        let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::CreateObject {
-                            surface: surface.id,
-                            id: new_id,
+                        let _ = st.shell.bridge.create_shape_object(
+                            surface.id,
+                            new_id,
                             name,
-                        }));
-                        let _ = st.shell.bridge.set_bounds(new_id, Some([min_x, min_y, dx, dy]), 0.0);
-                        let _ = st.shell.bridge.set_fill(new_id, Some(fill.to_string()));
+                            shape,
+                            Some([min_x, min_y, dx, dy]),
+                            Some(fill.to_string()),
+                            Some("#ffffff".to_string()),
+                            1.0,
+                        );
                         st.shell.bridge.set_selection(vec![new_id]);
                     }
                 }

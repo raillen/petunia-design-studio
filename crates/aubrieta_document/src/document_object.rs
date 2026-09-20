@@ -62,6 +62,33 @@ pub struct DocumentObject {
     /// Mask compositing mode when acting as or attached to a mask.
     #[serde(default)]
     pub mask_mode: crate::hierarchy::MaskMode,
+    /// Canonical vector shape or text content of this object, if not a container.
+    #[serde(default)]
+    pub shape: Option<ShapeKind>,
+}
+
+/// Canonical geometric shape or text content representation.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum ShapeKind {
+    /// Rectangular shape with optional corner radii.
+    Rectangle { corner_radii: [f64; 4] },
+    /// Elliptical shape.
+    Ellipse,
+    /// Explicit arbitrary vector path with Bézier verbs.
+    Path(aubrieta_geometry::GPath),
+    /// Regular polygon with N sides.
+    Polygon { sides: u32 },
+    /// Star polygon with N points and inner radius ratio.
+    Star { points: u32, inner_ratio: f64 },
+    /// Text frame / artistic text object.
+    Text {
+        content: String,
+        font_family: String,
+        font_size: f64,
+        line_height: f64,
+        letter_spacing: f64,
+    },
 }
 
 impl DocumentObject {
@@ -86,6 +113,66 @@ impl DocumentObject {
             is_clip_mask: false,
             clip_mask_id: None,
             mask_mode: crate::hierarchy::MaskMode::Vector,
+            shape: None,
+        }
+    }
+
+    /// Returns the canonical outline `GPath` for this object based on its shape and bounds.
+    #[must_use]
+    pub fn to_path(&self) -> aubrieta_geometry::GPath {
+        let b = self.bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
+        let rect = aubrieta_geometry::GRect::new(b[0], b[1], b[0] + b[2], b[1] + b[3]);
+        match &self.shape {
+            Some(ShapeKind::Rectangle { corner_radii }) => {
+                aubrieta_geometry::GPath::rect(rect, corner_radii[0], corner_radii[0])
+            }
+            Some(ShapeKind::Ellipse) => {
+                let rx = b[2] / 2.0;
+                let ry = b[3] / 2.0;
+                let center = aubrieta_geometry::GPoint::new(b[0] + rx, b[1] + ry);
+                aubrieta_geometry::GPath::ellipse(center, rx, ry)
+            }
+            Some(ShapeKind::Path(path)) => path.clone(),
+            Some(ShapeKind::Polygon { sides }) => {
+                let rx = b[2] / 2.0;
+                let center = aubrieta_geometry::GPoint::new(b[0] + rx, b[1] + b[3] / 2.0);
+                aubrieta_geometry::GPath::regular_polygon(center, rx, *sides as usize)
+            }
+            Some(ShapeKind::Star { points, inner_ratio }) => {
+                let outer_r = b[2] / 2.0;
+                let inner_r = outer_r * inner_ratio.clamp(0.1, 0.9);
+                let center = aubrieta_geometry::GPoint::new(b[0] + outer_r, b[1] + b[3] / 2.0);
+                aubrieta_geometry::GPath::star(center, outer_r, inner_r, *points as usize)
+            }
+            _ => aubrieta_geometry::GPath::rect(rect, 0.0, 0.0),
+        }
+    }
+
+    /// Hit-tests whether a document point lies within this object's shape or bounds.
+    #[must_use]
+    pub fn hit_test(&self, point: aubrieta_geometry::GPoint) -> bool {
+        if !self.visible {
+            return false;
+        }
+        if let Some(b) = self.bounds {
+            if point.x < b[0] || point.x > b[0] + b[2] || point.y < b[1] || point.y > b[1] + b[3] {
+                return false;
+            }
+            if matches!(self.shape, Some(ShapeKind::Ellipse)) {
+                let rx = b[2] / 2.0;
+                let ry = b[3] / 2.0;
+                let cx = b[0] + rx;
+                let cy = b[1] + ry;
+                let dx = (point.x - cx) / rx.max(1e-6);
+                let dy = (point.y - cy) / ry.max(1e-6);
+                return dx * dx + dy * dy <= 1.0;
+            }
+            if let Some(ShapeKind::Path(path)) = &self.shape {
+                return path.contains_point(point, 0.5);
+            }
+            true
+        } else {
+            false
         }
     }
 

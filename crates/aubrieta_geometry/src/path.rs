@@ -114,6 +114,228 @@ impl GPath {
     pub fn to_polygons(&self, tolerance: f64) -> Vec<Vec<GPoint>> {
         kurbo_adapter::flatten_to_polygons(self, tolerance)
     }
+
+    /// Creates a rectangle path, with optional corner radii.
+    #[must_use]
+    pub fn rect(rect: GRect, rx: f64, ry: f64) -> Self {
+        let mut path = Self::new();
+        let x0 = rect.x0;
+        let y0 = rect.y0;
+        let x1 = rect.x1;
+        let y1 = rect.y1;
+        let w = rect.width();
+        let h = rect.height();
+        let rx = rx.abs().min(w / 2.0);
+        let ry = ry.abs().min(h / 2.0);
+
+        if rx <= 1e-6 || ry <= 1e-6 {
+            let _ = path.push(PathVerb::MoveTo(GPoint::new(x0, y0)));
+            let _ = path.push(PathVerb::LineTo(GPoint::new(x1, y0)));
+            let _ = path.push(PathVerb::LineTo(GPoint::new(x1, y1)));
+            let _ = path.push(PathVerb::LineTo(GPoint::new(x0, y1)));
+            let _ = path.push(PathVerb::Close);
+        } else {
+            const KAPPA: f64 = 0.5522847498307936;
+            let kx = rx * KAPPA;
+            let ky = ry * KAPPA;
+
+            let _ = path.push(PathVerb::MoveTo(GPoint::new(x0 + rx, y0)));
+            let _ = path.push(PathVerb::LineTo(GPoint::new(x1 - rx, y0)));
+            let _ = path.push(PathVerb::CubicTo(
+                GPoint::new(x1 - rx + kx, y0),
+                GPoint::new(x1, y0 + ry - ky),
+                GPoint::new(x1, y0 + ry),
+            ));
+            let _ = path.push(PathVerb::LineTo(GPoint::new(x1, y1 - ry)));
+            let _ = path.push(PathVerb::CubicTo(
+                GPoint::new(x1, y1 - ry + ky),
+                GPoint::new(x1 - rx + kx, y1),
+                GPoint::new(x1 - rx, y1),
+            ));
+            let _ = path.push(PathVerb::LineTo(GPoint::new(x0 + rx, y1)));
+            let _ = path.push(PathVerb::CubicTo(
+                GPoint::new(x0 + rx - kx, y1),
+                GPoint::new(x0, y1 - ry + ky),
+                GPoint::new(x0, y1 - ry),
+            ));
+            let _ = path.push(PathVerb::LineTo(GPoint::new(x0, y0 + ry)));
+            let _ = path.push(PathVerb::CubicTo(
+                GPoint::new(x0, y0 + ry - ky),
+                GPoint::new(x0 + rx - kx, y0),
+                GPoint::new(x0 + rx, y0),
+            ));
+            let _ = path.push(PathVerb::Close);
+        }
+        path
+    }
+
+    /// Creates an ellipse path centered at `center` with radii `rx` and `ry`.
+    #[must_use]
+    pub fn ellipse(center: GPoint, rx: f64, ry: f64) -> Self {
+        let mut path = Self::new();
+        let rx = rx.abs().max(1e-6);
+        let ry = ry.abs().max(1e-6);
+        const KAPPA: f64 = 0.5522847498307936;
+        let kx = rx * KAPPA;
+        let ky = ry * KAPPA;
+        let cx = center.x;
+        let cy = center.y;
+
+        let _ = path.push(PathVerb::MoveTo(GPoint::new(cx, cy - ry)));
+        let _ = path.push(PathVerb::CubicTo(
+            GPoint::new(cx + kx, cy - ry),
+            GPoint::new(cx + rx, cy - ky),
+            GPoint::new(cx + rx, cy),
+        ));
+        let _ = path.push(PathVerb::CubicTo(
+            GPoint::new(cx + rx, cy + ky),
+            GPoint::new(cx + kx, cy + ry),
+            GPoint::new(cx, cy + ry),
+        ));
+        let _ = path.push(PathVerb::CubicTo(
+            GPoint::new(cx - kx, cy + ry),
+            GPoint::new(cx - rx, cy + ky),
+            GPoint::new(cx - rx, cy),
+        ));
+        let _ = path.push(PathVerb::CubicTo(
+            GPoint::new(cx - rx, cy - ky),
+            GPoint::new(cx - kx, cy - ry),
+            GPoint::new(cx, cy - ry),
+        ));
+        let _ = path.push(PathVerb::Close);
+        path
+    }
+
+    /// Creates a circle path centered at `center` with `radius`.
+    #[must_use]
+    pub fn circle(center: GPoint, radius: f64) -> Self {
+        Self::ellipse(center, radius, radius)
+    }
+
+    /// Creates a regular polygon with `sides` vertices centered at `center`.
+    #[must_use]
+    pub fn regular_polygon(center: GPoint, radius: f64, sides: usize) -> Self {
+        let mut path = Self::new();
+        let sides = sides.max(3);
+        let step = std::f64::consts::TAU / (sides as f64);
+        let start_angle = -std::f64::consts::FRAC_PI_2;
+
+        for i in 0..sides {
+            let angle = start_angle + (i as f64) * step;
+            let pt = GPoint::new(center.x + radius * angle.cos(), center.y + radius * angle.sin());
+            if i == 0 {
+                let _ = path.push(PathVerb::MoveTo(pt));
+            } else {
+                let _ = path.push(PathVerb::LineTo(pt));
+            }
+        }
+        let _ = path.push(PathVerb::Close);
+        path
+    }
+
+    /// Creates a star polygon with `points` points.
+    #[must_use]
+    pub fn star(center: GPoint, outer_radius: f64, inner_radius: f64, points: usize) -> Self {
+        let mut path = Self::new();
+        let points = points.max(3);
+        let total_vertices = points * 2;
+        let step = std::f64::consts::TAU / (total_vertices as f64);
+        let start_angle = -std::f64::consts::FRAC_PI_2;
+
+        for i in 0..total_vertices {
+            let angle = start_angle + (i as f64) * step;
+            let r = if i % 2 == 0 { outer_radius } else { inner_radius };
+            let pt = GPoint::new(center.x + r * angle.cos(), center.y + r * angle.sin());
+            if i == 0 {
+                let _ = path.push(PathVerb::MoveTo(pt));
+            } else {
+                let _ = path.push(PathVerb::LineTo(pt));
+            }
+        }
+        let _ = path.push(PathVerb::Close);
+        path
+    }
+
+    /// Creates a straight line segment from `p1` to `p2`.
+    #[must_use]
+    pub fn line(p1: GPoint, p2: GPoint) -> Self {
+        let mut path = Self::new();
+        let _ = path.push(PathVerb::MoveTo(p1));
+        let _ = path.push(PathVerb::LineTo(p2));
+        path
+    }
+
+    /// Builds a path from closed polygon contours (e.g. from boolean operations).
+    #[must_use]
+    pub fn from_polygons(contours: &[Vec<GPoint>]) -> Self {
+        let mut path = Self::new();
+        for contour in contours {
+            if contour.is_empty() {
+                continue;
+            }
+            let _ = path.push(PathVerb::MoveTo(contour[0]));
+            for pt in &contour[1..] {
+                let _ = path.push(PathVerb::LineTo(*pt));
+            }
+            let _ = path.push(PathVerb::Close);
+        }
+        path
+    }
+
+    /// Converts this path to standard SVG path data (e.g. `M 10 20 L 30 40 Z`).
+    #[must_use]
+    pub fn to_svg_path_data(&self) -> String {
+        use std::fmt::Write;
+        let mut out = String::new();
+        for verb in &self.verbs {
+            match verb {
+                PathVerb::MoveTo(p) => {
+                    let _ = write!(out, "M {:.3} {:.3} ", p.x, p.y);
+                }
+                PathVerb::LineTo(p) => {
+                    let _ = write!(out, "L {:.3} {:.3} ", p.x, p.y);
+                }
+                PathVerb::QuadTo(c, p) => {
+                    let _ = write!(out, "Q {:.3} {:.3} {:.3} {:.3} ", c.x, c.y, p.x, p.y);
+                }
+                PathVerb::CubicTo(c1, c2, p) => {
+                    let _ = write!(
+                        out,
+                        "C {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} ",
+                        c1.x, c1.y, c2.x, c2.y, p.x, p.y
+                    );
+                }
+                PathVerb::Close => {
+                    out.push_str("Z ");
+                }
+            }
+        }
+        out.trim_end().to_string()
+    }
+
+    /// Hit-tests whether `point` is contained inside the path using even-odd rule.
+    #[must_use]
+    pub fn contains_point(&self, point: GPoint, tolerance: f64) -> bool {
+        let polygons = self.to_polygons(tolerance);
+        let mut inside = false;
+        for contour in polygons {
+            if contour.len() < 3 {
+                continue;
+            }
+            let n = contour.len();
+            for i in 0..n {
+                let j = (i + 1) % n;
+                let pi = contour[i];
+                let pj = contour[j];
+                if ((pi.y > point.y) != (pj.y > point.y))
+                    && (point.x < (pj.x - pi.x) * (point.y - pi.y) / (pj.y - pi.y) + pi.x)
+                {
+                    inside = !inside;
+                }
+            }
+        }
+        inside
+    }
 }
 
 /// Kurbo adapter. The only module allowed to name `kurbo` types.

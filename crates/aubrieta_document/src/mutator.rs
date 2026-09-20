@@ -235,6 +235,30 @@ impl<'doc> DocumentMutator<'doc> {
         )))
     }
 
+    /// Sets an object's vector shape or text descriptor.
+    pub fn set_shape(
+        &mut self,
+        id: ObjectId,
+        shape: Option<crate::ShapeKind>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        for surface in &mut self.document.surfaces {
+            if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
+                let previous = object.shape.clone();
+                object.shape = shape.clone();
+                let mut changes = ChangeSet::empty();
+                changes.push(Change::ShapeChanged {
+                    id,
+                    previous,
+                    next: shape,
+                });
+                return Ok(changes);
+            }
+        }
+        Err(AubrietaError::not_found(format!(
+            "object `{id}` does not exist"
+        )))
+    }
+
     /// Sets an object's appearance stack.
     pub fn set_appearance(
         &mut self,
@@ -1136,6 +1160,18 @@ impl<'doc> DocumentMutator<'doc> {
                         })?;
                     found.bounds = previous_bounds;
                     found.rotation = previous_rotation;
+                }
+                Change::ShapeChanged { id, previous, .. } => {
+                    let found = self
+                        .document
+                        .surfaces
+                        .iter_mut()
+                        .flat_map(|s| s.objects.iter_mut())
+                        .find(|o| o.id == id)
+                        .ok_or_else(|| {
+                            AubrietaError::not_found(format!("object `{id}` does not exist"))
+                        })?;
+                    found.shape = previous;
                 }
                 Change::ObjectReordered {
                     surface,
