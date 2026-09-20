@@ -159,11 +159,35 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
     let layer_items: Vec<LayerRowItem> = layers
         .rows
         .iter()
-        .map(|r| LayerRowItem {
-            name: r.name.clone().into(),
-            visible: r.visible,
-            locked: r.locked,
-            selected: r.is_selected,
+        .map(|r| {
+            let kind = if let Some(session) = state.shell.bridge.session() {
+                session
+                    .document
+                    .surfaces
+                    .iter()
+                    .flat_map(|s| &s.objects)
+                    .find(|o| o.id == r.id)
+                    .map(|o| match &o.shape {
+                        Some(aubrieta_document::ShapeKind::Ellipse) => "Ellipse",
+                        Some(aubrieta_document::ShapeKind::Rectangle { .. }) => "Rectangle",
+                        Some(aubrieta_document::ShapeKind::Star { .. }) => "Star",
+                        Some(aubrieta_document::ShapeKind::Polygon { .. }) => "Star",
+                        Some(aubrieta_document::ShapeKind::Text { .. }) => "Text",
+                        Some(aubrieta_document::ShapeKind::Path(_)) => "Path",
+                        None => "Rectangle",
+                    })
+                    .unwrap_or("Rectangle")
+            } else {
+                "Rectangle"
+            };
+
+            LayerRowItem {
+                name: r.name.clone().into(),
+                visible: r.visible,
+                locked: r.locked,
+                selected: r.is_selected,
+                kind: kind.into(),
+            }
         })
         .collect();
     window.set_layer_rows(Rc::new(VecModel::from(layer_items)).into());
@@ -317,14 +341,63 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let tool = match tool_name.as_str() {
                 "Node" => ToolKind::Node,
                 "Pen" => ToolKind::Pen,
+                "Pencil" => ToolKind::Pencil,
                 "Rectangle" => ToolKind::Rectangle,
                 "Ellipse" => ToolKind::Ellipse,
                 "Polygon" => ToolKind::Polygon,
+                "Star" => ToolKind::Star,
+                "Text" => ToolKind::ArtisticText,
+                "Gradient" => ToolKind::Gradient,
+                "ColorPicker" => ToolKind::ColorPicker,
+                "PointTransform" => ToolKind::PointTransform,
+                "Artboard" => ToolKind::Artboard,
+                "Knife" => ToolKind::Knife,
+                "Scissors" => ToolKind::Scissors,
+                "ShapeBuilder" => ToolKind::ShapeBuilder,
+                "Hand" => ToolKind::Hand,
+                "Zoom" => ToolKind::Zoom,
                 _ => ToolKind::Select,
             };
             state_clone.borrow_mut().shell.set_active_tool(tool);
             if let Some(win) = win_weak.upgrade() {
+                let hint = match tool {
+                    ToolKind::Select => "Select: Clique para selecionar, arraste para mover | Shift: Multi-seleção | Alt: Duplicar",
+                    ToolKind::Node => "Node: Clique e arraste pontos de controle e alças Bézier para ajustar curvas.",
+                    ToolKind::Pen => "Pen: Clique para criar nós angulares, arraste para nós suaves com tangentes.",
+                    ToolKind::Pencil => "Pencil: Desenho vetorial à mão livre com suavização dinâmica.",
+                    ToolKind::Rectangle => "Rectangle: Clique e arraste para desenhar retângulos e quadrados com cantos vivos ou arredondados.",
+                    ToolKind::Ellipse => "Ellipse: Clique e arraste para desenhar elipses ou círculos perfeitos (com Shift).",
+                    ToolKind::Polygon => "Polygon: Desenha polígonos regulares configuráveis.",
+                    ToolKind::Star => "Star: Desenha estrelas vetoriais com raio interno personalizável.",
+                    ToolKind::ArtisticText | ToolKind::FrameText => "Text: Clique no canvas para criar caixa de texto com tipografia vetorial.",
+                    ToolKind::Gradient => "Gradient: Arraste sobre o objeto para definir gradiente linear ou radial.",
+                    ToolKind::ColorPicker => "Color Picker: Clique em qualquer elemento para capturar cor de preenchimento.",
+                    ToolKind::Knife => "Knife/Scissors: Fatie formas e caminhos vetoriais com uma linha de corte.",
+                    ToolKind::ShapeBuilder => "Shape Builder: Combine, una ou subtraia regiões de geometrias sobrepostas.",
+                    ToolKind::PointTransform => "Point Transform: Transformações afins livres com ponto de pivô customizado.",
+                    ToolKind::Artboard => "Artboard: Redimensione ou crie novas pranchetas de trabalho.",
+                    ToolKind::Hand => "Hand: Arraste para navegar pelo espaço infinito da prancheta.",
+                    ToolKind::Zoom => "Zoom: Clique para ampliar, Alt+Clique para reduzir o zoom.",
+                    _ => "Aubrieta Studio: Ferramenta pronta para uso.",
+                };
+                win.set_status_hint(hint.into());
                 sync_ui_from_shell(&win, &state_clone.borrow());
+            }
+        });
+    }
+
+    // Persona switcher (08.2)
+    {
+        let win_weak = main_window.as_weak();
+        main_window.on_switch_persona(move |p| {
+            if let Some(win) = win_weak.upgrade() {
+                win.set_active_persona(p);
+                let hint = if p == 0 {
+                    "🎨 Design Persona: Modo Vetorial ativo. Ferramentas de desenho, nós, preenchimento e curvas."
+                } else {
+                    "📷 Photo Persona: Modo Raster ativo. Pincéis de pixels, recorte, retoque e máscaras raster."
+                };
+                win.set_status_hint(hint.into());
             }
         });
     }
@@ -743,6 +816,128 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         aubrieta_geometry::BooleanOp::Intersection,
                     );
                     st.shell.bridge.set_selection(vec![target_id]);
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Boolean Xor
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_boolean_xor_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
+            if sel_ids.len() < 2 {
+                if let Some(session) = st.shell.bridge.session() {
+                    if let Some(surface) = session.document.surfaces.first() {
+                        if surface.objects.len() >= 2 {
+                            sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
+                        }
+                    }
+                }
+            }
+            if sel_ids.len() >= 2 {
+                let id_a = sel_ids[0];
+                let id_b = sel_ids[1];
+                let mut id_gen = IdGenerator::new();
+                let target_id = id_gen.next_object();
+                if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                    let _ = st.shell.bridge.apply_boolean(
+                        surface.id,
+                        target_id,
+                        id_a,
+                        id_b,
+                        aubrieta_geometry::BooleanOp::Xor,
+                    );
+                    st.shell.bridge.set_selection(vec![target_id]);
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Convert to curves
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_convert_to_curves_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let sel = st.shell.bridge.selection().selected_ids.clone();
+            for id in sel {
+                let _ = st.shell.bridge.convert_to_curves(id);
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Bake corners
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_bake_corners_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let sel = st.shell.bridge.selection().selected_ids.clone();
+            for id in sel {
+                let _ = st.shell.bridge.bake_corners(id);
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Align objects
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_align_objects_clicked(move |mode_str| {
+            let mut st = state_clone.borrow_mut();
+            let sel = st.shell.bridge.selection().selected_ids.clone();
+            if !sel.is_empty() {
+                if let Some(surface_id) = st.shell.bridge.active_surface().or_else(|| {
+                    st.shell.bridge.session().and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                }) {
+                    let mode = match mode_str.as_str() {
+                        "Left" => aubrieta_document::AlignmentMode::Left,
+                        "Right" => aubrieta_document::AlignmentMode::Right,
+                        "Top" => aubrieta_document::AlignmentMode::Top,
+                        "Bottom" => aubrieta_document::AlignmentMode::Bottom,
+                        "Middle" => aubrieta_document::AlignmentMode::Middle,
+                        _ => aubrieta_document::AlignmentMode::Center,
+                    };
+                    let _ = st.shell.bridge.align_objects(surface_id, sel, mode);
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Distribute objects
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_distribute_objects_clicked(move |axis_str| {
+            let mut st = state_clone.borrow_mut();
+            let sel = st.shell.bridge.selection().selected_ids.clone();
+            if sel.len() >= 2 {
+                if let Some(surface_id) = st.shell.bridge.active_surface().or_else(|| {
+                    st.shell.bridge.session().and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                }) {
+                    let axis = match axis_str.as_str() {
+                        "Vertical" => aubrieta_document::DistributionAxis::Vertical,
+                        _ => aubrieta_document::DistributionAxis::Horizontal,
+                    };
+                    let _ = st.shell.bridge.distribute_objects(surface_id, sel, axis);
                 }
             }
             if let Some(win) = win_weak.upgrade() {

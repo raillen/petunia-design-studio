@@ -1,13 +1,13 @@
 import { Button, CheckBox, Slider, ScrollView } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 import { Badge, BadgeVariant } from "slintcn/components/badge.slint";
-import { Tokens } from "slintcn/theme/tokens.slint";
 
 export struct LayerRowItem {
     name: string,
     visible: bool,
     locked: bool,
     selected: bool,
+    kind: string,
 }
 
 export struct HistoryRowItem {
@@ -31,21 +31,22 @@ export struct CanvasObjectItem {
     svg_path: string,
 }
 
-component ToolButton inherits Rectangle {
+component StudioIconButton inherits Rectangle {
     in property <Icon> icon;
     in property <bool> active: false;
+    in property <string> tooltip: "";
     callback clicked;
 
-    width: 40px;
-    height: 40px;
-    border-radius: 6px;
-    background: active ? #3b82f633 : (touch.has-hover ? #ffffff15 : transparent);
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    background: active ? #3b82f633 : (touch.has-hover ? #ffffff18 : transparent);
     border-width: active ? 1px : 0px;
     border-color: #3b82f6;
 
     IconDisplay {
         icon: root.icon;
-        size: 20px;
+        size: 16px;
         stroke: root.active ? #60a5fa : (touch.has-hover ? #f4f4f5 : #a1a1aa);
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
@@ -56,66 +57,226 @@ component ToolButton inherits Rectangle {
     }
 }
 
-export component MainWindow inherits Window {
-    title: "Aubrieta Design Studio — Slint";
-    preferred-width: 1280px;
-    preferred-height: 800px;
-    background: #18181b;
+component StudioToolButton inherits Rectangle {
+    in property <Icon> icon;
+    in property <bool> active: false;
+    in property <string> shortcut: "";
+    callback clicked;
 
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    background: active ? #3b82f628 : (touch.has-hover ? #ffffff12 : transparent);
+    border-width: active ? 1px : 0px;
+    border-color: #3b82f6;
+
+    IconDisplay {
+        icon: root.icon;
+        size: 18px;
+        stroke: root.active ? #60a5fa : (touch.has-hover ? #fafafa : #a1a1aa);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+component StudioMenuButton inherits Rectangle {
+    in property <string> label;
+    callback clicked;
+
+    height: 24px;
+    border-radius: 4px;
+    background: touch.has-hover ? #ffffff14 : transparent;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        alignment: center;
+        Text {
+            text: root.label;
+            font-size: 12px;
+            color: touch.has-hover ? #ffffff : #d4d4d8;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+component StudioPersonaTab inherits Rectangle {
+    in property <string> label;
+    in property <Icon> icon;
+    in property <bool> active: false;
+    callback clicked;
+
+    height: 24px;
+    border-radius: 4px;
+    background: active ? #3b82f6 : (touch.has-hover ? #ffffff15 : transparent);
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 5px;
+        alignment: center;
+
+        IconDisplay {
+            icon: root.icon;
+            size: 13px;
+            stroke: root.active ? #ffffff : (touch.has-hover ? #f4f4f5 : #a1a1aa);
+            y: (parent.height - self.height) / 2;
+        }
+
+        Text {
+            text: root.label;
+            font-size: 11px;
+            font-weight: root.active ? 600 : 500;
+            color: root.active ? #ffffff : #a1a1aa;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+component StudioTabItem inherits Rectangle {
+    in property <string> title;
+    in property <bool> is_dirty: true;
+    in property <bool> active: true;
+    callback clicked;
+    callback close_clicked;
+
+    height: 30px;
+    border-radius: 4px;
+    background: active ? #202024 : #161618;
+    border-width: active ? 1px : 0px;
+    border-color: #2e2e33;
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 8px;
+        spacing: 6px;
+        alignment: center;
+
+        IconDisplay {
+            icon: IconSet.FileCode;
+            size: 13px;
+            stroke: root.active ? #60a5fa : #71717a;
+            y: (parent.height - self.height) / 2;
+        }
+
+        Text {
+            text: root.title + (root.is_dirty ? " •" : "");
+            font-size: 12px;
+            color: root.active ? #f4f4f5 : #8b8b93;
+            font-weight: root.active ? 600 : 400;
+            vertical-alignment: center;
+        }
+
+        Rectangle {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            background: close_touch.has-hover ? #ef444433 : transparent;
+
+            IconDisplay {
+                icon: IconSet.X;
+                size: 10px;
+                stroke: close_touch.has-hover ? #f87171 : #71717a;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+
+            close_touch := TouchArea {
+                clicked => { root.close_clicked(); }
+            }
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "Aubrieta Creative Studio — Slint";
+    preferred-width: 1440px;
+    preferred-height: 900px;
+    background: #161618;
+
+    // View state
     in-out property <string> active_tool_name: "Select";
+    in-out property <int> active_persona: 0; // 0: Design, 1: Photo
+    in-out property <string> document_title: "Showcase Project.aub";
     in-out property <int> zoom_pct: 100;
     in-out property <bool> snap_enabled: true;
-    in-out property <string> status_coords: "Doc: X: 0.0 pt  Y: 0.0 pt";
-    in-out property <int> active_tab_index: 0; // 0: Layers, 1: Props, 2: History, 3: Merge
+    in-out property <string> status_coords: "Doc: X: 120.0 pt  Y: 180.0 pt";
+    in-out property <string> status_hint: "Select: Clique para selecionar, arraste para mover | Shift: Multi-seleção | Alt: Duplicar";
+    in-out property <int> active_tab_index: 0; // 0: Camadas, 1: Propriedades, 2: Histórico, 3: Dados
 
     // Inspector Properties
     in-out property <bool> has_selection: true;
     in-out property <string> selected_name: "Hero Card";
-    in-out property <string> selected_bounds: "X: 60.0 pt   Y: 60.0 pt   W: 300.0 pt   H: 180.0 pt";
+    in-out property <string> selected_bounds: "X: 100.0 pt  Y: 100.0 pt  W: 300.0 pt  H: 180.0 pt";
     in-out property <string> selected_fill: "aubrieta.blue/500";
+    in-out property <string> selected_stroke: "#2563eb (1.5 pt)";
     in-out property <float> selected_opacity: 100.0;
     in-out property <length> prop_x: 100px;
     in-out property <length> prop_y: 100px;
     in-out property <length> prop_w: 300px;
     in-out property <length> prop_h: 180px;
+    in-out property <float> prop_rot: 0.0;
 
     // Data merge
     in-out property <string> merge_source: "showcase_data.csv";
     in-out property <int> merge_records: 120;
     in-out property <int> merge_bindings: 4;
 
-    // Layers & History models
+    // Models
     in-out property <[LayerRowItem]> layer_rows: [
-        { name: "Hero Card", visible: true, locked: false, selected: true },
-        { name: "Accent Circle", visible: true, locked: false, selected: false },
+        { name: "Hero Card", visible: true, locked: false, selected: true, kind: "Rectangle" },
+        { name: "Accent Circle", visible: true, locked: false, selected: false, kind: "Ellipse" },
+        { name: "Vector Headline", visible: true, locked: false, selected: false, kind: "Text" },
     ];
     in-out property <[HistoryRowItem]> history_rows: [
-        { index: 1, description: "Create Main Artboard" },
-        { index: 2, description: "Create Hero Card" },
-        { index: 3, description: "Create Accent Circle" },
+        { index: 1, description: "Criar Prancheta Principal" },
+        { index: 2, description: "Criar Hero Card" },
+        { index: 3, description: "Criar Accent Circle" },
+        { index: 4, description: "Criar Vector Headline" },
     ];
 
     // Canvas geometry
-    in-out property <length> artboard_x: 60px;
-    in-out property <length> artboard_y: 60px;
+    in-out property <length> artboard_x: 80px;
+    in-out property <length> artboard_y: 80px;
     in-out property <length> artboard_w: 800px;
     in-out property <length> artboard_h: 600px;
     in-out property <length> bleed_margin: 10px;
     in-out property <length> margin_inset: 36px;
     in-out property <length> guide_x: 200px;
 
-    // Canvas dynamic objects and interactive preview
-    in-out property <[CanvasObjectItem]> canvas_objects: [
-        { id: "1", name: "Hero Card", x: 60px, y: 60px, w: 300px, h: 180px, bg_color: #3b82f6, selected: true, is_circle: false, is_path: false, is_text: false, text_content: "", svg_path: "" },
-        { id: "2", name: "Accent Circle", x: 400px, y: 120px, w: 140px, h: 140px, bg_color: #eab308, selected: false, is_circle: true, is_path: false, is_text: false, text_content: "", svg_path: "" },
-    ];
+    // Interactive Drag Preview
     in-out property <bool> has_preview: false;
     in-out property <length> preview_x: 0px;
     in-out property <length> preview_y: 0px;
     in-out property <length> preview_w: 0px;
     in-out property <length> preview_h: 0px;
 
+    // Dynamic Objects
+    in-out property <[CanvasObjectItem]> canvas_objects: [
+        { id: "1", name: "Hero Card", x: 100px, y: 100px, w: 300px, h: 180px, bg_color: #3b82f6, selected: true, is_circle: false, is_path: false, is_text: false, text_content: "", svg_path: "" },
+        { id: "2", name: "Accent Circle", x: 440px, y: 140px, w: 140px, h: 140px, bg_color: #eab308, selected: false, is_circle: true, is_path: false, is_text: false, text_content: "", svg_path: "" },
+        { id: "3", name: "Vector Headline", x: 100px, y: 320px, w: 260px, h: 40px, bg_color: #a855f7, selected: false, is_circle: false, is_path: false, is_text: true, text_content: "Aubrieta Design Studio", svg_path: "" },
+    ];
+
+    // Callbacks
     callback select_tool(string);
+    callback switch_persona(int);
     callback undo_clicked();
     callback redo_clicked();
     callback zoom_in_clicked();
@@ -132,6 +293,7 @@ export component MainWindow inherits Window {
     callback canvas_pointer_up(length, length);
     callback select_layer_by_index(int);
     callback delete_selected_clicked();
+    callback duplicate_selected_clicked();
     callback add_rectangle_clicked();
     callback add_circle_clicked();
     callback add_star_clicked();
@@ -139,13 +301,17 @@ export component MainWindow inherits Window {
     callback boolean_union_clicked();
     callback boolean_subtract_clicked();
     callback boolean_intersect_clicked();
+    callback boolean_xor_clicked();
+    callback convert_to_curves_clicked();
+    callback bake_corners_clicked();
+    callback align_objects_clicked(string);
+    callback distribute_objects_clicked(string);
     callback set_selected_color(color);
     callback adjust_prop_x(length);
     callback adjust_prop_y(length);
     callback adjust_prop_w(length);
     callback adjust_prop_h(length);
     callback set_opacity_value(float);
-    callback duplicate_selected_clicked();
     callback toggle_layer_visibility(int);
     callback toggle_layer_lock(int);
     callback reorder_layer_up(int);
@@ -155,762 +321,1132 @@ export component MainWindow inherits Window {
         padding: 0px;
         spacing: 0px;
 
-        // 1. Top Panel: Header & Context Toolbar
+        // -------------------------------------------------------------
+        // SECTION 1: STUDIO MENU BAR & PERSONA SWITCHER (08.2)
+        // -------------------------------------------------------------
         Rectangle {
-            height: 70px;
-            background: #27272a;
-            border-width: 1px;
-            border-color: #3f3f46;
+            height: 32px;
+            background: #1f1f23;
 
-            VerticalLayout {
-                padding: 6px;
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 10px;
                 spacing: 4px;
 
-                // Menu row
+                // Brand Badge
                 HorizontalLayout {
-                    spacing: 10px;
-                    alignment: start;
-
+                    spacing: 6px;
+                    alignment: center;
+                    padding-right: 8px;
+                    Rectangle {
+                        width: 18px;
+                        height: 18px;
+                        border-radius: 4px;
+                        background: #3b82f6;
+                        Text {
+                            text: "A";
+                            color: #ffffff;
+                            font-size: 11px;
+                            font-weight: 800;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
                     Text {
-                        text: "🎨 Aubrieta Studio";
-                        color: #60a5fa;
+                        text: "Aubrieta Studio";
+                        color: #ffffff;
                         font-weight: 700;
-                        font-size: 14px;
-                        vertical-alignment: center;
-                    }
-
-                    Badge {
-                        text: "Slint UI";
-                        variant: BadgeVariant.outline;
-                    }
-
-                    Button {
-                        text: "Novo";
-                        clicked => { root.new_doc_clicked(); }
-                    }
-
-                    Button {
-                        text: "Abrir...";
-                        clicked => { root.open_doc_clicked(); }
-                    }
-
-                    Button {
-                        text: "Salvar...";
-                        clicked => { root.save_doc_clicked(); }
-                    }
-
-                    Button {
-                        text: "Inserir Imagem...";
-                        clicked => { root.place_image_clicked(); }
-                    }
-
-                    Button {
-                        text: "Ajustar Tela";
-                        clicked => { root.fit_canvas_clicked(); }
-                    }
-
-                    Button {
-                        text: "+ Retângulo";
-                        clicked => { root.add_rectangle_clicked(); }
-                    }
-
-                    Button {
-                        text: "+ Elipse";
-                        clicked => { root.add_circle_clicked(); }
-                    }
-
-                    Button {
-                        text: "+ Estrela";
-                        clicked => { root.add_star_clicked(); }
-                    }
-
-                    Button {
-                        text: "+ Texto";
-                        clicked => { root.add_text_clicked(); }
-                    }
-
-                    Button {
-                        text: "⋃ Unir";
-                        clicked => { root.boolean_union_clicked(); }
-                    }
-
-                    Button {
-                        text: "− Subtrair";
-                        clicked => { root.boolean_subtract_clicked(); }
-                    }
-
-                    Button {
-                        text: "⋂ Intersecção";
-                        clicked => { root.boolean_intersect_clicked(); }
-                    }
-
-                    Button {
-                        text: "🗑 Deletar";
-                        clicked => { root.delete_selected_clicked(); }
-                    }
-                }
-
-                // Context bar
-                HorizontalLayout {
-                    spacing: 10px;
-                    alignment: start;
-
-                    Text {
-                        text: "Ferramenta: " + root.active_tool_name;
-                        color: #93c5fd;
-                        font-weight: 600;
-                        font-size: 13px;
-                        vertical-alignment: center;
-                    }
-
-                    Button {
-                        text: "Undo (Ctrl+Z)";
-                        clicked => { root.undo_clicked(); }
-                    }
-
-                    Button {
-                        text: "Redo (Ctrl+Y)";
-                        clicked => { root.redo_clicked(); }
-                    }
-
-                    Text {
-                        text: "Zoom: " + root.zoom_pct + "%";
-                        color: #e4e4e7;
                         font-size: 12px;
                         vertical-alignment: center;
                     }
+                }
 
-                    Button {
-                        text: "+";
-                        width: 32px;
-                        clicked => { root.zoom_in_clicked(); }
-                    }
+                // Studio Menus
+                StudioMenuButton { label: "Arquivo"; clicked => { root.new_doc_clicked(); } }
+                StudioMenuButton { label: "Editar"; clicked => { root.duplicate_selected_clicked(); } }
+                StudioMenuButton { label: "Camada"; clicked => { root.convert_to_curves_clicked(); } }
+                StudioMenuButton { label: "Selecionar"; clicked => { root.tab_changed(0); } }
+                StudioMenuButton { label: "Documento"; clicked => { root.fit_canvas_clicked(); } }
+                StudioMenuButton { label: "Exibir"; clicked => { root.zoom_in_clicked(); } }
 
-                    Button {
-                        text: "-";
-                        width: 32px;
-                        clicked => { root.zoom_out_clicked(); }
-                    }
+                // Spacer
+                Rectangle { horizontal-stretch: 1; }
 
-                    CheckBox {
-                        text: "Magnetic Snap";
-                        checked: root.snap_enabled;
-                        toggled => { root.snap_toggled(self.checked); }
+                // Persona Switcher (Design vs Photo) (08.2)
+                Rectangle {
+                    height: 26px;
+                    border-radius: 5px;
+                    background: #141416;
+                    border-width: 1px;
+                    border-color: #2e2e33;
+
+                    HorizontalLayout {
+                        padding: 2px;
+                        spacing: 2px;
+                        StudioPersonaTab {
+                            label: "Design Persona";
+                            icon: IconSet.PenTool;
+                            active: root.active_persona == 0;
+                            clicked => { root.active_persona = 0; root.switch_persona(0); }
+                        }
+                        StudioPersonaTab {
+                            label: "Photo Persona";
+                            icon: IconSet.Crop;
+                            active: root.active_persona == 1;
+                            clicked => { root.active_persona = 1; root.switch_persona(1); }
+                        }
                     }
                 }
             }
         }
 
-        // 2. Middle Row: Tool Rail + Central Canvas + Right Dock Inspector
+        Rectangle { height: 1px; background: #2b2b30; }
+
+        // -------------------------------------------------------------
+        // SECTION 2: DOCUMENT TAB STRIP (08.2)
+        // -------------------------------------------------------------
+        Rectangle {
+            height: 32px;
+            background: #18181b;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 12px;
+                spacing: 4px;
+
+                // Document Tab
+                StudioTabItem {
+                    title: root.document_title;
+                    is_dirty: true;
+                    active: true;
+                    clicked => {}
+                    close_clicked => {}
+                }
+
+                // New tab button
+                Rectangle {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 4px;
+                    background: touch_new_tab.has-hover ? #ffffff15 : transparent;
+                    y: (parent.height - self.height) / 2;
+
+                    IconDisplay {
+                        icon: IconSet.Plus;
+                        size: 12px;
+                        stroke: #a1a1aa;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                    }
+
+                    touch_new_tab := TouchArea {
+                        clicked => { root.new_doc_clicked(); }
+                    }
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                // Quick Viewport & Snapping controls
+                HorizontalLayout {
+                    spacing: 4px;
+                    alignment: center;
+
+                    StudioIconButton {
+                        icon: IconSet.Undo2;
+                        tooltip: "Desfazer (Ctrl+Z)";
+                        clicked => { root.undo_clicked(); }
+                    }
+                    StudioIconButton {
+                        icon: IconSet.Redo2;
+                        tooltip: "Refazer (Ctrl+Y)";
+                        clicked => { root.redo_clicked(); }
+                    }
+
+                    Rectangle { width: 1px; height: 16px; background: #2e2e33; y: 8px; }
+
+                    StudioIconButton {
+                        icon: IconSet.Minus;
+                        tooltip: "Reduzir Zoom";
+                        clicked => { root.zoom_out_clicked(); }
+                    }
+
+                    Rectangle {
+                        height: 24px;
+                        border-radius: 4px;
+                        background: #202024;
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            Text {
+                                text: root.zoom_pct + "%";
+                                font-size: 11px;
+                                color: #d4d4d8;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+
+                    StudioIconButton {
+                        icon: IconSet.Plus;
+                        tooltip: "Aumentar Zoom";
+                        clicked => { root.zoom_in_clicked(); }
+                    }
+                    StudioIconButton {
+                        icon: IconSet.Maximize2;
+                        tooltip: "Ajustar à Tela";
+                        clicked => { root.fit_canvas_clicked(); }
+                    }
+
+                    Rectangle { width: 1px; height: 16px; background: #2e2e33; y: 8px; }
+
+                    // Snap toggle
+                    Rectangle {
+                        height: 24px;
+                        border-radius: 4px;
+                        background: root.snap_enabled ? #3b82f628 : #202024;
+                        border-width: root.snap_enabled ? 1px : 0px;
+                        border-color: #3b82f6;
+
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            spacing: 4px;
+                            alignment: center;
+
+                            IconDisplay {
+                                icon: IconSet.Lock;
+                                size: 11px;
+                                stroke: root.snap_enabled ? #60a5fa : #71717a;
+                                y: (parent.height - self.height) / 2;
+                            }
+
+                            Text {
+                                text: "Snap";
+                                font-size: 11px;
+                                font-weight: 500;
+                                color: root.snap_enabled ? #93c5fd : #a1a1aa;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => {
+                                root.snap_enabled = !root.snap_enabled;
+                                root.snap_toggled(root.snap_enabled);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle { height: 1px; background: #27272a; }
+
+        // -------------------------------------------------------------
+        // SECTION 3: CANONICAL CONTEXT TOOLBAR (08.23)
+        // -------------------------------------------------------------
+        Rectangle {
+            height: 38px;
+            background: #202024;
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 8px;
+                alignment: center;
+
+                // Active tool indicator badge
+                Rectangle {
+                    height: 24px;
+                    border-radius: 4px;
+                    background: #27272b;
+                    border-width: 1px;
+                    border-color: #3f3f46;
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 6px;
+                        alignment: center;
+
+                        IconDisplay {
+                            icon: root.active_tool_name == "Node" ? IconSet.Pointer :
+                                  root.active_tool_name == "Pen" ? IconSet.PenTool :
+                                  root.active_tool_name == "Pencil" ? IconSet.Pencil :
+                                  root.active_tool_name == "Rectangle" ? IconSet.Square :
+                                  root.active_tool_name == "Ellipse" ? IconSet.Circle :
+                                  root.active_tool_name == "Star" ? IconSet.Star :
+                                  root.active_tool_name == "Text" ? IconSet.Type :
+                                  root.active_tool_name == "Scissors" ? IconSet.Scissors :
+                                  root.active_tool_name == "Zoom" ? IconSet.ZoomIn : IconSet.MousePointer2;
+                            size: 13px;
+                            stroke: #60a5fa;
+                            y: (parent.height - self.height) / 2;
+                        }
+
+                        Text {
+                            text: root.active_tool_name;
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: #ffffff;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                Rectangle { width: 1px; height: 18px; background: #333338; y: 10px; }
+
+                // Selection Transform HUD Numeric Readout (08.23, 10.1)
+                if root.has_selection : HorizontalLayout {
+                    spacing: 6px;
+                    alignment: center;
+
+                    Text { text: "X: " + Math.round(root.prop_x / 1px) + " pt"; font-size: 11px; color: #a1a1aa; vertical-alignment: center; }
+                    Text { text: "Y: " + Math.round(root.prop_y / 1px) + " pt"; font-size: 11px; color: #a1a1aa; vertical-alignment: center; }
+                    Text { text: "W: " + Math.round(root.prop_w / 1px) + " pt"; font-size: 11px; color: #a1a1aa; vertical-alignment: center; }
+                    Text { text: "H: " + Math.round(root.prop_h / 1px) + " pt"; font-size: 11px; color: #a1a1aa; vertical-alignment: center; }
+                    Text { text: "R: " + Math.round(root.prop_rot) + "°"; font-size: 11px; color: #a1a1aa; vertical-alignment: center; }
+                }
+
+                Rectangle { width: 1px; height: 18px; background: #333338; y: 10px; }
+
+                // Quick Fill & Stroke Swatches
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: center;
+
+                    Text { text: "Fill:"; font-size: 11px; color: #71717a; vertical-alignment: center; }
+                    Rectangle {
+                        width: 18px;
+                        height: 18px;
+                        border-radius: 3px;
+                        background: #3b82f6;
+                        border-width: 1px;
+                        border-color: #60a5fa;
+                        TouchArea { clicked => { root.set_selected_color(#3b82f6); } }
+                    }
+
+                    Text { text: "Stroke:"; font-size: 11px; color: #71717a; vertical-alignment: center; }
+                    Rectangle {
+                        width: 18px;
+                        height: 18px;
+                        border-radius: 3px;
+                        background: #2563eb;
+                        border-width: 1px;
+                        border-color: #60a5fa;
+                        TouchArea { clicked => { root.set_selected_color(#2563eb); } }
+                    }
+                }
+
+                Rectangle { width: 1px; height: 18px; background: #333338; y: 10px; }
+
+                // Curve operations
+                StudioIconButton {
+                    icon: IconSet.PenTool;
+                    tooltip: "Converter em Curvas (Ctrl+Return)";
+                    clicked => { root.convert_to_curves_clicked(); }
+                }
+                StudioIconButton {
+                    icon: IconSet.Maximize2;
+                    tooltip: "Bake Cantos";
+                    clicked => { root.bake_corners_clicked(); }
+                }
+
+                Rectangle { width: 1px; height: 18px; background: #333338; y: 10px; }
+
+                // Boolean Operations (10.3)
+                HorizontalLayout {
+                    spacing: 2px;
+                    alignment: center;
+
+                    StudioIconButton {
+                        icon: IconSet.Combine;
+                        tooltip: "União (Boolean Union)";
+                        clicked => { root.boolean_union_clicked(); }
+                    }
+                    StudioIconButton {
+                        icon: IconSet.Minus;
+                        tooltip: "Subtração (Boolean Subtract)";
+                        clicked => { root.boolean_subtract_clicked(); }
+                    }
+                    StudioIconButton {
+                        icon: IconSet.Square;
+                        tooltip: "Intersecção (Boolean Intersect)";
+                        clicked => { root.boolean_intersect_clicked(); }
+                    }
+                    StudioIconButton {
+                        icon: IconSet.Circle;
+                        tooltip: "Exclusão / Xor";
+                        clicked => { root.boolean_xor_clicked(); }
+                    }
+                }
+
+                Rectangle { width: 1px; height: 18px; background: #333338; y: 10px; }
+
+                // Alignments (10.1)
+                HorizontalLayout {
+                    spacing: 2px;
+                    alignment: center;
+
+                    StudioIconButton { icon: IconSet.AlignLeft; tooltip: "Alinhar à Esquerda"; clicked => { root.align_objects_clicked("Left"); } }
+                    StudioIconButton { icon: IconSet.AlignCenterHorizontal; tooltip: "Alinhar ao Centro H"; clicked => { root.align_objects_clicked("Center"); } }
+                    StudioIconButton { icon: IconSet.AlignRight; tooltip: "Alinhar à Direita"; clicked => { root.align_objects_clicked("Right"); } }
+                    StudioIconButton { icon: IconSet.AlignStartVertical; tooltip: "Alinhar ao Topo"; clicked => { root.align_objects_clicked("Top"); } }
+                    StudioIconButton { icon: IconSet.AlignCenterVertical; tooltip: "Alinhar ao Meio V"; clicked => { root.align_objects_clicked("Middle"); } }
+                    StudioIconButton { icon: IconSet.AlignEndVertical; tooltip: "Alinhar à Base"; clicked => { root.align_objects_clicked("Bottom"); } }
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                // Delete quick action
+                StudioIconButton {
+                    icon: IconSet.Trash;
+                    tooltip: "Excluir Seleção (Delete)";
+                    clicked => { root.delete_selected_clicked(); }
+                }
+            }
+        }
+
+        Rectangle { height: 1px; background: #2b2b30; }
+
+        // -------------------------------------------------------------
+        // SECTION 4: MAIN WORKSPACE (TOOL RAIL + CANVAS + DOCK)
+        // -------------------------------------------------------------
         HorizontalLayout {
             spacing: 0px;
 
-            // Left Tool Rail
+            // 4.1 CANONICAL LEFT TOOL RAIL (48px) (08.7, 08.24)
             Rectangle {
-                width: 52px;
-                background: #202023;
-                border-width: 1px;
-                border-color: #3f3f46;
+                width: 48px;
+                background: #1a1a1e;
 
                 VerticalLayout {
-                    padding: 5px;
-                    spacing: 6px;
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    spacing: 4px;
                     alignment: start;
 
-                    ToolButton {
+                    // Group 1: Selection
+                    StudioToolButton {
                         icon: IconSet.MousePointer2;
                         active: root.active_tool_name == "Select";
-                        clicked => { root.select_tool("Select"); }
+                        shortcut: "V";
+                        clicked => { root.active_tool_name = "Select"; root.select_tool("Select"); }
                     }
-                    ToolButton {
+                    StudioToolButton {
                         icon: IconSet.Pointer;
                         active: root.active_tool_name == "Node";
-                        clicked => { root.select_tool("Node"); }
+                        shortcut: "A";
+                        clicked => { root.active_tool_name = "Node"; root.select_tool("Node"); }
                     }
-                    ToolButton {
+                    StudioToolButton {
+                        icon: IconSet.Move;
+                        active: root.active_tool_name == "PointTransform";
+                        shortcut: "F";
+                        clicked => { root.active_tool_name = "PointTransform"; root.select_tool("PointTransform"); }
+                    }
+                    StudioToolButton {
+                        icon: IconSet.Crop;
+                        active: root.active_tool_name == "Artboard";
+                        shortcut: "H";
+                        clicked => { root.active_tool_name = "Artboard"; root.select_tool("Artboard"); }
+                    }
+
+                    // Divider
+                    Rectangle { height: 1px; background: #2e2e33; }
+
+                    // Group 2: Vector Drawing
+                    StudioToolButton {
                         icon: IconSet.PenTool;
                         active: root.active_tool_name == "Pen";
-                        clicked => { root.select_tool("Pen"); }
+                        shortcut: "P";
+                        clicked => { root.active_tool_name = "Pen"; root.select_tool("Pen"); }
                     }
-                    ToolButton {
+                    StudioToolButton {
+                        icon: IconSet.Pencil;
+                        active: root.active_tool_name == "Pencil";
+                        shortcut: "N";
+                        clicked => { root.active_tool_name = "Pencil"; root.select_tool("Pencil"); }
+                    }
+                    StudioToolButton {
                         icon: IconSet.Square;
                         active: root.active_tool_name == "Rectangle";
-                        clicked => { root.select_tool("Rectangle"); }
+                        shortcut: "M";
+                        clicked => { root.active_tool_name = "Rectangle"; root.select_tool("Rectangle"); }
                     }
-                    ToolButton {
+                    StudioToolButton {
                         icon: IconSet.Circle;
                         active: root.active_tool_name == "Ellipse";
-                        clicked => { root.select_tool("Ellipse"); }
+                        shortcut: "E";
+                        clicked => { root.active_tool_name = "Ellipse"; root.select_tool("Ellipse"); }
                     }
-                    ToolButton {
+                    StudioToolButton {
                         icon: IconSet.Star;
-                        active: root.active_tool_name == "Polygon" || root.active_tool_name == "Star";
-                        clicked => { root.select_tool("Star"); }
+                        active: root.active_tool_name == "Star" || root.active_tool_name == "Polygon";
+                        shortcut: "S";
+                        clicked => { root.active_tool_name = "Star"; root.select_tool("Star"); }
                     }
-                    ToolButton {
+
+                    // Divider
+                    Rectangle { height: 1px; background: #2e2e33; }
+
+                    // Group 3: Typography & Content
+                    StudioToolButton {
                         icon: IconSet.Type;
                         active: root.active_tool_name == "Text";
-                        clicked => { root.select_tool("Text"); }
+                        shortcut: "T";
+                        clicked => { root.active_tool_name = "Text"; root.select_tool("Text"); }
                     }
-                    ToolButton {
+                    StudioToolButton {
+                        icon: IconSet.Palette;
+                        active: root.active_tool_name == "Gradient";
+                        shortcut: "G";
+                        clicked => { root.active_tool_name = "Gradient"; root.select_tool("Gradient"); }
+                    }
+                    StudioToolButton {
+                        icon: IconSet.Pipette;
+                        active: root.active_tool_name == "ColorPicker";
+                        shortcut: "I";
+                        clicked => { root.active_tool_name = "ColorPicker"; root.select_tool("ColorPicker"); }
+                    }
+
+                    // Divider
+                    Rectangle { height: 1px; background: #2e2e33; }
+
+                    // Group 4: Vector Editing
+                    StudioToolButton {
+                        icon: IconSet.Scissors;
+                        active: root.active_tool_name == "Scissors" || root.active_tool_name == "Knife";
+                        shortcut: "K";
+                        clicked => { root.active_tool_name = "Scissors"; root.select_tool("Scissors"); }
+                    }
+                    StudioToolButton {
                         icon: IconSet.Combine;
-                        active: false;
-                        clicked => { root.boolean_union_clicked(); }
+                        active: root.active_tool_name == "ShapeBuilder";
+                        shortcut: "W";
+                        clicked => { root.active_tool_name = "ShapeBuilder"; root.select_tool("ShapeBuilder"); }
                     }
-                    ToolButton {
-                        icon: IconSet.Trash2;
-                        active: false;
-                        clicked => { root.delete_selected_clicked(); }
+
+                    // Divider
+                    Rectangle { height: 1px; background: #2e2e33; }
+
+                    // Group 5: Viewport Navigation
+                    StudioToolButton {
+                        icon: IconSet.Hand;
+                        active: root.active_tool_name == "Hand";
+                        shortcut: "Space";
+                        clicked => { root.active_tool_name = "Hand"; root.select_tool("Hand"); }
+                    }
+                    StudioToolButton {
+                        icon: IconSet.ZoomIn;
+                        active: root.active_tool_name == "Zoom";
+                        shortcut: "Z";
+                        clicked => { root.active_tool_name = "Zoom"; root.select_tool("Zoom"); }
                     }
                 }
             }
 
-            // Central Canvas
-            canvas_area := Rectangle {
+            Rectangle { width: 1px; background: #27272b; }
+
+            // 4.2 CENTRAL CANVAS VIEWPORT (08.6)
+            canvas_viewport := Rectangle {
                 horizontal-stretch: 1;
-                background: #141416;
+                background: #111113;
                 clip: true;
 
-                // Artboard Shadow
+                // Document Artboard Drop Shadow
                 Rectangle {
-                    x: root.artboard_x + 4px;
-                    y: root.artboard_y + 4px;
+                    x: root.artboard_x + 6px;
+                    y: root.artboard_y + 6px;
                     width: root.artboard_w;
                     height: root.artboard_h;
-                    background: #00000055;
-                    border-radius: 2px;
+                    background: #00000088;
+                    border-radius: 4px;
                 }
 
-                // Bleed Guideline (Magenta)
+                // Magenta Bleed Guideline (08.27, 10.7)
                 Rectangle {
                     x: root.artboard_x - root.bleed_margin;
                     y: root.artboard_y - root.bleed_margin;
                     width: root.artboard_w + (root.bleed_margin * 2);
                     height: root.artboard_h + (root.bleed_margin * 2);
                     border-width: 1px;
-                    border-color: #f43f5e;
+                    border-color: #f43f5e88;
                 }
 
-                // Artboard Paper White
-                artboard := Rectangle {
+                // Main Paper Artboard (White)
+                main_artboard := Rectangle {
                     x: root.artboard_x;
                     y: root.artboard_y;
                     width: root.artboard_w;
                     height: root.artboard_h;
                     background: #ffffff;
-                    border-width: 1px;
-                    border-color: #cbd5e1;
 
-                    // Header text
-                    Text {
-                        x: 8px;
-                        y: -18px;
-                        text: "📄 Main Artboard (800x600 pt) • Clique ou arraste para desenhar / mover";
-                        color: #94a3b8;
-                        font-size: 12px;
-                    }
-
-                    // Margin Guideline (Cyan)
+                    // Cyan Margins Inset Guideline (10.7)
                     Rectangle {
                         x: root.margin_inset;
                         y: root.margin_inset;
                         width: parent.width - (root.margin_inset * 2);
                         height: parent.height - (root.margin_inset * 2);
                         border-width: 1px;
-                        border-color: #38bdf8;
+                        border-color: #06b6d466;
                     }
 
-                    // Vertical Guide line
+                    // Vertical Layout Guide
                     Rectangle {
                         x: root.guide_x;
                         y: 0px;
                         width: 1px;
                         height: parent.height;
-                        background: #06b6d4;
+                        background: #06b6d4aa;
                     }
 
-                    // Dynamic objects list
+                    // Dynamic Artwork Objects Rendered on Artboard
                     for obj in root.canvas_objects : Rectangle {
                         x: obj.x;
                         y: obj.y;
                         width: obj.w;
                         height: obj.h;
-                        background: (obj.is_path || obj.is_text) ? transparent : obj.bg_color;
-                        border-radius: obj.is_circle ? (obj.w / 2) : 4px;
-                        border-width: (obj.is_path || obj.is_text) ? 0px : (obj.selected ? 2.5px : 1px);
-                        border-color: obj.selected ? #60a5fa : #ffffff88;
+                        background: obj.bg_color;
+                        border-radius: obj.is_circle ? (obj.w / 2) : 6px;
 
-                        if obj.is_path : Path {
-                            width: parent.width;
-                            height: parent.height;
-                            commands: obj.svg_path;
-                            fill: obj.bg_color;
-                            stroke: obj.selected ? #60a5fa : #ffffffaa;
-                            stroke-width: obj.selected ? 2px : 1px;
-                        }
-
+                        // Text content if text object
                         if obj.is_text : Text {
                             text: obj.text_content;
-                            color: obj.bg_color;
-                            font-size: 16px;
-                            font-weight: 600;
+                            color: #ffffff;
+                            font-size: 18px;
+                            font-weight: 700;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
 
-                        // Selection indicator & 8 resize handles
+                        // Star decorative icon if star
+                        if !obj.is_text && !obj.is_circle && obj.name == "Star" : IconDisplay {
+                            icon: IconSet.Star;
+                            size: 40px;
+                            stroke: #ffffff;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+
+                        // Interactive Selection Affordances (8 Handles + Box) (10.1)
                         if obj.selected : Rectangle {
-                            x: -3px;
-                            y: -3px;
-                            width: parent.width + 6px;
-                            height: parent.height + 6px;
+                            x: -2px;
+                            y: -2px;
+                            width: parent.width + 4px;
+                            height: parent.height + 4px;
                             border-width: 1.5px;
                             border-color: #3b82f6;
-                            border-radius: obj.is_circle ? (parent.width + 6px) / 2 : 2px;
 
-                            // 4 corner handles
-                            Rectangle { x: -4px; y: -4px; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
-                            Rectangle { x: parent.width - 4px; y: -4px; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
-                            Rectangle { x: -4px; y: parent.height - 4px; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
-                            Rectangle { x: parent.width - 4px; y: parent.height - 4px; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
+                            // 8 Resize Handles
+                            Rectangle { x: -4px; y: -4px; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
+                            Rectangle { x: (parent.width - 8px) / 2; y: -4px; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
+                            Rectangle { x: parent.width - 4px; y: -4px; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
+                            Rectangle { x: parent.width - 4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
+                            Rectangle { x: parent.width - 4px; y: parent.height - 4px; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
+                            Rectangle { x: (parent.width - 8px) / 2; y: parent.height - 4px; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
+                            Rectangle { x: -4px; y: parent.height - 4px; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
+                            Rectangle { x: -4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
 
-                            // 4 edge midpoint handles
-                            Rectangle { x: (parent.width - 8px) / 2; y: -4px; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
-                            Rectangle { x: (parent.width - 8px) / 2; y: parent.height - 4px; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
-                            Rectangle { x: -4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
-                            Rectangle { x: parent.width - 4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
-                        }
+                            // Top Rotation Pin Stem & Handle
+                            Rectangle { x: (parent.width - 1px) / 2; y: -20px; width: 1px; height: 16px; background: #3b82f6; }
+                            Rectangle { x: (parent.width - 8px) / 2; y: -24px; width: 8px; height: 8px; border-radius: 4px; background: #3b82f6; border-width: 1px; border-color: #ffffff; }
 
-                        if !obj.is_text : Text {
-                            text: obj.name;
-                            color: #ffffff;
-                            font-weight: 600;
-                            font-size: 13px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
+                            // Dimensions Readout HUD
+                            Rectangle {
+                                x: (parent.width - 130px) / 2;
+                                y: parent.height + 8px;
+                                width: 130px;
+                                height: 20px;
+                                border-radius: 4px;
+                                background: #1e1e24ee;
+                                border-width: 1px;
+                                border-color: #3b82f666;
+
+                                Text {
+                                    text: Math.round(obj.w / 1px) + " × " + Math.round(obj.h / 1px) + " pt";
+                                    font-size: 10px;
+                                    color: #93c5fd;
+                                    font-weight: 600;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
                         }
                     }
 
-                    // Active drawing preview box
+                    // Interactive drag creation preview
                     if root.has_preview : Rectangle {
                         x: root.preview_x;
                         y: root.preview_y;
                         width: root.preview_w;
                         height: root.preview_h;
-                        background: #3b82f633;
-                        border-width: 1.5px;
+                        background: #3b82f622;
+                        border-width: 1px;
                         border-color: #3b82f6;
-                        border-radius: 3px;
                     }
                 }
 
-                // Interactive TouchArea on top of canvas capturing all mouse events
-                TouchArea {
-                    width: parent.width;
-                    height: parent.height;
-
-                    pointer-event(evt) => {
-                        if (evt.kind == PointerEventKind.down) {
+                // Interactive Canvas Pointer Area
+                canvas_touch := TouchArea {
+                    pointer-event(ev) => {
+                        if (ev.kind == PointerEventKind.down) {
                             root.canvas_pointer_down(self.mouse-x, self.mouse-y);
-                        } else if (evt.kind == PointerEventKind.up) {
+                        }
+                        if (ev.kind == PointerEventKind.up) {
                             root.canvas_pointer_up(self.mouse-x, self.mouse-y);
                         }
                     }
-
                     moved => {
-                        if (self.pressed) {
-                            root.canvas_dragged(self.mouse-x, self.mouse-y);
-                        }
+                        root.canvas_dragged(self.mouse-x, self.mouse-y);
+                        root.status_coords = "Doc: X: " + Math.round(self.mouse-x / 1px) + " pt  Y: " + Math.round(self.mouse-y / 1px) + " pt";
                     }
                 }
             }
 
-            // Right Dock Inspector
+            Rectangle { width: 1px; background: #27272b; }
+
+            // 4.3 RIGHT STUDIO DOCK (320px) (08.3, 08.25)
             Rectangle {
-                width: 290px;
-                background: #202023;
-                border-width: 1px;
-                border-color: #3f3f46;
+                width: 320px;
+                background: #1a1a1e;
 
                 VerticalLayout {
-                    padding: 8px;
-                    spacing: 8px;
+                    padding: 0px;
+                    spacing: 0px;
 
-                    // Tab selector
-                    HorizontalLayout {
-                        spacing: 4px;
-                        Button {
-                            text: "Layers";
-                            clicked => { root.tab_changed(0); }
-                        }
-                        Button {
-                            text: "Props";
-                            clicked => { root.tab_changed(1); }
-                        }
-                        Button {
-                            text: "History";
-                            clicked => { root.tab_changed(2); }
-                        }
-                        Button {
-                            text: "Merge";
-                            clicked => { root.tab_changed(3); }
-                        }
-                    }
-
+                    // Studio Dock Tabs Header
                     Rectangle {
-                        height: 1px;
-                        background: #3f3f46;
-                    }
+                        height: 36px;
+                        background: #1f1f23;
 
-                    // Tab 0: Layers
-                    if root.active_tab_index == 0 : VerticalLayout {
-                        spacing: 6px;
-                        Text {
-                            text: "Object Hierarchy";
-                            font-weight: 700;
-                            color: #60a5fa;
-                            font-size: 14px;
-                        }
-                        Text {
-                            text: "📄 Main Artboard";
-                            color: #93c5fd;
-                            font-size: 12px;
-                        }
-                        for item[idx] in root.layer_rows : Rectangle {
-                            height: 32px;
-                            background: item.selected ? #2563eb33 : #27272a;
-                            border-radius: 4px;
-                            border-width: item.selected ? 1px : 0px;
-                            border-color: #3b82f6;
-
-                            HorizontalLayout {
-                                padding-left: 6px;
-                                padding-right: 6px;
-                                spacing: 6px;
-
-                                // Selection indicator
-                                TouchArea {
-                                    width: 18px;
-                                    clicked => { root.select_layer_by_index(idx); }
-                                    Text {
-                                        text: item.selected ? "●" : "○";
-                                        color: item.selected ? #60a5fa : #71717a;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                    }
-                                }
-
-                                // Visibility toggle
-                                Rectangle {
-                                    width: 22px;
-                                    height: 22px;
-                                    border-radius: 3px;
-                                    background: touch_vis.has-hover ? #3f3f46 : transparent;
-                                    touch_vis := TouchArea {
-                                        clicked => { root.toggle_layer_visibility(idx); }
-                                    }
-                                    Text {
-                                        text: item.visible ? "👁" : "🕶";
-                                        font-size: 11px;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-                                }
-
-                                // Lock toggle
-                                Rectangle {
-                                    width: 22px;
-                                    height: 22px;
-                                    border-radius: 3px;
-                                    background: touch_lock.has-hover ? #3f3f46 : transparent;
-                                    touch_lock := TouchArea {
-                                        clicked => { root.toggle_layer_lock(idx); }
-                                    }
-                                    Text {
-                                        text: item.locked ? "🔒" : "🔓";
-                                        font-size: 11px;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-                                }
-
-                                // Layer name (clickable to select)
-                                TouchArea {
-                                    horizontal-stretch: 1;
-                                    clicked => { root.select_layer_by_index(idx); }
-                                    Text {
-                                        text: item.name;
-                                        color: item.selected ? #ffffff : #d4d4d8;
-                                        font-size: 13px;
-                                        font-weight: item.selected ? 600 : 400;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                    }
-                                }
-
-                                // Reorder buttons
-                                Rectangle {
-                                    width: 18px;
-                                    height: 20px;
-                                    border-radius: 3px;
-                                    background: touch_up.has-hover ? #3f3f46 : transparent;
-                                    touch_up := TouchArea {
-                                        clicked => { root.reorder_layer_up(idx); }
-                                    }
-                                    Text {
-                                        text: "▲";
-                                        font-size: 10px;
-                                        color: #a1a1aa;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-                                }
-
-                                Rectangle {
-                                    width: 18px;
-                                    height: 20px;
-                                    border-radius: 3px;
-                                    background: touch_dn.has-hover ? #3f3f46 : transparent;
-                                    touch_dn := TouchArea {
-                                        clicked => { root.reorder_layer_down(idx); }
-                                    }
-                                    Text {
-                                        text: "▼";
-                                        font-size: 10px;
-                                        color: #a1a1aa;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Tab 1: Properties
-                    if root.active_tab_index == 1 : VerticalLayout {
-                        spacing: 8px;
-                        Text {
-                            text: "Properties Inspector";
-                            font-weight: 700;
-                            color: #60a5fa;
-                            font-size: 14px;
-                        }
-
-                        if !root.has_selection : VerticalLayout {
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            padding-right: 6px;
                             spacing: 4px;
+                            alignment: center;
+
+                            Rectangle {
+                                height: 28px;
+                                border-radius: 4px;
+                                background: root.active_tab_index == 0 ? #27272b : transparent;
+                                HorizontalLayout {
+                                    padding-left: 10px; padding-right: 10px; spacing: 4px; alignment: center;
+                                    IconDisplay { icon: IconSet.Layers; size: 12px; stroke: root.active_tab_index == 0 ? #60a5fa : #71717a; y: 8px; }
+                                    Text { text: "Camadas"; font-size: 12px; color: root.active_tab_index == 0 ? #ffffff : #a1a1aa; font-weight: root.active_tab_index == 0 ? 600 : 400; vertical-alignment: center; }
+                                }
+                                TouchArea { clicked => { root.active_tab_index = 0; root.tab_changed(0); } }
+                            }
+
+                            Rectangle {
+                                height: 28px;
+                                border-radius: 4px;
+                                background: root.active_tab_index == 1 ? #27272b : transparent;
+                                HorizontalLayout {
+                                    padding-left: 10px; padding-right: 10px; spacing: 4px; alignment: center;
+                                    IconDisplay { icon: IconSet.Sliders; size: 12px; stroke: root.active_tab_index == 1 ? #60a5fa : #71717a; y: 8px; }
+                                    Text { text: "Propriedades"; font-size: 12px; color: root.active_tab_index == 1 ? #ffffff : #a1a1aa; font-weight: root.active_tab_index == 1 ? 600 : 400; vertical-alignment: center; }
+                                }
+                                TouchArea { clicked => { root.active_tab_index = 1; root.tab_changed(1); } }
+                            }
+
+                            Rectangle {
+                                height: 28px;
+                                border-radius: 4px;
+                                background: root.active_tab_index == 2 ? #27272b : transparent;
+                                HorizontalLayout {
+                                    padding-left: 10px; padding-right: 10px; spacing: 4px; alignment: center;
+                                    IconDisplay { icon: IconSet.Undo2; size: 12px; stroke: root.active_tab_index == 2 ? #60a5fa : #71717a; y: 8px; }
+                                    Text { text: "Histórico"; font-size: 12px; color: root.active_tab_index == 2 ? #ffffff : #a1a1aa; font-weight: root.active_tab_index == 2 ? 600 : 400; vertical-alignment: center; }
+                                }
+                                TouchArea { clicked => { root.active_tab_index = 2; root.tab_changed(2); } }
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: #2e2e33; }
+
+                    // TAB 0: LAYERS PANEL
+                    if root.active_tab_index == 0 : VerticalLayout {
+                        padding: 10px;
+                        spacing: 8px;
+
+                        HorizontalLayout {
+                            alignment: space-between;
                             Text {
-                                text: "(Nenhum objeto selecionado)";
-                                color: #71717a;
-                                font-italic: true;
-                                font-size: 12px;
+                                text: "Hierarquia de Objetos";
+                                font-size: 13px;
+                                font-weight: 700;
+                                color: #ffffff;
+                                vertical-alignment: center;
                             }
                             Text {
-                                text: "Clique em um objeto no canvas ou nas camadas para inspecionar e editar suas propriedades.";
-                                color: #a1a1aa;
+                                text: root.layer_rows.length + " itens";
                                 font-size: 11px;
-                                wrap: word-wrap;
+                                color: #71717a;
+                                vertical-alignment: center;
                             }
                         }
 
-                        if root.has_selection : VerticalLayout {
-                            spacing: 6px;
+                        // Artboard row item
+                        Rectangle {
+                            height: 28px;
+                            border-radius: 4px;
+                            background: #242428;
                             HorizontalLayout {
-                                alignment: space-between;
-                                Text {
-                                    text: root.selected_name;
-                                    color: #f4f4f5;
-                                    font-size: 14px;
-                                    font-weight: 600;
-                                    vertical-alignment: center;
-                                }
-                                Badge {
-                                    text: "Vetorial";
-                                    variant: BadgeVariant.secondary;
-                                }
-                            }
-
-                            Rectangle { height: 1px; background: #3f3f46; }
-
-                            Text {
-                                text: "Geometria & Posição:";
-                                color: #93c5fd;
-                                font-size: 12px;
-                                font-weight: 600;
-                            }
-
-                            // Coordinate adjusters (X, Y)
-                            HorizontalLayout {
-                                spacing: 8px;
-                                Text { text: "X: " + round(root.prop_x / 1px) + " px"; color: #d4d4d8; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
-                                Button { text: "-10"; height: 26px; clicked => { root.adjust_prop_x(-10px); } }
-                                Button { text: "+10"; height: 26px; clicked => { root.adjust_prop_x(10px); } }
-                            }
-                            HorizontalLayout {
-                                spacing: 8px;
-                                Text { text: "Y: " + round(root.prop_y / 1px) + " px"; color: #d4d4d8; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
-                                Button { text: "-10"; height: 26px; clicked => { root.adjust_prop_y(-10px); } }
-                                Button { text: "+10"; height: 26px; clicked => { root.adjust_prop_y(10px); } }
-                            }
-
-                            // Dimension adjusters (W, H)
-                            HorizontalLayout {
-                                spacing: 8px;
-                                Text { text: "W: " + round(root.prop_w / 1px) + " px"; color: #d4d4d8; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
-                                Button { text: "-10"; height: 26px; clicked => { root.adjust_prop_w(-10px); } }
-                                Button { text: "+10"; height: 26px; clicked => { root.adjust_prop_w(10px); } }
-                            }
-                            HorizontalLayout {
-                                spacing: 8px;
-                                Text { text: "H: " + round(root.prop_h / 1px) + " px"; color: #d4d4d8; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
-                                Button { text: "-10"; height: 26px; clicked => { root.adjust_prop_h(-10px); } }
-                                Button { text: "+10"; height: 26px; clicked => { root.adjust_prop_h(10px); } }
-                            }
-
-                            Rectangle { height: 1px; background: #3f3f46; }
-
-                            // Opacity
-                            HorizontalLayout {
-                                alignment: space-between;
-                                Text { text: "Opacidade:"; color: #93c5fd; font-size: 12px; font-weight: 600; }
-                                Text { text: round(root.selected_opacity) + "%"; color: #f4f4f5; font-size: 12px; }
-                            }
-                            Slider {
-                                value: root.selected_opacity;
-                                minimum: 0.0;
-                                maximum: 100.0;
-                                changed(val) => { root.set_opacity_value(val); }
-                            }
-
-                            Rectangle { height: 1px; background: #3f3f46; }
-
-                            Text {
-                                text: "Preenchimento Rápido:";
-                                color: #93c5fd;
-                                font-size: 12px;
-                                font-weight: 600;
-                            }
-                            HorizontalLayout {
-                                spacing: 8px;
-                                Rectangle {
-                                    width: 30px; height: 30px; border-radius: 4px; background: #3b82f6; border-width: 1px; border-color: #ffffff44;
-                                    TouchArea { clicked => { root.set_selected_color(#3b82f6); } }
-                                }
-                                Rectangle {
-                                    width: 30px; height: 30px; border-radius: 4px; background: #10b981; border-width: 1px; border-color: #ffffff44;
-                                    TouchArea { clicked => { root.set_selected_color(#10b981); } }
-                                }
-                                Rectangle {
-                                    width: 30px; height: 30px; border-radius: 4px; background: #eab308; border-width: 1px; border-color: #ffffff44;
-                                    TouchArea { clicked => { root.set_selected_color(#eab308); } }
-                                }
-                                Rectangle {
-                                    width: 30px; height: 30px; border-radius: 4px; background: #8b5cf6; border-width: 1px; border-color: #ffffff44;
-                                    TouchArea { clicked => { root.set_selected_color(#8b5cf6); } }
-                                }
-                                Rectangle {
-                                    width: 30px; height: 30px; border-radius: 4px; background: #f43f5e; border-width: 1px; border-color: #ffffff44;
-                                    TouchArea { clicked => { root.set_selected_color(#f43f5e); } }
-                                }
-                            }
-
-                            Button {
-                                text: "📋 Duplicar Objeto";
-                                clicked => { root.duplicate_selected_clicked(); }
-                            }
-
-                            Button {
-                                text: "🗑 Excluir Objeto";
-                                clicked => { root.delete_selected_clicked(); }
-                            }
-                        }
-                    }
-
-                    // Tab 2: History
-                    if root.active_tab_index == 2 : VerticalLayout {
-                        spacing: 6px;
-                        Text {
-                            text: "Transaction History";
-                            font-weight: 700;
-                            color: #60a5fa;
-                            font-size: 14px;
-                        }
-                        for item in root.history_rows : Rectangle {
-                            height: 24px;
-                            background: #27272a;
-                            border-radius: 3px;
-                            HorizontalLayout {
-                                padding-left: 6px;
+                                padding-left: 8px;
+                                padding-right: 8px;
                                 spacing: 6px;
-                                Text {
-                                    text: "[" + item.index + "] " + item.description;
-                                    color: #e4e4e7;
-                                    font-size: 12px;
-                                    vertical-alignment: center;
+                                IconDisplay { icon: IconSet.FileCode; size: 13px; stroke: #60a5fa; y: 8px; }
+                                Text { text: "📄 Main Artboard [800 × 600]"; font-size: 12px; color: #93c5fd; font-weight: 600; vertical-alignment: center; }
+                            }
+                        }
+
+                        // Layers list
+                        ScrollView {
+                            height: 380px;
+                            VerticalLayout {
+                                spacing: 4px;
+                                for item[idx] in root.layer_rows : Rectangle {
+                                    height: 34px;
+                                    border-radius: 4px;
+                                    background: item.selected ? #2563eb33 : #202024;
+                                    border-width: item.selected ? 1px : 0px;
+                                    border-color: #3b82f6;
+
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        spacing: 6px;
+                                        alignment: center;
+
+                                        // Layer kind icon
+                                        IconDisplay {
+                                            icon: item.kind == "Ellipse" ? IconSet.Circle :
+                                                  item.kind == "Text" ? IconSet.Type :
+                                                  item.kind == "Star" ? IconSet.Star : IconSet.Square;
+                                            size: 13px;
+                                            stroke: item.selected ? #60a5fa : #a1a1aa;
+                                            y: (parent.height - self.height) / 2;
+                                        }
+
+                                        // Layer name
+                                        TouchArea {
+                                            horizontal-stretch: 1;
+                                            clicked => { root.select_layer_by_index(idx); }
+                                            Text {
+                                                text: item.name;
+                                                font-size: 12px;
+                                                font-weight: item.selected ? 600 : 400;
+                                                color: item.selected ? #ffffff : #d4d4d8;
+                                                vertical-alignment: center;
+                                                overflow: elide;
+                                            }
+                                        }
+
+                                        // Visibility toggle button
+                                        Rectangle {
+                                            width: 22px;
+                                            height: 22px;
+                                            border-radius: 3px;
+                                            background: touch_vis.has-hover ? #ffffff15 : transparent;
+                                            IconDisplay {
+                                                icon: item.visible ? IconSet.Eye : IconSet.EyeOff;
+                                                size: 13px;
+                                                stroke: item.visible ? #a1a1aa : #52525b;
+                                                x: (parent.width - self.width) / 2;
+                                                y: (parent.height - self.height) / 2;
+                                            }
+                                            touch_vis := TouchArea { clicked => { root.toggle_layer_visibility(idx); } }
+                                        }
+
+                                        // Lock toggle button
+                                        Rectangle {
+                                            width: 22px;
+                                            height: 22px;
+                                            border-radius: 3px;
+                                            background: touch_lock.has-hover ? #ffffff15 : transparent;
+                                            IconDisplay {
+                                                icon: item.locked ? IconSet.Lock : IconSet.LockOpen;
+                                                size: 13px;
+                                                stroke: item.locked ? #eab308 : #52525b;
+                                                x: (parent.width - self.width) / 2;
+                                                y: (parent.height - self.height) / 2;
+                                            }
+                                            touch_lock := TouchArea { clicked => { root.toggle_layer_lock(idx); } }
+                                        }
+
+                                        // Reorder Up
+                                        Rectangle {
+                                            width: 18px;
+                                            height: 22px;
+                                            border-radius: 3px;
+                                            background: touch_up.has-hover ? #ffffff15 : transparent;
+                                            IconDisplay { icon: IconSet.ChevronFirst; size: 11px; stroke: #71717a; x: 4px; y: 6px; }
+                                            touch_up := TouchArea { clicked => { root.reorder_layer_up(idx); } }
+                                        }
+
+                                        // Reorder Down
+                                        Rectangle {
+                                            width: 18px;
+                                            height: 22px;
+                                            border-radius: 3px;
+                                            background: touch_dn.has-hover ? #ffffff15 : transparent;
+                                            IconDisplay { icon: IconSet.ChevronLast; size: 11px; stroke: #71717a; x: 4px; y: 6px; }
+                                            touch_dn := TouchArea { clicked => { root.reorder_layer_down(idx); } }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Layer Actions Footer
+                        Rectangle { height: 1px; background: #2b2b30; }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Button { text: "+ Retângulo"; clicked => { root.add_rectangle_clicked(); } }
+                            Button { text: "+ Elipse"; clicked => { root.add_circle_clicked(); } }
+                            Button { text: "+ Texto"; clicked => { root.add_text_clicked(); } }
+                        }
+                    }
+
+                    // TAB 1: PROPERTIES INSPECTOR (08.25)
+                    if root.active_tab_index == 1 : ScrollView {
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 12px;
+
+                            // Transform Group
+                            Rectangle {
+                                background: #202024;
+                                border-radius: 6px;
+                                border-width: 1px;
+                                border-color: #2d2d33;
+
+                                VerticalLayout {
+                                    padding: 10px;
+                                    spacing: 8px;
+
+                                    Text { text: "TRANSFORMAÇÃO"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        VerticalLayout {
+                                            spacing: 2px;
+                                            Text { text: "X (pt)"; font-size: 10px; color: #71717a; }
+                                            Rectangle { height: 26px; border-radius: 4px; background: #161618; border-width: 1px; border-color: #333338;
+                                                HorizontalLayout { padding-left: 6px; padding-right: 6px; Text { text: Math.round(root.prop_x / 1px); font-size: 12px; color: #ffffff; vertical-alignment: center; } }
+                                            }
+                                        }
+                                        VerticalLayout {
+                                            spacing: 2px;
+                                            Text { text: "Y (pt)"; font-size: 10px; color: #71717a; }
+                                            Rectangle { height: 26px; border-radius: 4px; background: #161618; border-width: 1px; border-color: #333338;
+                                                HorizontalLayout { padding-left: 6px; padding-right: 6px; Text { text: Math.round(root.prop_y / 1px); font-size: 12px; color: #ffffff; vertical-alignment: center; } }
+                                            }
+                                        }
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        VerticalLayout {
+                                            spacing: 2px;
+                                            Text { text: "Largura (W)"; font-size: 10px; color: #71717a; }
+                                            Rectangle { height: 26px; border-radius: 4px; background: #161618; border-width: 1px; border-color: #333338;
+                                                HorizontalLayout { padding-left: 6px; padding-right: 6px; Text { text: Math.round(root.prop_w / 1px); font-size: 12px; color: #ffffff; vertical-alignment: center; } }
+                                            }
+                                        }
+                                        VerticalLayout {
+                                            spacing: 2px;
+                                            Text { text: "Altura (H)"; font-size: 10px; color: #71717a; }
+                                            Rectangle { height: 26px; border-radius: 4px; background: #161618; border-width: 1px; border-color: #333338;
+                                                HorizontalLayout { padding-left: 6px; padding-right: 6px; Text { text: Math.round(root.prop_h / 1px); font-size: 12px; color: #ffffff; vertical-alignment: center; } }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Appearance & Colors Group
+                            Rectangle {
+                                background: #202024;
+                                border-radius: 6px;
+                                border-width: 1px;
+                                border-color: #2d2d33;
+
+                                VerticalLayout {
+                                    padding: 10px;
+                                    spacing: 8px;
+
+                                    Text { text: "PREENCHIMENTO (FILL)"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #3b82f6; TouchArea { clicked => { root.set_selected_color(#3b82f6); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #eab308; TouchArea { clicked => { root.set_selected_color(#eab308); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #e11d48; TouchArea { clicked => { root.set_selected_color(#e11d48); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #10b981; TouchArea { clicked => { root.set_selected_color(#10b981); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #8b5cf6; TouchArea { clicked => { root.set_selected_color(#8b5cf6); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #ffffff; TouchArea { clicked => { root.set_selected_color(#ffffff); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #18181b; border-width: 1px; border-color: #3f3f46; TouchArea { clicked => { root.set_selected_color(#18181b); } } }
+                                    }
+
+                                    Text { text: "OPACIDADE: " + Math.round(root.selected_opacity) + "%"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+                                    Slider {
+                                        value: root.selected_opacity;
+                                        minimum: 0.0;
+                                        maximum: 100.0;
+                                        changed(val) => {
+                                            root.selected_opacity = val;
+                                            root.set_opacity_value(val);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Pathfinder & Booleans
+                            Rectangle {
+                                background: #202024;
+                                border-radius: 6px;
+                                border-width: 1px;
+                                border-color: #2d2d33;
+
+                                VerticalLayout {
+                                    padding: 10px;
+                                    spacing: 8px;
+
+                                    Text { text: "BOOLEANOS & PATHFINDER (10.3)"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Button { text: "⋃ Unir"; clicked => { root.boolean_union_clicked(); } }
+                                        Button { text: "− Subtrair"; clicked => { root.boolean_subtract_clicked(); } }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Button { text: "⋂ Interseção"; clicked => { root.boolean_intersect_clicked(); } }
+                                        Button { text: "⨁ Exclusão"; clicked => { root.boolean_xor_clicked(); } }
+                                    }
+                                }
+                            }
+
+                            // Alignment & Distribution
+                            Rectangle {
+                                background: #202024;
+                                border-radius: 6px;
+                                border-width: 1px;
+                                border-color: #2d2d33;
+
+                                VerticalLayout {
+                                    padding: 10px;
+                                    spacing: 8px;
+
+                                    Text { text: "ALINHAMENTO & DISTRIBUIÇÃO (10.1)"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+
+                                    HorizontalLayout {
+                                        spacing: 4px;
+                                        Button { text: "Esq"; clicked => { root.align_objects_clicked("Left"); } }
+                                        Button { text: "Centro"; clicked => { root.align_objects_clicked("Center"); } }
+                                        Button { text: "Dir"; clicked => { root.align_objects_clicked("Right"); } }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 4px;
+                                        Button { text: "Topo"; clicked => { root.align_objects_clicked("Top"); } }
+                                        Button { text: "Meio"; clicked => { root.align_objects_clicked("Middle"); } }
+                                        Button { text: "Base"; clicked => { root.align_objects_clicked("Bottom"); } }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 4px;
+                                        Button { text: "Distribuir H"; clicked => { root.distribute_objects_clicked("Horizontal"); } }
+                                        Button { text: "Distribuir V"; clicked => { root.distribute_objects_clicked("Vertical"); } }
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // Tab 3: Data Merge
-                    if root.active_tab_index == 3 : VerticalLayout {
-                        spacing: 6px;
-                        Text {
-                            text: "Variable Data Merge";
-                            font-weight: 700;
-                            color: #60a5fa;
-                            font-size: 14px;
+                    // TAB 2: HISTORY PANEL
+                    if root.active_tab_index == 2 : VerticalLayout {
+                        padding: 10px;
+                        spacing: 8px;
+
+                        Text { text: "Histórico de Ações (Undo/Redo)"; font-size: 13px; font-weight: 700; color: #ffffff; }
+
+                        ScrollView {
+                            height: 420px;
+                            VerticalLayout {
+                                spacing: 4px;
+                                for item in root.history_rows : Rectangle {
+                                    height: 28px;
+                                    border-radius: 4px;
+                                    background: #202024;
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        spacing: 6px;
+                                        Text { text: "#" + item.index; font-size: 11px; color: #60a5fa; font-weight: 600; vertical-alignment: center; }
+                                        Text { text: item.description; font-size: 12px; color: #d4d4d8; vertical-alignment: center; overflow: elide; }
+                                    }
+                                }
+                            }
                         }
-                        Text {
-                            text: "Source: " + root.merge_source;
-                            color: #e4e4e7;
-                            font-size: 13px;
-                        }
-                        Text {
-                            text: "Records: " + root.merge_records + " | Bindings: " + root.merge_bindings;
-                            color: #a1a1aa;
-                            font-size: 12px;
-                        }
-                        Text {
-                            text: "Status: Ready to Merge";
-                            color: #22c55e;
-                            font-weight: 600;
-                            font-size: 13px;
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Button { text: "Desfazer (Undo)"; clicked => { root.undo_clicked(); } }
+                            Button { text: "Refazer (Redo)"; clicked => { root.redo_clicked(); } }
                         }
                     }
                 }
             }
         }
 
-        // 3. Bottom Status Bar
+        Rectangle { height: 1px; background: #242428; }
+
+        // -------------------------------------------------------------
+        // SECTION 5: CANONICAL STATUS BAR (08.2, 08.23)
+        // -------------------------------------------------------------
         Rectangle {
-            height: 28px;
-            background: #18181b;
-            border-width: 1px;
-            border-color: #27272a;
+            height: 24px;
+            background: #141416;
 
             HorizontalLayout {
                 padding-left: 12px;
                 padding-right: 12px;
-                spacing: 16px;
+                spacing: 12px;
+                alignment: center;
 
+                // Tool Intent & Modifiers Guide
+                IconDisplay { icon: IconSet.Info; size: 12px; stroke: #60a5fa; y: (parent.height - self.height) / 2; }
+                Text {
+                    text: root.status_hint;
+                    font-size: 11px;
+                    color: #a1a1aa;
+                    vertical-alignment: center;
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                // Cursor coordinates
                 Text {
                     text: root.status_coords;
+                    font-size: 11px;
+                    color: #93c5fd;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                }
+
+                Rectangle { width: 1px; height: 12px; background: #2e2e33; y: 6px; }
+
+                // Selection status
+                Text {
+                    text: (root.has_selection ? "1 objeto selecionado" : "Nenhum objeto selecionado") + "  |  Zoom: " + root.zoom_pct + "%  |  Snap: " + (root.snap_enabled ? "Ativo" : "Inativo");
+                    font-size: 11px;
                     color: #71717a;
-                    font-size: 12px;
-                    vertical-alignment: center;
-                }
-
-                Text {
-                    text: "Ativa: " + root.active_tool_name;
-                    color: #60a5fa;
-                    font-size: 12px;
-                    vertical-alignment: center;
-                }
-
-                Text {
-                    text: "Aubrieta Shell [Slint] • One-Tree Document Engine • Nondestructive";
-                    color: #52525b;
-                    font-size: 12px;
                     vertical-alignment: center;
                 }
             }
