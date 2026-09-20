@@ -6,12 +6,14 @@
 use std::collections::HashMap;
 
 use aubrieta_application::{ActionId, ActionRequest, CapabilityRegistry, Command, CommandRequest};
-use aubrieta_document::{AppearanceStack, ChangeSet, ContainerRole, Document};
+use aubrieta_document::{
+    AppearanceStack, Bleed, ChangeSet, ContainerRole, Document, Guide, Margins,
+};
 use aubrieta_foundation::{AubrietaError, ObjectId, SurfaceId};
 
 use super::ports::{
     ActionQueryPort, CommandPort, DocumentQueryPort, HierarchyPort, InspectionPort, PropertyPort,
-    SelectionPort,
+    SelectionPort, SurfacePort,
 };
 use super::session::DocumentSession;
 use super::view_models::{
@@ -298,6 +300,71 @@ impl AubrietaGuiBridge {
     /// Releases a clipping mask group.
     pub fn release_clip_group(&mut self, group_id: ObjectId) -> Result<ChangeSet, AubrietaError> {
         HierarchyPort::release_clip_group(self, group_id)
+    }
+
+    /// Sets surface origin and dimensions (10.7).
+    pub fn set_surface_geometry(
+        &mut self,
+        surface: SurfaceId,
+        origin: [f64; 2],
+        dimensions: [f64; 2],
+    ) -> Result<ChangeSet, AubrietaError> {
+        SurfacePort::set_surface_geometry(self, surface, origin, dimensions)
+    }
+
+    /// Sets surface bleed insets (10.7).
+    pub fn set_surface_bleed(
+        &mut self,
+        surface: SurfaceId,
+        bleed: Bleed,
+    ) -> Result<ChangeSet, AubrietaError> {
+        SurfacePort::set_surface_bleed(self, surface, bleed)
+    }
+
+    /// Sets surface safe margin insets (10.7).
+    pub fn set_surface_margins(
+        &mut self,
+        surface: SurfaceId,
+        margins: Margins,
+    ) -> Result<ChangeSet, AubrietaError> {
+        SurfacePort::set_surface_margins(self, surface, margins)
+    }
+
+    /// Sets surface background color/token (10.7).
+    pub fn set_surface_background(
+        &mut self,
+        surface: SurfaceId,
+        background: Option<String>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        SurfacePort::set_surface_background(self, surface, background)
+    }
+
+    /// Adds a layout guide to a surface (10.7).
+    pub fn add_surface_guide(
+        &mut self,
+        surface: SurfaceId,
+        guide: Guide,
+    ) -> Result<ChangeSet, AubrietaError> {
+        SurfacePort::add_surface_guide(self, surface, guide)
+    }
+
+    /// Removes a layout guide from a surface (10.7).
+    pub fn remove_surface_guide(
+        &mut self,
+        surface: SurfaceId,
+        guide_id: u32,
+    ) -> Result<ChangeSet, AubrietaError> {
+        SurfacePort::remove_surface_guide(self, surface, guide_id)
+    }
+
+    /// Moves an object to another surface (10.7).
+    pub fn move_object_to_surface(
+        &mut self,
+        id: ObjectId,
+        target_surface: SurfaceId,
+        preserve_world_transform: bool,
+    ) -> Result<ChangeSet, AubrietaError> {
+        SurfacePort::move_object_to_surface(self, id, target_surface, preserve_world_transform)
     }
 
     /// Resolves snapshot.
@@ -729,6 +796,84 @@ impl HierarchyPort for AubrietaGuiBridge {
 
     fn release_clip_group(&mut self, group_id: ObjectId) -> Result<ChangeSet, AubrietaError> {
         let cmd = CommandRequest::new(Command::ReleaseClipGroup { group_id });
+        self.submit_command(cmd)
+    }
+}
+
+impl SurfacePort for AubrietaGuiBridge {
+    fn set_surface_geometry(
+        &mut self,
+        surface: SurfaceId,
+        origin: [f64; 2],
+        dimensions: [f64; 2],
+    ) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::SetSurfaceGeometry {
+            surface,
+            origin,
+            dimensions,
+        });
+        self.submit_command(cmd)
+    }
+
+    fn set_surface_bleed(
+        &mut self,
+        surface: SurfaceId,
+        bleed: Bleed,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::SetSurfaceBleed { surface, bleed });
+        self.submit_command(cmd)
+    }
+
+    fn set_surface_margins(
+        &mut self,
+        surface: SurfaceId,
+        margins: Margins,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::SetSurfaceMargins { surface, margins });
+        self.submit_command(cmd)
+    }
+
+    fn set_surface_background(
+        &mut self,
+        surface: SurfaceId,
+        background: Option<String>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::SetSurfaceBackground {
+            surface,
+            background,
+        });
+        self.submit_command(cmd)
+    }
+
+    fn add_surface_guide(
+        &mut self,
+        surface: SurfaceId,
+        guide: Guide,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::AddGuide { surface, guide });
+        self.submit_command(cmd)
+    }
+
+    fn remove_surface_guide(
+        &mut self,
+        surface: SurfaceId,
+        guide_id: u32,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::RemoveGuide { surface, guide_id });
+        self.submit_command(cmd)
+    }
+
+    fn move_object_to_surface(
+        &mut self,
+        id: ObjectId,
+        target_surface: SurfaceId,
+        preserve_world_transform: bool,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::MoveObjectToSurface {
+            id,
+            target_surface,
+            preserve_world_transform,
+        });
         self.submit_command(cmd)
     }
 }

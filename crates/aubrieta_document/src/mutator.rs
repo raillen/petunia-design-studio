@@ -669,6 +669,168 @@ impl<'doc> DocumentMutator<'doc> {
         Ok(changes)
     }
 
+    /// Sets a surface's origin and dimensions (10.7).
+    pub fn set_surface_geometry(
+        &mut self,
+        id: SurfaceId,
+        origin: [f64; 2],
+        dimensions: [f64; 2],
+    ) -> Result<ChangeSet, AubrietaError> {
+        let surf = self.document.surface_mut(id)?;
+        let prev_orig = surf.origin;
+        let prev_dim = surf.dimensions;
+        surf.origin = origin;
+        surf.dimensions = [dimensions[0].max(1.0), dimensions[1].max(1.0)];
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::SurfaceGeometryChanged {
+            id,
+            previous_origin: prev_orig,
+            next_origin: surf.origin,
+            previous_dimensions: prev_dim,
+            next_dimensions: surf.dimensions,
+        });
+        Ok(changes)
+    }
+
+    /// Sets a surface's bleed configuration.
+    pub fn set_surface_bleed(
+        &mut self,
+        id: SurfaceId,
+        bleed: crate::surface_metadata::Bleed,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let surf = self.document.surface_mut(id)?;
+        let prev = surf.bleed;
+        surf.bleed = bleed;
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::SurfaceBleedChanged {
+            id,
+            previous: prev,
+            next: bleed,
+        });
+        Ok(changes)
+    }
+
+    /// Sets a surface's margins configuration.
+    pub fn set_surface_margins(
+        &mut self,
+        id: SurfaceId,
+        margins: crate::surface_metadata::Margins,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let surf = self.document.surface_mut(id)?;
+        let prev = surf.margins;
+        surf.margins = margins;
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::SurfaceMarginsChanged {
+            id,
+            previous: prev,
+            next: margins,
+        });
+        Ok(changes)
+    }
+
+    /// Sets a surface's background color token or hex.
+    pub fn set_surface_background(
+        &mut self,
+        id: SurfaceId,
+        background: Option<String>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let surf = self.document.surface_mut(id)?;
+        let prev = surf.background.clone();
+        surf.background = background.clone();
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::SurfaceBackgroundChanged {
+            id,
+            previous: prev,
+            next: background,
+        });
+        Ok(changes)
+    }
+
+    /// Adds a layout guide to a surface.
+    pub fn add_surface_guide(
+        &mut self,
+        surface: SurfaceId,
+        guide: crate::surface_metadata::Guide,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let surf = self.document.surface_mut(surface)?;
+        surf.guides.push(guide.clone());
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::SurfaceGuideAdded { surface, guide });
+        Ok(changes)
+    }
+
+    /// Removes a layout guide from a surface by local guide ID.
+    pub fn remove_surface_guide(
+        &mut self,
+        surface: SurfaceId,
+        guide_id: u32,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let surf = self.document.surface_mut(surface)?;
+        let pos = surf
+            .guides
+            .iter()
+            .position(|g| g.id == guide_id)
+            .ok_or_else(|| AubrietaError::not_found(format!("guide `{guide_id}` not found")))?;
+        let removed = surf.guides.remove(pos);
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::SurfaceGuideRemoved {
+            surface,
+            guide: removed,
+        });
+        Ok(changes)
+    }
+
+    /// Moves an object from its current surface to a target surface (10.7).
+    pub fn move_object_between_surfaces(
+        &mut self,
+        id: ObjectId,
+        target_surface: SurfaceId,
+        preserve_world_transform: bool,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let current_surface_id = self
+            .document
+            .find_object_surface(id)
+            .ok_or_else(|| AubrietaError::not_found(format!("object `{id}` not found")))?;
+
+        if current_surface_id == target_surface {
+            return Ok(ChangeSet::empty());
+        }
+
+        let curr_orig = self.document.surface(current_surface_id)?.origin;
+        let target_orig = self.document.surface(target_surface)?.origin;
+
+        let curr_surf = self.document.surface_mut(current_surface_id)?;
+        let pos = curr_surf
+            .objects
+            .iter()
+            .position(|o| o.id == id)
+            .ok_or_else(|| AubrietaError::not_found(format!("object `{id}` not found")))?;
+        let mut obj = curr_surf.objects.remove(pos);
+
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::ObjectRemoved {
+            surface: current_surface_id,
+            object: obj.clone(),
+        });
+
+        if preserve_world_transform {
+            if let Some(b) = obj.bounds {
+                let dx = curr_orig[0] - target_orig[0];
+                let dy = curr_orig[1] - target_orig[1];
+                obj.bounds = Some([b[0] + dx, b[1] + dy, b[2], b[3]]);
+            }
+        }
+
+        let tgt_surf = self.document.surface_mut(target_surface)?;
+        tgt_surf.objects.push(obj.clone());
+        changes.push(Change::ObjectAdded {
+            surface: target_surface,
+            object: obj,
+        });
+
+        Ok(changes)
+    }
+
     /// Reverts a change set in reverse order (undo primitive).
     pub fn revert(&mut self, changes: &ChangeSet) -> Result<(), AubrietaError> {
         for change in changes.changes.iter().rev() {
@@ -879,6 +1041,38 @@ impl<'doc> DocumentMutator<'doc> {
                     found.clip_mask_id = previous_mask;
                     found.is_clip_mask = previous_is_mask;
                 }
+                Change::SurfaceGeometryChanged {
+                    id,
+                    previous_origin,
+                    previous_dimensions,
+                    ..
+                } => {
+                    let surf = self.document.surface_mut(id)?;
+                    surf.origin = previous_origin;
+                    surf.dimensions = previous_dimensions;
+                }
+                Change::SurfaceBleedChanged { id, previous, .. } => {
+                    let surf = self.document.surface_mut(id)?;
+                    surf.bleed = previous;
+                }
+                Change::SurfaceMarginsChanged { id, previous, .. } => {
+                    let surf = self.document.surface_mut(id)?;
+                    surf.margins = previous;
+                }
+                Change::SurfaceBackgroundChanged { id, previous, .. } => {
+                    let surf = self.document.surface_mut(id)?;
+                    surf.background = previous;
+                }
+                Change::SurfaceGuideAdded { surface, guide } => {
+                    let surf = self.document.surface_mut(surface)?;
+                    if let Some(pos) = surf.guides.iter().position(|g| g.id == guide.id) {
+                        surf.guides.remove(pos);
+                    }
+                }
+                Change::SurfaceGuideRemoved { surface, guide } => {
+                    let surf = self.document.surface_mut(surface)?;
+                    surf.guides.push(guide);
+                }
             }
         }
         Ok(())
@@ -1087,5 +1281,107 @@ mod tests {
         assert!(!mask_released.is_clip_mask);
         let content_released = mutator.document.find_object(content).unwrap();
         assert_eq!(content_released.clip_mask_id, None);
+    }
+
+    #[test]
+    fn surface_geometry_bleed_margins_and_guides_undo_redo() {
+        use crate::surface_metadata::{Bleed, Guide, GuideOrientation, Margins};
+
+        let mut gen = IdGenerator::new();
+        let mut doc = Document::new();
+        let surface = gen.next_surface();
+
+        let mut mutator = DocumentMutator::new(&mut doc);
+        mutator.add_surface(surface, "Artboard 1").unwrap();
+
+        // Check defaults: 800x600, origin 0,0
+        let s = mutator.document.surface(surface).unwrap();
+        assert_eq!(s.dimensions, [800.0, 600.0]);
+        assert_eq!(s.origin, [0.0, 0.0]);
+        assert_eq!(s.bleed, Bleed::ZERO);
+
+        // Update geometry
+        let c1 = mutator
+            .set_surface_geometry(surface, [100.0, 50.0], [1920.0, 1080.0])
+            .unwrap();
+        let c2 = mutator
+            .set_surface_bleed(surface, Bleed::uniform(9.0))
+            .unwrap();
+        let c3 = mutator
+            .set_surface_margins(surface, Margins::uniform(36.0))
+            .unwrap();
+        let c4 = mutator
+            .set_surface_background(surface, Some("aubrieta.gray/100".to_string()))
+            .unwrap();
+        let c5 = mutator
+            .add_surface_guide(surface, Guide::new(1, GuideOrientation::Horizontal, 200.0))
+            .unwrap();
+
+        let s_updated = mutator.document.surface(surface).unwrap();
+        assert_eq!(s_updated.origin, [100.0, 50.0]);
+        assert_eq!(s_updated.dimensions, [1920.0, 1080.0]);
+        assert_eq!(s_updated.bleed, Bleed::uniform(9.0));
+        assert_eq!(s_updated.margins, Margins::uniform(36.0));
+        assert_eq!(s_updated.background.as_deref(), Some("aubrieta.gray/100"));
+        assert_eq!(s_updated.guides.len(), 1);
+        assert_eq!(
+            s_updated.bleed_bounds(),
+            [100.0 - 9.0, 50.0 - 9.0, 1920.0 + 18.0, 1080.0 + 18.0]
+        );
+
+        // Revert all
+        mutator.revert(&c5).unwrap();
+        mutator.revert(&c4).unwrap();
+        mutator.revert(&c3).unwrap();
+        mutator.revert(&c2).unwrap();
+        mutator.revert(&c1).unwrap();
+
+        let s_restored = mutator.document.surface(surface).unwrap();
+        assert_eq!(s_restored.origin, [0.0, 0.0]);
+        assert_eq!(s_restored.dimensions, [800.0, 600.0]);
+        assert_eq!(s_restored.bleed, Bleed::ZERO);
+        assert!(s_restored.guides.is_empty());
+    }
+
+    #[test]
+    fn move_object_between_surfaces_preserves_world_transform() {
+        let mut gen = IdGenerator::new();
+        let mut doc = Document::new();
+        let s1 = gen.next_surface();
+        let s2 = gen.next_surface();
+        let obj_id = gen.next_object();
+
+        let mut mutator = DocumentMutator::new(&mut doc);
+        mutator.add_surface(s1, "Page 1").unwrap();
+        mutator.add_surface(s2, "Page 2").unwrap();
+
+        // Surface 1 at (0, 0), Surface 2 at (1000, 0)
+        mutator
+            .set_surface_geometry(s1, [0.0, 0.0], [800.0, 600.0])
+            .unwrap();
+        mutator
+            .set_surface_geometry(s2, [1000.0, 0.0], [800.0, 600.0])
+            .unwrap();
+
+        let mut obj = DocumentObject::new(obj_id, "Box");
+        // Placed at (1050, 50) on Surface 1 -> in pasteboard coords it is (1050, 50)
+        obj.bounds = Some([1050.0, 50.0, 100.0, 100.0]);
+        mutator.add_object(s1, obj).unwrap();
+
+        // Move to Surface 2 with world transform preservation
+        let changes = mutator
+            .move_object_between_surfaces(obj_id, s2, true)
+            .unwrap();
+
+        // On Surface 2 (origin 1000, 0), the local coords should be (50, 50)
+        let s2_ref = mutator.document.surface(s2).unwrap();
+        let moved = s2_ref.objects.iter().find(|o| o.id == obj_id).unwrap();
+        assert_eq!(moved.bounds, Some([50.0, 50.0, 100.0, 100.0]));
+
+        // Revert moves object back to Surface 1 at (1050, 50)
+        mutator.revert(&changes).unwrap();
+        let s1_ref = mutator.document.surface(s1).unwrap();
+        let back = s1_ref.objects.iter().find(|o| o.id == obj_id).unwrap();
+        assert_eq!(back.bounds, Some([1050.0, 50.0, 100.0, 100.0]));
     }
 }

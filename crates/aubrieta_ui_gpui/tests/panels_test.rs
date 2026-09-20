@@ -321,3 +321,95 @@ fn layers_panel_grouping_reparenting_and_clipping_masks() {
     let m_rel = released_model.rows.iter().find(|r| r.id == id1).unwrap();
     assert!(!m_rel.is_clip_mask);
 }
+
+#[test]
+fn multi_surface_artboards_bleed_margins_guides_and_transfer() {
+    use aubrieta_document::{Bleed, Guide, GuideOrientation, Margins};
+
+    let mut bridge = AubrietaGuiBridge::new();
+    bridge.new_document("Multi-Surface Test").expect("doc");
+    let s1 = bridge.active_surface().unwrap();
+
+    let s2 = aubrieta_foundation::SurfaceId::new(99);
+
+    // Add second surface directly to document for multi-surface testing
+    bridge
+        .session_mut()
+        .unwrap()
+        .document
+        .surfaces
+        .push(aubrieta_document::Surface::new(s2, "Artboard 2"));
+
+    let layers_ctrl = LayersPanelController::new();
+    let props_ctrl = PropertiesPanelController::new();
+
+    // Configure Surface 1 geometry and layout
+    layers_ctrl
+        .set_surface_geometry(&mut bridge, s1, [0.0, 0.0], [800.0, 600.0])
+        .unwrap();
+    layers_ctrl
+        .set_surface_bleed(&mut bridge, s1, Bleed::uniform(9.0))
+        .unwrap();
+    layers_ctrl
+        .set_surface_margins(&mut bridge, s1, Margins::uniform(36.0))
+        .unwrap();
+    layers_ctrl
+        .add_guide(
+            &mut bridge,
+            s1,
+            Guide::new(10, GuideOrientation::Horizontal, 150.0),
+        )
+        .unwrap();
+
+    // Configure Surface 2 geometry
+    layers_ctrl
+        .set_surface_geometry(&mut bridge, s2, [1000.0, 0.0], [1200.0, 800.0])
+        .unwrap();
+
+    // Verify properties panel empty selection inspects active surface (s1)
+    let empty_props = props_ctrl.query_model(&bridge);
+    assert!(empty_props.selection_empty);
+    let active_surf = empty_props.active_surface.unwrap();
+    assert_eq!(active_surf.id, s1);
+    assert_eq!(active_surf.dimensions, [800.0, 600.0]);
+    assert_eq!(active_surf.bleed, Bleed::uniform(9.0));
+    assert_eq!(active_surf.margins, Margins::uniform(36.0));
+    assert_eq!(active_surf.guide_count, 1);
+
+    // Create an object on Surface 1 at (1050, 50)
+    let obj_id = bridge.next_object_id().unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: s1,
+            id: obj_id,
+            name: "Card".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .set_bounds(obj_id, Some([1050.0, 50.0, 100.0, 100.0]), 0.0)
+        .unwrap();
+
+    // Move object from Surface 1 (origin 0,0) to Surface 2 (origin 1000, 0)
+    layers_ctrl
+        .move_row_to_surface(&mut bridge, obj_id, s2)
+        .unwrap();
+
+    // Verify object now resides on Surface 2 with coordinate compensation to (50, 50)
+    let l_model = layers_ctrl.query_model(&bridge);
+    assert_eq!(l_model.surfaces.len(), 2);
+    let moved_row = l_model.rows.iter().find(|r| r.id == obj_id).unwrap();
+    assert_eq!(moved_row.surface_id, s2);
+    assert_eq!(moved_row.bounds, Some([50.0, 50.0, 100.0, 100.0]));
+
+    // Undo moving to surface
+    bridge.undo().unwrap();
+    let undone_model = layers_ctrl.query_model(&bridge);
+    let restored_row = undone_model.rows.iter().find(|r| r.id == obj_id).unwrap();
+    assert_eq!(restored_row.surface_id, s1);
+    assert_eq!(restored_row.bounds, Some([1050.0, 50.0, 100.0, 100.0]));
+
+    // Remove guide
+    layers_ctrl.remove_guide(&mut bridge, s1, 10).unwrap();
+    let props_after_guide = props_ctrl.query_model(&bridge);
+    assert_eq!(props_after_guide.active_surface.unwrap().guide_count, 0);
+}

@@ -101,6 +101,42 @@ pub enum Change {
         previous_is_mask: bool,
         next_is_mask: bool,
     },
+    /// A surface's origin or dimensions changed (10.7).
+    SurfaceGeometryChanged {
+        id: SurfaceId,
+        previous_origin: [f64; 2],
+        next_origin: [f64; 2],
+        previous_dimensions: [f64; 2],
+        next_dimensions: [f64; 2],
+    },
+    /// A surface's bleed configuration changed.
+    SurfaceBleedChanged {
+        id: SurfaceId,
+        previous: crate::surface_metadata::Bleed,
+        next: crate::surface_metadata::Bleed,
+    },
+    /// A surface's margins changed.
+    SurfaceMarginsChanged {
+        id: SurfaceId,
+        previous: crate::surface_metadata::Margins,
+        next: crate::surface_metadata::Margins,
+    },
+    /// A surface's background color changed.
+    SurfaceBackgroundChanged {
+        id: SurfaceId,
+        previous: Option<String>,
+        next: Option<String>,
+    },
+    /// A layout guide was added to a surface.
+    SurfaceGuideAdded {
+        surface: SurfaceId,
+        guide: crate::surface_metadata::Guide,
+    },
+    /// A layout guide was removed from a surface.
+    SurfaceGuideRemoved {
+        surface: SurfaceId,
+        guide: crate::surface_metadata::Guide,
+    },
 }
 
 /// Ordered list of changes produced by one mutation.

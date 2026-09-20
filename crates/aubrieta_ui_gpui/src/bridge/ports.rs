@@ -137,3 +137,57 @@ pub trait HierarchyPort {
     /// Releases a clipping mask group.
     fn release_clip_group(&mut self, group_id: ObjectId) -> Result<ChangeSet, AubrietaError>;
 }
+
+/// Multi-surface, artboard, bleed, margin, and guide layout port (10.7).
+pub trait SurfacePort {
+    /// Resizes or repositions a surface (artboard) on the canvas pasteboard.
+    fn set_surface_geometry(
+        &mut self,
+        surface: SurfaceId,
+        origin: [f64; 2],
+        dimensions: [f64; 2],
+    ) -> Result<ChangeSet, AubrietaError>;
+
+    /// Updates bleed insets on a surface.
+    fn set_surface_bleed(
+        &mut self,
+        surface: SurfaceId,
+        bleed: aubrieta_document::Bleed,
+    ) -> Result<ChangeSet, AubrietaError>;
+
+    /// Updates safe margins on a surface.
+    fn set_surface_margins(
+        &mut self,
+        surface: SurfaceId,
+        margins: aubrieta_document::Margins,
+    ) -> Result<ChangeSet, AubrietaError>;
+
+    /// Sets or clears the surface background color/token.
+    fn set_surface_background(
+        &mut self,
+        surface: SurfaceId,
+        background: Option<String>,
+    ) -> Result<ChangeSet, AubrietaError>;
+
+    /// Adds a layout guide to a surface.
+    fn add_surface_guide(
+        &mut self,
+        surface: SurfaceId,
+        guide: aubrieta_document::Guide,
+    ) -> Result<ChangeSet, AubrietaError>;
+
+    /// Removes a layout guide from a surface by guide ID.
+    fn remove_surface_guide(
+        &mut self,
+        surface: SurfaceId,
+        guide_id: u32,
+    ) -> Result<ChangeSet, AubrietaError>;
+
+    /// Moves an object from its current surface to another surface.
+    fn move_object_to_surface(
+        &mut self,
+        id: ObjectId,
+        target_surface: SurfaceId,
+        preserve_world_transform: bool,
+    ) -> Result<ChangeSet, AubrietaError>;
+}

@@ -188,6 +188,29 @@ impl Replayer {
                         obj.is_clip_mask = next_is_mask;
                     }
                 }
+                Change::SurfaceGeometryChanged {
+                    id,
+                    next_origin,
+                    next_dimensions,
+                    ..
+                } => {
+                    mutator.set_surface_geometry(id, next_origin, next_dimensions)?;
+                }
+                Change::SurfaceBleedChanged { id, next, .. } => {
+                    mutator.set_surface_bleed(id, next)?;
+                }
+                Change::SurfaceMarginsChanged { id, next, .. } => {
+                    mutator.set_surface_margins(id, next)?;
+                }
+                Change::SurfaceBackgroundChanged { id, next, .. } => {
+                    mutator.set_surface_background(id, next)?;
+                }
+                Change::SurfaceGuideAdded { surface, guide } => {
+                    mutator.add_surface_guide(surface, guide)?;
+                }
+                Change::SurfaceGuideRemoved { surface, guide } => {
+                    mutator.remove_surface_guide(surface, guide.id)?;
+                }
             }
         }
         Ok(())

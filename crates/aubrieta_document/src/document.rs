@@ -5,7 +5,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::document_object::DocumentObject;
 
-/// Drawing surface (artboard/page/export region depending on context).
+fn default_dimensions() -> [f64; 2] {
+    [800.0, 600.0]
+}
+
+fn default_surface_bg() -> Option<String> {
+    Some("aubrieta.white".to_string())
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Drawing surface (artboard/page/export region depending on context) (10.7).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Surface {
     /// Stable identity.
@@ -14,17 +26,67 @@ pub struct Surface {
     pub name: String,
     /// Objects owned by this surface, in z-order.
     pub objects: Vec<DocumentObject>,
+    /// Global origin coordinate [x, y] in document pasteboard points.
+    #[serde(default)]
+    pub origin: [f64; 2],
+    /// Width and height [w, h] in document points.
+    #[serde(default = "default_dimensions")]
+    pub dimensions: [f64; 2],
+    /// Background color token reference (e.g. `aubrieta.white`) or hex string. None = transparent.
+    #[serde(default = "default_surface_bg")]
+    pub background: Option<String>,
+    /// Per-side bleed configuration.
+    #[serde(default)]
+    pub bleed: crate::surface_metadata::Bleed,
+    /// Per-side inner layout margins.
+    #[serde(default)]
+    pub margins: crate::surface_metadata::Margins,
+    /// Ordered layout guides attached to this surface.
+    #[serde(default)]
+    pub guides: Vec<crate::surface_metadata::Guide>,
+    /// Whether this surface is included in batch export operations.
+    #[serde(default = "default_true")]
+    pub export_enabled: bool,
 }
 
 impl Surface {
-    /// Creates an empty surface with an explicit stable ID.
+    /// Creates an empty surface with an explicit stable ID and default 800x600 dimensions.
     #[must_use]
     pub fn new(id: SurfaceId, name: impl Into<String>) -> Self {
         Self {
             id,
             name: name.into(),
             objects: Vec::new(),
+            origin: [0.0, 0.0],
+            dimensions: [800.0, 600.0],
+            background: Some("aubrieta.white".to_string()),
+            bleed: crate::surface_metadata::Bleed::ZERO,
+            margins: crate::surface_metadata::Margins::ZERO,
+            guides: Vec::new(),
+            export_enabled: true,
         }
+    }
+
+    /// Axis-aligned bounds `[x, y, w, h]` of the surface in global document points.
+    #[must_use]
+    pub fn bounds(&self) -> [f64; 4] {
+        [
+            self.origin[0],
+            self.origin[1],
+            self.dimensions[0],
+            self.dimensions[1],
+        ]
+    }
+
+    /// Extended bounds `[x, y, w, h]` including bleed area.
+    #[must_use]
+    pub fn bleed_bounds(&self) -> [f64; 4] {
+        [
+            self.origin[0] - self.bleed.left,
+            self.origin[1] - self.bleed.top,
+            self.dimensions[0] + self.bleed.left + self.bleed.right,
+            self.dimensions[1] + self.bleed.top + self.bleed.bottom,
+        ]
     }
 }
 

@@ -125,6 +125,18 @@ pub struct SurfaceRowViewModel {
     pub is_active: bool,
     /// Number of objects in this surface.
     pub object_count: usize,
+    /// Pasteboard origin `[x, y]` in document units.
+    pub origin: [f64; 2],
+    /// Surface dimensions `[width, height]`.
+    pub dimensions: [f64; 2],
+    /// Bleed margins.
+    pub bleed: aubrieta_document::Bleed,
+    /// Safe margin insets.
+    pub margins: aubrieta_document::Margins,
+    /// Background color token or hex.
+    pub background: Option<String>,
+    /// Number of guides defined on this surface.
+    pub guide_count: usize,
 }
 
 /// Complete presentation model for the Layers Panel (10.5).
@@ -140,7 +152,7 @@ pub struct LayersPresentationModel {
     pub selected_count: usize,
 }
 
-/// Presentation model for the Properties Inspector (09.25, 10.1, 10.4).
+/// Presentation model for the Properties Inspector (09.25, 10.1, 10.4, 10.7).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PropertiesPresentationModel {
     /// Whether the selection is empty (controls inspect canvas/document properties).
@@ -167,6 +179,8 @@ pub struct PropertiesPresentationModel {
     pub rotation: f64,
     /// Canonical V1 appearance stack if defined on primary object.
     pub appearance: Option<aubrieta_document::AppearanceStack>,
+    /// Active surface layout metadata when selection is empty (10.7).
+    pub active_surface: Option<SurfaceRowViewModel>,
 }
 
 impl Default for PropertiesPresentationModel {
@@ -184,6 +198,7 @@ impl Default for PropertiesPresentationModel {
             bounds: None,
             rotation: 0.0,
             appearance: None,
+            active_surface: None,
         }
     }
 }

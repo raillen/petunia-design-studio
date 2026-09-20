@@ -178,4 +178,65 @@ impl LayersPanelController {
     ) -> Result<ChangeSet, AubrietaError> {
         bridge.release_clip_group(group_id)
     }
+
+    /// Moves an object from its current surface to another surface (10.7).
+    pub fn move_row_to_surface(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        id: ObjectId,
+        target_surface: SurfaceId,
+    ) -> Result<ChangeSet, AubrietaError> {
+        bridge.move_object_to_surface(id, target_surface, true)
+    }
+
+    /// Updates surface geometry on the pasteboard (10.7).
+    pub fn set_surface_geometry(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        surface: SurfaceId,
+        origin: [f64; 2],
+        dimensions: [f64; 2],
+    ) -> Result<ChangeSet, AubrietaError> {
+        bridge.set_surface_geometry(surface, origin, dimensions)
+    }
+
+    /// Updates surface bleed insets (10.7).
+    pub fn set_surface_bleed(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        surface: SurfaceId,
+        bleed: aubrieta_document::Bleed,
+    ) -> Result<ChangeSet, AubrietaError> {
+        bridge.set_surface_bleed(surface, bleed)
+    }
+
+    /// Updates surface safe margins (10.7).
+    pub fn set_surface_margins(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        surface: SurfaceId,
+        margins: aubrieta_document::Margins,
+    ) -> Result<ChangeSet, AubrietaError> {
+        bridge.set_surface_margins(surface, margins)
+    }
+
+    /// Adds a layout guide to a surface (10.7).
+    pub fn add_guide(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        surface: SurfaceId,
+        guide: aubrieta_document::Guide,
+    ) -> Result<ChangeSet, AubrietaError> {
+        bridge.add_surface_guide(surface, guide)
+    }
+
+    /// Removes a layout guide from a surface (10.7).
+    pub fn remove_guide(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        surface: SurfaceId,
+        guide_id: u32,
+    ) -> Result<ChangeSet, AubrietaError> {
+        bridge.remove_surface_guide(surface, guide_id)
+    }
 }

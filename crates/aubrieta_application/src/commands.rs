@@ -72,6 +72,40 @@ pub enum Command {
     },
     /// Releases a clipping mask group.
     ReleaseClipGroup { group_id: ObjectId },
+    /// Sets a surface's origin and dimensions (10.7).
+    SetSurfaceGeometry {
+        surface: SurfaceId,
+        origin: [f64; 2],
+        dimensions: [f64; 2],
+    },
+    /// Sets a surface's bleed configuration.
+    SetSurfaceBleed {
+        surface: SurfaceId,
+        bleed: aubrieta_document::Bleed,
+    },
+    /// Sets a surface's margins configuration.
+    SetSurfaceMargins {
+        surface: SurfaceId,
+        margins: aubrieta_document::Margins,
+    },
+    /// Sets a surface's background color token.
+    SetSurfaceBackground {
+        surface: SurfaceId,
+        background: Option<String>,
+    },
+    /// Adds a layout guide to a surface.
+    AddGuide {
+        surface: SurfaceId,
+        guide: aubrieta_document::Guide,
+    },
+    /// Removes a layout guide from a surface.
+    RemoveGuide { surface: SurfaceId, guide_id: u32 },
+    /// Moves an object between surfaces with coordinate compensation.
+    MoveObjectToSurface {
+        id: ObjectId,
+        target_surface: SurfaceId,
+        preserve_world_transform: bool,
+    },
 }
 
 /// Validated command ready for execution.
@@ -139,5 +173,27 @@ pub fn execute(
             content_ids,
         } => mutator.create_clip_group(*surface, *group_id, *mask_id, content_ids.clone()),
         Command::ReleaseClipGroup { group_id } => mutator.release_clip_group(*group_id),
+        Command::SetSurfaceGeometry {
+            surface,
+            origin,
+            dimensions,
+        } => mutator.set_surface_geometry(*surface, *origin, *dimensions),
+        Command::SetSurfaceBleed { surface, bleed } => mutator.set_surface_bleed(*surface, *bleed),
+        Command::SetSurfaceMargins { surface, margins } => {
+            mutator.set_surface_margins(*surface, *margins)
+        }
+        Command::SetSurfaceBackground {
+            surface,
+            background,
+        } => mutator.set_surface_background(*surface, background.clone()),
+        Command::AddGuide { surface, guide } => mutator.add_surface_guide(*surface, guide.clone()),
+        Command::RemoveGuide { surface, guide_id } => {
+            mutator.remove_surface_guide(*surface, *guide_id)
+        }
+        Command::MoveObjectToSurface {
+            id,
+            target_surface,
+            preserve_world_transform,
+        } => mutator.move_object_between_surfaces(*id, *target_surface, *preserve_world_transform),
     }
 }

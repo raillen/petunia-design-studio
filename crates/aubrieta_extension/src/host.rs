@@ -350,11 +350,8 @@ mod tests {
 
         // Pre-seed document with a surface
         let mut doc = Document::new();
-        doc.surfaces.push(Surface {
-            id: SurfaceId::new(10),
-            name: "Page A".to_string(),
-            objects: Vec::new(),
-        });
+        doc.surfaces
+            .push(Surface::new(SurfaceId::new(10), "Page A"));
         host.set_document(doc);
 
         let script = r#"

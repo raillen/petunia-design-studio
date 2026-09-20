@@ -8,7 +8,7 @@ pub mod view_models;
 pub use gui_bridge::AubrietaGuiBridge;
 pub use ports::{
     ActionQueryPort, CommandPort, DocumentQueryPort, HierarchyPort, InspectionPort, PropertyPort,
-    SelectionPort,
+    SelectionPort, SurfacePort,
 };
 pub use session::{DocumentSession, SelectionSession};
 pub use view_models::{

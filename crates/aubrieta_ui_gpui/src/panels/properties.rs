@@ -108,4 +108,53 @@ impl PropertiesPanelController {
         }
         Ok(combined)
     }
+
+    /// Updates active surface dimensions and origin (10.7).
+    pub fn set_surface_geometry(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        origin: [f64; 2],
+        dimensions: [f64; 2],
+    ) -> Result<ChangeSet, AubrietaError> {
+        let surface = bridge
+            .active_surface()
+            .ok_or_else(|| AubrietaError::invalid_input("no active surface"))?;
+        bridge.set_surface_geometry(surface, origin, dimensions)
+    }
+
+    /// Updates active surface bleed insets (10.7).
+    pub fn set_surface_bleed(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        bleed: aubrieta_document::Bleed,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let surface = bridge
+            .active_surface()
+            .ok_or_else(|| AubrietaError::invalid_input("no active surface"))?;
+        bridge.set_surface_bleed(surface, bleed)
+    }
+
+    /// Updates active surface safe margins (10.7).
+    pub fn set_surface_margins(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        margins: aubrieta_document::Margins,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let surface = bridge
+            .active_surface()
+            .ok_or_else(|| AubrietaError::invalid_input("no active surface"))?;
+        bridge.set_surface_margins(surface, margins)
+    }
+
+    /// Updates active surface background (10.7).
+    pub fn set_surface_background(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        background: Option<String>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let surface = bridge
+            .active_surface()
+            .ok_or_else(|| AubrietaError::invalid_input("no active surface"))?;
+        bridge.set_surface_background(surface, background)
+    }
 }

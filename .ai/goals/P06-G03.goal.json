@@ -35,6 +35,27 @@
       "from": "PLANNED",
       "reason": "",
       "to": "LOCKED"
+    },
+    {
+      "at": "2026-09-20T05:05:38.137091875Z",
+      "event": "state-transition",
+      "from": "LOCKED",
+      "reason": "",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-20T05:20:05.391817231Z",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "",
+      "to": "VERIFYING"
+    },
+    {
+      "at": "2026-09-20T05:20:05.408003151Z",
+      "event": "state-transition",
+      "from": "VERIFYING",
+      "reason": "",
+      "to": "REVIEWING"
     }
   ],
   "id": "P06-G03",
@@ -47,6 +68,6 @@
   "objective": "Implementar pranchetas de trabalho com dimensões, sangria, margens e plano de fundo no modelo canônico conforme 10.7",
   "phase": "P06",
   "revision": 1,
-  "state": "LOCKED",
+  "state": "REVIEWING",
   "title": "Multi-Superficies, Artboards e Sangria"
 }

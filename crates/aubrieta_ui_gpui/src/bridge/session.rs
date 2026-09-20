@@ -338,6 +338,12 @@ impl DocumentSession {
                 name: surface.name.clone(),
                 is_active,
                 object_count: surface.objects.len(),
+                origin: surface.origin,
+                dimensions: surface.dimensions,
+                bleed: surface.bleed,
+                margins: surface.margins,
+                background: surface.background.clone(),
+                guide_count: surface.guides.len(),
             });
 
             let mut visited = std::collections::HashSet::new();
@@ -414,16 +420,9 @@ impl DocumentSession {
             bounds: obj.bounds,
         });
 
-        for child_id in &obj.children {
-            if let Some(child_obj) = surface.objects.iter().find(|o| o.id == *child_id) {
-                Self::push_layer_tree_rows(
-                    surface,
-                    child_obj,
-                    depth + 1,
-                    selected_ids,
-                    rows,
-                    visited,
-                );
+        for &child_id in &obj.children {
+            if let Some(child) = surface.objects.iter().find(|o| o.id == child_id) {
+                Self::push_layer_tree_rows(surface, child, depth + 1, selected_ids, rows, visited);
             }
         }
     }
@@ -432,7 +431,27 @@ impl DocumentSession {
     #[must_use]
     pub fn properties_presentation_model(&self) -> PropertiesPresentationModel {
         if self.selection.selected_ids.is_empty() {
-            return PropertiesPresentationModel::default();
+            let active_surface = self.active_surface.and_then(|surf_id| {
+                self.document
+                    .surface(surf_id)
+                    .ok()
+                    .map(|s| SurfaceRowViewModel {
+                        id: s.id,
+                        name: s.name.clone(),
+                        is_active: true,
+                        object_count: s.objects.len(),
+                        origin: s.origin,
+                        dimensions: s.dimensions,
+                        bleed: s.bleed,
+                        margins: s.margins,
+                        background: s.background.clone(),
+                        guide_count: s.guides.len(),
+                    })
+            });
+            return PropertiesPresentationModel {
+                active_surface,
+                ..PropertiesPresentationModel::default()
+            };
         }
 
         let key_id = self.selection.key_object();
@@ -453,6 +472,7 @@ impl DocumentSession {
                     bounds: obj.bounds,
                     rotation: obj.rotation,
                     appearance: obj.appearance.clone(),
+                    active_surface: None,
                 };
             }
         }
@@ -490,6 +510,7 @@ impl DocumentSession {
             bounds: sel_vm.combined_bounds,
             rotation: 0.0,
             appearance: None,
+            active_surface: None,
         }
     }
 }

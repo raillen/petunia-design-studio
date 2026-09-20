@@ -11,6 +11,7 @@ mod document;
 mod document_object;
 pub mod hierarchy;
 mod mutator;
+pub mod surface_metadata;
 
 pub use appearance::{
     AppearanceStack, BlendMode, EffectItem, EffectKind, FillItem, GradientStop, LinearGradient,
@@ -21,3 +22,4 @@ pub use document::{Document, Surface};
 pub use document_object::DocumentObject;
 pub use hierarchy::{ContainerRole, HierarchyValidation, MaskMode};
 pub use mutator::DocumentMutator;
+pub use surface_metadata::{Bleed, Guide, GuideOrientation, Margins};
