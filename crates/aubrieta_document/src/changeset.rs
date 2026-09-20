@@ -137,6 +137,26 @@ pub enum Change {
         surface: SurfaceId,
         guide: crate::surface_metadata::Guide,
     },
+    /// A variable data source was added (10.11).
+    DataSourceAdded {
+        source: crate::variable_data::DataSourceDefinition,
+    },
+    /// A variable data source was removed (10.11).
+    DataSourceRemoved {
+        source: crate::variable_data::DataSourceDefinition,
+    },
+    /// A data binding was added (10.11).
+    DataBindingAdded {
+        binding: crate::variable_data::DataBinding,
+    },
+    /// A data binding was removed (10.11).
+    DataBindingRemoved {
+        binding: crate::variable_data::DataBinding,
+    },
+    /// Batch surfaces were materialized from data merge (10.11).
+    BatchSurfacesAdded {
+        surfaces: Vec<crate::document::Surface>,
+    },
 }
 
 /// Ordered list of changes produced by one mutation.

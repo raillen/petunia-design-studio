@@ -8,11 +8,12 @@ pub mod view_models;
 pub use gui_bridge::AubrietaGuiBridge;
 pub use ports::{
     ActionQueryPort, CommandPort, DocumentQueryPort, HierarchyPort, InspectionPort, PropertyPort,
-    SelectionPort, SurfacePort,
+    SelectionPort, SurfacePort, VariableDataPort,
 };
 pub use session::{DocumentSession, SelectionSession};
 pub use view_models::{
-    ActionStateMap, ActionStateViewModel, DialogRequest, DocumentSummary, HistoryItemViewModel,
+    ActionStateMap, ActionStateViewModel, DataBindingViewModel, DataMergePresentationModel,
+    DataSourceViewModel, DialogRequest, DocumentSummary, FieldViewModel, HistoryItemViewModel,
     HistoryPresentationModel, LayerRowViewModel, LayersPresentationModel,
     PropertiesPresentationModel, SelectionViewModel, SessionSnapshot, SurfaceRowViewModel,
 };

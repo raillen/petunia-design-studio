@@ -7,19 +7,20 @@ use std::collections::HashMap;
 
 use aubrieta_application::{ActionId, ActionRequest, CapabilityRegistry, Command, CommandRequest};
 use aubrieta_document::{
-    AppearanceStack, Bleed, ChangeSet, ContainerRole, Document, Guide, Margins,
+    AppearanceStack, BindingId, Bleed, ChangeSet, ContainerRole, DataBinding, DataSourceDefinition,
+    DataSourceId, Document, Guide, Margins,
 };
 use aubrieta_foundation::{AubrietaError, ObjectId, SurfaceId};
 
 use super::ports::{
     ActionQueryPort, CommandPort, DocumentQueryPort, HierarchyPort, InspectionPort, PropertyPort,
-    SelectionPort, SurfacePort,
+    SelectionPort, SurfacePort, VariableDataPort,
 };
 use super::session::DocumentSession;
 use super::view_models::{
-    ActionStateMap, ActionStateViewModel, DocumentSummary, HistoryItemViewModel,
-    HistoryPresentationModel, LayersPresentationModel, PropertiesPresentationModel,
-    SelectionViewModel, SessionSnapshot,
+    ActionStateMap, ActionStateViewModel, DataMergePresentationModel, DocumentSummary,
+    HistoryItemViewModel, HistoryPresentationModel, LayersPresentationModel,
+    PropertiesPresentationModel, SelectionViewModel, SessionSnapshot,
 };
 
 /// Coarse-grained facade connecting external UI adapters to the Aubrieta engine.
@@ -365,6 +366,44 @@ impl AubrietaGuiBridge {
         preserve_world_transform: bool,
     ) -> Result<ChangeSet, AubrietaError> {
         SurfacePort::move_object_to_surface(self, id, target_surface, preserve_world_transform)
+    }
+
+    /// Registers or imports a variable data source (10.11).
+    pub fn import_data_source(
+        &mut self,
+        source: DataSourceDefinition,
+    ) -> Result<ChangeSet, AubrietaError> {
+        VariableDataPort::import_data_source(self, source)
+    }
+
+    /// Removes a variable data source (10.11).
+    pub fn remove_data_source(&mut self, id: DataSourceId) -> Result<ChangeSet, AubrietaError> {
+        VariableDataPort::remove_data_source(self, id)
+    }
+
+    /// Adds a data binding (10.11).
+    pub fn add_data_binding(&mut self, binding: DataBinding) -> Result<ChangeSet, AubrietaError> {
+        VariableDataPort::add_data_binding(self, binding)
+    }
+
+    /// Removes a data binding (10.11).
+    pub fn remove_data_binding(&mut self, id: BindingId) -> Result<ChangeSet, AubrietaError> {
+        VariableDataPort::remove_data_binding(self, id)
+    }
+
+    /// Materializes merged records into generated surfaces on the pasteboard (10.11).
+    pub fn materialize_merge(
+        &mut self,
+        source_id: DataSourceId,
+        template_surface: SurfaceId,
+    ) -> Result<ChangeSet, AubrietaError> {
+        VariableDataPort::materialize_merge(self, source_id, template_surface)
+    }
+
+    /// Resolves the Variable Data presentation model (10.11).
+    #[must_use]
+    pub fn query_variable_data(&self) -> DataMergePresentationModel {
+        VariableDataPort::query_variable_data(self)
     }
 
     /// Resolves snapshot.
@@ -875,5 +914,50 @@ impl SurfacePort for AubrietaGuiBridge {
             preserve_world_transform,
         });
         self.submit_command(cmd)
+    }
+}
+
+impl VariableDataPort for AubrietaGuiBridge {
+    fn import_data_source(
+        &mut self,
+        source: DataSourceDefinition,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::AddDataSource { source });
+        self.submit_command(cmd)
+    }
+
+    fn remove_data_source(&mut self, id: DataSourceId) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::RemoveDataSource { id });
+        self.submit_command(cmd)
+    }
+
+    fn add_data_binding(&mut self, binding: DataBinding) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::AddDataBinding { binding });
+        self.submit_command(cmd)
+    }
+
+    fn remove_data_binding(&mut self, id: BindingId) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::RemoveDataBinding { id });
+        self.submit_command(cmd)
+    }
+
+    fn materialize_merge(
+        &mut self,
+        source_id: DataSourceId,
+        template_surface: SurfaceId,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::MaterializeDataMerge {
+            source_id,
+            template_surface,
+        });
+        self.submit_command(cmd)
+    }
+
+    fn query_variable_data(&self) -> DataMergePresentationModel {
+        self.active_session
+            .as_ref()
+            .map_or_else(DataMergePresentationModel::default, |s| {
+                s.data_merge_presentation_model()
+            })
     }
 }

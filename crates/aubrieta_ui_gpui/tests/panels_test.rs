@@ -413,3 +413,85 @@ fn multi_surface_artboards_bleed_margins_guides_and_transfer() {
     let props_after_guide = props_ctrl.query_model(&bridge);
     assert_eq!(props_after_guide.active_surface.unwrap().guide_count, 0);
 }
+
+#[test]
+fn data_merge_panel_import_bind_preflight_and_materialize() {
+    use aubrieta_document::{
+        BindingId, DataBinding, DataSourceId, MissingValuePolicy, TargetProperty, ValueFormatter,
+    };
+
+    let mut bridge = AubrietaGuiBridge::new();
+    bridge.new_document("Data Merge UI Test").expect("doc");
+    let surface = bridge.active_surface().unwrap();
+
+    let obj_id = bridge.next_object_id().unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface,
+            id: obj_id,
+            name: "Default Card".to_string(),
+        }))
+        .unwrap();
+
+    let controller = DataMergePanelController::new();
+
+    // 1. Import CSV
+    let csv = "ID,Name,Level\n101,Ada Lovelace,Senior\n102,Alan Turing,Principal";
+    let ds_id = DataSourceId::new(1);
+    controller
+        .import_delimited(&mut bridge, ds_id, "scientists.csv", csv, ',')
+        .unwrap();
+
+    // Query model
+    let model = controller.query_model(&bridge);
+    assert_eq!(model.sources.len(), 1);
+    assert_eq!(model.sources[0].name, "scientists.csv");
+    assert_eq!(model.sources[0].record_count, 2);
+    assert_eq!(model.sources[0].field_count, 3);
+
+    let name_field = model.sources[0]
+        .fields
+        .iter()
+        .find(|f| f.name == "Name")
+        .unwrap();
+
+    // 2. Preflight before binding: should report unbound fields
+    let findings_pre = controller.preflight(&bridge, ds_id).unwrap();
+    assert_eq!(findings_pre.len(), 3); // 3 unbound fields
+
+    // 3. Add binding: "Name" -> obj_id TextContent
+    let binding = DataBinding {
+        id: BindingId::new(1),
+        source_id: ds_id,
+        field_id: name_field.id,
+        target_object: obj_id,
+        target_property: TargetProperty::TextContent,
+        formatter: ValueFormatter::Prefix("Dr. ".to_string()),
+        missing_policy: MissingValuePolicy::Skip,
+    };
+    controller.add_binding(&mut bridge, binding).unwrap();
+
+    let model_bound = controller.query_model(&bridge);
+    assert_eq!(model_bound.bindings.len(), 1);
+    assert_eq!(model_bound.bindings[0].field_name, "Name");
+
+    // 4. Materialize merge: creates 2 new artboards
+    controller.materialize(&mut bridge, ds_id, surface).unwrap();
+
+    let layers_ctrl = LayersPanelController::new();
+    let l_model = layers_ctrl.query_model(&bridge);
+    assert_eq!(l_model.surfaces.len(), 3); // Template + 2 generated
+    assert!(l_model.rows.iter().any(|r| r.name == "Dr. Ada Lovelace"));
+    assert!(l_model.rows.iter().any(|r| r.name == "Dr. Alan Turing"));
+
+    // 5. Undo materialization
+    bridge.undo().unwrap();
+    let l_model_undone = layers_ctrl.query_model(&bridge);
+    assert_eq!(l_model_undone.surfaces.len(), 1);
+
+    // 6. Remove data source
+    controller.remove_source(&mut bridge, ds_id).unwrap();
+    let model_empty = controller.query_model(&bridge);
+    assert!(model_empty.sources.is_empty());
+    assert!(model_empty.bindings.is_empty());
+}

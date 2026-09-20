@@ -831,6 +831,195 @@ impl<'doc> DocumentMutator<'doc> {
         Ok(changes)
     }
 
+    /// Registers a variable data source in the document (10.11).
+    pub fn add_data_source(
+        &mut self,
+        source: crate::variable_data::DataSourceDefinition,
+    ) -> Result<ChangeSet, AubrietaError> {
+        if self
+            .document
+            .data_sources
+            .iter()
+            .any(|ds| ds.id == source.id)
+        {
+            return Err(AubrietaError::invalid_input(format!(
+                "data source `{}` already exists",
+                source.id
+            )));
+        }
+        self.document.data_sources.push(source.clone());
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::DataSourceAdded { source });
+        Ok(changes)
+    }
+
+    /// Removes a variable data source and its associated bindings (10.11).
+    pub fn remove_data_source(
+        &mut self,
+        id: crate::variable_data::DataSourceId,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let pos = self
+            .document
+            .data_sources
+            .iter()
+            .position(|ds| ds.id == id)
+            .ok_or_else(|| AubrietaError::not_found(format!("data source `{id}` not found")))?;
+        let source = self.document.data_sources.remove(pos);
+
+        let mut changes = ChangeSet::empty();
+        // Remove cascading bindings
+        let removed_bindings: Vec<crate::variable_data::DataBinding> = self
+            .document
+            .bindings
+            .iter()
+            .filter(|b| b.source_id == id)
+            .cloned()
+            .collect();
+        for b in removed_bindings {
+            if let Some(b_pos) = self.document.bindings.iter().position(|x| x.id == b.id) {
+                self.document.bindings.remove(b_pos);
+                changes.push(Change::DataBindingRemoved { binding: b });
+            }
+        }
+
+        changes.push(Change::DataSourceRemoved { source });
+        Ok(changes)
+    }
+
+    /// Adds a data binding between a field and a document object property (10.11).
+    pub fn add_data_binding(
+        &mut self,
+        binding: crate::variable_data::DataBinding,
+    ) -> Result<ChangeSet, AubrietaError> {
+        if self.document.bindings.iter().any(|b| b.id == binding.id) {
+            return Err(AubrietaError::invalid_input(format!(
+                "data binding `{}` already exists",
+                binding.id
+            )));
+        }
+        // Verify source exists
+        if !self
+            .document
+            .data_sources
+            .iter()
+            .any(|ds| ds.id == binding.source_id)
+        {
+            return Err(AubrietaError::not_found(format!(
+                "data source `{}` not found",
+                binding.source_id
+            )));
+        }
+        // Verify target object exists
+        if self.document.find_object(binding.target_object).is_none() {
+            return Err(AubrietaError::not_found(format!(
+                "target object `{}` not found",
+                binding.target_object
+            )));
+        }
+
+        self.document.bindings.push(binding.clone());
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::DataBindingAdded { binding });
+        Ok(changes)
+    }
+
+    /// Removes a data binding by ID (10.11).
+    pub fn remove_data_binding(
+        &mut self,
+        id: crate::variable_data::BindingId,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let pos = self
+            .document
+            .bindings
+            .iter()
+            .position(|b| b.id == id)
+            .ok_or_else(|| AubrietaError::not_found(format!("data binding `{id}` not found")))?;
+        let binding = self.document.bindings.remove(pos);
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::DataBindingRemoved { binding });
+        Ok(changes)
+    }
+
+    /// Materializes merged records into separate surfaces (artboards) on the canvas pasteboard (10.11).
+    pub fn materialize_data_merge(
+        &mut self,
+        source_id: crate::variable_data::DataSourceId,
+        template_surface_id: SurfaceId,
+        id_gen: &mut aubrieta_foundation::IdGenerator,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let source = self
+            .document
+            .data_source(source_id)
+            .cloned()
+            .ok_or_else(|| {
+                AubrietaError::not_found(format!("data source `{source_id}` not found"))
+            })?;
+        let template_surface = self.document.surface(template_surface_id)?.clone();
+
+        let bindings: Vec<crate::variable_data::DataBinding> = self
+            .document
+            .bindings
+            .iter()
+            .filter(|b| b.source_id == source_id)
+            .cloned()
+            .collect();
+
+        let mut created_surfaces = Vec::new();
+        let [orig_x, orig_y] = template_surface.origin;
+        let [dim_w, _dim_h] = template_surface.dimensions;
+
+        for (idx, record) in source.records.iter().enumerate() {
+            let new_surf_id = id_gen.next_surface();
+            let mut new_surface = template_surface.clone();
+            new_surface.id = new_surf_id;
+            new_surface.name = format!("{} [{}]", template_surface.name, record.key);
+            // Arrange newly generated artboards horizontally with a 100pt gap
+            let offset_x =
+                orig_x + (f64::from(u32::try_from(idx + 1).unwrap_or(1))) * (dim_w + 100.0);
+            new_surface.origin = [offset_x, orig_y];
+
+            // Re-key objects to preserve uniqueness and apply record bindings
+            let mut id_map = std::collections::HashMap::new();
+            for obj in &new_surface.objects {
+                id_map.insert(obj.id, id_gen.next_object());
+            }
+
+            for obj in &mut new_surface.objects {
+                let original_id = obj.id;
+
+                // Apply bindings meant for original_id before re-keying
+                let obj_bindings: Vec<&crate::variable_data::DataBinding> = bindings
+                    .iter()
+                    .filter(|b| b.target_object == original_id)
+                    .collect();
+                crate::variable_data::DataMergeEvaluator::apply_to_object(
+                    obj,
+                    record,
+                    &obj_bindings,
+                )?;
+
+                obj.id = id_map[&original_id];
+                if let Some(parent_id) = obj.parent {
+                    obj.parent = id_map.get(&parent_id).copied();
+                }
+                obj.children = obj
+                    .children
+                    .iter()
+                    .filter_map(|c| id_map.get(c).copied())
+                    .collect();
+            }
+
+            self.document.surfaces.push(new_surface.clone());
+            created_surfaces.push(new_surface);
+        }
+
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::BatchSurfacesAdded {
+            surfaces: created_surfaces,
+        });
+        Ok(changes)
+    }
+
     /// Reverts a change set in reverse order (undo primitive).
     pub fn revert(&mut self, changes: &ChangeSet) -> Result<(), AubrietaError> {
         for change in changes.changes.iter().rev() {
@@ -1072,6 +1261,41 @@ impl<'doc> DocumentMutator<'doc> {
                 Change::SurfaceGuideRemoved { surface, guide } => {
                     let surf = self.document.surface_mut(surface)?;
                     surf.guides.push(guide);
+                }
+                Change::DataSourceAdded { source } => {
+                    if let Some(pos) = self
+                        .document
+                        .data_sources
+                        .iter()
+                        .position(|ds| ds.id == source.id)
+                    {
+                        self.document.data_sources.remove(pos);
+                    }
+                }
+                Change::DataSourceRemoved { source } => {
+                    self.document.data_sources.push(source);
+                }
+                Change::DataBindingAdded { binding } => {
+                    if let Some(pos) = self
+                        .document
+                        .bindings
+                        .iter()
+                        .position(|b| b.id == binding.id)
+                    {
+                        self.document.bindings.remove(pos);
+                    }
+                }
+                Change::DataBindingRemoved { binding } => {
+                    self.document.bindings.push(binding);
+                }
+                Change::BatchSurfacesAdded { surfaces } => {
+                    for surf in surfaces {
+                        if let Some(pos) =
+                            self.document.surfaces.iter().position(|s| s.id == surf.id)
+                        {
+                            self.document.surfaces.remove(pos);
+                        }
+                    }
                 }
             }
         }
@@ -1383,5 +1607,115 @@ mod tests {
         let s1_ref = mutator.document.surface(s1).unwrap();
         let back = s1_ref.objects.iter().find(|o| o.id == obj_id).unwrap();
         assert_eq!(back.bounds, Some([1050.0, 50.0, 100.0, 100.0]));
+    }
+
+    #[test]
+    fn variable_data_source_and_bindings_undo_redo() {
+        use crate::variable_data::*;
+
+        let mut gen = IdGenerator::new();
+        let mut doc = Document::new();
+        let surface = gen.next_surface();
+        let obj_id = gen.next_object();
+
+        let mut mutator = DocumentMutator::new(&mut doc);
+        mutator.add_surface(surface, "Card").unwrap();
+        mutator
+            .add_object(surface, DocumentObject::new(obj_id, "Title"))
+            .unwrap();
+
+        // 1. Add Data Source
+        let csv = "Name,Role\nAlice,Manager\nBob,Engineer";
+        let ds =
+            DataSourceParser::parse_delimited(DataSourceId::new(1), "staff.csv", csv, ',').unwrap();
+        let c_ds = mutator.add_data_source(ds).unwrap();
+        assert_eq!(mutator.document.data_sources.len(), 1);
+
+        // 2. Add Data Binding
+        let binding = DataBinding {
+            id: BindingId::new(1),
+            source_id: DataSourceId::new(1),
+            field_id: FieldId::new(1),
+            target_object: obj_id,
+            target_property: TargetProperty::TextContent,
+            formatter: ValueFormatter::Uppercase,
+            missing_policy: MissingValuePolicy::Skip,
+        };
+        let c_bind = mutator.add_data_binding(binding).unwrap();
+        assert_eq!(mutator.document.bindings.len(), 1);
+
+        // 3. Revert binding and source
+        mutator.revert(&c_bind).unwrap();
+        assert!(mutator.document.bindings.is_empty());
+        mutator.revert(&c_ds).unwrap();
+        assert!(mutator.document.data_sources.is_empty());
+    }
+
+    #[test]
+    fn variable_data_materialize_data_merge_roundtrip() {
+        use crate::variable_data::*;
+
+        let mut gen = IdGenerator::new();
+        let mut doc = Document::new();
+        let surface = gen.next_surface();
+        let obj_id = gen.next_object();
+
+        let mut mutator = DocumentMutator::new(&mut doc);
+        mutator.add_surface(surface, "Badge").unwrap();
+        let mut obj = DocumentObject::new(obj_id, "Placeholder");
+        obj.fill = Some("aubrieta.gray/200".to_string());
+        mutator.add_object(surface, obj).unwrap();
+
+        let json = r#"[
+            {"name": "Alice", "color": "aubrieta.red/500"},
+            {"name": "Bob", "color": "aubrieta.blue/500"}
+        ]"#;
+        let ds = DataSourceParser::parse_json(DataSourceId::new(10), "badges.json", json).unwrap();
+        let field_name_id = ds.schema.field_by_name("name").unwrap().id;
+        let field_color_id = ds.schema.field_by_name("color").unwrap().id;
+        mutator.add_data_source(ds).unwrap();
+
+        let bind_name = DataBinding {
+            id: BindingId::new(10),
+            source_id: DataSourceId::new(10),
+            field_id: field_name_id,
+            target_object: obj_id,
+            target_property: TargetProperty::TextContent,
+            formatter: ValueFormatter::Prefix("VIP: ".to_string()),
+            missing_policy: MissingValuePolicy::Skip,
+        };
+        let bind_color = DataBinding {
+            id: BindingId::new(11),
+            source_id: DataSourceId::new(10),
+            field_id: field_color_id,
+            target_object: obj_id,
+            target_property: TargetProperty::FillColor,
+            formatter: ValueFormatter::None,
+            missing_policy: MissingValuePolicy::Skip,
+        };
+        mutator.add_data_binding(bind_name).unwrap();
+        mutator.add_data_binding(bind_color).unwrap();
+
+        // Materialize data merge (generates 2 new artboards)
+        let c_merge = mutator
+            .materialize_data_merge(DataSourceId::new(10), surface, &mut gen)
+            .unwrap();
+
+        assert_eq!(mutator.document.surfaces.len(), 3); // Template + 2 generated
+        let s_alice = &mutator.document.surfaces[1];
+        assert_eq!(s_alice.name, "Badge [record-1]");
+        let obj_alice = &s_alice.objects[0];
+        assert_eq!(obj_alice.name, "VIP: Alice");
+        assert_eq!(obj_alice.fill.as_deref(), Some("aubrieta.red/500"));
+
+        let s_bob = &mutator.document.surfaces[2];
+        assert_eq!(s_bob.name, "Badge [record-2]");
+        let obj_bob = &s_bob.objects[0];
+        assert_eq!(obj_bob.name, "VIP: Bob");
+        assert_eq!(obj_bob.fill.as_deref(), Some("aubrieta.blue/500"));
+
+        // Revert materialization: removes generated surfaces
+        mutator.revert(&c_merge).unwrap();
+        assert_eq!(mutator.document.surfaces.len(), 1);
     }
 }

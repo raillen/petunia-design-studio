@@ -277,3 +277,65 @@ pub enum DialogRequest {
         confirm_label: String,
     },
 }
+
+/// Field metadata view-model for data merge UI (10.11).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FieldViewModel {
+    /// Stable field ID.
+    pub id: aubrieta_document::FieldId,
+    /// Field display title.
+    pub name: String,
+    /// Semantic data type.
+    pub field_type: aubrieta_document::FieldType,
+}
+
+/// Data source summary view-model for data merge panel (10.11).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DataSourceViewModel {
+    /// Stable data source ID.
+    pub id: aubrieta_document::DataSourceId,
+    /// Display name.
+    pub name: String,
+    /// Underlying tabular format.
+    pub format: aubrieta_document::DataSourceFormat,
+    /// Number of available fields.
+    pub field_count: usize,
+    /// Number of records/rows.
+    pub record_count: usize,
+    /// Field descriptors.
+    pub fields: Vec<FieldViewModel>,
+}
+
+/// Active data binding descriptor for panel presentation (10.11).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DataBindingViewModel {
+    /// Stable binding ID.
+    pub id: aubrieta_document::BindingId,
+    /// Data source ID.
+    pub source_id: aubrieta_document::DataSourceId,
+    /// Field ID.
+    pub field_id: aubrieta_document::FieldId,
+    /// Bound field name.
+    pub field_name: String,
+    /// Target object ID.
+    pub target_object: ObjectId,
+    /// Target object name.
+    pub target_object_name: String,
+    /// Target property path.
+    pub target_property: aubrieta_document::TargetProperty,
+    /// Declarative formatter.
+    pub formatter: aubrieta_document::ValueFormatter,
+}
+
+/// Complete presentation model for the Variable Data / Data Merge panel (10.11).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DataMergePresentationModel {
+    /// Registered data sources.
+    pub sources: Vec<DataSourceViewModel>,
+    /// Active property bindings.
+    pub bindings: Vec<DataBindingViewModel>,
+    /// Currently previewed record index (0-based), if any.
+    pub preview_record: Option<usize>,
+    /// Total records across primary source.
+    pub total_records: usize,
+}

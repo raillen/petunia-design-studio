@@ -12,6 +12,7 @@ mod document_object;
 pub mod hierarchy;
 mod mutator;
 pub mod surface_metadata;
+pub mod variable_data;
 
 pub use appearance::{
     AppearanceStack, BlendMode, EffectItem, EffectKind, FillItem, GradientStop, LinearGradient,
@@ -23,3 +24,8 @@ pub use document_object::DocumentObject;
 pub use hierarchy::{ContainerRole, HierarchyValidation, MaskMode};
 pub use mutator::DocumentMutator;
 pub use surface_metadata::{Bleed, Guide, GuideOrientation, Margins};
+pub use variable_data::{
+    BindingId, DataBinding, DataMergeEvaluator, DataRecord, DataSourceDefinition, DataSourceFormat,
+    DataSourceId, DataSourceParser, DataSourceSchema, FieldDescriptor, FieldId, FieldType,
+    FieldValue, MissingValuePolicy, PathSecurity, PreflightFinding, TargetProperty, ValueFormatter,
+};

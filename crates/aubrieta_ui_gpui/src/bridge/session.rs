@@ -5,7 +5,8 @@ use aubrieta_document::{ChangeSet, Document, DocumentObject};
 use aubrieta_foundation::{AubrietaError, IdGenerator, ObjectId, SurfaceId};
 
 use super::view_models::{
-    DocumentSummary, LayerRowViewModel, LayersPresentationModel, PropertiesPresentationModel,
+    DataBindingViewModel, DataMergePresentationModel, DataSourceViewModel, DocumentSummary,
+    FieldViewModel, LayerRowViewModel, LayersPresentationModel, PropertiesPresentationModel,
     SelectionViewModel, SessionSnapshot, SurfaceRowViewModel,
 };
 
@@ -511,6 +512,70 @@ impl DocumentSession {
             rotation: 0.0,
             appearance: None,
             active_surface: None,
+        }
+    }
+
+    /// Builds the presentation model for the Variable Data / Data Merge panel (10.11).
+    #[must_use]
+    pub fn data_merge_presentation_model(&self) -> DataMergePresentationModel {
+        let mut sources = Vec::new();
+        let mut total_records = 0;
+
+        for ds in &self.document.data_sources {
+            total_records += ds.records.len();
+            let fields: Vec<FieldViewModel> = ds
+                .schema
+                .fields
+                .iter()
+                .map(|f| FieldViewModel {
+                    id: f.id,
+                    name: f.name.clone(),
+                    field_type: f.field_type,
+                })
+                .collect();
+
+            sources.push(DataSourceViewModel {
+                id: ds.id,
+                name: ds.name.clone(),
+                format: ds.format,
+                field_count: ds.schema.fields.len(),
+                record_count: ds.records.len(),
+                fields,
+            });
+        }
+
+        let mut bindings = Vec::new();
+        for b in &self.document.bindings {
+            let field_name = self
+                .document
+                .data_source(b.source_id)
+                .and_then(|ds| ds.schema.field(b.field_id))
+                .map(|f| f.name.clone())
+                .unwrap_or_else(|| format!("Field#{}", b.field_id.raw()));
+
+            let target_object_name = self
+                .document
+                .find_object(b.target_object)
+                .map(|o| o.name.clone())
+                .unwrap_or_else(|| format!("Object#{}", b.target_object.raw()));
+
+            bindings.push(DataBindingViewModel {
+                id: b.id,
+                source_id: b.source_id,
+                field_id: b.field_id,
+                field_name,
+                target_object: b.target_object,
+                target_object_name,
+                target_property: b.target_property,
+                formatter: b.formatter.clone(),
+            });
+        }
+
+        DataMergePresentationModel {
+            sources,
+            bindings,
+            preview_record: None,
+            total_records,
         }
     }
 }

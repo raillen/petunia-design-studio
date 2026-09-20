@@ -211,6 +211,23 @@ impl Replayer {
                 Change::SurfaceGuideRemoved { surface, guide } => {
                     mutator.remove_surface_guide(surface, guide.id)?;
                 }
+                Change::DataSourceAdded { source } => {
+                    mutator.add_data_source(source)?;
+                }
+                Change::DataSourceRemoved { source } => {
+                    mutator.remove_data_source(source.id)?;
+                }
+                Change::DataBindingAdded { binding } => {
+                    mutator.add_data_binding(binding)?;
+                }
+                Change::DataBindingRemoved { binding } => {
+                    mutator.remove_data_binding(binding.id)?;
+                }
+                Change::BatchSurfacesAdded { surfaces } => {
+                    for s in surfaces {
+                        mutator.document_mut().surfaces.push(s);
+                    }
+                }
             }
         }
         Ok(())
@@ -322,5 +339,89 @@ mod tests {
         history.redo(&mut doc).unwrap();
         assert_eq!(doc.find_object(o1).unwrap().parent, Some(grp));
         assert!(doc.find_object(grp).is_some());
+    }
+
+    #[test]
+    fn execute_undo_redo_variable_data_merge() {
+        use aubrieta_document::{
+            BindingId, DataBinding, DataSourceId, DataSourceParser, MissingValuePolicy,
+            TargetProperty, ValueFormatter,
+        };
+
+        let mut gen = IdGenerator::new();
+        let mut doc = Document::default();
+        let mut history = History::new(100);
+        let surface = gen.next_surface();
+        let object = gen.next_object();
+
+        history
+            .execute(
+                &mut doc,
+                &CommandRequest::new(Command::CreateSurface {
+                    id: surface,
+                    name: "Card".to_string(),
+                }),
+            )
+            .unwrap();
+        history
+            .execute(
+                &mut doc,
+                &CommandRequest::new(Command::CreateObject {
+                    surface,
+                    id: object,
+                    name: "Title".to_string(),
+                }),
+            )
+            .unwrap();
+
+        // 1. Add Data Source
+        let csv = "Name\nAda\nAlan";
+        let ds =
+            DataSourceParser::parse_delimited(DataSourceId::new(1), "data.csv", csv, ',').unwrap();
+        history
+            .execute(
+                &mut doc,
+                &CommandRequest::new(Command::AddDataSource { source: ds }),
+            )
+            .unwrap();
+        assert_eq!(doc.data_sources.len(), 1);
+
+        // 2. Add Data Binding
+        let binding = DataBinding {
+            id: BindingId::new(1),
+            source_id: DataSourceId::new(1),
+            field_id: aubrieta_document::FieldId::new(1),
+            target_object: object,
+            target_property: TargetProperty::TextContent,
+            formatter: ValueFormatter::Uppercase,
+            missing_policy: MissingValuePolicy::Skip,
+        };
+        history
+            .execute(
+                &mut doc,
+                &CommandRequest::new(Command::AddDataBinding { binding }),
+            )
+            .unwrap();
+        assert_eq!(doc.bindings.len(), 1);
+
+        // 3. Materialize merge (2 records -> 2 new surfaces)
+        history
+            .execute(
+                &mut doc,
+                &CommandRequest::new(Command::MaterializeDataMerge {
+                    source_id: DataSourceId::new(1),
+                    template_surface: surface,
+                }),
+            )
+            .unwrap();
+        assert_eq!(doc.surfaces.len(), 3);
+
+        // 4. Undo merge
+        assert!(history.undo(&mut doc).unwrap());
+        assert_eq!(doc.surfaces.len(), 1);
+
+        // 5. Redo merge
+        assert!(history.redo(&mut doc).unwrap());
+        assert_eq!(doc.surfaces.len(), 3);
     }
 }

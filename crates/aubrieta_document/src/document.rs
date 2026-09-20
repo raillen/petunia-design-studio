@@ -97,6 +97,12 @@ pub struct Document {
     pub schema_version: u32,
     /// Surfaces in document order.
     pub surfaces: Vec<Surface>,
+    /// Variable data source definitions (10.11).
+    #[serde(default)]
+    pub data_sources: Vec<crate::variable_data::DataSourceDefinition>,
+    /// Variable data property bindings (10.11).
+    #[serde(default)]
+    pub bindings: Vec<crate::variable_data::DataBinding>,
 }
 
 impl Document {
@@ -106,7 +112,35 @@ impl Document {
         Self {
             schema_version: NATIVE_SCHEMA_VERSION,
             surfaces: Vec::new(),
+            data_sources: Vec::new(),
+            bindings: Vec::new(),
         }
+    }
+
+    /// Finds a data source by stable ID.
+    #[must_use]
+    pub fn data_source(
+        &self,
+        id: crate::variable_data::DataSourceId,
+    ) -> Option<&crate::variable_data::DataSourceDefinition> {
+        self.data_sources.iter().find(|ds| ds.id == id)
+    }
+
+    /// Finds a data source mutably by stable ID.
+    pub fn data_source_mut(
+        &mut self,
+        id: crate::variable_data::DataSourceId,
+    ) -> Option<&mut crate::variable_data::DataSourceDefinition> {
+        self.data_sources.iter_mut().find(|ds| ds.id == id)
+    }
+
+    /// Finds a data binding by stable ID.
+    #[must_use]
+    pub fn binding(
+        &self,
+        id: crate::variable_data::BindingId,
+    ) -> Option<&crate::variable_data::DataBinding> {
+        self.bindings.iter().find(|b| b.id == id)
     }
 
     /// Finds a surface by stable ID.

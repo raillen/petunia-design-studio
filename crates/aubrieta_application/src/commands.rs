@@ -106,6 +106,23 @@ pub enum Command {
         target_surface: SurfaceId,
         preserve_world_transform: bool,
     },
+    /// Registers a variable data source (10.11).
+    AddDataSource {
+        source: aubrieta_document::DataSourceDefinition,
+    },
+    /// Removes a variable data source (10.11).
+    RemoveDataSource { id: aubrieta_document::DataSourceId },
+    /// Adds a data binding (10.11).
+    AddDataBinding {
+        binding: aubrieta_document::DataBinding,
+    },
+    /// Removes a data binding (10.11).
+    RemoveDataBinding { id: aubrieta_document::BindingId },
+    /// Materializes variable data records into surfaces (10.11).
+    MaterializeDataMerge {
+        source_id: aubrieta_document::DataSourceId,
+        template_surface: SurfaceId,
+    },
 }
 
 /// Validated command ready for execution.
@@ -195,5 +212,31 @@ pub fn execute(
             target_surface,
             preserve_world_transform,
         } => mutator.move_object_between_surfaces(*id, *target_surface, *preserve_world_transform),
+        Command::AddDataSource { source } => mutator.add_data_source(source.clone()),
+        Command::RemoveDataSource { id } => mutator.remove_data_source(*id),
+        Command::AddDataBinding { binding } => mutator.add_data_binding(binding.clone()),
+        Command::RemoveDataBinding { id } => mutator.remove_data_binding(*id),
+        Command::MaterializeDataMerge {
+            source_id,
+            template_surface,
+        } => {
+            let max_surf_id = mutator
+                .document()
+                .surfaces
+                .iter()
+                .map(|s| s.id.raw())
+                .max()
+                .unwrap_or(0);
+            let max_obj_id = mutator
+                .document()
+                .surfaces
+                .iter()
+                .flat_map(|s| s.objects.iter().map(|o| o.id.raw()))
+                .max()
+                .unwrap_or(0);
+            let start = max_surf_id.max(max_obj_id) + 1;
+            let mut gen = aubrieta_foundation::IdGenerator::with_start(start);
+            mutator.materialize_data_merge(*source_id, *template_surface, &mut gen)
+        }
     }
 }

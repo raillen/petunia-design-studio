@@ -191,3 +191,40 @@ pub trait SurfacePort {
         preserve_world_transform: bool,
     ) -> Result<ChangeSet, AubrietaError>;
 }
+
+/// Variable Data and Data Merge operations port (10.11).
+pub trait VariableDataPort {
+    /// Registers or imports a tabular data source.
+    fn import_data_source(
+        &mut self,
+        source: aubrieta_document::DataSourceDefinition,
+    ) -> Result<ChangeSet, AubrietaError>;
+
+    /// Removes a data source and its cascading bindings.
+    fn remove_data_source(
+        &mut self,
+        id: aubrieta_document::DataSourceId,
+    ) -> Result<ChangeSet, AubrietaError>;
+
+    /// Adds a data binding between a field and a document object property.
+    fn add_data_binding(
+        &mut self,
+        binding: aubrieta_document::DataBinding,
+    ) -> Result<ChangeSet, AubrietaError>;
+
+    /// Removes a data binding.
+    fn remove_data_binding(
+        &mut self,
+        id: aubrieta_document::BindingId,
+    ) -> Result<ChangeSet, AubrietaError>;
+
+    /// Materializes records into generated surfaces on the pasteboard.
+    fn materialize_merge(
+        &mut self,
+        source_id: aubrieta_document::DataSourceId,
+        template_surface: SurfaceId,
+    ) -> Result<ChangeSet, AubrietaError>;
+
+    /// Resolves the current Variable Data presentation model.
+    fn query_variable_data(&self) -> super::view_models::DataMergePresentationModel;
+}
