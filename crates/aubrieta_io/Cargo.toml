@@ -13,3 +13,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 zip = "8.6.0"
+krilla = "0.8.2"
+
+[dev-dependencies]
+proptest = "1"

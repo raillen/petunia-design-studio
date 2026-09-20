@@ -8,7 +8,11 @@
 //! terms, reported as explicit errors.
 
 mod package;
+pub mod pdf;
 mod svg;
 
 pub use package::{open_package, save_package, PackageManifest, MEDIA_TYPE};
+pub use pdf::{
+    export_document_pdf, DegradationItem, FidelityGrade, PdfExportOptions, PreflightReport,
+};
 pub use svg::{export_document_svg, export_path_d, parse_path_d};
