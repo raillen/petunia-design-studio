@@ -7,10 +7,14 @@
 //! is the accepted short alias. `.abrt` and `.pds` are rejected glossary
 //! terms, reported as explicit errors.
 
+pub mod image_io;
 mod package;
 pub mod pdf;
 mod svg;
 
+pub use image_io::{
+    export_raster, import_raster, RasterExportOptions, RasterFormat, RawRasterImage,
+};
 pub use package::{open_package, save_package, PackageManifest, MEDIA_TYPE};
 pub use pdf::{
     export_document_pdf, DegradationItem, FidelityGrade, PdfExportOptions, PreflightReport,
