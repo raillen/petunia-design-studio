@@ -563,6 +563,7 @@ dependencies = [
  "aubrieta_geometry",
  "aubrieta_ui_gpui",
  "iced",
+ "rfd",
 ]
 
 [[package]]

@@ -16,3 +16,4 @@ aubrieta_document = { path = "../../crates/aubrieta_document" }
 aubrieta_application = { path = "../../crates/aubrieta_application" }
 aubrieta_ui_gpui = { path = "../../crates/aubrieta_ui_gpui" }
 iced = { version = "0.14", default-features = true, features = ["canvas"] }
+rfd = "0.15"
