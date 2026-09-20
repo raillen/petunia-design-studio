@@ -9,3 +9,6 @@ aubrieta_foundation = { path = "../aubrieta_foundation" }
 moxcms = "0.9.1"
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+proptest = "1"

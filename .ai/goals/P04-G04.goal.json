@@ -17,7 +17,12 @@
   "dependencies": [
     "P04-G01"
   ],
-  "evidence": [],
+  "evidence": [
+    "cargo test -p aubrieta_color: 11 unit tests + 3 proptests passed",
+    "cargo clippy -p aubrieta_color: 0 warnings",
+    "apps/aubrieta-cli step 16: soft-proofing out-of-gamut detection and CMYK number preservation verified",
+    "cargo xtask gauntlet: passed clean (110 tests total across workspace)"
+  ],
   "gates": {
     "build": "required",
     "documentation_impact": "required",
@@ -37,9 +42,42 @@
       "from": "DRAFT",
       "reason": "",
       "to": "PLANNED"
+    },
+    {
+      "at": "2026-09-20T03:02:00.465700342Z",
+      "event": "state-transition",
+      "from": "PLANNED",
+      "reason": "",
+      "to": "LOCKED"
+    },
+    {
+      "at": "2026-09-20T03:02:00.489810804Z",
+      "event": "state-transition",
+      "from": "LOCKED",
+      "reason": "",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-20T03:07:05.73725117Z",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "",
+      "to": "VERIFYING"
+    },
+    {
+      "at": "2026-09-20T03:07:05.773383142Z",
+      "event": "state-transition",
+      "from": "VERIFYING",
+      "reason": "",
+      "to": "REVIEWING"
     }
   ],
   "id": "P04-G04",
+  "lock": {
+    "digest": "736769a43458ad6112f2df3f6af8a1fd31799c0492cc0d8365eb7acd22785b2e",
+    "locked_at": "2026-09-20T03:02:00.465695539Z",
+    "revision": 1
+  },
   "non_goals": [
     "Manipulação direta de tabelas binárias raw de ICC sem CMM abstrato",
     "Integração direta de LittleCMS C dynamic linking no core seguro padrão"
@@ -47,6 +85,6 @@
   "objective": "Implementar contexto de soft-proofing, deteccao de cores fora de gama e politicas de preservacao de numeros CMYK",
   "phase": "P04",
   "revision": 1,
-  "state": "PLANNED",
+  "state": "REVIEWING",
   "title": "Gestao de Cor Avancada, Soft Proofing e Politicas de Preservacao"
 }

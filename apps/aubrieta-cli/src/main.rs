@@ -5,22 +5,34 @@
 //! color → undo/redo → save/reopen → export summary.
 
 use aubrieta_application::{Command, CommandRequest, History};
-use aubrieta_color::{convert_for_display, ColorValue, Lab, RenderingIntent};
+use aubrieta_color::{
+    convert_for_display, Cmyk, ColorManagementProvider, ColorValue, DefaultColorManagementProvider,
+    Lab, PreserveNumbersPolicy, ProofContext, RenderingIntent, Srgb,
+};
 use aubrieta_document::Document;
 use aubrieta_evaluation::Evaluator;
 use aubrieta_extension::{PluginHost, PluginId, PluginManifest, PluginPermission};
 use aubrieta_foundation::IdGenerator;
 use aubrieta_geometry::{boolean_op, BooleanInput, BooleanOp, GAffine, GPath, GPoint, PathVerb};
+use aubrieta_io::{
+    export_document_pdf, export_raster, import_raster, PdfExportOptions, RasterExportOptions,
+    RawRasterImage,
+};
+
 use aubrieta_mcp::{McpRequest, McpServer};
 use aubrieta_platform::{
     ClipboardService, EnvironmentService, FileFilter, HeadlessClipboard, HeadlessEnvironment,
 };
 use aubrieta_raster::{AlphaMode, BlendMode, BrushDab, PixelFormat, TileMap};
-use aubrieta_render::{HeadlessSummaryBackend, RenderBackend, Scene};
+use aubrieta_render::{
+    HeadlessSummaryBackend, IntermediateSurfacePlanner, RenderBackend, Scene,
+    SoftwarePixelCompositor, SurfaceFormat,
+};
 use aubrieta_resources::{
     IconId, Locale, ResourcePack, TextId, ThemeMode, ID_ACTION_EXPORT, ID_EXPORT_SUMMARY,
 };
 use aubrieta_text::{TextLayout, TextOffset, TextStory};
+
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -276,8 +288,61 @@ fn run() -> Result<(), String> {
         .unwrap();
     assert_eq!(mcp_rev, 2);
 
+    // 14. Vector PDF export (aubrieta_io::pdf).
+    let (pdf_bytes, pdf_report) = export_document_pdf(&document, &PdfExportOptions::default())
+        .map_err(|e| format!("pdf export: {e}"))?;
+    assert!(pdf_bytes.starts_with(b"%PDF-"));
+    assert_eq!(pdf_report.surfaces, 1);
+
+    // 15. Raster Image I/O (aubrieta_io::image_io).
+    let test_pixels = vec![255, 64, 32, 255, 10, 20, 30, 255];
+    let raw_img = RawRasterImage::from_rgba8(2, 1, test_pixels).unwrap();
+    let (png_bytes, _) = export_raster(&raw_img, &RasterExportOptions::default())
+        .map_err(|e| format!("png export: {e}"))?;
+    let imported_img =
+        import_raster(&png_bytes, 1024 * 1024).map_err(|e| format!("png import: {e}"))?;
+    assert_eq!(imported_img.width, 2);
+    assert_eq!(imported_img.height, 1);
+
+    // 16. Advanced Color Management & Soft-proofing (aubrieta_color).
+    let cmm = DefaultColorManagementProvider;
+    let swop_ctx = ProofContext::for_profile("US Web Coated (SWOP) v2");
+    let saturated_color = ColorValue::Rgb(Srgb::clamped(0.0, 1.0, 0.0));
+    let (_simulated_srgb, gamut_status) = cmm.soft_proof(&saturated_color, &swop_ctx);
+    assert!(matches!(
+        gamut_status,
+        aubrieta_color::GamutStatus::OutOfGamut { .. }
+    ));
+    let cmyk_orig = Cmyk {
+        c: 0.2,
+        m: 0.4,
+        y: 0.6,
+        k: 1.0,
+    };
+    let preserved_cmyk = cmm.apply_cmyk_policy(
+        cmyk_orig,
+        PreserveNumbersPolicy::PreserveBlackOnly,
+        "FOGRA39",
+    );
+    assert_eq!(preserved_cmyk.k, 1.0);
+
+    // 17. Deterministic pixel composition & surface allocation planner (aubrieta_render).
+    let mut planner = IntermediateSurfacePlanner::default();
+    let planned_surface = planner
+        .plan_surface(bounds, 8.0, SurfaceFormat::Rgba8)
+        .map_err(|e| format!("surface planning: {e}"))?;
+    assert!(planned_surface.memory_bytes > 0);
+    let pixel_buf = SoftwarePixelCompositor::render_surface_rgba8(
+        &document.surfaces[0],
+        128,
+        128,
+        [255, 255, 255, 255],
+    );
+    assert_eq!(pixel_buf.width, 128);
+    assert_eq!(pixel_buf.height, 128);
+
     println!(
-        "OK surfaces={} objects={} gen={} bounds=({},{}) union_contours={} white=({:.2},{:.2},{:.2}) lines={} raster_tiles={} svg_len={} tokens={} locales=2 clip_len={} plugin_out=\"{}\" mcp_rev={}",
+        "OK surfaces={} objects={} gen={} bounds=({},{}) union_contours={} white=({:.2},{:.2},{:.2}) lines={} raster_tiles={} svg_len={} tokens={} locales=2 clip_len={} plugin_out=\"{}\" mcp_rev={} pdf_len={} png_len={} planned_bytes={}",
         summary.surfaces,
         summary.objects,
         summary.generation,
@@ -294,6 +359,9 @@ fn run() -> Result<(), String> {
         pasted_svg.len(),
         plugin_output,
         mcp_rev,
+        pdf_bytes.len(),
+        png_bytes.len(),
+        planned_surface.memory_bytes,
     );
     println!("i18n en-US: \"{en_msg}\"");
     println!("i18n pt-BR: \"{pt_msg}\"");

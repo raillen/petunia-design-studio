@@ -4,12 +4,12 @@
 - Data deste estado: **2026-09-19**
 - Upstream normativo: [`docs/`](docs/) (Atlas Arquitetural e Decisões de Design)
 - Governança de agentes: [`AGENTS.md`](AGENTS.md)
-- Fase Ativa Atual: **P04 (Renderização GPU & Formatos de Intercâmbio Avançados)**
-- Fases Concluídas: **P00 (Fundação)**, **P01 (Core Headless MVP)**, **P02 (Texto, Raster & SVG)**, **P03 (Extensão, Recursos e MCP)** — todas com suíte verde e gauntlet validado.
+- Fase Ativa Atual: **P05 (Shell Desktop & Interatividade)**
+- Fases Concluídas: **P00 (Fundação)**, **P01 (Core Headless MVP)**, **P02 (Texto, Raster & SVG)**, **P03 (Extensão, Recursos e MCP)**, **P04 (Renderização, PDF, Raster I/O e Prova de Cor)** — todas com suíte verde e gauntlet validado.
 
 ## Resumo Executivo
 
-O núcleo *headless* do Aubrieta Design está estabelecido e estável:
+O núcleo completo e o subsistema de intercâmbio/renderização do Aubrieta Design estão estabelecidos e estáveis:
 1. Modelo canônico de documento com mutações exclusivas via `DocumentMutator` e `ChangeSet`.
 2. Geometria 2D vetorial canônica com operações booleanas via adaptadores isolados.
 3. Modelo de cor multivalorado (sRGB, CMYK, Lab, Spot) com adaptador defensivo `moxcms`.
@@ -20,7 +20,11 @@ O núcleo *headless* do Aubrieta Design está estabelecido e estável:
 8. Serviços de Plataforma (`aubrieta_platform`): portas de clipboard, file dialogs e ambiente com adaptadores headless em memória.
 9. Sistema de Extensões (`aubrieta_extension`): Plugin SDK, manifestos com permissões granulares, capability broker e sandbox Lua 5.4.
 10. Servidor MCP (`aubrieta_mcp`): JSON-RPC 2.0 com descoberta, inspeção semântica, mutações transacionais e detecção de revisões defasadas.
-11. Pipeline de validação `cargo xtask gauntlet` aprovando **80 testes** (62 unitários e 18 proptests), clippy limpo e checagem de arestas proibidas.
+11. Motor de Composição e Renderização (`aubrieta_render`): contrato de 16 blend modes (W3C/PDF), grupos de isolamento, planejador de superfícies offscreen e renderizador de pixels determinístico para RGBA8 e RGBA16.
+12. Exportação Vetorial PDF (`aubrieta_io::pdf`): exportador profissional com `krilla`, suporte sRGB e CMYK nativos, caminhos vetoriais e análise de degradação/preflight.
+13. Importação/Exportação Raster (`aubrieta_io::image_io`): adaptadores para PNG, JPEG, WebP e TIFF com preservação de 8-bit e 16-bit e sniffing defensivo.
+14. Gestão de Cor e Soft-Proofing (`aubrieta_color::proof`): simulação de perfis de prensa (SWOP/FOGRA), detecção de cores fora de gama (out-of-gamut) e políticas de preservação numérica de CMYK.
+15. Pipeline de validação `cargo xtask gauntlet` aprovando **110 testes** (83 unitários e 27 proptests), clippy limpo e checagem de arestas proibidas.
 
 ## Matriz de Implementação de Fases
 
@@ -30,5 +34,6 @@ O núcleo *headless* do Aubrieta Design está estabelecido e estável:
 | **P01** | Core Headless MVP | `COMPLIANT` / `REVIEWING` | 37 testes, geometria, cor, evaluation, scene, `.aubrieta` zip | Homologação formal dos goals |
 | **P02** | Texto, Raster e SVG | `COMPLIANT` / `REVIEWING` | 46 testes, `aubrieta_text`, `aubrieta_raster` 128x128 16-bit, SVG I/O, CLI conformance | Homologação formal dos goals |
 | **P03** | Extensão, Recursos e Plataforma | `COMPLIANT` / `REVIEWING` | 80 testes, `aubrieta_resources`, `aubrieta_platform`, `aubrieta_extension`, `aubrieta_mcp` | Homologação formal dos goals |
-| **P04** | Renderização GPU & Formatos | `EXECUTING` | Especificações em `09.7`, `09.9`, `09.11` | `P04-G01` (`aubrieta_compositor`), `P04-G02` (`aubrieta_pdf`), `P04-G03` (`aubrieta_image_io`) |
-| **P05** | Shell Desktop & Interatividade | `PLANNED` | Especificações em `09.24`, `09.27`, `10.x` | `AubrietaGuiBridge` e aplicação GPUI |
+| **P04** | Renderização GPU & Formatos | `COMPLIANT` / `REVIEWING` | 110 testes, `aubrieta_render`, `aubrieta_io::pdf`, `aubrieta_io::image_io`, `aubrieta_color::proof` | Homologação formal dos goals |
+| **P05** | Shell Desktop & Interatividade | `EXECUTING` | Especificações em `09.24`, `09.27`, `10.x` | `AubrietaGuiBridge` e aplicação GPUI / Shell desktop |
+
