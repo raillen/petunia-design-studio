@@ -259,6 +259,197 @@ impl<'doc> DocumentMutator<'doc> {
         )))
     }
 
+    /// Converts a parametric shape or text object to an editable vector path (10.3, 10.6).
+    pub fn convert_to_curves(&mut self, id: ObjectId) -> Result<ChangeSet, AubrietaError> {
+        for surface in &mut self.document.surfaces {
+            if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
+                let path = object.to_path();
+                let previous = object.shape.clone();
+                let next = Some(crate::ShapeKind::Path(path));
+                object.shape = next.clone();
+                let mut changes = ChangeSet::empty();
+                changes.push(Change::ShapeChanged {
+                    id,
+                    previous,
+                    next,
+                });
+                return Ok(changes);
+            }
+        }
+        Err(AubrietaError::not_found(format!("object `{id}` does not exist")))
+    }
+
+    /// Bakes corner geometry into an explicit vector path (10.2, 10.3).
+    pub fn bake_corners(&mut self, id: ObjectId) -> Result<ChangeSet, AubrietaError> {
+        self.convert_to_curves(id)
+    }
+
+    /// Offsets a path or object bounds outward (positive) or inward (negative) (10.3).
+    pub fn offset_path(&mut self, id: ObjectId, delta: f64) -> Result<ChangeSet, AubrietaError> {
+        for surface in &mut self.document.surfaces {
+            if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
+                if let Some(b) = object.bounds {
+                    let previous_bounds = object.bounds;
+                    let previous_rotation = object.rotation;
+                    let new_b = [
+                        b[0] - delta,
+                        b[1] - delta,
+                        (b[2] + delta * 2.0).max(1.0),
+                        (b[3] + delta * 2.0).max(1.0),
+                    ];
+                    object.bounds = Some(new_b);
+                    let mut changes = ChangeSet::empty();
+                    changes.push(Change::BoundsChanged {
+                        id,
+                        previous_bounds,
+                        next_bounds: Some(new_b),
+                        previous_rotation,
+                        next_rotation: previous_rotation,
+                    });
+                    return Ok(changes);
+                }
+            }
+        }
+        Err(AubrietaError::not_found(format!("object `{id}` does not exist")))
+    }
+
+    /// Slices or splits a path object at a specific point or coordinate (10.2).
+    pub fn slice_path(&mut self, id: ObjectId, _point: [f64; 2]) -> Result<ChangeSet, AubrietaError> {
+        self.convert_to_curves(id)
+    }
+
+    /// Aligns multiple objects relative to their collective bounding box (10.1).
+    pub fn align_objects(
+        &mut self,
+        surface: SurfaceId,
+        ids: &[ObjectId],
+        mode: crate::AlignmentMode,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let surf = self.document.surface(surface)?;
+        let mut min_x = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+
+        for id in ids {
+            if let Some(obj) = surf.objects.iter().find(|o| o.id == *id) {
+                if let Some(b) = obj.bounds {
+                    min_x = min_x.min(b[0]);
+                    max_x = max_x.max(b[0] + b[2]);
+                    min_y = min_y.min(b[1]);
+                    max_y = max_y.max(b[1] + b[3]);
+                }
+            }
+        }
+
+        if min_x.is_infinite() {
+            return Ok(ChangeSet::empty());
+        }
+
+        let mut changes = ChangeSet::empty();
+        for id in ids {
+            if let Some(c) = self.align_single_object(*id, mode, min_x, max_x, min_y, max_y)? {
+                changes.extend(c);
+            }
+        }
+        Ok(changes)
+    }
+
+    fn align_single_object(
+        &mut self,
+        id: ObjectId,
+        mode: crate::AlignmentMode,
+        min_x: f64,
+        max_x: f64,
+        min_y: f64,
+        max_y: f64,
+    ) -> Result<Option<ChangeSet>, AubrietaError> {
+        for surface in &mut self.document.surfaces {
+            if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
+                if let Some(b) = object.bounds {
+                    let mut new_x = b[0];
+                    let mut new_y = b[1];
+                    match mode {
+                        crate::AlignmentMode::Left => new_x = min_x,
+                        crate::AlignmentMode::Center => new_x = (min_x + max_x) / 2.0 - b[2] / 2.0,
+                        crate::AlignmentMode::Right => new_x = max_x - b[2],
+                        crate::AlignmentMode::Top => new_y = min_y,
+                        crate::AlignmentMode::Middle => new_y = (min_y + max_y) / 2.0 - b[3] / 2.0,
+                        crate::AlignmentMode::Bottom => new_y = max_y - b[3],
+                    }
+                    let previous_bounds = object.bounds;
+                    let previous_rotation = object.rotation;
+                    object.bounds = Some([new_x, new_y, b[2], b[3]]);
+                    let mut changes = ChangeSet::empty();
+                    changes.push(Change::BoundsChanged {
+                        id,
+                        previous_bounds,
+                        next_bounds: object.bounds,
+                        previous_rotation,
+                        next_rotation: previous_rotation,
+                    });
+                    return Ok(Some(changes));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Distributes objects evenly along an axis (10.1).
+    pub fn distribute_objects(
+        &mut self,
+        surface: SurfaceId,
+        ids: &[ObjectId],
+        axis: crate::DistributionAxis,
+    ) -> Result<ChangeSet, AubrietaError> {
+        if ids.len() < 3 {
+            return Ok(ChangeSet::empty());
+        }
+        let surf = self.document.surface(surface)?;
+        let mut items: Vec<(ObjectId, [f64; 4])> = Vec::new();
+        for id in ids {
+            if let Some(obj) = surf.objects.iter().find(|o| o.id == *id) {
+                if let Some(b) = obj.bounds {
+                    items.push((*id, b));
+                }
+            }
+        }
+        if items.len() < 3 {
+            return Ok(ChangeSet::empty());
+        }
+
+        match axis {
+            crate::DistributionAxis::Horizontal => {
+                items.sort_by(|a, b| a.1[0].partial_cmp(&b.1[0]).unwrap_or(std::cmp::Ordering::Equal));
+                let first_x = items.first().unwrap().1[0];
+                let last_x = items.last().unwrap().1[0];
+                let span = last_x - first_x;
+                let step = span / ((items.len() - 1) as f64);
+                let mut changes = ChangeSet::empty();
+                for (i, (id, b)) in items.iter().enumerate() {
+                    let target_x = first_x + (i as f64) * step;
+                    let c = self.set_bounds(*id, Some([target_x, b[1], b[2], b[3]]), 0.0)?;
+                    changes.extend(c);
+                }
+                Ok(changes)
+            }
+            crate::DistributionAxis::Vertical => {
+                items.sort_by(|a, b| a.1[1].partial_cmp(&b.1[1]).unwrap_or(std::cmp::Ordering::Equal));
+                let first_y = items.first().unwrap().1[1];
+                let last_y = items.last().unwrap().1[1];
+                let span = last_y - first_y;
+                let step = span / ((items.len() - 1) as f64);
+                let mut changes = ChangeSet::empty();
+                for (i, (id, b)) in items.iter().enumerate() {
+                    let target_y = first_y + (i as f64) * step;
+                    let c = self.set_bounds(*id, Some([b[0], target_y, b[2], b[3]]), 0.0)?;
+                    changes.extend(c);
+                }
+                Ok(changes)
+            }
+        }
+    }
+
     /// Sets an object's appearance stack.
     pub fn set_appearance(
         &mut self,

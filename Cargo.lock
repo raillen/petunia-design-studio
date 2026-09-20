@@ -770,6 +770,7 @@ dependencies = [
  "aubrieta_foundation",
  "aubrieta_geometry",
  "aubrieta_platform",
+ "aubrieta_raster",
  "aubrieta_resources",
  "proptest",
  "serde",

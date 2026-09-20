@@ -165,6 +165,24 @@ impl DocumentSession {
         }
     }
 
+    /// Allocates a new monotonically increasing SurfaceId guaranteed unique within the document.
+    pub fn next_surface_id(&mut self) -> SurfaceId {
+        let max_existing = self
+            .document
+            .surfaces
+            .iter()
+            .map(|s| s.id.raw())
+            .max()
+            .unwrap_or(0);
+        let id = self.id_generator.next_surface();
+        if id.raw() <= max_existing {
+            self.id_generator = IdGenerator::with_start(max_existing + 1);
+            self.id_generator.next_surface()
+        } else {
+            id
+        }
+    }
+
     /// True if unsaved modifications exist.
     #[must_use]
     pub fn is_dirty(&self) -> bool {

@@ -224,3 +224,21 @@ impl DocumentObject {
         }
     }
 }
+
+/// Alignment modes for multi-selection layout commands (10.1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AlignmentMode {
+    Left,
+    Center,
+    Right,
+    Top,
+    Middle,
+    Bottom,
+}
+
+/// Distribution axes for multi-selection spacing commands (10.1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DistributionAxis {
+    Horizontal,
+    Vertical,
+}

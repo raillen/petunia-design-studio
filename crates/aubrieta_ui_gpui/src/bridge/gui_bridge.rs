@@ -145,6 +145,16 @@ impl AubrietaGuiBridge {
         self.session_req_mut().map(|s| s.next_object_id())
     }
 
+    /// Allocates the next unique surface ID in the active session.
+    pub fn next_surface_id(&mut self) -> Result<SurfaceId, AubrietaError> {
+        self.session_req_mut().map(|s| s.next_surface_id())
+    }
+
+    /// Sets the currently active surface.
+    pub fn set_active_surface(&mut self, surface: SurfaceId) -> Result<(), AubrietaError> {
+        InspectionPort::set_active_surface(self, surface)
+    }
+
     /// Submits a validated command request.
     pub fn submit_command(&mut self, request: CommandRequest) -> Result<ChangeSet, AubrietaError> {
         CommandPort::submit_command(self, request)
@@ -310,6 +320,58 @@ impl AubrietaGuiBridge {
             clip_id,
             op,
         }))
+    }
+
+    /// Converts a parametric shape or text object to an editable vector path (10.3, 10.6).
+    pub fn convert_to_curves(&mut self, id: ObjectId) -> Result<ChangeSet, AubrietaError> {
+        self.submit_command(CommandRequest::new(Command::ConvertToCurves { id }))
+    }
+
+    /// Bakes corner geometry into an explicit vector path (10.2, 10.3).
+    pub fn bake_corners(&mut self, id: ObjectId) -> Result<ChangeSet, AubrietaError> {
+        self.submit_command(CommandRequest::new(Command::BakeCorners { id }))
+    }
+
+    /// Offsets a path or object bounds outward or inward (10.3).
+    pub fn offset_path(&mut self, id: ObjectId, delta: f64) -> Result<ChangeSet, AubrietaError> {
+        self.submit_command(CommandRequest::new(Command::OffsetPath { id, delta }))
+    }
+
+    /// Aligns multiple objects relative to their collective bounds (10.1).
+    pub fn align_objects(
+        &mut self,
+        surface: SurfaceId,
+        ids: Vec<ObjectId>,
+        mode: aubrieta_document::AlignmentMode,
+    ) -> Result<ChangeSet, AubrietaError> {
+        self.submit_command(CommandRequest::new(Command::AlignObjects {
+            surface,
+            ids,
+            mode,
+        }))
+    }
+
+    /// Distributes objects evenly along an axis (10.1).
+    pub fn distribute_objects(
+        &mut self,
+        surface: SurfaceId,
+        ids: Vec<ObjectId>,
+        axis: aubrieta_document::DistributionAxis,
+    ) -> Result<ChangeSet, AubrietaError> {
+        self.submit_command(CommandRequest::new(Command::DistributeObjects {
+            surface,
+            ids,
+            axis,
+        }))
+    }
+
+    /// Slices or splits a path object at a specific point (10.2).
+    pub fn slice_path(
+        &mut self,
+        id: ObjectId,
+        point: [f64; 2],
+    ) -> Result<ChangeSet, AubrietaError> {
+        self.submit_command(CommandRequest::new(Command::SlicePath { id, point }))
     }
 
     /// Groups objects into a container with a designated role (10.5 One-Tree).

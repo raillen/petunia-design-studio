@@ -147,6 +147,26 @@ pub enum Command {
         clip_id: ObjectId,
         op: aubrieta_geometry::BooleanOp,
     },
+    /// Converts a parametric shape or text object to an editable vector path (10.3, 10.6).
+    ConvertToCurves { id: ObjectId },
+    /// Bakes corner geometry into an explicit vector path (10.2, 10.3).
+    BakeCorners { id: ObjectId },
+    /// Offsets a path or object bounds outward or inward (10.3).
+    OffsetPath { id: ObjectId, delta: f64 },
+    /// Aligns multiple objects relative to their collective bounds (10.1).
+    AlignObjects {
+        surface: SurfaceId,
+        ids: Vec<ObjectId>,
+        mode: aubrieta_document::AlignmentMode,
+    },
+    /// Distributes objects evenly along an axis (10.1).
+    DistributeObjects {
+        surface: SurfaceId,
+        ids: Vec<ObjectId>,
+        axis: aubrieta_document::DistributionAxis,
+    },
+    /// Slices or splits a path object at a specific point (10.2).
+    SlicePath { id: ObjectId, point: [f64; 2] },
 }
 
 /// Validated command ready for execution.
@@ -328,5 +348,13 @@ pub fn execute(
 
             Ok(changes)
         }
+        Command::ConvertToCurves { id } => mutator.convert_to_curves(*id),
+        Command::BakeCorners { id } => mutator.bake_corners(*id),
+        Command::OffsetPath { id, delta } => mutator.offset_path(*id, *delta),
+        Command::AlignObjects { surface, ids, mode } => mutator.align_objects(*surface, ids, *mode),
+        Command::DistributeObjects { surface, ids, axis } => {
+            mutator.distribute_objects(*surface, ids, *axis)
+        }
+        Command::SlicePath { id, point } => mutator.slice_path(*id, *point),
     }
 }
