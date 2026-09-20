@@ -1,0 +1,73 @@
+{
+  "acceptance": [
+    "Replace this placeholder with objective acceptance criteria."
+  ],
+  "constraints": [],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [],
+  "evidence": [],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-20T05:39:57.413963906Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-20T05:40:00.105023944Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "",
+      "to": "PLANNED"
+    },
+    {
+      "at": "2026-09-20T05:40:00.141877599Z",
+      "event": "state-transition",
+      "from": "PLANNED",
+      "reason": "",
+      "to": "LOCKED"
+    },
+    {
+      "at": "2026-09-20T05:40:00.160074553Z",
+      "event": "state-transition",
+      "from": "LOCKED",
+      "reason": "",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-20T05:58:10.483290445Z",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "",
+      "to": "VERIFYING"
+    },
+    {
+      "at": "2026-09-20T05:58:10.547648812Z",
+      "event": "state-transition",
+      "from": "VERIFYING",
+      "reason": "",
+      "to": "REVIEWING"
+    }
+  ],
+  "id": "P07-G01",
+  "lock": {
+    "digest": "72e4b0f8d735bc9ab7d434f23911e1404100cce275c90d916872c816951fa215",
+    "locked_at": "2026-09-20T05:40:00.141864577Z",
+    "revision": 1
+  },
+  "non_goals": [],
+  "objective": "Integrar a aplicacao desktop interativa conectando AubrietaShell e AubrietaGuiBridge ao frontend executavel",
+  "phase": "P07",
+  "revision": 1,
+  "state": "REVIEWING",
+  "title": "Aplicacao Desktop Executavel e Shell GUI"
+}

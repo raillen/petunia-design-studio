@@ -4,8 +4,8 @@
 - Data deste estado: **2026-09-20**
 - Upstream normativo: [`docs/`](docs/) (Atlas Arquitetural e Decisões de Design)
 - Governança de agentes: [`AGENTS.md`](AGENTS.md)
-- Fase Ativa Atual: **P05 (Shell Desktop & Interatividade) — Concluída em `REVIEWING`**
-- Fases Concluídas: **P00 (Fundação)**, **P01 (Core Headless MVP)**, **P02 (Texto, Raster & SVG)**, **P03 (Extensão, Recursos e MCP)**, **P04 (Renderização, PDF, Raster I/O e Prova de Cor)**, **P05 (Shell Desktop & Interatividade)** — todas com suíte verde e gauntlet validado.
+- Fase Ativa Atual: **P07 (Aplicação Desktop & GUI Interativa) — Concluída em `REVIEWING`**
+- Fases Concluídas: **P00 (Fundação)**, **P01 (Core Headless MVP)**, **P02 (Texto, Raster & SVG)**, **P03 (Extensão, Recursos e MCP)**, **P04 (Renderização, PDF, Raster I/O e Prova de Cor)**, **P05 (Shell Desktop & Interatividade)**, **P06 (Aparência, Hierarquia, Multi-Superfícies & Data Merge)**, **P07 (Aplicação Desktop & GUI Interativa)** — todas com suíte verde e gauntlet validado.
 
 ## Resumo Executivo
 
@@ -28,9 +28,18 @@ O núcleo completo, o subsistema de renderização/I/O e a camada de interface d
     - `AubrietaGuiBridge`: facade unificada implementando portas semânticas (`ActionQueryPort`, `CommandPort`, `PropertyPort`, `DocumentQueryPort`, `SelectionPort`, `InspectionPort`) com isolamento estrito de tipos da GUI do domínio.
     - Viewport & Canvas: `ViewportCamera` com zoom infinito invariante centrado no cursor (0.1% a 25600%) e `SnapEngine` com histerese anti-jitter e guias visuais.
     - Máquina de Ferramentas: ferramentas interativas `SelectTool` (seleção, marquee, translação, duplicate-drag Alt/Option), `PenTool` (tangentes Bézier e fechamento de curva), `NodeTool` e `ShapeTool` (retângulo, elipse, polígono com restrição 1:1 via Shift).
-    - Painéis Reativos: `LayersPanelController` (visibilidade, lock, reordenação), `PropertiesPanelController` (fill, stroke, opacity, bounds) e `HistoryPanelController` (inspeção de undo/redo).
+    - Painéis Reativos: `LayersPanelController` (visibilidade, lock, reordenação), `PropertiesPanelController` (fill, stroke, opacity, bounds), `HistoryPanelController` (inspeção de undo/redo) e `DataMergePanelController` (fontes CSV/TSV/JSON, bindings tipados, preflight, materialização em lote).
     - Shell Desktop & Harness Headless: `AubrietaShell` e `MockGuiAdapter` com 8 invariantes de conformidade em CI headless.
-16. Pipeline de validação `cargo xtask gauntlet` aprovando **130 testes** (100 unitários e de integração + 30 proptests), clippy sem advertências e sem arestas proibidas de arquitetura.
+16. Funcionalidades Avançadas de Documento (P06):
+    - Pilha de Aparência Avançada (10.4): múltiplos preenchimentos (`FillItem`), múltiplos traçados (`StrokeItem`), gradientes lineares e radiais, modos de mesclagem W3C/PDF e efeitos tipados.
+    - Hierarquia One-Tree (10.5): agrupamento declarativo, reparenting com preservação de coordenadas no mundo, máscaras de recorte (`CreateClipGroup`/`ReleaseClipGroup`) e prevenção de ciclos cíclicos.
+    - Multi-Superfícies e Pranchetas (10.7): sangria (`Bleed`), margens internas (`Margins`), guias horizontais/verticais (`Guide`) e transição atômica de objetos entre pranchetas.
+    - Motor de Dados Variáveis (10.11): ingestão de CSV/TSV/JSON, vinculação declarativa de propriedades, formatadores puros e materialização em lote de pranchetas.
+17. Aplicação Desktop Interativa (P07 / `apps/aubrieta-desktop`):
+    - Executável desktop completo com loop de eventos a 60 FPS via `minifb`, tratamento de mouse (clique, arrasto, hover, roda de rolagem), atalhos de teclado (V, A, P, M, E, G, Ctrl+Z, Ctrl+Y, 1-4).
+    - Renderizador 2D com fonte bitmap 8x8 embarcada, barra de menu, barra de ferramentas de contexto, barra de ferramentas lateral, canvas interativo com pranchetas/sangrias/margens/guias e dock com painéis de Camadas, Propriedades, Histórico e Data Merge.
+    - Suporte a execução gráfica nativa e fallback automático para modo de smoke test em ambientes headless/CI.
+18. Pipeline de validação `cargo xtask gauntlet` aprovando **146+ testes** (unitários, integração e proptests), clippy sem advertências e sem arestas proibidas de arquitetura.
 
 ## Matriz de Implementação de Fases
 
@@ -42,4 +51,6 @@ O núcleo completo, o subsistema de renderização/I/O e a camada de interface d
 | **P03** | Extensão, Recursos e Plataforma | `COMPLIANT` / `REVIEWING` | 80 testes, `aubrieta_resources`, `aubrieta_platform`, `aubrieta_extension`, `aubrieta_mcp` | Homologação formal dos goals |
 | **P04** | Renderização GPU & Formatos | `COMPLIANT` / `REVIEWING` | 110 testes, `aubrieta_render`, `aubrieta_io::pdf`, `aubrieta_io::image_io`, `aubrieta_color::proof` | Homologação formal dos goals |
 | **P05** | Shell Desktop & Interatividade | `COMPLIANT` / `REVIEWING` | 130 testes, `aubrieta_ui_gpui` (bridge, viewport, snapping, select/pen/node/shape tools, painéis e mock adapter) | Próximas fases / homologação |
+| **P06** | Aparência, Hierarquia, Multi-Superfícies & Data Merge | `COMPLIANT` / `REVIEWING` | 144 testes, `AppearanceStack`, One-Tree, grupos, clip groups, artboards, sangria, margens, guias, motor CSV/TSV/JSON e merge | P07 concluída |
+| **P07** | Aplicação Desktop & GUI Interativa | `COMPLIANT` / `REVIEWING` | 146+ testes, `apps/aubrieta-desktop` executável, loop 60 FPS, UI chrome completo, smoke test headless aprovado | Homologação / Release |
 

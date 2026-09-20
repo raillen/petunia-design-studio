@@ -1,0 +1,24 @@
+[package]
+name = "aubrieta-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aubrieta-desktop"
+path = "src/main.rs"
+
+[dependencies]
+aubrieta_foundation = { path = "../../crates/aubrieta_foundation" }
+aubrieta_document = { path = "../../crates/aubrieta_document" }
+aubrieta_application = { path = "../../crates/aubrieta_application" }
+aubrieta_geometry = { path = "../../crates/aubrieta_geometry" }
+aubrieta_color = { path = "../../crates/aubrieta_color" }
+aubrieta_render = { path = "../../crates/aubrieta_render" }
+aubrieta_resources = { path = "../../crates/aubrieta_resources" }
+aubrieta_platform = { path = "../../crates/aubrieta_platform" }
+aubrieta_ui_gpui = { path = "../../crates/aubrieta_ui_gpui" }
+aubrieta_io = { path = "../../crates/aubrieta_io" }
+minifb = "0.28.0"
+serde.workspace = true
+serde_json.workspace = true
