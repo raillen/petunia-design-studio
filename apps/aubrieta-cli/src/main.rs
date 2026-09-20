@@ -10,9 +10,16 @@ use aubrieta_document::Document;
 use aubrieta_evaluation::Evaluator;
 use aubrieta_foundation::IdGenerator;
 use aubrieta_geometry::{boolean_op, BooleanInput, BooleanOp, GAffine, GPath, GPoint, PathVerb};
+use aubrieta_platform::{
+    ClipboardService, EnvironmentService, FileFilter, HeadlessClipboard, HeadlessEnvironment,
+};
 use aubrieta_raster::{AlphaMode, BlendMode, BrushDab, PixelFormat, TileMap};
 use aubrieta_render::{HeadlessSummaryBackend, RenderBackend, Scene};
+use aubrieta_resources::{
+    IconId, Locale, ResourcePack, TextId, ThemeMode, ID_ACTION_EXPORT, ID_EXPORT_SUMMARY,
+};
 use aubrieta_text::{TextLayout, TextOffset, TextStory};
+use std::collections::HashMap;
 
 fn main() {
     if let Err(error) = run() {
@@ -162,8 +169,57 @@ fn run() -> Result<(), String> {
     let parsed_path = aubrieta_io::parse_path_d(&path_d).map_err(|e| format!("svg parse: {e}"))?;
     assert_eq!(parsed_path.verbs.len(), triangle.verbs.len());
 
+    // 10. Resource Pack, DTCG Tokens & i18n (aubrieta_resources).
+    let core_pack = ResourcePack::core_pack();
+    let light_token = core_pack
+        .tokens
+        .resolve("surface.canvas", Some(ThemeMode::Light))
+        .map_err(|e| format!("token light: {e}"))?;
+    let dark_token = core_pack
+        .tokens
+        .resolve("surface.canvas", Some(ThemeMode::Dark))
+        .map_err(|e| format!("token dark: {e}"))?;
+    assert_ne!(light_token, dark_token);
+
+    let mut i18n_params = HashMap::new();
+    i18n_params.insert("count".to_string(), "1".to_string());
+    i18n_params.insert("format".to_string(), "SVG".to_string());
+    let en_msg =
+        core_pack
+            .localization
+            .format(&TextId::new(ID_EXPORT_SUMMARY), &Locale::EnUs, &i18n_params);
+    let pt_msg =
+        core_pack
+            .localization
+            .format(&TextId::new(ID_EXPORT_SUMMARY), &Locale::PtBr, &i18n_params);
+    assert!(en_msg.contains("Exported 1 items"));
+    assert!(pt_msg.contains("Exportados 1 itens"));
+    assert!(core_pack
+        .icons
+        .get(&IconId::new(ID_ACTION_EXPORT))
+        .is_some());
+
+    // 11. Platform Services & In-Memory Clipboard (aubrieta_platform).
+    let mut clipboard = HeadlessClipboard::new();
+    clipboard
+        .set_text(&svg_content)
+        .map_err(|e| format!("clipboard set: {e}"))?;
+    let pasted_svg = clipboard
+        .get_text()
+        .map_err(|e| format!("clipboard get: {e}"))?
+        .ok_or("clipboard empty")?;
+    assert_eq!(pasted_svg, svg_content);
+
+    let filter = FileFilter::AubrietaPackage;
+    assert!(filter.matches(std::path::Path::new("mvp.aubrieta")));
+
+    let platform_env = HeadlessEnvironment::new()
+        .get_environment()
+        .map_err(|e| format!("env query: {e}"))?;
+    assert_eq!(platform_env.scale_factor, 1.0);
+
     println!(
-        "OK surfaces={} objects={} gen={} bounds=({},{}) union_contours={} white=({:.2},{:.2},{:.2}) lines={} raster_tiles={} svg_len={}",
+        "OK surfaces={} objects={} gen={} bounds=({},{}) union_contours={} white=({:.2},{:.2},{:.2}) lines={} raster_tiles={} svg_len={} tokens={} locales=2 clip_len={}",
         summary.surfaces,
         summary.objects,
         summary.generation,
@@ -176,7 +232,11 @@ fn run() -> Result<(), String> {
         text_layout.line_count,
         tile_map.resident_tile_count(),
         svg_content.len(),
+        core_pack.tokens.len(),
+        pasted_svg.len(),
     );
+    println!("i18n en-US: \"{en_msg}\"");
+    println!("i18n pt-BR: \"{pt_msg}\"");
     println!(
         "Raster bounds: ({:.0},{:.0}) to ({:.0},{:.0})",
         raster_bounds.x0, raster_bounds.y0, raster_bounds.x1, raster_bounds.y1

@@ -12,6 +12,8 @@ members = [
     "crates/aubrieta_text",
     "crates/aubrieta_raster",
     "crates/aubrieta_jobs",
+    "crates/aubrieta_resources",
+    "crates/aubrieta_platform",
     "apps/aubrieta-cli",
     "xtask",
 ]

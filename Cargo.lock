@@ -30,8 +30,10 @@ dependencies = [
  "aubrieta_foundation",
  "aubrieta_geometry",
  "aubrieta_io",
+ "aubrieta_platform",
  "aubrieta_raster",
  "aubrieta_render",
+ "aubrieta_resources",
  "aubrieta_text",
 ]
 
@@ -121,6 +123,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "aubrieta_platform"
+version = "0.1.0"
+dependencies = [
+ "aubrieta_foundation",
+ "proptest",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "aubrieta_raster"
 version = "0.1.0"
 dependencies = [
@@ -138,6 +150,17 @@ dependencies = [
  "aubrieta_foundation",
  "aubrieta_geometry",
  "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "aubrieta_resources"
+version = "0.1.0"
+dependencies = [
+ "aubrieta_foundation",
+ "proptest",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

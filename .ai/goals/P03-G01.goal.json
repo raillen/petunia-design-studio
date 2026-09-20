@@ -1,0 +1,68 @@
+{
+  "acceptance": [
+    "aubrieta_resources implements DTCG-compatible design token model with primitive, semantic, and component tokens",
+    "Alias resolution resolves tokens transitively and detects circular references safely without panicking",
+    "Localization module provides TextId, Locale (en-US, pt-BR), parameter interpolation, and canonical en-US fallback",
+    "Resource pack bundle with manifest, icon mapping, and token/string catalog loading",
+    "100% test coverage for token aliasing, cycle detection, and locale interpolation"
+  ],
+  "constraints": [
+    "No GUI toolkit dependencies",
+    "Author canonical strings in en-US with complete pt-BR mirror"
+  ],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [
+    "P02-G04"
+  ],
+  "evidence": [
+    "cargo test -p aubrieta_resources: 10 unit tests + 3 proptests passed",
+    "cargo clippy -p aubrieta_resources: 0 warnings",
+    "cargo xtask gauntlet: passed clean"
+  ],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-20T01:57:00.000000000Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-20T01:57:05.000000000Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "Starting Phase P03 implementation",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-20T02:00:00.000000000Z",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "Implementation and tests complete",
+      "to": "REVIEWING"
+    }
+  ],
+  "id": "P03-G01",
+  "lock": {
+    "digest": "207130fc128e62c78ac0c9e5d1f0e54af96b36f4e4ae024e6b3728c02748aeb6",
+    "locked_at": "2026-09-20T02:01:36.279827+00:00",
+    "revision": 1
+  },
+  "non_goals": [
+    "GPUI theme styling components (Layer 8)",
+    "Online cloud token sync"
+  ],
+  "objective": "Implementar aubrieta_resources com suporte a tokens DTCG, temas, catalogo i18n en-US/pt-BR e pacotes de recursos",
+  "phase": "P03",
+  "revision": 1,
+  "state": "REVIEWING",
+  "title": "Pacotes de Recursos, Tokens e i18n"
+}
