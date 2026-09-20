@@ -138,7 +138,10 @@ impl DocumentObject {
                 let center = aubrieta_geometry::GPoint::new(b[0] + rx, b[1] + b[3] / 2.0);
                 aubrieta_geometry::GPath::regular_polygon(center, rx, *sides as usize)
             }
-            Some(ShapeKind::Star { points, inner_ratio }) => {
+            Some(ShapeKind::Star {
+                points,
+                inner_ratio,
+            }) => {
                 let outer_r = b[2] / 2.0;
                 let inner_r = outer_r * inner_ratio.clamp(0.1, 0.9);
                 let center = aubrieta_geometry::GPoint::new(b[0] + outer_r, b[1] + b[3] / 2.0);

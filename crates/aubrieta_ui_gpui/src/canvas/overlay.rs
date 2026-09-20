@@ -108,6 +108,82 @@ pub fn compute_selection_handles(
         .collect()
 }
 
+/// Tests whether a pointer coordinate clicks on any selection transform handle or bounding box border.
+/// Returns the detected handle affordance kind if hit.
+#[must_use]
+pub fn hit_test_handle_or_border(
+    doc_bounds: GRect,
+    screen_pt: GPoint,
+    doc_pt: GPoint,
+    camera: &ViewportCamera,
+    handle_size_px: f64,
+    border_tolerance_px: f64,
+) -> Option<SelectionHandleKind> {
+    // 1. Point handles (8 resize handles + rotation handle)
+    let handles = compute_selection_handles(doc_bounds, camera, handle_size_px.max(12.0));
+    for h in handles {
+        if h.hit_test(screen_pt) {
+            return Some(h.kind);
+        }
+    }
+
+    // 2. Bounding box borders / edges
+    let tol = (border_tolerance_px / camera.zoom).max(4.0);
+    let x0 = doc_bounds.x0;
+    let y0 = doc_bounds.y0;
+    let x1 = doc_bounds.x1;
+    let y1 = doc_bounds.y1;
+
+    let in_x_range = doc_pt.x >= x0 - tol && doc_pt.x <= x1 + tol;
+    let in_y_range = doc_pt.y >= y0 - tol && doc_pt.y <= y1 + tol;
+
+    if in_x_range && (doc_pt.y - y0).abs() <= tol {
+        // Near top border
+        if (doc_pt.x - x0).abs() <= tol * 2.0 {
+            return Some(SelectionHandleKind::TopLeft);
+        } else if (doc_pt.x - x1).abs() <= tol * 2.0 {
+            return Some(SelectionHandleKind::TopRight);
+        } else {
+            return Some(SelectionHandleKind::Top);
+        }
+    }
+
+    if in_x_range && (doc_pt.y - y1).abs() <= tol {
+        // Near bottom border
+        if (doc_pt.x - x0).abs() <= tol * 2.0 {
+            return Some(SelectionHandleKind::BottomLeft);
+        } else if (doc_pt.x - x1).abs() <= tol * 2.0 {
+            return Some(SelectionHandleKind::BottomRight);
+        } else {
+            return Some(SelectionHandleKind::Bottom);
+        }
+    }
+
+    if in_y_range && (doc_pt.x - x0).abs() <= tol {
+        // Near left border
+        if (doc_pt.y - y0).abs() <= tol * 2.0 {
+            return Some(SelectionHandleKind::TopLeft);
+        } else if (doc_pt.y - y1).abs() <= tol * 2.0 {
+            return Some(SelectionHandleKind::BottomLeft);
+        } else {
+            return Some(SelectionHandleKind::Left);
+        }
+    }
+
+    if in_y_range && (doc_pt.x - x1).abs() <= tol {
+        // Near right border
+        if (doc_pt.y - y0).abs() <= tol * 2.0 {
+            return Some(SelectionHandleKind::TopRight);
+        } else if (doc_pt.y - y1).abs() <= tol * 2.0 {
+            return Some(SelectionHandleKind::BottomRight);
+        } else {
+            return Some(SelectionHandleKind::Right);
+        }
+    }
+
+    None
+}
+
 /// Aggregate canvas overlays currently rendered over artwork.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CanvasOverlays {

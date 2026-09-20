@@ -6,6 +6,7 @@ pub mod snapping;
 
 pub use camera::{ViewportCamera, MAX_ZOOM, MIN_ZOOM};
 pub use overlay::{
-    compute_selection_handles, CanvasOverlays, SelectionHandle, SelectionHandleKind,
+    compute_selection_handles, hit_test_handle_or_border, CanvasOverlays, SelectionHandle,
+    SelectionHandleKind,
 };
 pub use snapping::{SnapConfig, SnapEngine, SnapGuideVisual, SnapOrientation, SnapResult};

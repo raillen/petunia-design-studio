@@ -275,6 +275,26 @@ impl PenTool {
             combined.push(c);
         }
 
+        // Construct path from anchors
+        let mut path = aubrieta_geometry::GPath::new();
+        if let Some(first) = self.anchors.first() {
+            let _ = path.push(aubrieta_geometry::PathVerb::MoveTo(first.point));
+            for a in &self.anchors[1..] {
+                let _ = path.push(aubrieta_geometry::PathVerb::LineTo(a.point));
+            }
+            if _closed {
+                let _ = path.push(aubrieta_geometry::PathVerb::Close);
+            }
+        }
+        let shape_cmd = CommandRequest::new(Command::SetShape {
+            id: obj_id,
+            shape: Some(aubrieta_document::ShapeKind::Path(path)),
+        });
+        let c_shape = bridge.submit_command(shape_cmd)?;
+        for c in c_shape.changes {
+            combined.push(c);
+        }
+
         // Set default stroke
         let stroke_cmd = CommandRequest::new(Command::SetStroke {
             id: obj_id,

@@ -7,7 +7,8 @@ use aubrieta_geometry::{GPoint, GRect};
 
 use crate::bridge::*;
 use crate::canvas::{
-    compute_selection_handles, CanvasOverlays, SelectionHandleKind, SnapEngine, ViewportCamera,
+    compute_selection_handles, hit_test_handle_or_border, CanvasOverlays, SelectionHandleKind,
+    SnapEngine, ViewportCamera,
 };
 
 use super::input::{NormalizedPointerEvent, PointerButton, PointerPhase};
@@ -57,7 +58,7 @@ impl SelectTool {
     pub fn new() -> Self {
         Self {
             state: SelectToolState::Idle,
-            handle_size_px: 8.0,
+            handle_size_px: 14.0,
         }
     }
 
@@ -101,23 +102,24 @@ impl SelectTool {
 
         let sel_vm = bridge.selection();
 
-        // 1. Check if clicking on any transform handle of active selection
+        // 1. Check if clicking on any transform handle or bounding box border of active selection
         if let Some([bx, by, bw, bh]) = sel_vm.combined_bounds {
-            let handles = compute_selection_handles(
-                GRect::new(bx, by, bx + bw, by + bh),
+            let doc_box = GRect::new(bx, by, bx + bw, by + bh);
+            if let Some(handle_kind) = hit_test_handle_or_border(
+                doc_box,
+                event.screen_pos,
+                event.doc_pos,
                 camera,
                 self.handle_size_px,
-            );
-            for h in handles {
-                if h.hit_test(event.screen_pos) {
-                    self.state = SelectToolState::TransformingHandle {
-                        handle: h.kind,
-                        start_doc: event.doc_pos,
-                        current_doc: event.doc_pos,
-                        initial_bounds: [bx, by, bw, bh],
-                    };
-                    return Ok(ChangeSet::empty());
-                }
+                8.0,
+            ) {
+                self.state = SelectToolState::TransformingHandle {
+                    handle: handle_kind,
+                    start_doc: event.doc_pos,
+                    current_doc: event.doc_pos,
+                    initial_bounds: [bx, by, bw, bh],
+                };
+                return Ok(ChangeSet::empty());
             }
         }
 
@@ -169,7 +171,7 @@ impl SelectTool {
     fn on_move(
         &mut self,
         event: &NormalizedPointerEvent,
-        _bridge: &mut AubrietaGuiBridge,
+        bridge: &mut AubrietaGuiBridge,
         camera: &ViewportCamera,
         snap: &mut SnapEngine,
     ) -> Result<ChangeSet, AubrietaError> {
@@ -177,21 +179,45 @@ impl SelectTool {
             SelectToolState::Marquee { current_screen, .. } => {
                 *current_screen = event.screen_pos;
             }
-            SelectToolState::DraggingObjects { current_doc, .. } => {
+            SelectToolState::DraggingObjects {
+                start_doc,
+                current_doc,
+                initial_positions,
+                ..
+            } => {
                 let mut target_pt = event.doc_pos;
                 if !event.modifiers.disable_snap {
                     let snap_res = snap.snap_point(target_pt, camera, &[]);
                     target_pt = snap_res.point;
                 }
                 *current_doc = target_pt;
+
+                let dx = target_pt.x - start_doc.x;
+                let dy = target_pt.y - start_doc.y;
+                for (id, [x, y, w, h], rot) in initial_positions {
+                    let _ = bridge.set_bounds(*id, Some([*x + dx, *y + dy, *w, *h]), *rot);
+                }
             }
-            SelectToolState::TransformingHandle { current_doc, .. } => {
+            SelectToolState::TransformingHandle {
+                handle,
+                start_doc,
+                current_doc,
+                initial_bounds,
+            } => {
                 let mut target_pt = event.doc_pos;
                 if !event.modifiers.disable_snap {
                     let snap_res = snap.snap_point(target_pt, camera, &[]);
                     target_pt = snap_res.point;
                 }
                 *current_doc = target_pt;
+
+                let dx = target_pt.x - start_doc.x;
+                let dy = target_pt.y - start_doc.y;
+                let (nx, ny, nw, nh) = calculate_resized_bounds(*handle, *initial_bounds, dx, dy);
+                let sel_ids = bridge.selection().selected_ids;
+                for id in sel_ids {
+                    let _ = bridge.set_bounds(id, Some([nx, ny, nw, nh]), 0.0);
+                }
             }
             SelectToolState::Idle => {}
         }
@@ -325,62 +351,11 @@ impl SelectTool {
                 handle,
                 start_doc,
                 current_doc,
-                initial_bounds: [ix, iy, iw, ih],
+                initial_bounds,
             } => {
                 let dx = current_doc.x - start_doc.x;
                 let dy = current_doc.y - start_doc.y;
-
-                let mut nx = ix;
-                let mut ny = iy;
-                let mut nw = iw;
-                let mut nh = ih;
-
-                match handle {
-                    SelectionHandleKind::TopLeft => {
-                        nx += dx;
-                        ny += dy;
-                        nw -= dx;
-                        nh -= dy;
-                    }
-                    SelectionHandleKind::Top => {
-                        ny += dy;
-                        nh -= dy;
-                    }
-                    SelectionHandleKind::TopRight => {
-                        ny += dy;
-                        nw += dx;
-                        nh -= dy;
-                    }
-                    SelectionHandleKind::Right => {
-                        nw += dx;
-                    }
-                    SelectionHandleKind::BottomRight => {
-                        nw += dx;
-                        nh += dy;
-                    }
-                    SelectionHandleKind::Bottom => {
-                        nh += dy;
-                    }
-                    SelectionHandleKind::BottomLeft => {
-                        nx += dx;
-                        nw -= dx;
-                        nh += dy;
-                    }
-                    SelectionHandleKind::Left => {
-                        nx += dx;
-                        nw -= dx;
-                    }
-                    SelectionHandleKind::Rotation => {
-                        // Rotation handled by angle
-                    }
-                }
-
-                if nw < 1.0 {
-                    nw = 1.0;
-                }
-                if nh < 1.0 {
-                    nh = 1.0;
-                }
+                let (nx, ny, nw, nh) = calculate_resized_bounds(handle, initial_bounds, dx, dy);
 
                 let mut combined = ChangeSet::empty();
                 let sel_ids = bridge.selection().selected_ids;
@@ -464,4 +439,66 @@ impl SelectTool {
 
         overlays
     }
+}
+
+/// Calculates new bounding box coordinates when dragging a specific transform handle.
+#[must_use]
+pub fn calculate_resized_bounds(
+    handle: SelectionHandleKind,
+    initial: [f64; 4],
+    dx: f64,
+    dy: f64,
+) -> (f64, f64, f64, f64) {
+    let [ix, iy, iw, ih] = initial;
+    let mut nx = ix;
+    let mut ny = iy;
+    let mut nw = iw;
+    let mut nh = ih;
+
+    match handle {
+        SelectionHandleKind::TopLeft => {
+            nx += dx;
+            ny += dy;
+            nw -= dx;
+            nh -= dy;
+        }
+        SelectionHandleKind::Top => {
+            ny += dy;
+            nh -= dy;
+        }
+        SelectionHandleKind::TopRight => {
+            ny += dy;
+            nw += dx;
+            nh -= dy;
+        }
+        SelectionHandleKind::Right => {
+            nw += dx;
+        }
+        SelectionHandleKind::BottomRight => {
+            nw += dx;
+            nh += dy;
+        }
+        SelectionHandleKind::Bottom => {
+            nh += dy;
+        }
+        SelectionHandleKind::BottomLeft => {
+            nx += dx;
+            nw -= dx;
+            nh += dy;
+        }
+        SelectionHandleKind::Left => {
+            nx += dx;
+            nw -= dx;
+        }
+        SelectionHandleKind::Rotation => {}
+    }
+
+    if nw < 5.0 {
+        nw = 5.0;
+    }
+    if nh < 5.0 {
+        nh = 5.0;
+    }
+
+    (nx, ny, nw, nh)
 }

@@ -12,11 +12,12 @@ use std::rc::Rc;
 use aubrieta_application::{Command, CommandRequest};
 use aubrieta_document::{Bleed, Guide, GuideOrientation, Margins};
 use aubrieta_foundation::{AubrietaError, IdGenerator, ObjectId};
-use aubrieta_geometry::{GPoint, GRect};
+use aubrieta_geometry::{GAffine, GPoint, GRect};
 use aubrieta_ui_gpui::bridge::{
     DataMergePresentationModel, HistoryPresentationModel, LayersPresentationModel,
     PropertiesPresentationModel,
 };
+use aubrieta_ui_gpui::canvas::overlay::{hit_test_handle_or_border, SelectionHandleKind};
 use aubrieta_ui_gpui::shell::AubrietaShell;
 use aubrieta_ui_gpui::tools::{
     NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers, ToolKind,
@@ -30,9 +31,18 @@ pub struct AubrietaSlintState {
     pub drag_initial_bounds: Option<[f64; 4]>,
 }
 
+impl Default for AubrietaSlintState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AubrietaSlintState {
     pub fn new() -> Self {
         let mut shell = AubrietaShell::new(950.0, 700.0);
+        shell.camera.pan_x = 80.0;
+        shell.camera.pan_y = 80.0;
+        shell.camera.zoom = 1.0;
         let _ = populate_showcase_document(&mut shell);
         Self {
             shell,
@@ -80,21 +90,33 @@ fn populate_showcase_document(shell: &mut AubrietaShell) -> Result<(), AubrietaE
     let star_id = id_gen.next_object();
     let text_id = id_gen.next_object();
 
-    shell.bridge.submit_command(CommandRequest::new(Command::CreateSurface {
-        id: surface_1,
-        name: "Main Artboard".to_string(),
-    }))?;
-    shell.bridge.set_surface_geometry(surface_1, [60.0, 60.0], [800.0, 600.0])?;
-    shell.bridge.set_surface_bleed(surface_1, Bleed::uniform(10.0))?;
-    shell.bridge.set_surface_margins(surface_1, Margins::uniform(36.0))?;
-    shell.bridge.add_surface_guide(surface_1, Guide::new(1, GuideOrientation::Vertical, 200.0))?;
+    shell
+        .bridge
+        .submit_command(CommandRequest::new(Command::CreateSurface {
+            id: surface_1,
+            name: "Main Artboard".to_string(),
+        }))?;
+    shell
+        .bridge
+        .set_surface_geometry(surface_1, [0.0, 0.0], [800.0, 600.0])?;
+    shell
+        .bridge
+        .set_surface_bleed(surface_1, Bleed::uniform(10.0))?;
+    shell
+        .bridge
+        .set_surface_margins(surface_1, Margins::uniform(36.0))?;
+    shell
+        .bridge
+        .add_surface_guide(surface_1, Guide::new(1, GuideOrientation::Vertical, 200.0))?;
 
     // Hero Card (Rectangle)
     shell.bridge.create_shape_object(
         surface_1,
         rect_id,
         "Hero Card".to_string(),
-        aubrieta_document::ShapeKind::Rectangle { corner_radii: [8.0; 4] },
+        aubrieta_document::ShapeKind::Rectangle {
+            corner_radii: [8.0; 4],
+        },
         Some([100.0, 100.0, 300.0, 180.0]),
         Some("aubrieta.blue/500".to_string()),
         Some("#2563eb".to_string()),
@@ -118,7 +140,10 @@ fn populate_showcase_document(shell: &mut AubrietaShell) -> Result<(), AubrietaE
         surface_1,
         star_id,
         "Golden Star".to_string(),
-        aubrieta_document::ShapeKind::Star { points: 5, inner_ratio: 0.45 },
+        aubrieta_document::ShapeKind::Star {
+            points: 5,
+            inner_ratio: 0.45,
+        },
         Some([450.0, 320.0, 130.0, 130.0]),
         Some("aubrieta.rose/500".to_string()),
         Some("#e11d48".to_string()),
@@ -202,19 +227,74 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
                 if let Some(b) = obj.bounds {
                     let is_sel = selection.contains(obj.id);
                     let name_lower = obj.name.to_lowercase();
-                    let (is_circle, is_path, is_text, text_content, svg_path) = match &obj.shape {
-                        Some(aubrieta_document::ShapeKind::Ellipse) => (true, false, false, String::new(), String::new()),
-                        Some(aubrieta_document::ShapeKind::Rectangle { .. }) => (false, false, false, String::new(), String::new()),
-                        Some(aubrieta_document::ShapeKind::Path(path)) => (false, true, false, String::new(), path.to_svg_path_data()),
-                        Some(aubrieta_document::ShapeKind::Polygon { .. }) | Some(aubrieta_document::ShapeKind::Star { .. }) => {
-                            (false, true, false, String::new(), obj.to_path().to_svg_path_data())
+                    let (is_circle, is_path, is_text, text_content, svg_path, corner_radius) =
+                        match &obj.shape {
+                            Some(aubrieta_document::ShapeKind::Ellipse) => {
+                                (true, false, false, String::new(), String::new(), 0.0)
+                            }
+                            Some(aubrieta_document::ShapeKind::Rectangle { corner_radii }) => (
+                                false,
+                                false,
+                                false,
+                                String::new(),
+                                String::new(),
+                                corner_radii[0] as f32,
+                            ),
+                            Some(aubrieta_document::ShapeKind::Path(path)) => {
+                                let local_path = path.transformed(GAffine::translate(-b[0], -b[1]));
+                                (
+                                    false,
+                                    true,
+                                    false,
+                                    String::new(),
+                                    local_path.to_svg_path_data(),
+                                    0.0,
+                                )
+                            }
+                            Some(aubrieta_document::ShapeKind::Polygon { .. })
+                            | Some(aubrieta_document::ShapeKind::Star { .. }) => {
+                                let local_path =
+                                    obj.to_path().transformed(GAffine::translate(-b[0], -b[1]));
+                                (
+                                    false,
+                                    true,
+                                    false,
+                                    String::new(),
+                                    local_path.to_svg_path_data(),
+                                    0.0,
+                                )
+                            }
+                            Some(aubrieta_document::ShapeKind::Text { content, .. }) => {
+                                (false, false, true, content.clone(), String::new(), 0.0)
+                            }
+                            None => {
+                                let is_c =
+                                    name_lower.contains("circle") || name_lower.contains("ellipse");
+                                (is_c, false, false, String::new(), String::new(), 0.0)
+                            }
+                        };
+
+                    let stroke_color = if let Some(stroke) = &obj.stroke {
+                        if stroke.contains("blue") {
+                            slint::Color::from_rgb_u8(37, 99, 235)
+                        } else if stroke.contains("yellow") {
+                            slint::Color::from_rgb_u8(202, 138, 4)
+                        } else if stroke.contains("red") || stroke.contains("rose") {
+                            slint::Color::from_rgb_u8(225, 29, 72)
+                        } else if stroke.contains("gray") {
+                            slint::Color::from_rgb_u8(39, 39, 42)
+                        } else if stroke.starts_with('#') && stroke.len() == 7 {
+                            let r = u8::from_str_radix(&stroke[1..3], 16).unwrap_or(37);
+                            let g = u8::from_str_radix(&stroke[3..5], 16).unwrap_or(99);
+                            let b_val = u8::from_str_radix(&stroke[5..7], 16).unwrap_or(235);
+                            slint::Color::from_rgb_u8(r, g, b_val)
+                        } else {
+                            slint::Color::from_rgb_u8(37, 99, 235)
                         }
-                        Some(aubrieta_document::ShapeKind::Text { content, .. }) => (false, false, true, content.clone(), String::new()),
-                        None => {
-                            let is_c = name_lower.contains("circle") || name_lower.contains("ellipse");
-                            (is_c, false, false, String::new(), String::new())
-                        }
+                    } else {
+                        slint::Color::from_argb_u8(0, 0, 0, 0)
                     };
+                    let stroke_width = (obj.stroke_width as f32).max(0.0);
 
                     let bg_color = if let Some(fill) = &obj.fill {
                         if fill.contains("blue") {
@@ -227,6 +307,13 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
                             slint::Color::from_rgb_u8(139, 92, 246)
                         } else if fill.contains("rose") || fill.contains("red") {
                             slint::Color::from_rgb_u8(244, 63, 94)
+                        } else if fill.contains("gray") {
+                            slint::Color::from_rgb_u8(113, 113, 122)
+                        } else if fill.starts_with('#') && fill.len() == 7 {
+                            let r = u8::from_str_radix(&fill[1..3], 16).unwrap_or(59);
+                            let g = u8::from_str_radix(&fill[3..5], 16).unwrap_or(130);
+                            let b_val = u8::from_str_radix(&fill[5..7], 16).unwrap_or(246);
+                            slint::Color::from_rgb_u8(r, g, b_val)
                         } else {
                             slint::Color::from_rgb_u8(59, 130, 246)
                         }
@@ -250,6 +337,9 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
                         w,
                         h,
                         bg_color,
+                        stroke_color,
+                        stroke_width,
+                        corner_radius,
                         selected: is_sel,
                         is_circle,
                         is_path,
@@ -274,7 +364,11 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
             window.set_prop_w(b[2] as f32);
             window.set_prop_h(b[3] as f32);
             window.set_selected_bounds(
-                format!("X: {:.1} pt   Y: {:.1} pt   W: {:.1} pt   H: {:.1} pt", b[0], b[1], b[2], b[3]).into(),
+                format!(
+                    "X: {:.1} pt   Y: {:.1} pt   W: {:.1} pt   H: {:.1} pt",
+                    b[0], b[1], b[2], b[3]
+                )
+                .into(),
             );
         }
         if let Some(f) = props.fill {
@@ -308,7 +402,11 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
 
     // Sync Data Merge
     let merge: DataMergePresentationModel = state.shell.query_data_merge();
-    let src = merge.sources.first().map(|s| s.name.clone()).unwrap_or_else(|| "none".to_string());
+    let src = merge
+        .sources
+        .first()
+        .map(|s| s.name.clone())
+        .unwrap_or_else(|| "none".to_string());
     window.set_merge_source(src.into());
     window.set_merge_records(merge.total_records as i32);
     window.set_merge_bindings(merge.bindings.len() as i32);
@@ -316,7 +414,10 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
-    if args.iter().any(|a| a == "--smoke-test" || a == "--headless") {
+    if args
+        .iter()
+        .any(|a| a == "--smoke-test" || a == "--headless")
+    {
         println!("aubrieta-slint: Running automated smoke test...");
         let mut state = AubrietaSlintState::new();
         if let Err(e) = state.smoke_test() {
@@ -351,6 +452,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "ColorPicker" => ToolKind::ColorPicker,
                 "PointTransform" => ToolKind::PointTransform,
                 "Artboard" => ToolKind::Artboard,
+                "Corner" => ToolKind::Corner,
                 "Knife" => ToolKind::Knife,
                 "Scissors" => ToolKind::Scissors,
                 "ShapeBuilder" => ToolKind::ShapeBuilder,
@@ -363,6 +465,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let hint = match tool {
                     ToolKind::Select => "Select: Clique para selecionar, arraste para mover | Shift: Multi-seleção | Alt: Duplicar",
                     ToolKind::Node => "Node: Clique e arraste pontos de controle e alças Bézier para ajustar curvas.",
+                    ToolKind::Corner => "Corner: Arraste sobre vértices para ajustar o raio de arredondamento.",
                     ToolKind::Pen => "Pen: Clique para criar nós angulares, arraste para nós suaves com tangentes.",
                     ToolKind::Pencil => "Pencil: Desenho vetorial à mão livre com suavização dinâmica.",
                     ToolKind::Rectangle => "Rectangle: Clique e arraste para desenhar retângulos e quadrados com cantos vivos ou arredondados.",
@@ -455,9 +558,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let win_weak = main_window.as_weak();
         main_window.on_fit_canvas_clicked(move || {
             let mut st = state_clone.borrow_mut();
-            if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first()) {
+            if let Some(surface) = st
+                .shell
+                .bridge
+                .session()
+                .and_then(|s| s.document.surfaces.first())
+            {
                 let b = surface.bounds();
-                st.shell.fit_surface(GRect::new(b[0], b[1], b[0] + b[2], b[1] + b[3]));
+                st.shell
+                    .fit_surface(GRect::new(b[0], b[1], b[0] + b[2], b[1] + b[3]));
             }
             if let Some(win) = win_weak.upgrade() {
                 sync_ui_from_shell(&win, &st);
@@ -489,7 +598,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .pick_file()
             {
                 println!("RFD: Arquivo selecionado para abertura: {:?}", path);
-                let title = path.file_name().and_then(|n| n.to_str()).unwrap_or("Novo Documento");
+                let title = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Novo Documento");
                 let _ = state_clone.borrow_mut().shell.new_document(title);
                 if let Some(win) = win_weak.upgrade() {
                     sync_ui_from_shell(&win, &state_clone.borrow());
@@ -530,7 +642,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let win_weak = main_window.as_weak();
         main_window.on_place_image_clicked(move || {
             if let Some(path) = rfd::FileDialog::new()
-                .add_filter("Imagens Raster/Vetoriais (*.png, *.jpg, *.jpeg, *.svg)", &["png", "jpg", "jpeg", "svg"])
+                .add_filter(
+                    "Imagens Raster/Vetoriais (*.png, *.jpg, *.jpeg, *.svg)",
+                    &["png", "jpg", "jpeg", "svg"],
+                )
                 .set_title("Inserir Imagem no Documento")
                 .pick_file()
             {
@@ -538,15 +653,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut st = state_clone.borrow_mut();
                 let mut id_gen = IdGenerator::new();
                 let obj_id = id_gen.next_object();
-                if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
-                    let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Imagem");
-                    let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::CreateObject {
-                        surface: surface.id,
-                        id: obj_id,
-                        name: format!("Imagem: {file_stem}"),
-                    }));
-                    let _ = st.shell.bridge.set_bounds(obj_id, Some([180.0, 180.0, 240.0, 160.0]), 0.0);
-                    let _ = st.shell.bridge.set_fill(obj_id, Some("aubrieta.green/500".to_string()));
+                if let Some(surface) = st
+                    .shell
+                    .bridge
+                    .session()
+                    .and_then(|s| s.document.surfaces.first().cloned())
+                {
+                    let file_stem = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("Imagem");
+                    let _ = st.shell.bridge.submit_command(CommandRequest::new(
+                        Command::CreateObject {
+                            surface: surface.id,
+                            id: obj_id,
+                            name: format!("Imagem: {file_stem}"),
+                        },
+                    ));
+                    let _ =
+                        st.shell
+                            .bridge
+                            .set_bounds(obj_id, Some([180.0, 180.0, 240.0, 160.0]), 0.0);
+                    let _ = st
+                        .shell
+                        .bridge
+                        .set_fill(obj_id, Some("aubrieta.green/500".to_string()));
                     st.shell.bridge.set_selection(vec![obj_id]);
                 }
                 if let Some(win) = win_weak.upgrade() {
@@ -601,17 +732,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         main_window.on_add_rectangle_clicked(move || {
             let mut st = state_clone.borrow_mut();
             let mut id_gen = IdGenerator::new();
-            if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+            if let Some(surface) = st
+                .shell
+                .bridge
+                .session()
+                .and_then(|s| s.document.surfaces.first().cloned())
+            {
                 let new_id = id_gen.next_object();
                 let count = surface.objects.len() + 1;
-                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::CreateObject {
-                    surface: surface.id,
-                    id: new_id,
-                    name: format!("Rectangle {}", count),
-                }));
+                let _ =
+                    st.shell
+                        .bridge
+                        .submit_command(CommandRequest::new(Command::CreateObject {
+                            surface: surface.id,
+                            id: new_id,
+                            name: format!("Rectangle {}", count),
+                        }));
                 let offset = (count as f64 * 35.0) % 250.0;
-                let _ = st.shell.bridge.set_bounds(new_id, Some([120.0 + offset, 120.0 + offset, 200.0, 130.0]), 0.0);
-                let _ = st.shell.bridge.set_fill(new_id, Some("aubrieta.green/500".to_string()));
+                let _ = st.shell.bridge.set_bounds(
+                    new_id,
+                    Some([120.0 + offset, 120.0 + offset, 200.0, 130.0]),
+                    0.0,
+                );
+                let _ = st
+                    .shell
+                    .bridge
+                    .set_fill(new_id, Some("aubrieta.green/500".to_string()));
                 st.shell.bridge.set_selection(vec![new_id]);
             }
             if let Some(win) = win_weak.upgrade() {
@@ -627,17 +773,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         main_window.on_add_circle_clicked(move || {
             let mut st = state_clone.borrow_mut();
             let mut id_gen = IdGenerator::new();
-            if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+            if let Some(surface) = st
+                .shell
+                .bridge
+                .session()
+                .and_then(|s| s.document.surfaces.first().cloned())
+            {
                 let new_id = id_gen.next_object();
                 let count = surface.objects.len() + 1;
-                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::CreateObject {
-                    surface: surface.id,
-                    id: new_id,
-                    name: format!("Circle {}", count),
-                }));
+                let _ =
+                    st.shell
+                        .bridge
+                        .submit_command(CommandRequest::new(Command::CreateObject {
+                            surface: surface.id,
+                            id: new_id,
+                            name: format!("Circle {}", count),
+                        }));
                 let offset = (count as f64 * 35.0) % 250.0;
-                let _ = st.shell.bridge.set_bounds(new_id, Some([360.0 + offset, 180.0 + offset, 130.0, 130.0]), 0.0);
-                let _ = st.shell.bridge.set_fill(new_id, Some("aubrieta.purple/500".to_string()));
+                let _ = st.shell.bridge.set_bounds(
+                    new_id,
+                    Some([360.0 + offset, 180.0 + offset, 130.0, 130.0]),
+                    0.0,
+                );
+                let _ = st
+                    .shell
+                    .bridge
+                    .set_fill(new_id, Some("aubrieta.purple/500".to_string()));
                 st.shell.bridge.set_selection(vec![new_id]);
             }
             if let Some(win) = win_weak.upgrade() {
@@ -653,7 +814,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         main_window.on_add_star_clicked(move || {
             let mut st = state_clone.borrow_mut();
             let mut id_gen = IdGenerator::new();
-            if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+            if let Some(surface) = st
+                .shell
+                .bridge
+                .session()
+                .and_then(|s| s.document.surfaces.first().cloned())
+            {
                 let new_id = id_gen.next_object();
                 let count = surface.objects.len() + 1;
                 let offset = (count as f64 * 35.0) % 250.0;
@@ -661,7 +827,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     surface.id,
                     new_id,
                     format!("Star {}", count),
-                    aubrieta_document::ShapeKind::Star { points: 5, inner_ratio: 0.45 },
+                    aubrieta_document::ShapeKind::Star {
+                        points: 5,
+                        inner_ratio: 0.45,
+                    },
                     Some([220.0 + offset, 160.0 + offset, 130.0, 130.0]),
                     Some("aubrieta.rose/500".to_string()),
                     Some("#e11d48".to_string()),
@@ -682,7 +851,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         main_window.on_add_text_clicked(move || {
             let mut st = state_clone.borrow_mut();
             let mut id_gen = IdGenerator::new();
-            if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+            if let Some(surface) = st
+                .shell
+                .bridge
+                .session()
+                .and_then(|s| s.document.surfaces.first().cloned())
+            {
                 let new_id = id_gen.next_object();
                 let count = surface.objects.len() + 1;
                 let offset = (count as f64 * 25.0) % 200.0;
@@ -731,7 +905,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let id_b = sel_ids[1];
                 let mut id_gen = IdGenerator::new();
                 let target_id = id_gen.next_object();
-                if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                if let Some(surface) = st
+                    .shell
+                    .bridge
+                    .session()
+                    .and_then(|s| s.document.surfaces.first().cloned())
+                {
                     let _ = st.shell.bridge.apply_boolean(
                         surface.id,
                         target_id,
@@ -769,7 +948,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let id_b = sel_ids[1];
                 let mut id_gen = IdGenerator::new();
                 let target_id = id_gen.next_object();
-                if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                if let Some(surface) = st
+                    .shell
+                    .bridge
+                    .session()
+                    .and_then(|s| s.document.surfaces.first().cloned())
+                {
                     let _ = st.shell.bridge.apply_boolean(
                         surface.id,
                         target_id,
@@ -807,7 +991,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let id_b = sel_ids[1];
                 let mut id_gen = IdGenerator::new();
                 let target_id = id_gen.next_object();
-                if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                if let Some(surface) = st
+                    .shell
+                    .bridge
+                    .session()
+                    .and_then(|s| s.document.surfaces.first().cloned())
+                {
                     let _ = st.shell.bridge.apply_boolean(
                         surface.id,
                         target_id,
@@ -845,7 +1034,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let id_b = sel_ids[1];
                 let mut id_gen = IdGenerator::new();
                 let target_id = id_gen.next_object();
-                if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                if let Some(surface) = st
+                    .shell
+                    .bridge
+                    .session()
+                    .and_then(|s| s.document.surfaces.first().cloned())
+                {
                     let _ = st.shell.bridge.apply_boolean(
                         surface.id,
                         target_id,
@@ -903,7 +1097,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let sel = st.shell.bridge.selection().selected_ids.clone();
             if !sel.is_empty() {
                 if let Some(surface_id) = st.shell.bridge.active_surface().or_else(|| {
-                    st.shell.bridge.session().and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                    st.shell
+                        .bridge
+                        .session()
+                        .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
                 }) {
                     let mode = match mode_str.as_str() {
                         "Left" => aubrieta_document::AlignmentMode::Left,
@@ -931,7 +1128,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let sel = st.shell.bridge.selection().selected_ids.clone();
             if sel.len() >= 2 {
                 if let Some(surface_id) = st.shell.bridge.active_surface().or_else(|| {
-                    st.shell.bridge.session().and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                    st.shell
+                        .bridge
+                        .session()
+                        .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
                 }) {
                     let axis = match axis_str.as_str() {
                         "Vertical" => aubrieta_document::DistributionAxis::Vertical,
@@ -954,7 +1154,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             let sel = st.shell.bridge.selection();
             for id in sel.selected_ids {
-                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::DeleteObject { id }));
+                let _ = st
+                    .shell
+                    .bridge
+                    .submit_command(CommandRequest::new(Command::DeleteObject { id }));
             }
             st.shell.bridge.clear_selection();
             if let Some(win) = win_weak.upgrade() {
@@ -998,7 +1201,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(obj) = session.document.surfaces.iter().flat_map(|s| &s.objects).find(|o| o.id == sel_id) {
+                    if let Some(obj) = session
+                        .document
+                        .surfaces
+                        .iter()
+                        .flat_map(|s| &s.objects)
+                        .find(|o| o.id == sel_id)
+                    {
                         if let Some(b) = obj.bounds {
                             let new_bounds = [b[0] + dx as f64, b[1], b[2], b[3]];
                             let _ = st.shell.bridge.set_bounds(sel_id, Some(new_bounds), 0.0);
@@ -1019,7 +1228,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(obj) = session.document.surfaces.iter().flat_map(|s| &s.objects).find(|o| o.id == sel_id) {
+                    if let Some(obj) = session
+                        .document
+                        .surfaces
+                        .iter()
+                        .flat_map(|s| &s.objects)
+                        .find(|o| o.id == sel_id)
+                    {
                         if let Some(b) = obj.bounds {
                             let new_bounds = [b[0], b[1] + dy as f64, b[2], b[3]];
                             let _ = st.shell.bridge.set_bounds(sel_id, Some(new_bounds), 0.0);
@@ -1040,7 +1255,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(obj) = session.document.surfaces.iter().flat_map(|s| &s.objects).find(|o| o.id == sel_id) {
+                    if let Some(obj) = session
+                        .document
+                        .surfaces
+                        .iter()
+                        .flat_map(|s| &s.objects)
+                        .find(|o| o.id == sel_id)
+                    {
                         if let Some(b) = obj.bounds {
                             let new_bounds = [b[0], b[1], (b[2] + dw as f64).max(10.0), b[3]];
                             let _ = st.shell.bridge.set_bounds(sel_id, Some(new_bounds), 0.0);
@@ -1061,7 +1282,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(obj) = session.document.surfaces.iter().flat_map(|s| &s.objects).find(|o| o.id == sel_id) {
+                    if let Some(obj) = session
+                        .document
+                        .surfaces
+                        .iter()
+                        .flat_map(|s| &s.objects)
+                        .find(|o| o.id == sel_id)
+                    {
                         if let Some(b) = obj.bounds {
                             let new_bounds = [b[0], b[1], b[2], (b[3] + dh as f64).max(10.0)];
                             let _ = st.shell.bridge.set_bounds(sel_id, Some(new_bounds), 0.0);
@@ -1082,7 +1309,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
                 let opacity = (val as f64 / 100.0).clamp(0.0, 1.0);
-                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::SetOpacity { id: sel_id, opacity }));
+                let _ = st
+                    .shell
+                    .bridge
+                    .submit_command(CommandRequest::new(Command::SetOpacity {
+                        id: sel_id,
+                        opacity,
+                    }));
             }
             if let Some(win) = win_weak.upgrade() {
                 sync_ui_from_shell(&win, &st);
@@ -1096,16 +1329,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         main_window.on_duplicate_selected_clicked(move || {
             let mut st = state_clone.borrow_mut();
             let mut new_id = None;
-            let clone_info = if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
-                if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document.surfaces.first() {
-                        if let Some(obj) = surface.objects.iter().find(|o| o.id == sel_id) {
-                            let b = obj.bounds.unwrap_or([100.0, 100.0, 100.0, 100.0]);
-                            let clone_bounds = [b[0] + 20.0, b[1] + 20.0, b[2], b[3]];
-                            let fill = obj.fill.clone();
-                            let name = format!("{} (cópia)", obj.name);
-                            let surf_id = surface.id;
-                            Some((surf_id, name, clone_bounds, fill))
+            let clone_info =
+                if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
+                    if let Some(session) = st.shell.bridge.session() {
+                        if let Some(surface) = session.document.surfaces.first() {
+                            if let Some(obj) = surface.objects.iter().find(|o| o.id == sel_id) {
+                                let b = obj.bounds.unwrap_or([100.0, 100.0, 100.0, 100.0]);
+                                let clone_bounds = [b[0] + 20.0, b[1] + 20.0, b[2], b[3]];
+                                let fill = obj.fill.clone();
+                                let name = format!("{} (cópia)", obj.name);
+                                let surf_id = surface.id;
+                                Some((surf_id, name, clone_bounds, fill))
+                            } else {
+                                None
+                            }
                         } else {
                             None
                         }
@@ -1114,20 +1351,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 } else {
                     None
-                }
-            } else {
-                None
-            };
+                };
 
             if let Some((surf_id, name, clone_bounds, fill)) = clone_info {
                 let mut id_gen = IdGenerator::new();
                 let clone_id = id_gen.next_object();
-                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::CreateObject {
-                    surface: surf_id,
-                    id: clone_id,
-                    name,
-                }));
-                let _ = st.shell.bridge.set_bounds(clone_id, Some(clone_bounds), 0.0);
+                let _ =
+                    st.shell
+                        .bridge
+                        .submit_command(CommandRequest::new(Command::CreateObject {
+                            surface: surf_id,
+                            id: clone_id,
+                            name,
+                        }));
+                let _ = st
+                    .shell
+                    .bridge
+                    .set_bounds(clone_id, Some(clone_bounds), 0.0);
                 if let Some(f) = fill {
                     let _ = st.shell.bridge.set_fill(clone_id, Some(f));
                 }
@@ -1149,7 +1389,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             let toggle = if let Some(session) = st.shell.bridge.session() {
                 if let Some(surface) = session.document.surfaces.first() {
-                    surface.objects.get(idx as usize).map(|obj| (obj.id, !obj.visible))
+                    surface
+                        .objects
+                        .get(idx as usize)
+                        .map(|obj| (obj.id, !obj.visible))
                 } else {
                     None
                 }
@@ -1157,7 +1400,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None
             };
             if let Some((id, visible)) = toggle {
-                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::SetVisibility { id, visible }));
+                let _ = st
+                    .shell
+                    .bridge
+                    .submit_command(CommandRequest::new(Command::SetVisibility { id, visible }));
             }
             if let Some(win) = win_weak.upgrade() {
                 sync_ui_from_shell(&win, &st);
@@ -1172,7 +1418,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             let toggle = if let Some(session) = st.shell.bridge.session() {
                 if let Some(surface) = session.document.surfaces.first() {
-                    surface.objects.get(idx as usize).map(|obj| (obj.id, !obj.locked))
+                    surface
+                        .objects
+                        .get(idx as usize)
+                        .map(|obj| (obj.id, !obj.locked))
                 } else {
                     None
                 }
@@ -1180,7 +1429,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None
             };
             if let Some((id, locked)) = toggle {
-                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::SetLocked { id, locked }));
+                let _ = st
+                    .shell
+                    .bridge
+                    .submit_command(CommandRequest::new(Command::SetLocked { id, locked }));
             }
             if let Some(win) = win_weak.upgrade() {
                 sync_ui_from_shell(&win, &st);
@@ -1196,7 +1448,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let reorder = if idx > 0 {
                 if let Some(session) = st.shell.bridge.session() {
                     if let Some(surface) = session.document.surfaces.first() {
-                        surface.objects.get(idx as usize).map(|obj| (surface.id, obj.id, (idx - 1) as usize))
+                        surface
+                            .objects
+                            .get(idx as usize)
+                            .map(|obj| (surface.id, obj.id, (idx - 1) as usize))
                     } else {
                         None
                     }
@@ -1207,11 +1462,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None
             };
             if let Some((surf_id, id, new_index)) = reorder {
-                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::ReorderObject {
-                    surface: surf_id,
-                    id,
-                    new_index,
-                }));
+                let _ =
+                    st.shell
+                        .bridge
+                        .submit_command(CommandRequest::new(Command::ReorderObject {
+                            surface: surf_id,
+                            id,
+                            new_index,
+                        }));
             }
             if let Some(win) = win_weak.upgrade() {
                 sync_ui_from_shell(&win, &st);
@@ -1227,7 +1485,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let reorder = if let Some(session) = st.shell.bridge.session() {
                 if let Some(surface) = session.document.surfaces.first() {
                     if (idx as usize) + 1 < surface.objects.len() {
-                        surface.objects.get(idx as usize).map(|obj| (surface.id, obj.id, (idx + 1) as usize))
+                        surface
+                            .objects
+                            .get(idx as usize)
+                            .map(|obj| (surface.id, obj.id, (idx + 1) as usize))
                     } else {
                         None
                     }
@@ -1238,11 +1499,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None
             };
             if let Some((surf_id, id, new_index)) = reorder {
-                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::ReorderObject {
-                    surface: surf_id,
-                    id,
-                    new_index,
-                }));
+                let _ =
+                    st.shell
+                        .bridge
+                        .submit_command(CommandRequest::new(Command::ReorderObject {
+                            surface: surf_id,
+                            id,
+                            new_index,
+                        }));
             }
             if let Some(win) = win_weak.upgrade() {
                 sync_ui_from_shell(&win, &st);
@@ -1260,33 +1524,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let doc_pt = st.shell.camera.screen_to_doc(screen_pt);
             st.drag_start_doc = Some(doc_pt);
 
-            // Hit test against existing objects in active surface
-            let mut hit_obj = None;
-            let mut hit_bounds = None;
-            if let Some(session) = st.shell.bridge.session() {
-                if let Some(surface) = session.document.surfaces.first() {
-                    for obj in surface.objects.iter().rev() {
-                        if let Some(b) = obj.bounds {
-                            if doc_pt.x >= b[0] && doc_pt.x <= b[0] + b[2] && doc_pt.y >= b[1] && doc_pt.y <= b[1] + b[3] {
-                                hit_obj = Some(obj.id);
-                                hit_bounds = Some(b);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let Some(id) = hit_obj {
-                st.shell.bridge.set_selection(vec![id]);
-                st.dragging_object_id = Some(id);
-                st.drag_initial_bounds = hit_bounds;
-            } else if st.shell.active_tool() == ToolKind::Select {
-                st.shell.bridge.clear_selection();
-                st.dragging_object_id = None;
-                st.drag_initial_bounds = None;
-            }
-
             let evt = NormalizedPointerEvent::new(
                 PointerPhase::Down,
                 PointerButton::Primary,
@@ -1297,7 +1534,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = st.shell.handle_pointer_event(&evt);
 
             if let Some(win) = win_weak.upgrade() {
-                win.set_status_coords(format!("Doc: X: {:.1} pt  Y: {:.1} pt", doc_pt.x, doc_pt.y).into());
+                win.set_status_coords(
+                    format!("Doc: X: {:.1} pt  Y: {:.1} pt", doc_pt.x, doc_pt.y).into(),
+                );
                 sync_ui_from_shell(&win, &st);
             }
         });
@@ -1312,38 +1551,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             let doc_pt = st.shell.camera.screen_to_doc(screen_pt);
 
-            if let Some(start_doc) = st.drag_start_doc {
-                match st.shell.active_tool() {
-                    ToolKind::Rectangle | ToolKind::Ellipse | ToolKind::Polygon | ToolKind::Pen => {
-                        let min_x = start_doc.x.min(doc_pt.x);
-                        let min_y = start_doc.y.min(doc_pt.y);
-                        let w = (doc_pt.x - start_doc.x).abs();
-                        let h = (doc_pt.y - start_doc.y).abs();
-                        if let Some(win) = win_weak.upgrade() {
-                            let artboard_x = win.get_artboard_x();
-                            let artboard_y = win.get_artboard_y();
-                            win.set_has_preview(true);
-                            win.set_preview_x((min_x - artboard_x as f64).max(0.0) as f32);
-                            win.set_preview_y((min_y - artboard_y as f64).max(0.0) as f32);
-                            win.set_preview_w(w as f32);
-                            win.set_preview_h(h as f32);
-                        }
-                    }
-                    ToolKind::Select => {
-                        if let (Some(obj_id), Some(init_b)) = (st.dragging_object_id, st.drag_initial_bounds) {
-                            let dx = doc_pt.x - start_doc.x;
-                            let dy = doc_pt.y - start_doc.y;
-                            let new_b = [init_b[0] + dx, init_b[1] + dy, init_b[2], init_b[3]];
-                            let _ = st.shell.bridge.set_bounds(obj_id, Some(new_b), 0.0);
-                            if let Some(win) = win_weak.upgrade() {
-                                sync_ui_from_shell(&win, &st);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
             let evt = NormalizedPointerEvent::new(
                 PointerPhase::Move,
                 PointerButton::Primary,
@@ -1353,8 +1560,68 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             let _ = st.shell.handle_pointer_event(&evt);
 
+            let cursor_kind =
+                if let Some([bx, by, bw, bh]) = st.shell.bridge.selection().combined_bounds {
+                    let doc_box = GRect::new(bx, by, bx + bw, by + bh);
+                    if let Some(handle) = hit_test_handle_or_border(
+                        doc_box,
+                        screen_pt,
+                        doc_pt,
+                        &st.shell.camera,
+                        14.0,
+                        8.0,
+                    ) {
+                        match handle {
+                            SelectionHandleKind::TopLeft | SelectionHandleKind::BottomRight => {
+                                "nwse-resize"
+                            }
+                            SelectionHandleKind::TopRight | SelectionHandleKind::BottomLeft => {
+                                "nesw-resize"
+                            }
+                            SelectionHandleKind::Top | SelectionHandleKind::Bottom => "ns-resize",
+                            SelectionHandleKind::Left | SelectionHandleKind::Right => "ew-resize",
+                            SelectionHandleKind::Rotation => "crosshair",
+                        }
+                    } else if doc_box.contains(doc_pt) {
+                        "grab"
+                    } else {
+                        "default"
+                    }
+                } else {
+                    match st.shell.active_tool() {
+                        ToolKind::Pen
+                        | ToolKind::Pencil
+                        | ToolKind::Knife
+                        | ToolKind::Rectangle
+                        | ToolKind::Ellipse
+                        | ToolKind::Star
+                        | ToolKind::Polygon => "crosshair",
+                        ToolKind::ArtisticText | ToolKind::FrameText => "text",
+                        ToolKind::Hand => "grab",
+                        _ => "default",
+                    }
+                };
+
             if let Some(win) = win_weak.upgrade() {
-                win.set_status_coords(format!("Doc: X: {:.1} pt  Y: {:.1} pt", doc_pt.x, doc_pt.y).into());
+                win.set_status_coords(
+                    format!("Doc: X: {:.1} pt  Y: {:.1} pt", doc_pt.x, doc_pt.y).into(),
+                );
+                win.set_canvas_cursor_kind(cursor_kind.into());
+
+                let overlays = st.shell.overlays();
+                if let Some(marquee) = overlays.marquee_screen {
+                    let ax = win.get_artboard_x() as f64;
+                    let ay = win.get_artboard_y() as f64;
+                    win.set_has_preview(true);
+                    win.set_preview_x((marquee.x0.min(marquee.x1) - ax).max(0.0) as f32);
+                    win.set_preview_y((marquee.y0.min(marquee.y1) - ay).max(0.0) as f32);
+                    win.set_preview_w(marquee.width().abs() as f32);
+                    win.set_preview_h(marquee.height().abs() as f32);
+                } else {
+                    win.set_has_preview(false);
+                }
+
+                sync_ui_from_shell(&win, &st);
             }
         });
     }
@@ -1372,58 +1639,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 win.set_has_preview(false);
             }
 
-            // If drawing a shape, commit the new object
-            if let Some(start_doc) = st.drag_start_doc.take() {
-                let dx = (doc_pt.x - start_doc.x).abs();
-                let dy = (doc_pt.y - start_doc.y).abs();
-                if dx > 8.0 && dy > 8.0 {
-                    let min_x = start_doc.x.min(doc_pt.x);
-                    let min_y = start_doc.y.min(doc_pt.y);
-                    let mut id_gen = IdGenerator::new();
-                    if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
-                        let new_id = id_gen.next_object();
-                        let count = surface.objects.len() + 1;
-                        let (name, shape, fill) = match st.shell.active_tool() {
-                            ToolKind::Ellipse => (
-                                format!("Ellipse {}", count),
-                                aubrieta_document::ShapeKind::Ellipse,
-                                "aubrieta.yellow/500",
-                            ),
-                            ToolKind::Polygon => (
-                                format!("Star {}", count),
-                                aubrieta_document::ShapeKind::Star { points: 5, inner_ratio: 0.45 },
-                                "aubrieta.rose/500",
-                            ),
-                            ToolKind::Pen => (
-                                format!("Path {}", count),
-                                aubrieta_document::ShapeKind::Path(aubrieta_geometry::GPath::rect(
-                                    aubrieta_geometry::GRect::new(min_x, min_y, min_x + dx, min_y + dy),
-                                    0.0,
-                                    0.0,
-                                )),
-                                "aubrieta.purple/500",
-                            ),
-                            _ => (
-                                format!("Rectangle {}", count),
-                                aubrieta_document::ShapeKind::Rectangle { corner_radii: [4.0; 4] },
-                                "aubrieta.green/500",
-                            ),
-                        };
-                        let _ = st.shell.bridge.create_shape_object(
-                            surface.id,
-                            new_id,
-                            name,
-                            shape,
-                            Some([min_x, min_y, dx, dy]),
-                            Some(fill.to_string()),
-                            Some("#ffffff".to_string()),
-                            1.0,
-                        );
-                        st.shell.bridge.set_selection(vec![new_id]);
-                    }
-                }
-            }
-
+            st.drag_start_doc = None;
             st.dragging_object_id = None;
             st.drag_initial_bounds = None;
 

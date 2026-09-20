@@ -272,6 +272,7 @@ impl AubrietaGuiBridge {
     }
 
     /// Creates a shape or text object with explicit shape, geometry and appearance.
+    #[allow(clippy::too_many_arguments)]
     pub fn create_shape_object(
         &mut self,
         surface: SurfaceId,

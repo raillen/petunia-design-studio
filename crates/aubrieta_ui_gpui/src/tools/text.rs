@@ -137,7 +137,11 @@ impl TextTool {
         let text_shape = aubrieta_document::ShapeKind::Text {
             content: "Aubrieta Typography".to_string(),
             font_family: "Inter".to_string(),
-            font_size: if self.mode == TextToolMode::Artistic { 24.0 } else { 14.0 },
+            font_size: if self.mode == TextToolMode::Artistic {
+                24.0
+            } else {
+                14.0
+            },
             line_height: 1.3,
             letter_spacing: 0.0,
         };

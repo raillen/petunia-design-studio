@@ -101,18 +101,20 @@ impl PickerTool {
                         combined.extend(c1);
                     }
                     if let Some(stroke) = &hit.stroke {
-                        let c2 = bridge.submit_command(CommandRequest::new(Command::SetStroke {
-                            id: sel_id,
-                            stroke: Some(stroke.clone()),
-                            width: hit.stroke_width,
-                        }))?;
+                        let c2 =
+                            bridge.submit_command(CommandRequest::new(Command::SetStroke {
+                                id: sel_id,
+                                stroke: Some(stroke.clone()),
+                                width: hit.stroke_width,
+                            }))?;
                         combined.extend(c2);
                     }
                     if let Some(app) = &hit.appearance {
-                        let c3 = bridge.submit_command(CommandRequest::new(Command::SetAppearance {
-                            id: sel_id,
-                            appearance: Some(app.clone()),
-                        }))?;
+                        let c3 =
+                            bridge.submit_command(CommandRequest::new(Command::SetAppearance {
+                                id: sel_id,
+                                appearance: Some(app.clone()),
+                            }))?;
                         combined.extend(c3);
                     }
                 }

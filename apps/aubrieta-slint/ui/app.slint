@@ -23,6 +23,9 @@ export struct CanvasObjectItem {
     w: length,
     h: length,
     bg_color: color,
+    stroke_color: color,
+    stroke_width: length,
+    corner_radius: length,
     selected: bool,
     is_circle: bool,
     is_path: bool,
@@ -267,11 +270,14 @@ export component MainWindow inherits Window {
     in-out property <length> preview_w: 0px;
     in-out property <length> preview_h: 0px;
 
+    // Canvas cursor state
+    in-out property <string> canvas_cursor_kind: "default";
+
     // Dynamic Objects
     in-out property <[CanvasObjectItem]> canvas_objects: [
-        { id: "1", name: "Hero Card", x: 100px, y: 100px, w: 300px, h: 180px, bg_color: #3b82f6, selected: true, is_circle: false, is_path: false, is_text: false, text_content: "", svg_path: "" },
-        { id: "2", name: "Accent Circle", x: 440px, y: 140px, w: 140px, h: 140px, bg_color: #eab308, selected: false, is_circle: true, is_path: false, is_text: false, text_content: "", svg_path: "" },
-        { id: "3", name: "Vector Headline", x: 100px, y: 320px, w: 260px, h: 40px, bg_color: #a855f7, selected: false, is_circle: false, is_path: false, is_text: true, text_content: "Aubrieta Design Studio", svg_path: "" },
+        { id: "1", name: "Hero Card", x: 100px, y: 100px, w: 300px, h: 180px, bg_color: #3b82f6, stroke_color: #2563eb, stroke_width: 1.5px, corner_radius: 8px, selected: true, is_circle: false, is_path: false, is_text: false, text_content: "", svg_path: "" },
+        { id: "2", name: "Accent Circle", x: 450px, y: 140px, w: 140px, h: 140px, bg_color: #eab308, stroke_color: #ca8a04, stroke_width: 1.5px, corner_radius: 0px, selected: false, is_circle: true, is_path: false, is_text: false, text_content: "", svg_path: "" },
+        { id: "3", name: "Vector Headline", x: 100px, y: 320px, w: 300px, h: 50px, bg_color: #a855f7, stroke_color: transparent, stroke_width: 0px, corner_radius: 0px, selected: false, is_circle: false, is_path: false, is_text: true, text_content: "Aubrieta Vector Studio", svg_path: "" },
     ];
 
     // Callbacks
@@ -786,9 +792,15 @@ export component MainWindow inherits Window {
                     }
                     StudioToolButton {
                         icon: IconSet.Star;
-                        active: root.active_tool_name == "Star" || root.active_tool_name == "Polygon";
+                        active: root.active_tool_name == "Star";
                         shortcut: "S";
                         clicked => { root.active_tool_name = "Star"; root.select_tool("Star"); }
+                    }
+                    StudioToolButton {
+                        icon: IconSet.Hexagon;
+                        active: root.active_tool_name == "Polygon";
+                        shortcut: "Y";
+                        clicked => { root.active_tool_name = "Polygon"; root.select_tool("Polygon"); }
                     }
 
                     // Divider
@@ -819,9 +831,21 @@ export component MainWindow inherits Window {
 
                     // Group 4: Vector Editing
                     StudioToolButton {
-                        icon: IconSet.Scissors;
-                        active: root.active_tool_name == "Scissors" || root.active_tool_name == "Knife";
+                        icon: IconSet.Sparkles;
+                        active: root.active_tool_name == "Corner";
+                        shortcut: "C";
+                        clicked => { root.active_tool_name = "Corner"; root.select_tool("Corner"); }
+                    }
+                    StudioToolButton {
+                        icon: IconSet.Slice;
+                        active: root.active_tool_name == "Knife";
                         shortcut: "K";
+                        clicked => { root.active_tool_name = "Knife"; root.select_tool("Knife"); }
+                    }
+                    StudioToolButton {
+                        icon: IconSet.Scissors;
+                        active: root.active_tool_name == "Scissors";
+                        shortcut: "Shift+K";
                         clicked => { root.active_tool_name = "Scissors"; root.select_tool("Scissors"); }
                     }
                     StudioToolButton {
@@ -911,8 +935,41 @@ export component MainWindow inherits Window {
                         y: obj.y;
                         width: obj.w;
                         height: obj.h;
-                        background: obj.bg_color;
-                        border-radius: obj.is_circle ? (obj.w / 2) : 6px;
+                        background: transparent;
+
+                        // Vector Path rendering (Pen, Pencil, Star, Polygon, Curves)
+                        if obj.is_path : Path {
+                            width: parent.width;
+                            height: parent.height;
+                            viewbox-x: 0;
+                            viewbox-y: 0;
+                            viewbox-width: Math.max(1, obj.w / 1px);
+                            viewbox-height: Math.max(1, obj.h / 1px);
+                            commands: obj.svg_path;
+                            fill: obj.bg_color;
+                            stroke: obj.stroke_color;
+                            stroke-width: obj.stroke_width;
+                        }
+
+                        // Ellipse / Circle rendering
+                        if obj.is_circle : Rectangle {
+                            width: parent.width;
+                            height: parent.height;
+                            background: obj.bg_color;
+                            border-radius: Math.min(parent.width, parent.height) / 2;
+                            border-color: obj.stroke_color;
+                            border-width: obj.stroke_width;
+                        }
+
+                        // Parametric Rectangle rendering
+                        if !obj.is_path && !obj.is_circle && !obj.is_text : Rectangle {
+                            width: parent.width;
+                            height: parent.height;
+                            background: obj.bg_color;
+                            border-radius: obj.corner_radius;
+                            border-color: obj.stroke_color;
+                            border-width: obj.stroke_width;
+                        }
 
                         // Text content if text object
                         if obj.is_text : Text {
@@ -922,15 +979,6 @@ export component MainWindow inherits Window {
                             font-weight: 700;
                             horizontal-alignment: center;
                             vertical-alignment: center;
-                        }
-
-                        // Star decorative icon if star
-                        if !obj.is_text && !obj.is_circle && obj.name == "Star" : IconDisplay {
-                            icon: IconSet.Star;
-                            size: 40px;
-                            stroke: #ffffff;
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
                         }
 
                         // Interactive Selection Affordances (8 Handles + Box) (10.1)
@@ -993,6 +1041,15 @@ export component MainWindow inherits Window {
 
                 // Interactive Canvas Pointer Area
                 canvas_touch := TouchArea {
+                    mouse-cursor: root.canvas_cursor_kind == "nwse-resize" ? MouseCursor.nwse-resize :
+                                  root.canvas_cursor_kind == "nesw-resize" ? MouseCursor.nesw-resize :
+                                  root.canvas_cursor_kind == "ns-resize" ? MouseCursor.ns-resize :
+                                  root.canvas_cursor_kind == "ew-resize" ? MouseCursor.ew-resize :
+                                  root.canvas_cursor_kind == "crosshair" ? MouseCursor.crosshair :
+                                  root.canvas_cursor_kind == "grab" ? MouseCursor.grab :
+                                  root.canvas_cursor_kind == "text" ? MouseCursor.text :
+                                  MouseCursor.default;
+
                     pointer-event(ev) => {
                         if (ev.kind == PointerEventKind.down) {
                             root.canvas_pointer_down(self.mouse-x, self.mouse-y);

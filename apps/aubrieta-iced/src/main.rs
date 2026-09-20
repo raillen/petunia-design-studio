@@ -11,7 +11,7 @@ use aubrieta_document::{
     AlignmentMode, Bleed, DistributionAxis, Guide, GuideOrientation, Margins, ShapeKind,
 };
 use aubrieta_foundation::{AubrietaError, IdGenerator, ObjectId};
-use aubrieta_geometry::{BooleanOp, GPath, GPoint, GRect};
+use aubrieta_geometry::{BooleanOp, GPoint, GRect};
 use aubrieta_ui_gpui::bridge::{
     DataMergePresentationModel, HistoryPresentationModel, LayersPresentationModel,
     PropertiesPresentationModel,
@@ -92,6 +92,12 @@ pub struct AubrietaIcedApp {
     pub preview_rect: Option<[f64; 4]>,
 }
 
+impl Default for AubrietaIcedApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AubrietaIcedApp {
     pub fn new() -> Self {
         let mut shell = AubrietaShell::new(950.0, 700.0);
@@ -169,7 +175,8 @@ impl AubrietaIcedApp {
                     .and_then(|s| s.document.surfaces.first())
                 {
                     let b = surface.bounds();
-                    self.shell.fit_surface(GRect::new(b[0], b[1], b[0] + b[2], b[1] + b[3]));
+                    self.shell
+                        .fit_surface(GRect::new(b[0], b[1], b[0] + b[2], b[1] + b[3]));
                 }
             }
             Message::NewDocument => {
@@ -183,7 +190,10 @@ impl AubrietaIcedApp {
                     .set_title("Abrir Documento Aubrieta")
                     .pick_file()
                 {
-                    let title = path.file_name().and_then(|n| n.to_str()).unwrap_or("Novo Documento");
+                    let title = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("Novo Documento");
                     let _ = self.shell.new_document(title);
                 }
             }
@@ -214,10 +224,12 @@ impl AubrietaIcedApp {
                 self.selected_opacity = val;
                 if let Some(sel_id) = self.shell.bridge.selection().selected_ids.first().copied() {
                     let opacity = (val as f64 / 100.0).clamp(0.0, 1.0);
-                    let _ = self.shell.bridge.submit_command(CommandRequest::new(Command::SetOpacity {
-                        id: sel_id,
-                        opacity,
-                    }));
+                    let _ = self.shell.bridge.submit_command(CommandRequest::new(
+                        Command::SetOpacity {
+                            id: sel_id,
+                            opacity,
+                        },
+                    ));
                 }
             }
             Message::SelectLayer(idx) => {
@@ -240,10 +252,9 @@ impl AubrietaIcedApp {
                     None
                 };
                 if let Some((id, visible)) = toggle {
-                    let _ = self.shell.bridge.submit_command(CommandRequest::new(Command::SetVisibility {
-                        id,
-                        visible,
-                    }));
+                    let _ = self.shell.bridge.submit_command(CommandRequest::new(
+                        Command::SetVisibility { id, visible },
+                    ));
                 }
             }
             Message::ToggleLayerLock(idx) => {
@@ -257,10 +268,10 @@ impl AubrietaIcedApp {
                     None
                 };
                 if let Some((id, locked)) = toggle {
-                    let _ = self.shell.bridge.submit_command(CommandRequest::new(Command::SetLocked {
-                        id,
-                        locked,
-                    }));
+                    let _ = self
+                        .shell
+                        .bridge
+                        .submit_command(CommandRequest::new(Command::SetLocked { id, locked }));
                 }
             }
             Message::ReorderLayerUp(idx) => {
@@ -299,7 +310,12 @@ impl AubrietaIcedApp {
             }
             Message::AddRectangle => {
                 let mut id_gen = IdGenerator::new();
-                if let Some(surface) = self.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                if let Some(surface) = self
+                    .shell
+                    .bridge
+                    .session()
+                    .and_then(|s| s.document.surfaces.first().cloned())
+                {
                     let new_id = id_gen.next_object();
                     let count = surface.objects.len() + 1;
                     let offset = (count as f64 * 35.0) % 250.0;
@@ -307,7 +323,9 @@ impl AubrietaIcedApp {
                         surface.id,
                         new_id,
                         format!("Rectangle {}", count),
-                        ShapeKind::Rectangle { corner_radii: [4.0; 4] },
+                        ShapeKind::Rectangle {
+                            corner_radii: [4.0; 4],
+                        },
                         Some([120.0 + offset, 120.0 + offset, 200.0, 130.0]),
                         Some("aubrieta.green/500".to_string()),
                         Some("#10b981".to_string()),
@@ -318,7 +336,12 @@ impl AubrietaIcedApp {
             }
             Message::AddCircle => {
                 let mut id_gen = IdGenerator::new();
-                if let Some(surface) = self.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                if let Some(surface) = self
+                    .shell
+                    .bridge
+                    .session()
+                    .and_then(|s| s.document.surfaces.first().cloned())
+                {
                     let new_id = id_gen.next_object();
                     let count = surface.objects.len() + 1;
                     let offset = (count as f64 * 35.0) % 250.0;
@@ -337,7 +360,12 @@ impl AubrietaIcedApp {
             }
             Message::AddStar => {
                 let mut id_gen = IdGenerator::new();
-                if let Some(surface) = self.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                if let Some(surface) = self
+                    .shell
+                    .bridge
+                    .session()
+                    .and_then(|s| s.document.surfaces.first().cloned())
+                {
                     let new_id = id_gen.next_object();
                     let count = surface.objects.len() + 1;
                     let offset = (count as f64 * 35.0) % 250.0;
@@ -345,7 +373,10 @@ impl AubrietaIcedApp {
                         surface.id,
                         new_id,
                         format!("Star {}", count),
-                        ShapeKind::Star { points: 5, inner_ratio: 0.45 },
+                        ShapeKind::Star {
+                            points: 5,
+                            inner_ratio: 0.45,
+                        },
                         Some([220.0 + offset, 160.0 + offset, 130.0, 130.0]),
                         Some("aubrieta.rose/500".to_string()),
                         Some("#e11d48".to_string()),
@@ -356,7 +387,12 @@ impl AubrietaIcedApp {
             }
             Message::AddText => {
                 let mut id_gen = IdGenerator::new();
-                if let Some(surface) = self.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                if let Some(surface) = self
+                    .shell
+                    .bridge
+                    .session()
+                    .and_then(|s| s.document.surfaces.first().cloned())
+                {
                     let new_id = id_gen.next_object();
                     let count = surface.objects.len() + 1;
                     let offset = (count as f64 * 25.0) % 200.0;
@@ -382,7 +418,10 @@ impl AubrietaIcedApp {
             Message::DeleteSelected => {
                 let sel = self.shell.bridge.selection();
                 for id in sel.selected_ids {
-                    let _ = self.shell.bridge.submit_command(CommandRequest::new(Command::DeleteObject { id }));
+                    let _ = self
+                        .shell
+                        .bridge
+                        .submit_command(CommandRequest::new(Command::DeleteObject { id }));
                 }
                 self.shell.bridge.clear_selection();
             }
@@ -397,12 +436,17 @@ impl AubrietaIcedApp {
                                 let name = format!("{} (cópia)", obj.name);
                                 let mut id_gen = IdGenerator::new();
                                 let clone_id = id_gen.next_object();
-                                let _ = self.shell.bridge.submit_command(CommandRequest::new(Command::CreateObject {
-                                    surface: surface.id,
-                                    id: clone_id,
-                                    name,
-                                }));
-                                let _ = self.shell.bridge.set_bounds(clone_id, Some(clone_bounds), 0.0);
+                                let _ = self.shell.bridge.submit_command(CommandRequest::new(
+                                    Command::CreateObject {
+                                        surface: surface.id,
+                                        id: clone_id,
+                                        name,
+                                    },
+                                ));
+                                let _ =
+                                    self.shell
+                                        .bridge
+                                        .set_bounds(clone_id, Some(clone_bounds), 0.0);
                                 if let Some(f) = fill {
                                     let _ = self.shell.bridge.set_fill(clone_id, Some(f));
                                 }
@@ -440,7 +484,10 @@ impl AubrietaIcedApp {
                 let sel = self.shell.bridge.selection().selected_ids.clone();
                 if !sel.is_empty() {
                     if let Some(surf_id) = self.shell.bridge.active_surface().or_else(|| {
-                        self.shell.bridge.session().and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                        self.shell
+                            .bridge
+                            .session()
+                            .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
                     }) {
                         let _ = self.shell.bridge.align_objects(surf_id, sel, mode);
                     }
@@ -450,7 +497,10 @@ impl AubrietaIcedApp {
                 let sel = self.shell.bridge.selection().selected_ids.clone();
                 if sel.len() >= 2 {
                     if let Some(surf_id) = self.shell.bridge.active_surface().or_else(|| {
-                        self.shell.bridge.session().and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                        self.shell
+                            .bridge
+                            .session()
+                            .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
                     }) {
                         let _ = self.shell.bridge.distribute_objects(surf_id, sel, axis);
                     }
@@ -554,67 +604,7 @@ impl AubrietaIcedApp {
                 let doc_pt = self.shell.camera.screen_to_doc(screen_pt);
                 self.preview_rect = None;
 
-                if let Some(start_doc) = self.drag_start_doc.take() {
-                    let dx = (doc_pt.x - start_doc.x).abs();
-                    let dy = (doc_pt.y - start_doc.y).abs();
-                    if dx > 8.0 && dy > 8.0 {
-                        let min_x = start_doc.x.min(doc_pt.x);
-                        let min_y = start_doc.y.min(doc_pt.y);
-                        let mut id_gen = IdGenerator::new();
-                        if let Some(surface) = self
-                            .shell
-                            .bridge
-                            .session()
-                            .and_then(|s| s.document.surfaces.first().cloned())
-                        {
-                            let new_id = id_gen.next_object();
-                            let count = surface.objects.len() + 1;
-                            let (name, shape, fill) = match self.shell.active_tool() {
-                                ToolKind::Ellipse => (
-                                    format!("Ellipse {}", count),
-                                    ShapeKind::Ellipse,
-                                    "aubrieta.yellow/500",
-                                ),
-                                ToolKind::Star => (
-                                    format!("Star {}", count),
-                                    ShapeKind::Star { points: 5, inner_ratio: 0.45 },
-                                    "aubrieta.rose/500",
-                                ),
-                                ToolKind::Polygon => (
-                                    format!("Polygon {}", count),
-                                    ShapeKind::Polygon { sides: 6 },
-                                    "aubrieta.blue/500",
-                                ),
-                                ToolKind::Pen => (
-                                    format!("Path {}", count),
-                                    ShapeKind::Path(GPath::rect(
-                                        GRect::new(min_x, min_y, min_x + dx, min_y + dy),
-                                        0.0,
-                                        0.0,
-                                    )),
-                                    "aubrieta.purple/500",
-                                ),
-                                _ => (
-                                    format!("Rectangle {}", count),
-                                    ShapeKind::Rectangle { corner_radii: [4.0; 4] },
-                                    "aubrieta.green/500",
-                                ),
-                            };
-                            let _ = self.shell.bridge.create_shape_object(
-                                surface.id,
-                                new_id,
-                                name,
-                                shape,
-                                Some([min_x, min_y, dx, dy]),
-                                Some(fill.to_string()),
-                                Some("#ffffff".to_string()),
-                                1.0,
-                            );
-                            self.shell.bridge.set_selection(vec![new_id]);
-                        }
-                    }
-                }
-
+                self.drag_start_doc = None;
                 self.dragging_object_id = None;
                 self.drag_initial_bounds = None;
 
@@ -698,18 +688,22 @@ impl AubrietaIcedApp {
 
         let persona_pills = row![
             button(text("🎨 Design Persona").size(11))
-                .style(move |theme, status| if self.active_persona == Persona::Design {
-                    button::primary(theme, status)
-                } else {
-                    button::secondary(theme, status)
-                })
+                .style(
+                    move |theme, status| if self.active_persona == Persona::Design {
+                        button::primary(theme, status)
+                    } else {
+                        button::secondary(theme, status)
+                    }
+                )
                 .on_press(Message::SwitchPersona(Persona::Design)),
             button(text("📷 Photo Persona").size(11))
-                .style(move |theme, status| if self.active_persona == Persona::Photo {
-                    button::primary(theme, status)
-                } else {
-                    button::secondary(theme, status)
-                })
+                .style(
+                    move |theme, status| if self.active_persona == Persona::Photo {
+                        button::primary(theme, status)
+                    } else {
+                        button::secondary(theme, status)
+                    }
+                )
                 .on_press(Message::SwitchPersona(Persona::Photo)),
         ]
         .spacing(2)
@@ -736,7 +730,9 @@ impl AubrietaIcedApp {
 
         let doc_tab = container(
             row![
-                text(doc_title).size(12).color(Color::from_rgb8(244, 244, 245)),
+                text(doc_title)
+                    .size(12)
+                    .color(Color::from_rgb8(244, 244, 245)),
                 button(text("×").size(11)).on_press(Message::NewDocument),
             ]
             .spacing(8)
@@ -759,13 +755,20 @@ impl AubrietaIcedApp {
             button(text("Desfazer").size(11)).on_press(Message::Undo),
             button(text("Refazer").size(11)).on_press(Message::Redo),
             button(text("−").size(12)).on_press(Message::ZoomOut),
-            container(text(format!("{zoom_pct}%")).size(11).color(Color::from_rgb8(212, 212, 216)))
-                .padding([2, 6])
-                .style(|_| container::Style {
-                    background: Some(Color::from_rgb8(32, 32, 36).into()),
-                    border: iced::Border { radius: 3.0.into(), ..Default::default() },
+            container(
+                text(format!("{zoom_pct}%"))
+                    .size(11)
+                    .color(Color::from_rgb8(212, 212, 216))
+            )
+            .padding([2, 6])
+            .style(|_| container::Style {
+                background: Some(Color::from_rgb8(32, 32, 36).into()),
+                border: iced::Border {
+                    radius: 3.0.into(),
                     ..Default::default()
-                }),
+                },
+                ..Default::default()
+            }),
             button(text("+").size(12)).on_press(Message::ZoomIn),
             button(text("Ajustar").size(11)).on_press(Message::FitCanvas),
             row![
@@ -809,16 +812,26 @@ impl AubrietaIcedApp {
         let props: PropertiesPresentationModel = self.shell.query_properties();
         let transform_hud = if let Some(b) = props.bounds {
             row![
-                text(format!("X: {:.0} pt", b[0])).size(11).color(Color::from_rgb8(161, 161, 170)),
-                text(format!("Y: {:.0} pt", b[1])).size(11).color(Color::from_rgb8(161, 161, 170)),
-                text(format!("W: {:.0} pt", b[2])).size(11).color(Color::from_rgb8(161, 161, 170)),
-                text(format!("H: {:.0} pt", b[3])).size(11).color(Color::from_rgb8(161, 161, 170)),
+                text(format!("X: {:.0} pt", b[0]))
+                    .size(11)
+                    .color(Color::from_rgb8(161, 161, 170)),
+                text(format!("Y: {:.0} pt", b[1]))
+                    .size(11)
+                    .color(Color::from_rgb8(161, 161, 170)),
+                text(format!("W: {:.0} pt", b[2]))
+                    .size(11)
+                    .color(Color::from_rgb8(161, 161, 170)),
+                text(format!("H: {:.0} pt", b[3]))
+                    .size(11)
+                    .color(Color::from_rgb8(161, 161, 170)),
             ]
             .spacing(8)
             .align_y(Alignment::Center)
         } else {
-            row![text("Nenhum objeto selecionado").size(11).color(Color::from_rgb8(113, 113, 122))]
-                .align_y(Alignment::Center)
+            row![text("Nenhum objeto selecionado")
+                .size(11)
+                .color(Color::from_rgb8(113, 113, 122))]
+            .align_y(Alignment::Center)
         };
 
         let curve_buttons = row![
@@ -891,12 +904,12 @@ impl AubrietaIcedApp {
             (ToolKind::Scissors, "C\nSci"),
             (ToolKind::ShapeBuilder, "W\nShp"),
         ];
-        let tools_g5 = [
-            (ToolKind::Hand, "␣\nHnd"),
-            (ToolKind::Zoom, "Z\nZom"),
-        ];
+        let tools_g5 = [(ToolKind::Hand, "␣\nHnd"), (ToolKind::Zoom, "Z\nZom")];
 
-        let mut tool_col = Column::new().spacing(3).padding(4).width(Length::Fixed(56.0));
+        let mut tool_col = Column::new()
+            .spacing(3)
+            .padding(4)
+            .width(Length::Fixed(56.0));
         for (tool, label) in tools_g1 {
             tool_col = tool_col.push(
                 button(text(label).size(11).align_x(Alignment::Center))
@@ -952,7 +965,8 @@ impl AubrietaIcedApp {
         // 4.3 Right Studio Dock (300px)
         let tab_buttons = row![
             button(text("Camadas").size(11)).on_press(Message::SelectTab(ActiveTab::Layers)),
-            button(text("Propriedades").size(11)).on_press(Message::SelectTab(ActiveTab::Properties)),
+            button(text("Propriedades").size(11))
+                .on_press(Message::SelectTab(ActiveTab::Properties)),
             button(text("Histórico").size(11)).on_press(Message::SelectTab(ActiveTab::History)),
             button(text("Dados").size(11)).on_press(Message::SelectTab(ActiveTab::DataMerge)),
         ]
@@ -961,20 +975,24 @@ impl AubrietaIcedApp {
         let dock_content: Element<'_, Message> = match self.active_tab {
             ActiveTab::Layers => {
                 let model: LayersPresentationModel = self.shell.query_layers();
-                let mut col = column![
-                    text("Hierarquia de Objetos").size(13).color(Color::from_rgb8(96, 165, 250)),
-                ]
+                let mut col = column![text("Hierarquia de Objetos")
+                    .size(13)
+                    .color(Color::from_rgb8(96, 165, 250)),]
                 .spacing(4);
 
                 for surface in &model.surfaces {
                     col = col.push(
-                        container(text(format!("📄 {} [800 × 600]", surface.name)).size(11).color(Color::from_rgb8(147, 197, 253)))
-                            .padding([3, 6])
-                            .style(|_| container::Style {
-                                background: Some(Color::from_rgb8(36, 36, 40).into()),
-                                ..Default::default()
-                            })
-                            .width(Length::Fill),
+                        container(
+                            text(format!("📄 {} [800 × 600]", surface.name))
+                                .size(11)
+                                .color(Color::from_rgb8(147, 197, 253)),
+                        )
+                        .padding([3, 6])
+                        .style(|_| container::Style {
+                            background: Some(Color::from_rgb8(36, 36, 40).into()),
+                            ..Default::default()
+                        })
+                        .width(Length::Fill),
                     );
                 }
 
@@ -1011,45 +1029,74 @@ impl AubrietaIcedApp {
             }
             ActiveTab::Properties => {
                 let model: PropertiesPresentationModel = self.shell.query_properties();
-                let mut col = column![
-                    text("Inspetor de Propriedades").size(13).color(Color::from_rgb8(96, 165, 250)),
-                ]
+                let mut col = column![text("Inspetor de Propriedades")
+                    .size(13)
+                    .color(Color::from_rgb8(96, 165, 250)),]
                 .spacing(8);
 
                 if model.selection_empty {
-                    col = col.push(text("(Nenhuma seleção)").size(12).color(Color::from_rgb8(161, 161, 170)));
+                    col = col.push(
+                        text("(Nenhuma seleção)")
+                            .size(12)
+                            .color(Color::from_rgb8(161, 161, 170)),
+                    );
                 } else {
                     col = col.push(
-                        text(format!("Objeto: {}", model.name.as_deref().unwrap_or("Item")))
-                            .size(12)
-                            .color(Color::WHITE),
+                        text(format!(
+                            "Objeto: {}",
+                            model.name.as_deref().unwrap_or("Item")
+                        ))
+                        .size(12)
+                        .color(Color::WHITE),
                     );
                     if let Some(b) = model.bounds {
-                        col = col.push(text(format!("X: {:.1} pt   Y: {:.1} pt", b[0], b[1])).size(11));
-                        col = col.push(text(format!("Largura: {:.1} pt   Altura: {:.1} pt", b[2], b[3])).size(11));
+                        col = col
+                            .push(text(format!("X: {:.1} pt   Y: {:.1} pt", b[0], b[1])).size(11));
+                        col = col.push(
+                            text(format!("Largura: {:.1} pt   Altura: {:.1} pt", b[2], b[3]))
+                                .size(11),
+                        );
                     }
                     if let Some(f) = &model.fill {
                         col = col.push(text(format!("Cor: {f}")).size(11));
                     }
 
                     // Quick color palette buttons
-                    col = col.push(text("Preenchimento:").size(11).color(Color::from_rgb8(161, 161, 170)));
+                    col = col.push(
+                        text("Preenchimento:")
+                            .size(11)
+                            .color(Color::from_rgb8(161, 161, 170)),
+                    );
                     col = col.push(
                         row![
-                            button(text("Azul").size(10)).on_press(Message::SetColor("aubrieta.blue/500".to_string())),
-                            button(text("Amarelo").size(10)).on_press(Message::SetColor("aubrieta.yellow/500".to_string())),
-                            button(text("Vermelho").size(10)).on_press(Message::SetColor("aubrieta.rose/500".to_string())),
-                            button(text("Verde").size(10)).on_press(Message::SetColor("aubrieta.green/500".to_string())),
-                            button(text("Roxo").size(10)).on_press(Message::SetColor("aubrieta.purple/500".to_string())),
+                            button(text("Azul").size(10))
+                                .on_press(Message::SetColor("aubrieta.blue/500".to_string())),
+                            button(text("Amarelo").size(10))
+                                .on_press(Message::SetColor("aubrieta.yellow/500".to_string())),
+                            button(text("Vermelho").size(10))
+                                .on_press(Message::SetColor("aubrieta.rose/500".to_string())),
+                            button(text("Verde").size(10))
+                                .on_press(Message::SetColor("aubrieta.green/500".to_string())),
+                            button(text("Roxo").size(10))
+                                .on_press(Message::SetColor("aubrieta.purple/500".to_string())),
                         ]
                         .spacing(3),
                     );
 
-                    col = col.push(text(format!("Opacidade: {:.0}%", self.selected_opacity)).size(11));
-                    col = col.push(slider(0.0..=100.0, self.selected_opacity, Message::SetOpacity));
+                    col = col
+                        .push(text(format!("Opacidade: {:.0}%", self.selected_opacity)).size(11));
+                    col = col.push(slider(
+                        0.0..=100.0,
+                        self.selected_opacity,
+                        Message::SetOpacity,
+                    ));
 
                     // Pathfinder
-                    col = col.push(text("Operações Booleanas:").size(11).color(Color::from_rgb8(161, 161, 170)));
+                    col = col.push(
+                        text("Operações Booleanas:")
+                            .size(11)
+                            .color(Color::from_rgb8(161, 161, 170)),
+                    );
                     col = col.push(
                         row![
                             button(text("⋃ Unir").size(10)).on_press(Message::BooleanUnion),
@@ -1061,19 +1108,28 @@ impl AubrietaIcedApp {
                     );
 
                     // Alignment
-                    col = col.push(text("Alinhamento e Distribuição:").size(11).color(Color::from_rgb8(161, 161, 170)));
+                    col = col.push(
+                        text("Alinhamento e Distribuição:")
+                            .size(11)
+                            .color(Color::from_rgb8(161, 161, 170)),
+                    );
                     col = col.push(
                         row![
-                            button(text("Esq").size(10)).on_press(Message::AlignObjects(AlignmentMode::Left)),
-                            button(text("Centro").size(10)).on_press(Message::AlignObjects(AlignmentMode::Center)),
-                            button(text("Dir").size(10)).on_press(Message::AlignObjects(AlignmentMode::Right)),
+                            button(text("Esq").size(10))
+                                .on_press(Message::AlignObjects(AlignmentMode::Left)),
+                            button(text("Centro").size(10))
+                                .on_press(Message::AlignObjects(AlignmentMode::Center)),
+                            button(text("Dir").size(10))
+                                .on_press(Message::AlignObjects(AlignmentMode::Right)),
                         ]
                         .spacing(3),
                     );
                     col = col.push(
                         row![
-                            button(text("Dist H").size(10)).on_press(Message::DistributeObjects(DistributionAxis::Horizontal)),
-                            button(text("Dist V").size(10)).on_press(Message::DistributeObjects(DistributionAxis::Vertical)),
+                            button(text("Dist H").size(10))
+                                .on_press(Message::DistributeObjects(DistributionAxis::Horizontal)),
+                            button(text("Dist V").size(10))
+                                .on_press(Message::DistributeObjects(DistributionAxis::Vertical)),
                         ]
                         .spacing(3),
                     );
@@ -1083,8 +1139,15 @@ impl AubrietaIcedApp {
             ActiveTab::History => {
                 let model: HistoryPresentationModel = self.shell.bridge.query_history();
                 let mut col = column![
-                    text("Histórico de Transações").size(13).color(Color::from_rgb8(96, 165, 250)),
-                    text(format!("Undo: {} | Redo: {}", model.undo_stack.len(), model.redo_stack.len())).size(11),
+                    text("Histórico de Transações")
+                        .size(13)
+                        .color(Color::from_rgb8(96, 165, 250)),
+                    text(format!(
+                        "Undo: {} | Redo: {}",
+                        model.undo_stack.len(),
+                        model.redo_stack.len()
+                    ))
+                    .size(11),
                 ]
                 .spacing(4);
 
@@ -1102,12 +1165,25 @@ impl AubrietaIcedApp {
             }
             ActiveTab::DataMerge => {
                 let model: DataMergePresentationModel = self.shell.query_data_merge();
-                let src = model.sources.first().map(|s| s.name.as_str()).unwrap_or("(Nenhuma fonte)");
+                let src = model
+                    .sources
+                    .first()
+                    .map(|s| s.name.as_str())
+                    .unwrap_or("(Nenhuma fonte)");
                 column![
-                    text("Data Merge de Variáveis").size(13).color(Color::from_rgb8(96, 165, 250)),
+                    text("Data Merge de Variáveis")
+                        .size(13)
+                        .color(Color::from_rgb8(96, 165, 250)),
                     text(format!("Fonte de Dados: {src}")).size(12),
-                    text(format!("Total Registros: {} | Vínculos: {}", model.total_records, model.bindings.len())).size(11),
-                    text("Status: Pronto para Mesclagem").color(Color::from_rgb8(34, 197, 94)).size(12),
+                    text(format!(
+                        "Total Registros: {} | Vínculos: {}",
+                        model.total_records,
+                        model.bindings.len()
+                    ))
+                    .size(11),
+                    text("Status: Pronto para Mesclagem")
+                        .color(Color::from_rgb8(34, 197, 94))
+                        .size(12),
                 ]
                 .spacing(6)
                 .into()
@@ -1167,8 +1243,15 @@ impl AubrietaIcedApp {
         let status_bar = container(
             row![
                 text(hint).size(11).color(Color::from_rgb8(161, 161, 170)),
-                text(coords_text).size(11).color(Color::from_rgb8(147, 197, 253)),
-                text(format!("{sel_text}  |  Zoom: {zoom_pct}%  |  Snap: {}", if snap_enabled { "Ativo" } else { "Inativo" })).size(11).color(Color::from_rgb8(113, 113, 122)),
+                text(coords_text)
+                    .size(11)
+                    .color(Color::from_rgb8(147, 197, 253)),
+                text(format!(
+                    "{sel_text}  |  Zoom: {zoom_pct}%  |  Snap: {}",
+                    if snap_enabled { "Ativo" } else { "Inativo" }
+                ))
+                .size(11)
+                .color(Color::from_rgb8(113, 113, 122)),
             ]
             .spacing(16)
             .padding([4, 10])
@@ -1177,11 +1260,17 @@ impl AubrietaIcedApp {
         .style(studio_panel_style(Color::from_rgb8(20, 20, 22)))
         .width(Length::Fill);
 
-        column![menu_bar, doc_strip, context_toolbar, middle_workspace, status_bar]
-            .spacing(0)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+        column![
+            menu_bar,
+            doc_strip,
+            context_toolbar,
+            middle_workspace,
+            status_bar
+        ]
+        .spacing(0)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
     }
 }
 
@@ -1290,11 +1379,7 @@ impl<'a> canvas::Program<Message> for AubrietaCanvasProgram<'a> {
         let mut frame = Frame::new(renderer, bounds.size());
 
         // Background canvas dark color
-        frame.fill_rectangle(
-            Point::ORIGIN,
-            bounds.size(),
-            Color::from_rgb8(17, 17, 19),
-        );
+        frame.fill_rectangle(Point::ORIGIN, bounds.size(), Color::from_rgb8(17, 17, 19));
 
         let camera = &self.shell.camera;
         let to_screen = |doc_pt: GPoint| -> Point {
@@ -1324,7 +1409,9 @@ impl<'a> canvas::Program<Message> for AubrietaCanvasProgram<'a> {
                 let paper_path = Path::rectangle(p0, size);
                 frame.stroke(
                     &paper_path,
-                    Stroke::default().with_color(Color::from_rgb8(203, 213, 225)).with_width(1.0),
+                    Stroke::default()
+                        .with_color(Color::from_rgb8(203, 213, 225))
+                        .with_width(1.0),
                 );
 
                 // Header text
@@ -1338,25 +1425,39 @@ impl<'a> canvas::Program<Message> for AubrietaCanvasProgram<'a> {
 
                 // Bleed Guideline (Magenta) (10.7)
                 if !surface.bleed.is_zero() {
-                    let bp0 = to_screen(GPoint::new(b[0] - surface.bleed.left, b[1] - surface.bleed.top));
-                    let bw = ((b[2] + surface.bleed.left + surface.bleed.right) * camera.zoom) as f32;
-                    let bh = ((b[3] + surface.bleed.top + surface.bleed.bottom) * camera.zoom) as f32;
+                    let bp0 = to_screen(GPoint::new(
+                        b[0] - surface.bleed.left,
+                        b[1] - surface.bleed.top,
+                    ));
+                    let bw =
+                        ((b[2] + surface.bleed.left + surface.bleed.right) * camera.zoom) as f32;
+                    let bh =
+                        ((b[3] + surface.bleed.top + surface.bleed.bottom) * camera.zoom) as f32;
                     let bleed_path = Path::rectangle(bp0, Size::new(bw, bh));
                     frame.stroke(
                         &bleed_path,
-                        Stroke::default().with_color(Color::from_rgb8(244, 63, 94)).with_width(1.0),
+                        Stroke::default()
+                            .with_color(Color::from_rgb8(244, 63, 94))
+                            .with_width(1.0),
                     );
                 }
 
                 // Margin Guideline (Cyan) (10.7)
                 if surface.margins != Margins::ZERO {
-                    let mp0 = to_screen(GPoint::new(b[0] + surface.margins.left, b[1] + surface.margins.top));
-                    let mw = ((b[2] - surface.margins.left - surface.margins.right) * camera.zoom) as f32;
-                    let mh = ((b[3] - surface.margins.top - surface.margins.bottom) * camera.zoom) as f32;
+                    let mp0 = to_screen(GPoint::new(
+                        b[0] + surface.margins.left,
+                        b[1] + surface.margins.top,
+                    ));
+                    let mw = ((b[2] - surface.margins.left - surface.margins.right) * camera.zoom)
+                        as f32;
+                    let mh = ((b[3] - surface.margins.top - surface.margins.bottom) * camera.zoom)
+                        as f32;
                     let margin_path = Path::rectangle(mp0, Size::new(mw, mh));
                     frame.stroke(
                         &margin_path,
-                        Stroke::default().with_color(Color::from_rgb8(6, 182, 212)).with_width(1.0),
+                        Stroke::default()
+                            .with_color(Color::from_rgb8(6, 182, 212))
+                            .with_width(1.0),
                     );
                 }
 
@@ -1366,7 +1467,9 @@ impl<'a> canvas::Program<Message> for AubrietaCanvasProgram<'a> {
                 let guide_path = Path::line(gp0, gp1);
                 frame.stroke(
                     &guide_path,
-                    Stroke::default().with_color(Color::from_rgb8(6, 182, 212)).with_width(1.0),
+                    Stroke::default()
+                        .with_color(Color::from_rgb8(6, 182, 212))
+                        .with_width(1.0),
                 );
 
                 // Render dynamic objects
@@ -1389,10 +1492,15 @@ impl<'a> canvas::Program<Message> for AubrietaCanvasProgram<'a> {
                             frame.fill(&circle_path, fill_color);
                             frame.stroke(
                                 &circle_path,
-                                Stroke::default().with_color(Color::from_rgb8(202, 138, 4)).with_width(1.5),
+                                Stroke::default()
+                                    .with_color(Color::from_rgb8(202, 138, 4))
+                                    .with_width(1.5),
                             );
                         }
-                        Some(ShapeKind::Star { points, inner_ratio }) => {
+                        Some(ShapeKind::Star {
+                            points,
+                            inner_ratio,
+                        }) => {
                             let center = Point::new(op0.x + ow * 0.5, op0.y + oh * 0.5);
                             let star_path = make_star_path(
                                 center.x,
@@ -1404,10 +1512,14 @@ impl<'a> canvas::Program<Message> for AubrietaCanvasProgram<'a> {
                             frame.fill(&star_path, fill_color);
                             frame.stroke(
                                 &star_path,
-                                Stroke::default().with_color(Color::from_rgb8(225, 29, 72)).with_width(1.5),
+                                Stroke::default()
+                                    .with_color(Color::from_rgb8(225, 29, 72))
+                                    .with_width(1.5),
                             );
                         }
-                        Some(ShapeKind::Text { content, font_size, .. }) => {
+                        Some(ShapeKind::Text {
+                            content, font_size, ..
+                        }) => {
                             frame.fill_text(Text {
                                 content: content.clone(),
                                 position: Point::new(op0.x, op0.y + oh * 0.5 - 7.0),
@@ -1421,7 +1533,9 @@ impl<'a> canvas::Program<Message> for AubrietaCanvasProgram<'a> {
                             frame.fill(&rect_path, fill_color);
                             frame.stroke(
                                 &rect_path,
-                                Stroke::default().with_color(Color::from_rgb8(37, 99, 235)).with_width(1.5),
+                                Stroke::default()
+                                    .with_color(Color::from_rgb8(37, 99, 235))
+                                    .with_width(1.5),
                             );
                         }
                     }
@@ -1431,7 +1545,9 @@ impl<'a> canvas::Program<Message> for AubrietaCanvasProgram<'a> {
                         let sel_path = Path::rectangle(op0, osize);
                         frame.stroke(
                             &sel_path,
-                            Stroke::default().with_color(Color::from_rgb8(59, 130, 246)).with_width(1.5),
+                            Stroke::default()
+                                .with_color(Color::from_rgb8(59, 130, 246))
+                                .with_width(1.5),
                         );
 
                         // 8 Handles
@@ -1450,7 +1566,9 @@ impl<'a> canvas::Program<Message> for AubrietaCanvasProgram<'a> {
                             let hp_path = Path::rectangle(hp, Size::new(8.0, 8.0));
                             frame.stroke(
                                 &hp_path,
-                                Stroke::default().with_color(Color::from_rgb8(37, 99, 235)).with_width(1.0),
+                                Stroke::default()
+                                    .with_color(Color::from_rgb8(37, 99, 235))
+                                    .with_width(1.0),
                             );
                         }
 
@@ -1459,7 +1577,9 @@ impl<'a> canvas::Program<Message> for AubrietaCanvasProgram<'a> {
                         let stem_path = Path::line(Point::new(op0.x + ow * 0.5, op0.y), pin_top);
                         frame.stroke(
                             &stem_path,
-                            Stroke::default().with_color(Color::from_rgb8(59, 130, 246)).with_width(1.0),
+                            Stroke::default()
+                                .with_color(Color::from_rgb8(59, 130, 246))
+                                .with_width(1.0),
                         );
                         let pin_center = Point::new(op0.x + ow * 0.5, op0.y - 18.0);
                         let pin_path = Path::circle(pin_center, 4.0);
@@ -1471,7 +1591,11 @@ impl<'a> canvas::Program<Message> for AubrietaCanvasProgram<'a> {
 
                         // Dimensions HUD Badge
                         let hud_p = Point::new(op0.x + ow * 0.5 - 55.0, op0.y + oh + 8.0);
-                        frame.fill_rectangle(hud_p, Size::new(110.0, 18.0), Color::from_rgba(0.1, 0.1, 0.14, 0.9));
+                        frame.fill_rectangle(
+                            hud_p,
+                            Size::new(110.0, 18.0),
+                            Color::from_rgba(0.1, 0.1, 0.14, 0.9),
+                        );
                         frame.fill_text(Text {
                             content: format!("{:.0} × {:.0} pt", obj_b[2], obj_b[3]),
                             position: Point::new(hud_p.x + 16.0, hud_p.y + 3.0),
@@ -1494,7 +1618,9 @@ impl<'a> canvas::Program<Message> for AubrietaCanvasProgram<'a> {
             let prev_path = Path::rectangle(pp0, prev_size);
             frame.stroke(
                 &prev_path,
-                Stroke::default().with_color(Color::from_rgb8(59, 130, 246)).with_width(1.5),
+                Stroke::default()
+                    .with_color(Color::from_rgb8(59, 130, 246))
+                    .with_width(1.5),
             );
         }
 
@@ -1511,21 +1637,33 @@ fn populate_showcase_document(shell: &mut AubrietaShell) -> Result<(), AubrietaE
     let star_id = id_gen.next_object();
     let text_id = id_gen.next_object();
 
-    shell.bridge.submit_command(CommandRequest::new(Command::CreateSurface {
-        id: surface_1,
-        name: "Main Artboard".to_string(),
-    }))?;
-    shell.bridge.set_surface_geometry(surface_1, [60.0, 60.0], [800.0, 600.0])?;
-    shell.bridge.set_surface_bleed(surface_1, Bleed::uniform(10.0))?;
-    shell.bridge.set_surface_margins(surface_1, Margins::uniform(36.0))?;
-    shell.bridge.add_surface_guide(surface_1, Guide::new(1, GuideOrientation::Vertical, 200.0))?;
+    shell
+        .bridge
+        .submit_command(CommandRequest::new(Command::CreateSurface {
+            id: surface_1,
+            name: "Main Artboard".to_string(),
+        }))?;
+    shell
+        .bridge
+        .set_surface_geometry(surface_1, [60.0, 60.0], [800.0, 600.0])?;
+    shell
+        .bridge
+        .set_surface_bleed(surface_1, Bleed::uniform(10.0))?;
+    shell
+        .bridge
+        .set_surface_margins(surface_1, Margins::uniform(36.0))?;
+    shell
+        .bridge
+        .add_surface_guide(surface_1, Guide::new(1, GuideOrientation::Vertical, 200.0))?;
 
     // Hero Card (Rectangle)
     shell.bridge.create_shape_object(
         surface_1,
         rect_id,
         "Hero Card".to_string(),
-        ShapeKind::Rectangle { corner_radii: [8.0; 4] },
+        ShapeKind::Rectangle {
+            corner_radii: [8.0; 4],
+        },
         Some([100.0, 100.0, 300.0, 180.0]),
         Some("aubrieta.blue/500".to_string()),
         Some("#2563eb".to_string()),
@@ -1549,7 +1687,10 @@ fn populate_showcase_document(shell: &mut AubrietaShell) -> Result<(), AubrietaE
         surface_1,
         star_id,
         "Golden Star".to_string(),
-        ShapeKind::Star { points: 5, inner_ratio: 0.45 },
+        ShapeKind::Star {
+            points: 5,
+            inner_ratio: 0.45,
+        },
         Some([450.0, 320.0, 130.0, 130.0]),
         Some("aubrieta.rose/500".to_string()),
         Some("#e11d48".to_string()),
@@ -1580,7 +1721,10 @@ fn populate_showcase_document(shell: &mut AubrietaShell) -> Result<(), AubrietaE
 
 fn main() -> iced::Result {
     let args: Vec<String> = env::args().collect();
-    if args.iter().any(|a| a == "--smoke-test" || a == "--headless") {
+    if args
+        .iter()
+        .any(|a| a == "--smoke-test" || a == "--headless")
+    {
         println!("aubrieta-iced: Running automated smoke test...");
         let mut app = AubrietaIcedApp::new();
         if let Err(e) = app.smoke_test() {
@@ -1591,11 +1735,15 @@ fn main() -> iced::Result {
         return Ok(());
     }
 
-    iced::application(AubrietaIcedApp::new, AubrietaIcedApp::update, AubrietaIcedApp::view)
-        .title("Aubrieta Creative Studio — Iced")
-        .theme(app_theme)
-        .window_size(Size::new(1440.0, 900.0))
-        .run()
+    iced::application(
+        AubrietaIcedApp::new,
+        AubrietaIcedApp::update,
+        AubrietaIcedApp::view,
+    )
+    .title("Aubrieta Creative Studio — Iced")
+    .theme(app_theme)
+    .window_size(Size::new(1440.0, 900.0))
+    .run()
 }
 
 fn app_theme(_: &AubrietaIcedApp) -> Theme {

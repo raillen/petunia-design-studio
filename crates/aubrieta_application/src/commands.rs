@@ -311,7 +311,9 @@ pub fn execute(
             let subject = mutator
                 .document()
                 .find_object(*subject_id)
-                .ok_or_else(|| AubrietaError::not_found(format!("subject `{subject_id}` not found")))?
+                .ok_or_else(|| {
+                    AubrietaError::not_found(format!("subject `{subject_id}` not found"))
+                })?
                 .clone();
             let clip = mutator
                 .document()

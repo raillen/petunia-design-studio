@@ -222,7 +222,10 @@ impl GPath {
 
         for i in 0..sides {
             let angle = start_angle + (i as f64) * step;
-            let pt = GPoint::new(center.x + radius * angle.cos(), center.y + radius * angle.sin());
+            let pt = GPoint::new(
+                center.x + radius * angle.cos(),
+                center.y + radius * angle.sin(),
+            );
             if i == 0 {
                 let _ = path.push(PathVerb::MoveTo(pt));
             } else {
@@ -244,7 +247,11 @@ impl GPath {
 
         for i in 0..total_vertices {
             let angle = start_angle + (i as f64) * step;
-            let r = if i % 2 == 0 { outer_radius } else { inner_radius };
+            let r = if i % 2 == 0 {
+                outer_radius
+            } else {
+                inner_radius
+            };
             let pt = GPoint::new(center.x + r * angle.cos(), center.y + r * angle.sin());
             if i == 0 {
                 let _ = path.push(PathVerb::MoveTo(pt));

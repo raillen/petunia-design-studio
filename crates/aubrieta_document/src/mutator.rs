@@ -268,15 +268,13 @@ impl<'doc> DocumentMutator<'doc> {
                 let next = Some(crate::ShapeKind::Path(path));
                 object.shape = next.clone();
                 let mut changes = ChangeSet::empty();
-                changes.push(Change::ShapeChanged {
-                    id,
-                    previous,
-                    next,
-                });
+                changes.push(Change::ShapeChanged { id, previous, next });
                 return Ok(changes);
             }
         }
-        Err(AubrietaError::not_found(format!("object `{id}` does not exist")))
+        Err(AubrietaError::not_found(format!(
+            "object `{id}` does not exist"
+        )))
     }
 
     /// Bakes corner geometry into an explicit vector path (10.2, 10.3).
@@ -310,11 +308,17 @@ impl<'doc> DocumentMutator<'doc> {
                 }
             }
         }
-        Err(AubrietaError::not_found(format!("object `{id}` does not exist")))
+        Err(AubrietaError::not_found(format!(
+            "object `{id}` does not exist"
+        )))
     }
 
     /// Slices or splits a path object at a specific point or coordinate (10.2).
-    pub fn slice_path(&mut self, id: ObjectId, _point: [f64; 2]) -> Result<ChangeSet, AubrietaError> {
+    pub fn slice_path(
+        &mut self,
+        id: ObjectId,
+        _point: [f64; 2],
+    ) -> Result<ChangeSet, AubrietaError> {
         self.convert_to_curves(id)
     }
 
@@ -420,7 +424,11 @@ impl<'doc> DocumentMutator<'doc> {
 
         match axis {
             crate::DistributionAxis::Horizontal => {
-                items.sort_by(|a, b| a.1[0].partial_cmp(&b.1[0]).unwrap_or(std::cmp::Ordering::Equal));
+                items.sort_by(|a, b| {
+                    a.1[0]
+                        .partial_cmp(&b.1[0])
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
                 let first_x = items.first().unwrap().1[0];
                 let last_x = items.last().unwrap().1[0];
                 let span = last_x - first_x;
@@ -434,7 +442,11 @@ impl<'doc> DocumentMutator<'doc> {
                 Ok(changes)
             }
             crate::DistributionAxis::Vertical => {
-                items.sort_by(|a, b| a.1[1].partial_cmp(&b.1[1]).unwrap_or(std::cmp::Ordering::Equal));
+                items.sort_by(|a, b| {
+                    a.1[1]
+                        .partial_cmp(&b.1[1])
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
                 let first_y = items.first().unwrap().1[1];
                 let last_y = items.last().unwrap().1[1];
                 let span = last_y - first_y;

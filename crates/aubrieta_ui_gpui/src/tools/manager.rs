@@ -350,9 +350,7 @@ impl ToolManager {
             ToolKind::Polygon => self
                 .polygon_tool
                 .on_pointer_event(event, bridge, camera, snap),
-            ToolKind::Star => self
-                .star_tool
-                .on_pointer_event(event, bridge, camera, snap),
+            ToolKind::Star => self.star_tool.on_pointer_event(event, bridge, camera, snap),
             ToolKind::ShapeBuilder => self
                 .shape_builder_tool
                 .on_pointer_event(event, bridge, camera, snap),
@@ -383,12 +381,8 @@ impl ToolManager {
             ToolKind::Measure => self
                 .measure_tool
                 .on_pointer_event(event, bridge, camera, snap),
-            ToolKind::Zoom => self
-                .zoom_tool
-                .on_pointer_event(event, bridge, camera, snap),
-            ToolKind::Hand => self
-                .hand_tool
-                .on_pointer_event(event, bridge, camera, snap),
+            ToolKind::Zoom => self.zoom_tool.on_pointer_event(event, bridge, camera, snap),
+            ToolKind::Hand => self.hand_tool.on_pointer_event(event, bridge, camera, snap),
             ToolKind::MarqueeRect => self
                 .photo_marquee_rect_tool
                 .on_pointer_event(event, bridge, camera, snap),
@@ -425,7 +419,7 @@ impl ToolManager {
         match self.active_kind {
             ToolKind::Select => self.select_tool.overlays(camera, bridge),
             ToolKind::Pen => self.pen_tool.overlays(),
-            ToolKind::Node => self.node_tool.overlays(),
+            ToolKind::Node => self.node_tool.overlays(camera, bridge),
             ToolKind::PointTransform => self.point_transform_tool.overlays(),
             ToolKind::Pencil => self.pencil_tool.overlays(),
             ToolKind::Corner => self.corner_tool.overlays(),

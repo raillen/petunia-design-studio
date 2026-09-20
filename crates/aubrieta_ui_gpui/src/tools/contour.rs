@@ -89,6 +89,24 @@ impl ContourTool {
                         }
                         ContourMode::Corner => {
                             for id in selected {
+                                if let Some(session) = bridge.session() {
+                                    if let Some(obj) = session.document.find_object(id) {
+                                        if let Some(aubrieta_document::ShapeKind::Rectangle {
+                                            corner_radii,
+                                        }) = obj.shape
+                                        {
+                                            let new_r = (corner_radii[0] + delta).clamp(0.0, 100.0);
+                                            let c = bridge.set_shape(
+                                                id,
+                                                Some(aubrieta_document::ShapeKind::Rectangle {
+                                                    corner_radii: [new_r; 4],
+                                                }),
+                                            )?;
+                                            combined.extend(c);
+                                            continue;
+                                        }
+                                    }
+                                }
                                 let c = bridge.bake_corners(id)?;
                                 combined.extend(c);
                             }
