@@ -224,6 +224,43 @@ impl<'doc> DocumentMutator<'doc> {
         )))
     }
 
+    /// Sets an object's appearance stack.
+    pub fn set_appearance(
+        &mut self,
+        id: ObjectId,
+        appearance: Option<crate::appearance::AppearanceStack>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        for surface in &mut self.document.surfaces {
+            if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
+                let previous = object.appearance.clone();
+                if let Some(app) = &appearance {
+                    if let Some(pf) = app.primary_fill() {
+                        if let crate::appearance::Paint::Solid(col) = &pf.paint {
+                            object.fill = Some(col.clone());
+                        }
+                    }
+                    if let Some(ps) = app.primary_stroke() {
+                        if let crate::appearance::Paint::Solid(col) = &ps.paint {
+                            object.stroke = Some(col.clone());
+                            object.stroke_width = ps.width;
+                        }
+                    }
+                }
+                object.appearance = appearance.clone();
+                let mut changes = ChangeSet::empty();
+                changes.push(Change::AppearanceChanged {
+                    id,
+                    previous,
+                    next: appearance,
+                });
+                return Ok(changes);
+            }
+        }
+        Err(AubrietaError::not_found(format!(
+            "object `{id}` does not exist"
+        )))
+    }
+
     /// Reorders an object within its surface.
     pub fn reorder_object(
         &mut self,
@@ -389,6 +426,18 @@ impl<'doc> DocumentMutator<'doc> {
                     let dest = previous_index.min(target.objects.len());
                     target.objects.insert(dest, item);
                 }
+                Change::AppearanceChanged { id, previous, .. } => {
+                    let found = self
+                        .document
+                        .surfaces
+                        .iter_mut()
+                        .flat_map(|s| s.objects.iter_mut())
+                        .find(|o| o.id == id)
+                        .ok_or_else(|| {
+                            AubrietaError::not_found(format!("object `{id}` does not exist"))
+                        })?;
+                    found.appearance = previous;
+                }
             }
         }
         Ok(())
@@ -414,5 +463,35 @@ mod tests {
             mutator.revert(&changes).expect("undo");
         }
         assert!(doc.surface(surface).expect("surface").objects.is_empty());
+    }
+
+    #[test]
+    fn appearance_roundtrip_undo_redo() {
+        let mut gen = IdGenerator::new();
+        let mut doc = Document::new();
+        let surface = gen.next_surface();
+        let obj_id = gen.next_object();
+
+        let mut mutator = DocumentMutator::new(&mut doc);
+        mutator.add_surface(surface, "Canvas").unwrap();
+        mutator
+            .add_object(surface, DocumentObject::new(obj_id, "Box"))
+            .unwrap();
+
+        let app = crate::appearance::AppearanceStack::new()
+            .with_fill("aubrieta.purple/500")
+            .with_stroke("aubrieta.gray/900", 2.0);
+
+        let changes = mutator.set_appearance(obj_id, Some(app)).unwrap();
+        assert_eq!(changes.len(), 1);
+
+        let obj = mutator.document.find_object(obj_id).unwrap();
+        assert!(obj.appearance.is_some());
+        assert_eq!(obj.fill.as_deref(), Some("aubrieta.purple/500"));
+        assert_eq!(obj.stroke.as_deref(), Some("aubrieta.gray/900"));
+
+        mutator.revert(&changes).unwrap();
+        let obj_undone = mutator.document.find_object(obj_id).unwrap();
+        assert!(obj_undone.appearance.is_none());
     }
 }

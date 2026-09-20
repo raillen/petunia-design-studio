@@ -35,7 +35,29 @@ impl Scene {
                 let mut fills: Vec<String> = surface
                     .objects
                     .iter()
-                    .map(|o| o.fill.clone().unwrap_or_else(|| "none".to_string()))
+                    .flat_map(|o| {
+                        let eff = o.effective_appearance();
+                        let active: Vec<String> = eff
+                            .fills
+                            .iter()
+                            .filter(|f| f.visible)
+                            .filter_map(|f| match &f.paint {
+                                aubrieta_document::Paint::Solid(c) => Some(c.clone()),
+                                aubrieta_document::Paint::LinearGradient(_) => {
+                                    Some("linear-gradient".to_string())
+                                }
+                                aubrieta_document::Paint::RadialGradient(_) => {
+                                    Some("radial-gradient".to_string())
+                                }
+                                aubrieta_document::Paint::None => None,
+                            })
+                            .collect();
+                        if active.is_empty() {
+                            vec!["none".to_string()]
+                        } else {
+                            active
+                        }
+                    })
                     .collect();
                 fills.sort();
                 fills.dedup();
@@ -111,5 +133,41 @@ mod tests {
         let summary = HeadlessSummaryBackend.render(&first).unwrap();
         assert!(summary.contains("objects=1"), "{summary}");
         assert!(summary.contains("aubrieta.red/500"), "{summary}");
+    }
+
+    #[test]
+    fn extraction_supports_appearance_stack_with_gradients_and_multi_fills() {
+        use aubrieta_document::{AppearanceStack, FillItem, GradientStop, LinearGradient};
+
+        let mut gen = IdGenerator::new();
+        let mut doc = Document::new();
+        let surface = gen.next_surface();
+        let mut mutator = DocumentMutator::new(&mut doc);
+        mutator.add_surface(surface, "Canvas").unwrap();
+
+        let mut object = DocumentObject::new(gen.next_object(), "ComplexShape");
+        let grad = LinearGradient::new(
+            [0.0, 0.0],
+            [1.0, 1.0],
+            vec![
+                GradientStop::new(0.0, "aubrieta.blue/500"),
+                GradientStop::new(1.0, "aubrieta.cyan/500"),
+            ],
+        );
+        let mut app = AppearanceStack::new();
+        app.add_fill(FillItem::solid(1, "aubrieta.gray/900"));
+        app.add_fill(FillItem::linear_gradient(2, grad));
+        object.appearance = Some(app);
+        mutator.add_object(surface, object).unwrap();
+
+        let scene = Scene::extract(&doc);
+        assert_eq!(scene.fragments.len(), 1);
+        assert_eq!(
+            scene.fragments[0].fills,
+            vec![
+                "aubrieta.gray/900".to_string(),
+                "linear-gradient".to_string()
+            ]
+        );
     }
 }

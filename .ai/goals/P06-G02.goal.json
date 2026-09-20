@@ -1,0 +1,52 @@
+{
+  "acceptance": [
+    "Replace this placeholder with objective acceptance criteria."
+  ],
+  "constraints": [],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [],
+  "evidence": [],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-20T04:15:54.350099834Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-20T04:15:59.178136606Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "",
+      "to": "PLANNED"
+    },
+    {
+      "at": "2026-09-20T04:15:59.201369799Z",
+      "event": "state-transition",
+      "from": "PLANNED",
+      "reason": "",
+      "to": "LOCKED"
+    }
+  ],
+  "id": "P06-G02",
+  "lock": {
+    "digest": "7591660774429c77dacc614453eab4bf670f61d3c43885fa56ebc0b00b542e58",
+    "locked_at": "2026-09-20T04:15:59.201361701Z",
+    "revision": 1
+  },
+  "non_goals": [],
+  "objective": "Implementar agrupamento de nós sob a regra One-Tree, máscaras de corte de vetor e cálculo de transformações hierárquicas conforme 10.5",
+  "phase": "P06",
+  "revision": 1,
+  "state": "LOCKED",
+  "title": "Hierarquia de Objetos, Grupos e Clipes"
+}

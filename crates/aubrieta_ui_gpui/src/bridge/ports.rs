@@ -62,6 +62,12 @@ pub trait PropertyPort {
         bounds: Option<[f64; 4]>,
         rotation: f64,
     ) -> Result<ChangeSet, AubrietaError>;
+    /// Sets an object's appearance stack (10.4).
+    fn set_appearance(
+        &mut self,
+        id: ObjectId,
+        appearance: Option<aubrieta_document::AppearanceStack>,
+    ) -> Result<ChangeSet, AubrietaError>;
 }
 
 /// Query port for immutable document summaries and session snapshots.

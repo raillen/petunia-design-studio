@@ -5,11 +5,16 @@
 //! Nothing touches storage directly. Mutations arrive as [`CommandRequest`]
 //! analogues via [`DocumentMutator`] and produce a [`ChangeSet`].
 
+pub mod appearance;
 mod changeset;
 mod document;
 mod document_object;
 mod mutator;
 
+pub use appearance::{
+    AppearanceStack, BlendMode, EffectItem, EffectKind, FillItem, GradientStop, LinearGradient,
+    Paint, RadialGradient, StrokeAlignment, StrokeCap, StrokeItem, StrokeJoin,
+};
 pub use changeset::{Change, ChangeSet};
 pub use document::{Document, Surface};
 pub use document_object::DocumentObject;

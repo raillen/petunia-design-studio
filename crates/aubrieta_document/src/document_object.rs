@@ -41,6 +41,9 @@ pub struct DocumentObject {
     /// In-plane rotation angle in radians.
     #[serde(default)]
     pub rotation: f64,
+    /// Canonical V1 Appearance Stack with multiple fills/strokes/effects.
+    #[serde(default)]
+    pub appearance: Option<crate::appearance::AppearanceStack>,
 }
 
 impl DocumentObject {
@@ -58,6 +61,31 @@ impl DocumentObject {
             stroke_width: 1.0,
             bounds: None,
             rotation: 0.0,
+            appearance: None,
+        }
+    }
+
+    /// Returns the effective AppearanceStack for this object.
+    /// If an explicit appearance stack is present, it is returned.
+    /// Otherwise, a synthesized stack matching legacy fill/stroke/opacity is constructed.
+    #[must_use]
+    pub fn effective_appearance(&self) -> crate::appearance::AppearanceStack {
+        if let Some(app) = &self.appearance {
+            app.clone()
+        } else {
+            let mut stack = crate::appearance::AppearanceStack::new();
+            stack.opacity = self.opacity;
+            if let Some(f) = &self.fill {
+                stack.fills.push(crate::appearance::FillItem::solid(1, f));
+            }
+            if let Some(s) = &self.stroke {
+                stack.strokes.push(crate::appearance::StrokeItem::solid(
+                    1,
+                    s,
+                    self.stroke_width,
+                ));
+            }
+            stack
         }
     }
 }

@@ -42,6 +42,11 @@ pub enum Command {
         id: ObjectId,
         new_index: usize,
     },
+    /// Set an object's complete appearance stack (10.4).
+    SetAppearance {
+        id: ObjectId,
+        appearance: Option<aubrieta_document::AppearanceStack>,
+    },
 }
 
 /// Validated command ready for execution.
@@ -86,5 +91,8 @@ pub fn execute(
             id,
             new_index,
         } => mutator.reorder_object(*surface, *id, *new_index),
+        Command::SetAppearance { id, appearance } => {
+            mutator.set_appearance(*id, appearance.clone())
+        }
     }
 }

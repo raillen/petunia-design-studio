@@ -145,3 +145,66 @@ fn history_panel_undo_redo_inspection() {
     assert!(m3.can_undo);
     assert!(!m3.can_redo);
 }
+
+#[test]
+fn properties_panel_appearance_stack_multi_fill_stroke_and_gradient() {
+    use aubrieta_document::{
+        AppearanceStack, BlendMode, FillItem, GradientStop, LinearGradient, StrokeItem,
+    };
+
+    let mut bridge = AubrietaGuiBridge::new();
+    bridge.new_document("Appearance Test").expect("doc");
+    let surface_id = bridge.active_surface().unwrap();
+
+    let mut gen = IdGenerator::new();
+    let id1 = gen.next_object();
+
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id: id1,
+            name: "GradRect".to_string(),
+        }))
+        .unwrap();
+
+    bridge.set_selection(vec![id1]);
+
+    let controller = PropertiesPanelController::new();
+
+    let gradient = LinearGradient::new(
+        [0.0, 0.0],
+        [100.0, 100.0],
+        vec![
+            GradientStop::new(0.0, "aubrieta.indigo/500"),
+            GradientStop::new(1.0, "aubrieta.emerald/500"),
+        ],
+    );
+
+    let mut app = AppearanceStack::new();
+    app.add_fill(FillItem::solid(1, "aubrieta.gray/100"));
+    app.add_fill(FillItem::linear_gradient(2, gradient));
+    app.add_stroke(StrokeItem::solid(1, "aubrieta.indigo/700", 2.5));
+    app.blend_mode = BlendMode::Multiply;
+
+    controller
+        .set_appearance(&mut bridge, Some(app.clone()))
+        .unwrap();
+
+    let model = controller.query_model(&bridge);
+    assert!(model.appearance.is_some());
+    let res_app = model.appearance.unwrap();
+    assert_eq!(res_app.fills.len(), 2);
+    assert_eq!(res_app.strokes.len(), 1);
+    assert_eq!(res_app.blend_mode, BlendMode::Multiply);
+
+    // Verify undo restores previous state
+    let hist_ctrl = HistoryPanelController::new();
+    hist_ctrl.undo(&mut bridge).unwrap();
+    let undo_model = controller.query_model(&bridge);
+    assert_eq!(undo_model.appearance, None);
+
+    // Redo restores new appearance
+    hist_ctrl.redo(&mut bridge).unwrap();
+    let redo_model = controller.query_model(&bridge);
+    assert_eq!(redo_model.appearance, Some(app));
+}

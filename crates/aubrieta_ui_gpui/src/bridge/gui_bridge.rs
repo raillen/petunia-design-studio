@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use aubrieta_application::{ActionId, ActionRequest, CapabilityRegistry, Command, CommandRequest};
-use aubrieta_document::{ChangeSet, Document};
+use aubrieta_document::{AppearanceStack, ChangeSet, Document};
 use aubrieta_foundation::{AubrietaError, ObjectId, SurfaceId};
 
 use super::ports::{
@@ -245,6 +245,15 @@ impl AubrietaGuiBridge {
         rotation: f64,
     ) -> Result<ChangeSet, AubrietaError> {
         PropertyPort::set_bounds(self, id, bounds, rotation)
+    }
+
+    /// Sets appearance stack.
+    pub fn set_appearance(
+        &mut self,
+        id: ObjectId,
+        appearance: Option<AppearanceStack>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        PropertyPort::set_appearance(self, id, appearance)
     }
 
     /// Resolves snapshot.
@@ -512,6 +521,15 @@ impl PropertyPort for AubrietaGuiBridge {
             bounds,
             rotation,
         });
+        self.submit_command(cmd)
+    }
+
+    fn set_appearance(
+        &mut self,
+        id: ObjectId,
+        appearance: Option<aubrieta_document::AppearanceStack>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let cmd = CommandRequest::new(Command::SetAppearance { id, appearance });
         self.submit_command(cmd)
     }
 }

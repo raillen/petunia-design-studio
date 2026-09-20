@@ -67,6 +67,12 @@ pub enum Change {
         previous_index: usize,
         next_index: usize,
     },
+    /// An object's appearance stack changed.
+    AppearanceChanged {
+        id: ObjectId,
+        previous: Option<crate::appearance::AppearanceStack>,
+        next: Option<crate::appearance::AppearanceStack>,
+    },
 }
 
 /// Ordered list of changes produced by one mutation.

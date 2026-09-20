@@ -1,0 +1,52 @@
+{
+  "acceptance": [
+    "Replace this placeholder with objective acceptance criteria."
+  ],
+  "constraints": [],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [],
+  "evidence": [],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-20T04:15:54.376929217Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-20T04:15:59.236193931Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "",
+      "to": "PLANNED"
+    },
+    {
+      "at": "2026-09-20T04:15:59.26306317Z",
+      "event": "state-transition",
+      "from": "PLANNED",
+      "reason": "",
+      "to": "LOCKED"
+    }
+  ],
+  "id": "P06-G03",
+  "lock": {
+    "digest": "fa9b2afc6c2d85dbfba7702d92d58851bd7b389f2146b0f44a811f871bdbdc3f",
+    "locked_at": "2026-09-20T04:15:59.263054921Z",
+    "revision": 1
+  },
+  "non_goals": [],
+  "objective": "Implementar pranchetas de trabalho com dimensões, sangria, margens e plano de fundo no modelo canônico conforme 10.7",
+  "phase": "P06",
+  "revision": 1,
+  "state": "LOCKED",
+  "title": "Multi-Superficies, Artboards e Sangria"
+}

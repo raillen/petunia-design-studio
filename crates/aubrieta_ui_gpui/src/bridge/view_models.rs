@@ -152,6 +152,8 @@ pub struct PropertiesPresentationModel {
     pub bounds: Option<[f64; 4]>,
     /// Rotation angle in radians.
     pub rotation: f64,
+    /// Canonical V1 appearance stack if defined on primary object.
+    pub appearance: Option<aubrieta_document::AppearanceStack>,
 }
 
 impl Default for PropertiesPresentationModel {
@@ -168,6 +170,7 @@ impl Default for PropertiesPresentationModel {
             locked: false,
             bounds: None,
             rotation: 0.0,
+            appearance: None,
         }
     }
 }

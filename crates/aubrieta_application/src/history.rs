@@ -155,6 +155,9 @@ impl Replayer {
                 } => {
                     mutator.reorder_object(surface, id, next_index)?;
                 }
+                Change::AppearanceChanged { id, next, .. } => {
+                    mutator.set_appearance(id, next)?;
+                }
             }
         }
         Ok(())

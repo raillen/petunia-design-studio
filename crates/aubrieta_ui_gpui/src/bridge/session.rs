@@ -393,6 +393,7 @@ impl DocumentSession {
                     locked: obj.locked,
                     bounds: obj.bounds,
                     rotation: obj.rotation,
+                    appearance: obj.appearance.clone(),
                 };
             }
         }
@@ -429,6 +430,7 @@ impl DocumentSession {
             locked: selected_objects.iter().any(|o| o.locked),
             bounds: sel_vm.combined_bounds,
             rotation: 0.0,
+            appearance: None,
         }
     }
 }

@@ -335,6 +335,52 @@ fn set_sat(c: [f32; 3], s: f32) -> [f32; 3] {
     result
 }
 
+impl From<aubrieta_document::BlendMode> for BlendMode {
+    fn from(mode: aubrieta_document::BlendMode) -> Self {
+        match mode {
+            aubrieta_document::BlendMode::Normal => Self::Normal,
+            aubrieta_document::BlendMode::Multiply => Self::Multiply,
+            aubrieta_document::BlendMode::Screen => Self::Screen,
+            aubrieta_document::BlendMode::Overlay => Self::Overlay,
+            aubrieta_document::BlendMode::Darken => Self::Darken,
+            aubrieta_document::BlendMode::Lighten => Self::Lighten,
+            aubrieta_document::BlendMode::ColorDodge => Self::ColorDodge,
+            aubrieta_document::BlendMode::ColorBurn => Self::ColorBurn,
+            aubrieta_document::BlendMode::HardLight => Self::HardLight,
+            aubrieta_document::BlendMode::SoftLight => Self::SoftLight,
+            aubrieta_document::BlendMode::Difference => Self::Difference,
+            aubrieta_document::BlendMode::Exclusion => Self::Exclusion,
+            aubrieta_document::BlendMode::Hue => Self::Hue,
+            aubrieta_document::BlendMode::Saturation => Self::Saturation,
+            aubrieta_document::BlendMode::Color => Self::Color,
+            aubrieta_document::BlendMode::Luminosity => Self::Luminosity,
+        }
+    }
+}
+
+impl From<BlendMode> for aubrieta_document::BlendMode {
+    fn from(mode: BlendMode) -> Self {
+        match mode {
+            BlendMode::Normal => aubrieta_document::BlendMode::Normal,
+            BlendMode::Multiply => aubrieta_document::BlendMode::Multiply,
+            BlendMode::Screen => aubrieta_document::BlendMode::Screen,
+            BlendMode::Overlay => aubrieta_document::BlendMode::Overlay,
+            BlendMode::Darken => aubrieta_document::BlendMode::Darken,
+            BlendMode::Lighten => aubrieta_document::BlendMode::Lighten,
+            BlendMode::ColorDodge => aubrieta_document::BlendMode::ColorDodge,
+            BlendMode::ColorBurn => aubrieta_document::BlendMode::ColorBurn,
+            BlendMode::HardLight => aubrieta_document::BlendMode::HardLight,
+            BlendMode::SoftLight => aubrieta_document::BlendMode::SoftLight,
+            BlendMode::Difference => aubrieta_document::BlendMode::Difference,
+            BlendMode::Exclusion => aubrieta_document::BlendMode::Exclusion,
+            BlendMode::Hue => aubrieta_document::BlendMode::Hue,
+            BlendMode::Saturation => aubrieta_document::BlendMode::Saturation,
+            BlendMode::Color => aubrieta_document::BlendMode::Color,
+            BlendMode::Luminosity => aubrieta_document::BlendMode::Luminosity,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

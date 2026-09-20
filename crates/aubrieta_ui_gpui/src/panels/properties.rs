@@ -91,4 +91,21 @@ impl PropertiesPanelController {
         }
         Ok(combined)
     }
+
+    /// Updates appearance stack on all currently selected objects.
+    pub fn set_appearance(
+        &self,
+        bridge: &mut AubrietaGuiBridge,
+        appearance: Option<aubrieta_document::AppearanceStack>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let sel_ids = bridge.selection().selected_ids;
+        let mut combined = ChangeSet::empty();
+        for id in sel_ids {
+            let changes = bridge.set_appearance(id, appearance.clone())?;
+            for c in changes.changes {
+                combined.push(c);
+            }
+        }
+        Ok(combined)
+    }
 }
