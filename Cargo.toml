@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/aubrieta_foundation",
+    "crates/aubrieta_color",
+    "crates/aubrieta_document",
+    "crates/aubrieta_evaluation",
+    "crates/aubrieta_io",
+    "crates/aubrieta_render",
+    "crates/aubrieta_application",
+    "crates/aubrieta_geometry",
+    "crates/aubrieta_text",
+    "crates/aubrieta_raster",
+    "crates/aubrieta_jobs",
+    "apps/aubrieta-cli",
+    "xtask",
+]
+exclude = [".opencode"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+version = "0.1.0"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"

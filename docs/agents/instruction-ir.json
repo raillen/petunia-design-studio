@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "core-boundary",
+      "text": "Domain crates (document, geometry, color, text, raster, commands) never import GUI toolkit types (GPUI, Floem, Slint, Qt, WebView). UI receives DTOs/view-models and sends ActionRequest/CommandRequest across AubrietaGuiBridge."
+    },
+    {
+      "id": "mutation-path",
+      "text": "Every mutation flows UI/Shortcut/Plugin/MCP -> Action -> Command -> DocumentMutator -> ChangeSet. Nothing touches document storage directly."
+    },
+    {
+      "id": "nondestructive",
+      "text": "Default to non-destructive editing via typed ordered EffectChain and live modifiers. Bake, Expand, Rasterize and Convert-to-Curves are explicit user operations only."
+    },
+    {
+      "id": "stable-ids",
+      "text": "Use typed stable IDs (ObjectId, SurfaceId, ResourceId, StyleId, EffectId). A Vec index, pointer or handle is never identity."
+    },
+    {
+      "id": "modularity",
+      "text": "Compose tools, panels, effects, importers and data sources through capability registries. A missing capability is a normal state with a disabled reason, never a panic; no lateral feature-to-feature storage access."
+    },
+    {
+      "id": "prumo-subordinate",
+      "text": "Use Prumo CLI to shrink context and track Goals/Waves/evidence, never to outsource decisions. On any Prumo-vs-Aubrieta conflict, Aubrieta ADRs and atlases win; record the conflict."
+    },
+    {
+      "id": "scope-status",
+      "text": "Every feature carries an explicit scope status (V1 Required, Milestone Required, Post-V1 Candidate, Research, Open ADR, Historical, Out of Scope). A bare future/later/planned authorizes nothing."
+    },
+    {
+      "id": "docs-bilingual",
+      "text": "Author canonical docs in en-US with a synchronized pt-BR mirror before release. Update the Atlas, ADR registry and generated references in the same change that alters a contract."
+    },
+    {
+      "id": "microcontext",
+      "text": "Build a small authoritative microcontext (goal, scope, exact page/ADR IDs, crates, capabilities, invariants) instead of dumping large context. Never put credentials or artwork in packets."
+    },
+    {
+      "id": "evidence-dod",
+      "text": "A feature is done only with focused tests plus the applicable gauntlets and recorded evidence (headless-first, detach proof, token/a11y checks, EN+pt-BR docs)."
+    }
+  ]
+}

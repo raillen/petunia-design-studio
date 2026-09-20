@@ -1,0 +1,73 @@
+{
+  "acceptance": [
+    "Replace this placeholder with objective acceptance criteria."
+  ],
+  "constraints": [],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [],
+  "evidence": [],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-18T08:46:01.401753153Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-18T08:47:53.430911121Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "",
+      "to": "PLANNED"
+    },
+    {
+      "at": "2026-09-18T08:47:53.448389593Z",
+      "event": "state-transition",
+      "from": "PLANNED",
+      "reason": "",
+      "to": "LOCKED"
+    },
+    {
+      "at": "2026-09-18T08:47:53.469956719Z",
+      "event": "state-transition",
+      "from": "LOCKED",
+      "reason": "",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-18T08:55:37.068764578Z",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "",
+      "to": "VERIFYING"
+    },
+    {
+      "at": "2026-09-18T08:55:37.087976583Z",
+      "event": "state-transition",
+      "from": "VERIFYING",
+      "reason": "",
+      "to": "REVIEWING"
+    }
+  ],
+  "id": "P00-G01",
+  "lock": {
+    "digest": "69ca8e93bc575fe6061d4040f24bdbf3441bf273a47835873d85d0f8fd674fc7",
+    "locked_at": "2026-09-18T08:47:53.448380586Z",
+    "revision": 1
+  },
+  "non_goals": [],
+  "objective": "Estabelecer base inviolavel: estrutura repo, contratos interface, infra testes, CI e seguranca antes de funcionalidade de usuario",
+  "phase": "P00",
+  "revision": 1,
+  "state": "REVIEWING",
+  "title": "Fundacao e Arquitetura"
+}

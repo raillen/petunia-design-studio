@@ -1,0 +1,21 @@
+[package]
+name = "aubrieta-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aubrieta-cli"
+path = "src/main.rs"
+
+[dependencies]
+aubrieta_foundation = { path = "../../crates/aubrieta_foundation" }
+aubrieta_document = { path = "../../crates/aubrieta_document" }
+aubrieta_application = { path = "../../crates/aubrieta_application" }
+aubrieta_geometry = { path = "../../crates/aubrieta_geometry" }
+aubrieta_color = { path = "../../crates/aubrieta_color" }
+aubrieta_evaluation = { path = "../../crates/aubrieta_evaluation" }
+aubrieta_render = { path = "../../crates/aubrieta_render" }
+aubrieta_text = { path = "../../crates/aubrieta_text" }
+aubrieta_raster = { path = "../../crates/aubrieta_raster" }
+aubrieta_io = { path = "../../crates/aubrieta_io" }

@@ -1,0 +1,73 @@
+{
+  "acceptance": [
+    "Replace this placeholder with objective acceptance criteria."
+  ],
+  "constraints": [],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [],
+  "evidence": [],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-18T14:18:35.916729913Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-18T14:18:45.262901649Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "",
+      "to": "PLANNED"
+    },
+    {
+      "at": "2026-09-18T14:18:45.270849192Z",
+      "event": "state-transition",
+      "from": "PLANNED",
+      "reason": "",
+      "to": "LOCKED"
+    },
+    {
+      "at": "2026-09-18T14:24:06.667521342Z",
+      "event": "state-transition",
+      "from": "LOCKED",
+      "reason": "",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-18T14:24:06.675975904Z",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "",
+      "to": "VERIFYING"
+    },
+    {
+      "at": "2026-09-18T14:24:06.837900992Z",
+      "event": "state-transition",
+      "from": "VERIFYING",
+      "reason": "",
+      "to": "REVIEWING"
+    }
+  ],
+  "id": "P02-G02",
+  "lock": {
+    "digest": "79afcb634d92c3b89e70750711d75404ca97a754ee844bf165406079f55703ac",
+    "locked_at": "2026-09-18T14:18:45.270844984Z",
+    "revision": 1
+  },
+  "non_goals": [],
+  "objective": "Implementar aubrieta_raster com tiles esparsos 128x128, profundidades 8/16-bit, modos de blend e pipeline de brush",
+  "phase": "P02",
+  "revision": 1,
+  "state": "REVIEWING",
+  "title": "Motor de Rasterizacao e Tiles"
+}

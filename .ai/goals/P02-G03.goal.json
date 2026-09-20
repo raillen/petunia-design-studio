@@ -1,0 +1,73 @@
+{
+  "acceptance": [
+    "Replace this placeholder with objective acceptance criteria."
+  ],
+  "constraints": [],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [],
+  "evidence": [],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-18T14:18:35.923943805Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-18T14:18:45.277276459Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "",
+      "to": "PLANNED"
+    },
+    {
+      "at": "2026-09-18T14:18:45.284366346Z",
+      "event": "state-transition",
+      "from": "PLANNED",
+      "reason": "",
+      "to": "LOCKED"
+    },
+    {
+      "at": "2026-09-18T14:24:07.113893898Z",
+      "event": "state-transition",
+      "from": "LOCKED",
+      "reason": "",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-18T14:24:07.123106739Z",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "",
+      "to": "VERIFYING"
+    },
+    {
+      "at": "2026-09-18T14:24:07.187014093Z",
+      "event": "state-transition",
+      "from": "VERIFYING",
+      "reason": "",
+      "to": "REVIEWING"
+    }
+  ],
+  "id": "P02-G03",
+  "lock": {
+    "digest": "9b06bed34ccee4c70e526aa04804299e21f13b63fe068e59308c2adc5e9820c1",
+    "locked_at": "2026-09-18T14:18:45.284362097Z",
+    "revision": 1
+  },
+  "non_goals": [],
+  "objective": "Implementar exportador e importador SVG desacoplado em aubrieta_io",
+  "phase": "P02",
+  "revision": 1,
+  "state": "REVIEWING",
+  "title": "Exportador Vetorial SVG"
+}

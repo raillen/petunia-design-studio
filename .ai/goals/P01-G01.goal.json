@@ -1,0 +1,73 @@
+{
+  "acceptance": [
+    "Replace this placeholder with objective acceptance criteria."
+  ],
+  "constraints": [],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [],
+  "evidence": [],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-18T12:15:01.429113391Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-18T12:15:03.779100824Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "",
+      "to": "PLANNED"
+    },
+    {
+      "at": "2026-09-18T12:15:03.786232174Z",
+      "event": "state-transition",
+      "from": "PLANNED",
+      "reason": "",
+      "to": "LOCKED"
+    },
+    {
+      "at": "2026-09-18T12:15:03.879304115Z",
+      "event": "state-transition",
+      "from": "LOCKED",
+      "reason": "",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-18T14:12:19.637382457Z",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "",
+      "to": "VERIFYING"
+    },
+    {
+      "at": "2026-09-18T14:12:22.175010846Z",
+      "event": "state-transition",
+      "from": "VERIFYING",
+      "reason": "",
+      "to": "REVIEWING"
+    }
+  ],
+  "id": "P01-G01",
+  "lock": {
+    "digest": "8c85e0e6d351c3463378c61269223e3ee53360453830b64fbbcba05273250261",
+    "locked_at": "2026-09-18T12:15:03.786228283Z",
+    "revision": 1
+  },
+  "non_goals": [],
+  "objective": "MVP headless core: Geometria MVP conforme 04, 09.22",
+  "phase": "P01",
+  "revision": 1,
+  "state": "REVIEWING",
+  "title": "Geometria MVP"
+}

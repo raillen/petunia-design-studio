@@ -1,0 +1,175 @@
+//! Polygon booleans over flattened contours. i_overlay stays in the adapter.
+//!
+//! Curve-exact booleans are `POST_V1`: callers flatten via
+//! [`crate::GPath::to_polygons`] first. The tolerance used is part of the
+//! caller's evidence, never silently chosen here.
+
+use serde::{Deserialize, Serialize};
+
+use crate::GPoint;
+
+/// Boolean operation selector.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BooleanOp {
+    /// Union of both inputs.
+    Union,
+    /// Overlap of both inputs.
+    Intersection,
+    /// Subject minus clip.
+    Difference,
+    /// Union minus intersection.
+    Xor,
+}
+
+/// One polygon input: closed contours (outer + holes).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BooleanInput {
+    /// Closed contours; closure points are not duplicated.
+    pub contours: Vec<Vec<GPoint>>,
+}
+
+impl BooleanInput {
+    /// Creates an input from contours.
+    #[must_use]
+    pub fn new(contours: Vec<Vec<GPoint>>) -> Self {
+        Self { contours }
+    }
+
+    /// Single-contour input.
+    #[must_use]
+    pub fn single(contour: Vec<GPoint>) -> Self {
+        Self {
+            contours: vec![contour],
+        }
+    }
+}
+
+/// Applies `op` to `subject` and `clip`, returning result contours.
+/// Empty inputs follow set-theory identity (union keeps the other side,
+/// intersection/difference with an empty side is empty, xor keeps the other).
+pub fn boolean_op(subject: &BooleanInput, clip: &BooleanInput, op: BooleanOp) -> Vec<Vec<GPoint>> {
+    match op {
+        BooleanOp::Union => {
+            if subject.contours.is_empty() {
+                return clip.contours.clone();
+            }
+            if clip.contours.is_empty() {
+                return subject.contours.clone();
+            }
+        }
+        BooleanOp::Xor => {
+            if subject.contours.is_empty() {
+                return clip.contours.clone();
+            }
+            if clip.contours.is_empty() {
+                return subject.contours.clone();
+            }
+        }
+        BooleanOp::Intersection | BooleanOp::Difference => {
+            if subject.contours.is_empty() || clip.contours.is_empty() {
+                return Vec::new();
+            }
+        }
+    }
+    overlay_adapter::apply(subject, clip, op)
+}
+
+/// i_overlay adapter. The only module allowed to name `i_overlay` types.
+mod overlay_adapter {
+    use i_overlay::core::fill_rule::FillRule;
+    use i_overlay::core::overlay_rule::OverlayRule;
+    use i_overlay::float::single::SingleFloatOverlay as _;
+
+    use super::{BooleanInput, BooleanOp};
+    use crate::GPoint;
+
+    type Contour = Vec<[f64; 2]>;
+
+    fn to_contours(input: &BooleanInput) -> Vec<Contour> {
+        input
+            .contours
+            .iter()
+            .filter(|c| c.len() >= 3)
+            .map(|c| c.iter().map(|p| [p.x, p.y]).collect())
+            .collect()
+    }
+
+    pub(super) fn apply(
+        subject: &BooleanInput,
+        clip: &BooleanInput,
+        op: BooleanOp,
+    ) -> Vec<Vec<GPoint>> {
+        let subj = to_contours(subject);
+        let clip = to_contours(clip);
+        if subj.is_empty() || clip.is_empty() {
+            return Vec::new();
+        }
+        let rule = match op {
+            BooleanOp::Union => OverlayRule::Union,
+            BooleanOp::Intersection => OverlayRule::Intersect,
+            BooleanOp::Difference => OverlayRule::Difference,
+            BooleanOp::Xor => OverlayRule::Xor,
+        };
+        // Default i32 engine: deterministic for document-scale coordinates.
+        let shapes = subj.overlay(&clip, rule, FillRule::NonZero);
+        shapes
+            .iter()
+            .flat_map(|shape| shape.iter())
+            .map(|contour| contour.iter().map(|p| GPoint::new(p[0], p[1])).collect())
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn square(x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<GPoint> {
+        vec![
+            GPoint::new(x0, y0),
+            GPoint::new(x1, y0),
+            GPoint::new(x1, y1),
+            GPoint::new(x0, y1),
+        ]
+    }
+
+    fn contour_area(contour: &[GPoint]) -> f64 {
+        contour
+            .iter()
+            .zip(contour.iter().cycle().skip(1))
+            .map(|(a, b)| a.x * b.y - b.x * a.y)
+            .sum::<f64>()
+            .abs()
+            / 2.0
+    }
+
+    #[test]
+    fn union_area_of_overlapping_squares() {
+        let subject = BooleanInput::single(square(0.0, 0.0, 2.0, 2.0));
+        let clip = BooleanInput::single(square(1.0, 1.0, 3.0, 3.0));
+        let result = boolean_op(&subject, &clip, BooleanOp::Union);
+        let area: f64 = result.iter().map(|c| contour_area(c)).sum();
+        // 4 + 4 - 1 overlap = 7.
+        assert!((area - 7.0).abs() < 1e-6, "area was {area}");
+    }
+
+    #[test]
+    fn intersection_area_of_overlapping_squares() {
+        let subject = BooleanInput::single(square(0.0, 0.0, 2.0, 2.0));
+        let clip = BooleanInput::single(square(1.0, 1.0, 3.0, 3.0));
+        let result = boolean_op(&subject, &clip, BooleanOp::Intersection);
+        let area: f64 = result.iter().map(|c| contour_area(c)).sum();
+        assert!((area - 1.0).abs() < 1e-6, "area was {area}");
+    }
+
+    #[test]
+    fn empty_side_follows_set_identity() {
+        let empty = BooleanInput::new(Vec::new());
+        let square_input = BooleanInput::single(square(0.0, 0.0, 1.0, 1.0));
+        assert_eq!(
+            boolean_op(&empty, &square_input, BooleanOp::Union),
+            square_input.contours
+        );
+        assert!(boolean_op(&empty, &square_input, BooleanOp::Intersection).is_empty());
+    }
+}

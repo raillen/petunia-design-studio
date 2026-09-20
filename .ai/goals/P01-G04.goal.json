@@ -1,0 +1,73 @@
+{
+  "acceptance": [
+    "Replace this placeholder with objective acceptance criteria."
+  ],
+  "constraints": [],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [],
+  "evidence": [],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-18T12:15:01.474408664Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-18T12:15:03.846941961Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "",
+      "to": "PLANNED"
+    },
+    {
+      "at": "2026-09-18T12:15:03.854899142Z",
+      "event": "state-transition",
+      "from": "PLANNED",
+      "reason": "",
+      "to": "LOCKED"
+    },
+    {
+      "at": "2026-09-18T14:12:25.564773194Z",
+      "event": "state-transition",
+      "from": "LOCKED",
+      "reason": "",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-18T14:12:25.570664993Z",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "",
+      "to": "VERIFYING"
+    },
+    {
+      "at": "2026-09-18T14:12:25.57765679Z",
+      "event": "state-transition",
+      "from": "VERIFYING",
+      "reason": "",
+      "to": "REVIEWING"
+    }
+  ],
+  "id": "P01-G04",
+  "lock": {
+    "digest": "45077b741b872d7b572e1f1b948e6f569063e0cdc0d47aa72dcdc7283b5879f7",
+    "locked_at": "2026-09-18T12:15:03.854894876Z",
+    "revision": 1
+  },
+  "non_goals": [],
+  "objective": "MVP headless core: IO Nativo MVP conforme 04, 09.22",
+  "phase": "P01",
+  "revision": 1,
+  "state": "REVIEWING",
+  "title": "IO Nativo MVP"
+}

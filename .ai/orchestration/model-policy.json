@@ -1,0 +1,69 @@
+{
+  "context_aware_routing": true,
+  "cross_provider_review": true,
+  "roles": {
+    "architect": {
+      "fallback": [],
+      "preferred": [
+        "openai-compat"
+      ]
+    },
+    "debugger": {
+      "fallback": [],
+      "preferred": [
+        "openai-compat"
+      ]
+    },
+    "documentation-maintainer": {
+      "fallback": [],
+      "preferred": [
+        "openai-compat"
+      ]
+    },
+    "implementer": {
+      "fallback": [],
+      "preferred": [
+        "openai-compat"
+      ]
+    },
+    "release-verifier": {
+      "fallback": [],
+      "preferred": [
+        "openai-compat"
+      ]
+    },
+    "reviewer": {
+      "fallback": [],
+      "preferred": [
+        "openai-compat"
+      ]
+    },
+    "security-reviewer": {
+      "fallback": [],
+      "preferred": [
+        "openai-compat"
+      ]
+    },
+    "tester": {
+      "fallback": [],
+      "preferred": [
+        "openai-compat"
+      ]
+    },
+    "ux-reviewer": {
+      "fallback": [],
+      "preferred": [
+        "openai-compat"
+      ]
+    }
+  },
+  "roster": [
+    {
+      "enabled": true,
+      "id": "openai-compat",
+      "provider": "openai-compat"
+    }
+  ],
+  "selection_rule": "cheapest-reliable-model-that-passes-gates",
+  "version": 2
+}

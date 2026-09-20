@@ -1,0 +1,52 @@
+{
+  "debt": [],
+  "summary": {
+    "cached_tokens": 0,
+    "direct_cost": 0,
+    "input_tokens": 0,
+    "intermediate_output_tokens": 0,
+    "output_tokens": 0,
+    "tasks": 2
+  },
+  "tasks": [
+    {
+      "commands": [
+        "cargo test --workspace",
+        "cargo clippy --workspace --all-targets -- -D warnings",
+        "cargo xtask gauntlet",
+        "cargo run -p aubrieta-cli"
+      ],
+      "evidence": "cargo xtask gauntlet exit 0; CLI OK surfaces=1 objects=1 fill=aubrieta.red/500 schema=1",
+      "goal_id": "P00-G01",
+      "id": "P00-G01-W1",
+      "results": "all green",
+      "status": "done",
+      "tests": {
+        "failed": 0,
+        "passed": 8
+      },
+      "title": "P00 MVP foundation"
+    },
+    {
+      "commands": [
+        "cargo test --workspace",
+        "cargo clippy --workspace --all-targets -- -D warnings",
+        "cargo audit --deny warnings",
+        "cargo xtask gauntlet",
+        "cargo run -p aubrieta-cli"
+      ],
+      "evidence": "gauntlet exit 0; 18 tests; audit clean 55 deps; CLI OK surfaces=1 objects=1 fill=aubrieta.red/500 schema=1",
+      "goal_id": "P00-G02",
+      "id": "P00-G02-W1",
+      "results": "all green",
+      "status": "done",
+      "tests": {
+        "failed": 0,
+        "passed": 18
+      },
+      "title": "P00 hardening: proptest+CI+audit+dossier"
+    }
+  ],
+  "updated_at": "2026-09-18T12:03:07.332591062Z",
+  "version": 1
+}

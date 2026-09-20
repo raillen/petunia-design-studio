@@ -1,0 +1,110 @@
+{
+  "terms": [
+    {
+      "term": "Surface",
+      "status": "preferred",
+      "definition": "Unified artboard/page/export region depending on context."
+    },
+    {
+      "term": "Artboard",
+      "status": "preferred",
+      "definition": "Design surface for vector/layout composition; a Surface in artboard context."
+    },
+    {
+      "term": "Layer",
+      "status": "preferred",
+      "definition": "ContainerRole in the single document tree; Layers panel role, not a parallel hierarchy."
+    },
+    {
+      "term": "Mask",
+      "status": "preferred",
+      "definition": "Non-destructive clipping/alpha control; source pixels preserved."
+    },
+    {
+      "term": "Symbol",
+      "status": "preferred",
+      "definition": "Reusable layout/content definition; V1 replacement for Master Pages."
+    },
+    {
+      "term": "Adjustment",
+      "status": "preferred",
+      "definition": "Non-destructive, maskable, reorderable raster/color correction node."
+    },
+    {
+      "term": "Persona",
+      "status": "preferred",
+      "definition": "Design or Photo tool/panel/action composition over one shared document."
+    },
+    {
+      "term": "Profile",
+      "status": "preferred",
+      "definition": "Named mixed-workspace composition referencing semantic IDs."
+    },
+    {
+      "term": "Swatch",
+      "status": "preferred",
+      "definition": "Named reusable color definition in the semantic color system."
+    },
+    {
+      "term": "Binding",
+      "status": "preferred",
+      "definition": "Link between a document property and a variable-data field."
+    },
+    {
+      "term": "Record",
+      "status": "preferred",
+      "definition": "Single row of a variable-data DataSource used in Data Merge generation."
+    },
+    {
+      "term": "ActionId",
+      "status": "preferred",
+      "definition": "Stable semantic identifier for a user operation (aubrieta.* namespace)."
+    },
+    {
+      "term": "TextId",
+      "status": "preferred",
+      "definition": "Semantic identifier for localizable UI copy; no literal strings in features."
+    },
+    {
+      "term": "IconId",
+      "status": "preferred",
+      "definition": "Toolkit-independent namespaced icon identifier; domain never references icon names."
+    },
+    {
+      "term": ".aubrieta",
+      "status": "preferred",
+      "definition": "Canonical native file extension and open ZIP package format."
+    },
+    {
+      "term": ".aubri",
+      "status": "preferred",
+      "definition": "Short compatible alias of the same native format and schema."
+    },
+    {
+      "term": "Aubrieta Design",
+      "status": "preferred",
+      "definition": "Canonical application name for the Design + Photo desktop app."
+    },
+    {
+      "term": ".abrt",
+      "status": "forbidden",
+      "definition": "Rejected: collides with the Fedora/RHEL ABRT ecosystem. Use .aubrieta/.aubri."
+    },
+    {
+      "term": ".pds",
+      "status": "forbidden",
+      "definition": "Rejected native extension candidate. Use .aubrieta/.aubri."
+    },
+    {
+      "term": "Master Pages",
+      "status": "deprecated",
+      "definition": "Out of scope for V1; use Symbols + SurfaceTemplate instead.",
+      "replaced_by": "SurfaceTemplate"
+    },
+    {
+      "term": "SurfaceTemplate",
+      "status": "preferred",
+      "definition": "Lightweight reusable surface layout built on Symbols; V1 replacement for Master Pages."
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+# Rust build artifacts
+target/
+.tmp-cargo/
+
+# Prumo derived/runtime state
+.prumo/runtime/
+.prumo/cache/
+
+# Node modules in opencode tooling
+.opencode/node_modules/
+
+# Archives
+*.zip

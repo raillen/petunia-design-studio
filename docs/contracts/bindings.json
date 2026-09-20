@@ -1,0 +1,216 @@
+[
+  {
+    "contract_id": "product.vision",
+    "sources": [
+      "docs/Aubrieta Design 3db9bb7d023f811192aff85b2efa8698.md",
+      "docs/00 тАФ Product Charter & Scope 3db9bb7d023f8179b359f64100d8ed45.md"
+    ]
+  },
+  {
+    "contract_id": "project.scope",
+    "sources": [
+      "docs/00 тАФ Product Charter & Scope 3db9bb7d023f8179b359f64100d8ed45.md",
+      "docs/12 8 тАФ Requirement Status, Scope Taxonomy, Backlog 3db9bb7d023f81a0b529c767560d3f7f.md"
+    ]
+  },
+  {
+    "contract_id": "architecture.system",
+    "sources": [
+      "docs/01 тАФ Architecture, GUI Boundary & Canonical Docume 3db9bb7d023f81c8a92be6b662aa25d3.md",
+      "docs/04 тАФ Canonical Rust Stack & Engine Boundaries 3db9bb7d023f813e826bd9ead40363b8.md",
+      "docs/09 тАФ Architecture & Implementation Atlas 3db9bb7d023f810991aff0b9836407e0.md",
+      "docs/09 21 тАФ Architecture Governance, ADRs, Compatibili 3db9bb7d023f81729bace22cfa3aa2e4.md"
+    ]
+  },
+  {
+    "contract_id": "testing.strategy",
+    "sources": [
+      "docs/07 тАФ Quality, Gauntlets, Plugins, MCP & AI Develop 3db9bb7d023f8148ab13e85800df4af7.md",
+      "docs/14 тАФ Implementation Evidence, Verification & Agent 3df9bb7d023f81a78feedf6410de5065.md",
+      "docs/14 1 тАФ Test Architecture, Conformance Matrix & Reg 3df9bb7d023f81708697efc517887807.md"
+    ]
+  },
+  {
+    "contract_id": "security.trust",
+    "sources": [
+      "docs/09 18 тАФ Security Model, Trust Boundaries, Hostile  3db9bb7d023f81f696d0cef7cce2a631.md",
+      "docs/14 5 тАФ Security Verification, Fuzzing & Hostile-In 3df9bb7d023f8141850fdbebb6adbd67.md"
+    ]
+  },
+  {
+    "contract_id": "cli.reference",
+    "sources": [
+      "docs/14 8 тАФ AgentOps, cargo xtask, CI Commands, Evidenc 3df9bb7d023f814daef3ebc28510d779.md",
+      "docs/09 27 тАФ UI-Agnostic Core, Ports Adapters, Presenta 3db9bb7d023f81968082fd246f9ff668.md"
+    ]
+  },
+  {
+    "contract_id": "installation.lifecycle",
+    "sources": [
+      "docs/09 20 тАФ Build, Packaging, Release, Updates, Depend 3db9bb7d023f81e78381d9774582bcb7.md"
+    ]
+  },
+  {
+    "contract_id": "ui.product-ux",
+    "sources": [
+      "docs/08 тАФ Interface Atlas & Aubrieta Design System 3db9bb7d023f816898b8cdc5efef3c76.md",
+      "docs/08 20 тАФ UX, Usability, Information Architecture, C 3db9bb7d023f81c38d98c1ddc9a6956d.md"
+    ]
+  },
+  {
+    "contract_id": "ui.information-architecture",
+    "sources": [
+      "docs/08 20 тАФ UX, Usability, Information Architecture, C 3db9bb7d023f81c38d98c1ddc9a6956d.md"
+    ]
+  },
+  {
+    "contract_id": "ui.screen-inventory",
+    "sources": [
+      "docs/08 17 тАФ Panel Atlas Every Dockable Inspector, Brow 3db9bb7d023f81dfa0a2c4642a3c110e.md",
+      "docs/08 18 тАФ Window & Dialog Atlas Every Modal, Sheet,  3db9bb7d023f81dab281e2ca22b799ad.md"
+    ]
+  },
+  {
+    "contract_id": "ui.layout",
+    "sources": [
+      "docs/08 2 тАФ Application Shell, Window Anatomy, Tabs, To 3db9bb7d023f81069063d901399c6bdf.md",
+      "docs/08 3 тАФ Docking, Panels, Inspectors, Floating Palet 3db9bb7d023f81259b36ea98ef7db4ca.md"
+    ]
+  },
+  {
+    "contract_id": "ui.interaction",
+    "sources": [
+      "docs/08 23 тАФ Tool Interaction Grammar, Context Toolbar, 3df9bb7d023f8144bba3db77c199a947.md",
+      "docs/08 6 тАФ Canvas, Rulers, Guides, Zoom, Selection, Sn 3db9bb7d023f816f910ad0aadc8984ea.md"
+    ]
+  },
+  {
+    "contract_id": "ui.state-model",
+    "sources": [
+      "docs/09 24 тАФ Application, Document Session, Multi-Windo 3db9bb7d023f8150a1a4dee7fefb025e.md",
+      "docs/08 3 тАФ Docking, Panels, Inspectors, Floating Palet 3db9bb7d023f81259b36ea98ef7db4ca.md"
+    ]
+  },
+  {
+    "contract_id": "ui.design-tokens",
+    "sources": [
+      "docs/08 1 тАФ Visual Foundations, Tokens, Typography, Spa 3db9bb7d023f81cb9d14fd9f7e67d2c7.md",
+      "docs/08 21 тАФ Design System Governance, Token Enforcemen 3db9bb7d023f819e90cbc2da911b8c03.md"
+    ]
+  },
+  {
+    "contract_id": "ui.component-contracts",
+    "sources": [
+      "docs/08 5 тАФ Complete Control Catalog Buttons, Fields, S 3db9bb7d023f81d19455ea5b6d0ddd14.md",
+      "docs/08 15 тАФ GPUI GPUI Kit Implementation Map & Compone 3db9bb7d023f81bc8399f58f22c4e67b.md"
+    ]
+  },
+  {
+    "contract_id": "ui.accessibility",
+    "sources": [
+      "docs/08 14 тАФ Accessibility, Keyboard, Pointer, Pen, IME 3db9bb7d023f8167a9bdff182768f9f0.md"
+    ]
+  },
+  {
+    "contract_id": "ui.localization",
+    "sources": [
+      "docs/09 16 тАФ Localization, Locale Formatting, Translati 3db9bb7d023f819ea178cb86bcf6a0d0.md"
+    ]
+  },
+  {
+    "contract_id": "ui.theming",
+    "sources": [
+      "docs/08 1 тАФ Visual Foundations, Tokens, Typography, Spa 3db9bb7d023f81cb9d14fd9f7e67d2c7.md",
+      "docs/08 12 тАФ Preferences, Customization, Themes, Icons, 3db9bb7d023f8141b9d8e64e35e00faa.md"
+    ]
+  },
+  {
+    "contract_id": "ui.personalization",
+    "sources": [
+      "docs/08 12 тАФ Preferences, Customization, Themes, Icons, 3db9bb7d023f8141b9d8e64e35e00faa.md"
+    ]
+  },
+  {
+    "contract_id": "ui.visual-validation",
+    "sources": [
+      "docs/08 16 тАФ UI Gauntlet, Visual Regression, Atlas Cove 3db9bb7d023f816fb2d8fd1e55c0f69f.md",
+      "docs/08 30 тАФ UI UX Evidence Corpus, Interaction Conform 3df9bb7d023f81098725d56753eb0372.md",
+      "docs/14 7 тАФ UI UX Evidence Integration, Semantic Golden 3df9bb7d023f81219888de43696f641d.md"
+    ]
+  },
+  {
+    "contract_id": "ui.platform-conventions",
+    "sources": [
+      "docs/08 2 тАФ Application Shell, Window Anatomy, Tabs, To 3db9bb7d023f81069063d901399c6bdf.md",
+      "docs/09 17 тАФ Platform Services, Filesystem, Clipboard,  3db9bb7d023f814ab768c1aeee5f6f5d.md"
+    ]
+  },
+  {
+    "contract_id": "ui.documentation",
+    "sources": [
+      "docs/12 тАФ Code Agent Implementation Handbook & Living D 3db9bb7d023f81049058df8d98185faa.md",
+      "docs/12 3 тАФ Living Documentation Pipeline VitePress, i1 3db9bb7d023f8168a7b6e4d378b02d12.md"
+    ]
+  },
+  {
+    "contract_id": "accessibility.keyboard",
+    "sources": [
+      "docs/08 14 тАФ Accessibility, Keyboard, Pointer, Pen, IME 3db9bb7d023f8167a9bdff182768f9f0.md"
+    ]
+  },
+  {
+    "contract_id": "accessibility.focus",
+    "sources": [
+      "docs/08 14 тАФ Accessibility, Keyboard, Pointer, Pen, IME 3db9bb7d023f8167a9bdff182768f9f0.md"
+    ]
+  },
+  {
+    "contract_id": "accessibility.contrast",
+    "sources": [
+      "docs/08 14 тАФ Accessibility, Keyboard, Pointer, Pen, IME 3db9bb7d023f8167a9bdff182768f9f0.md"
+    ]
+  },
+  {
+    "contract_id": "accessibility.screen-reader",
+    "sources": [
+      "docs/08 14 тАФ Accessibility, Keyboard, Pointer, Pen, IME 3db9bb7d023f8167a9bdff182768f9f0.md"
+    ]
+  },
+  {
+    "contract_id": "accessibility.motion",
+    "sources": [
+      "docs/08 14 тАФ Accessibility, Keyboard, Pointer, Pen, IME 3db9bb7d023f8167a9bdff182768f9f0.md"
+    ]
+  },
+  {
+    "contract_id": "accessibility.zoom-reflow",
+    "sources": [
+      "docs/08 14 тАФ Accessibility, Keyboard, Pointer, Pen, IME 3db9bb7d023f8167a9bdff182768f9f0.md"
+    ]
+  },
+  {
+    "contract_id": "accessibility.target-size",
+    "sources": [
+      "docs/08 14 тАФ Accessibility, Keyboard, Pointer, Pen, IME 3db9bb7d023f8167a9bdff182768f9f0.md"
+    ]
+  },
+  {
+    "contract_id": "accessibility.drag-alternatives",
+    "sources": [
+      "docs/08 14 тАФ Accessibility, Keyboard, Pointer, Pen, IME 3db9bb7d023f8167a9bdff182768f9f0.md"
+    ]
+  },
+  {
+    "contract_id": "accessibility.accessible-auth",
+    "sources": [
+      "docs/00 тАФ Product Charter & Scope 3db9bb7d023f8179b359f64100d8ed45.md"
+    ]
+  },
+  {
+    "contract_id": "accessibility.cognitive-clarity",
+    "sources": [
+      "docs/08 19 тАФ Microcopy, Labels, Naming, States, Units & 3db9bb7d023f817a8786c1aa38209a4a.md",
+      "docs/08 20 тАФ UX, Usability, Information Architecture, C 3db9bb7d023f81c38d98c1ddc9a6956d.md"
+    ]
+  }
+]

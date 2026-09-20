@@ -1,0 +1,11 @@
+[package]
+name = "aubrieta_evaluation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+aubrieta_foundation = { path = "../aubrieta_foundation" }
+aubrieta_document = { path = "../aubrieta_document" }
+serde.workspace = true
+thiserror.workspace = true

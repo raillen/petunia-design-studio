@@ -1,0 +1,73 @@
+{
+  "acceptance": [
+    "Replace this placeholder with objective acceptance criteria."
+  ],
+  "constraints": [],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [],
+  "evidence": [],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-18T14:18:35.932900752Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-18T14:18:45.290849825Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "",
+      "to": "PLANNED"
+    },
+    {
+      "at": "2026-09-18T14:18:45.298876075Z",
+      "event": "state-transition",
+      "from": "PLANNED",
+      "reason": "",
+      "to": "LOCKED"
+    },
+    {
+      "at": "2026-09-18T14:24:07.35369704Z",
+      "event": "state-transition",
+      "from": "LOCKED",
+      "reason": "",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-18T14:24:07.359164141Z",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "",
+      "to": "VERIFYING"
+    },
+    {
+      "at": "2026-09-18T14:24:07.505611565Z",
+      "event": "state-transition",
+      "from": "VERIFYING",
+      "reason": "",
+      "to": "REVIEWING"
+    }
+  ],
+  "id": "P02-G04",
+  "lock": {
+    "digest": "6fe532148c5b07f940e03d9814892f6eacc5d21bc7df3c50554b7eb8fd3abfb5",
+    "locked_at": "2026-09-18T14:18:45.2988719Z",
+    "revision": 1
+  },
+  "non_goals": [],
+  "objective": "Integrar texto, raster e SVG ao aubrieta-cli e endurecer gauntlet",
+  "phase": "P02",
+  "revision": 1,
+  "state": "REVIEWING",
+  "title": "Integracao CLI e Gauntlet P02"
+}

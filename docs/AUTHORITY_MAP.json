@@ -1,0 +1,458 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "path": "docs/00 тАФ Product Charter & Scope 3db9bb7d023f8179b359f64100d8ed45.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/01 тАФ Architecture, GUI Boundary & Canonical Docume 3db9bb7d023f81c8a92be6b662aa25d3.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/02 тАФ Design Persona Vector, Layout & Variable Data 3db9bb7d023f81efbeb5d915be067e6f.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/03 тАФ Photo Persona Raster, Masks & Nondestructive  3db9bb7d023f81aca90ce2a485809264.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/04 тАФ Canonical Rust Stack & Engine Boundaries 3db9bb7d023f813e826bd9ead40363b8.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/05 1 тАФ GPUI Primary UI Stack, Ecosystem & Icons 3db9bb7d023f812ca59cc6d12cb13c67.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/05 тАФ GUI Technology Research & Decision Matrix 3db9bb7d023f81159d32e9bab39c9383.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/06 тАФ Reference Projects Adopt Adapt Avoid 3db9bb7d023f81ba824df39ffb9f7ec5.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/07 тАФ Quality, Gauntlets, Plugins, MCP & AI Develop 3db9bb7d023f8148ab13e85800df4af7.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 1 тАФ Visual Foundations, Tokens, Typography, Spa 3db9bb7d023f81cb9d14fd9f7e67d2c7.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 10 тАФ Export, Quick Export, Batch Export & Outpu 3db9bb7d023f81b5a056f4d09e9b21fb.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 11 тАФ Variable Data Data Merge Window, Bindings, 3db9bb7d023f8154b090cbb0f5d63b3d.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 12 тАФ Preferences, Customization, Themes, Icons, 3db9bb7d023f8141b9d8e64e35e00faa.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 13 тАФ Tooltips, Popovers, Dialogs, Alerts, Notif 3db9bb7d023f816fa292e7fc620a84ba.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 14 тАФ Accessibility, Keyboard, Pointer, Pen, IME 3db9bb7d023f8167a9bdff182768f9f0.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 15 тАФ GPUI GPUI Kit Implementation Map & Compone 3db9bb7d023f81bc8399f58f22c4e67b.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 16 тАФ UI Gauntlet, Visual Regression, Atlas Cove 3db9bb7d023f816fb2d8fd1e55c0f69f.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 17 тАФ Panel Atlas Every Dockable Inspector, Brow 3db9bb7d023f81dfa0a2c4642a3c110e.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 18 тАФ Window & Dialog Atlas Every Modal, Sheet,  3db9bb7d023f81dab281e2ca22b799ad.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 19 тАФ Microcopy, Labels, Naming, States, Units & 3db9bb7d023f817a8786c1aa38209a4a.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 2 тАФ Application Shell, Window Anatomy, Tabs, To 3db9bb7d023f81069063d901399c6bdf.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 20 тАФ UX, Usability, Information Architecture, C 3db9bb7d023f81c38d98c1ddc9a6956d.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 21 тАФ Design System Governance, Token Enforcemen 3db9bb7d023f819e90cbc2da911b8c03.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 22 тАФ Affinity Reference Model, Aubrieta Diverge 3df9bb7d023f815cbd73efe081adc2d6.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 23 тАФ Tool Interaction Grammar, Context Toolbar, 3df9bb7d023f8144bba3db77c199a947.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 24 тАФ Design Persona Tool-by-Tool UX Contract &  3df9bb7d023f81e7a45bdac3b72a71ea.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 25 тАФ Panels, Layers, Appearance, Colour, Stroke 3df9bb7d023f814686f4e75513c11bd0.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 26 тАФ Typography, Text Editing, Layout & Precisi 3df9bb7d023f81e5a00acd3217f200f6.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 27 тАФ Snapping, Guides, Measurement, Numeric Pre 3df9bb7d023f81409b2df9edb911f2b2.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 28 тАФ Design тЖФ Photo Personas, Mixed Workspace P 3df9bb7d023f81faaae5e02b4a6eb1b3.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 29 тАФ Import, Place, Export, Preflight & Workflo 3df9bb7d023f81c8b74ff301ce199160.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 3 тАФ Docking, Panels, Inspectors, Floating Palet 3db9bb7d023f81259b36ea98ef7db4ca.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 30 тАФ UI UX Evidence Corpus, Interaction Conform 3df9bb7d023f81098725d56753eb0372.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 31 тАФ Photo Persona Tool-by-Tool UX Contract & A 3df9bb7d023f810cada6d30e5b867888.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 32 тАФ Photo Layers, Adjustments, Masks, Live Fil 3df9bb7d023f81609273c08be65cd5a2.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 33 тАФ Affinity Tool & Panel Coverage Ledger тЖТ Au 3df9bb7d023f812684f9d8b0bdb12c46.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 4 тАФ Menus, Submenus, Context Menus, Command Pal 3db9bb7d023f817f9cc5ebb4ee801d29.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 5 тАФ Complete Control Catalog Buttons, Fields, S 3db9bb7d023f81d19455ea5b6d0ddd14.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 6 тАФ Canvas, Rulers, Guides, Zoom, Selection, Sn 3db9bb7d023f816f910ad0aadc8984ea.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 7 тАФ Design Persona Complete Interface Specifica 3db9bb7d023f817dae7dc5b0ad914897.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 8 тАФ Photo Persona Complete Interface Specificat 3db9bb7d023f813c830fcd0c1e439524.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 9 тАФ Welcome, New Open, Place Import, Relink, Mi 3db9bb7d023f81878276df040ba2c753.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/08 тАФ Interface Atlas & Aubrieta Design System 3db9bb7d023f816898b8cdc5efef3c76.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 0 тАФ Documentation Gap Audit & Completeness Matr 3db9bb7d023f8110ae91f49bcd016efe.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 1 тАФ Modularity, Capability Registry & Contribut 3db9bb7d023f8160a14dea24a4d00544.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 10 1 тАФ Open Native Format, Interoperability Pro 3db9bb7d023f81a4a6c5d9edfcc5b904.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 10 тАФ Native File Format, Serialization, Version 3db9bb7d023f81b587e8fab1e4d8d339.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 11 тАФ Import Export Adapter Contracts, Capabilit 3db9bb7d023f8100a1e8e054604426f9.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 12 тАФ Resource Packs, Tokens, Themes, Icons, Str 3db9bb7d023f81c5b2a3cbcc67e7c3ee.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 13 тАФ Job System, Concurrency, Cancellation & Pr 3db9bb7d023f81ab9dd9d6c95c2f7691.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 14 тАФ Plugin Host Isolation, WASM Components, Pe 3db9bb7d023f8160817bd7b0f1061e1e.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 15 тАФ MCP, Automation, Inspection API & External 3db9bb7d023f816fbfaaf12b89582c91.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 16 тАФ Localization, Locale Formatting, Translati 3db9bb7d023f819ea178cb86bcf6a0d0.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 17 тАФ Platform Services, Filesystem, Clipboard,  3db9bb7d023f814ab768c1aeee5f6f5d.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 18 тАФ Security Model, Trust Boundaries, Hostile  3db9bb7d023f81f696d0cef7cce2a631.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 19 тАФ Observability, Structured Diagnostics, Log 3db9bb7d023f8104ab75ec5fb681ef18.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 2 тАФ Canonical Document Model, Object Graph, Res 3db9bb7d023f81eea154c0aceec4610b.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 20 тАФ Build, Packaging, Release, Updates, Depend 3db9bb7d023f81e78381d9774582bcb7.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 21 тАФ Architecture Governance, ADRs, Compatibili 3db9bb7d023f81729bace22cfa3aa2e4.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 22 тАФ Cargo Workspace, Crate Topology, Dependenc 3db9bb7d023f8137949cc85cc5313746.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 23 тАФ Preferences, Configuration Layers, Workspa 3db9bb7d023f81a0a63df217a214509c.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 24 тАФ Application, Document Session, Multi-Windo 3db9bb7d023f8150a1a4dee7fefb025e.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 25 тАФ Property & Parameter Schema Registry, Gene 3db9bb7d023f81918b0cf4b468f588b0.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 26 тАФ Open ADR Registry, Deferred Decisions & Re 3db9bb7d023f8166a751e3d1a8390b78.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 27 тАФ UI-Agnostic Core, Ports Adapters, Presenta 3db9bb7d023f81968082fd246f9ff668.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 28 тАФ Plugin SDK, Safe Extension Contract, Capab 3db9bb7d023f812b924ffac8a8a3c41d.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 29 тАФ MCP API Usability, Agent Contracts, Safety 3db9bb7d023f8193a933c547bdf2aafe.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 3 тАФ Actions, Commands, Transactions, Undo Redo  3db9bb7d023f81dc83e0ef56938b2932.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 30 тАФ Plugin Scripting Runtime ADR Lua vs Python 3db9bb7d023f8129853cc7461081cf62.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 4 тАФ Evaluation Graph, Derived Data, Invalidatio 3db9bb7d023f81a09fe5d8251424e0c7.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 5 тАФ Vector Geometry Engine Numeric Policy, Path 3db9bb7d023f8151889eddb7e9c44952.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 6 тАФ Raster Engine Tiles, Brushes, Masks, Select 3db9bb7d023f81dcbd6ecddfbe80a52a.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 7 тАФ Render Scene, Vello wgpu Compositor & GPU R 3db9bb7d023f81c2bc3ec3d1a5b74cc2.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 8 тАФ Typography, Text Editing & Layout Engine 3db9bb7d023f81c3a4e5ebdeac49ae50.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 9 тАФ Color Management, ICC, CMYK, Spot & Proofin 3db9bb7d023f811d9572d1978cb88e34.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/09 тАФ Architecture & Implementation Atlas 3db9bb7d023f810991aff0b9836407e0.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 1 тАФ Selection, Transform, Arrange, Align, Distr 3db9bb7d023f811c84f5f42ffac2657b.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 10 тАФ Photo Masks, Adjustments, Live Filters, Ch 3db9bb7d023f8152a4b2c6ac15387c33.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 11 тАФ Variable Data Data Merge Engine Sources, B 3db9bb7d023f81f4a6edc078f3bd753f.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 12 тАФ Design тЖФ Photo Interoperability, Conversio 3db9bb7d023f81c6bcffd0dfd1592f06.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 13 тАФ Functional Gauntlet, Edge-Case Matrix & To 3db9bb7d023f81588376c87f618f6b39.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 2 тАФ Pen, Pencil, Nodes, Path Editing, Corners,  3db9bb7d023f81a0b12fdcf67e5f7739.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 3 тАФ Shapes, Boolean Operations, Shape Builder,  3db9bb7d023f81fc8255d10257faf3ba.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 4 тАФ Fill, Stroke, Gradients, Transparency, Appe 3db9bb7d023f8102a4c7d1befb3cc5c2.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 5 тАФ Layers, Groups, Clips, Masks, Symbols, Styl 3db9bb7d023f818584c0d305fd9576b8.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 6 тАФ Typography Tools, Artistic Text, Text Frame 3db9bb7d023f8168aad1f32e4f616d33.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 7 тАФ Surfaces, Artboards, Pages, Guides, Margins 3db9bb7d023f816cb69bfdea52a402f4.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 8 тАФ Perspective, Projective Transform, Perspect 3db9bb7d023f813b9b86ef370e5c50cd.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 9 тАФ Photo Selection, Brush, Eraser, Crop, Gradi 3db9bb7d023f81148d80deee6c0293a1.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/10 тАФ Functional Engine Atlas 3db9bb7d023f81a2b96dc9446aca0a77.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/11 тАФ Naming & Brand Audit 3db9bb7d023f8101bbf2f52337cbde26.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/12 1 тАФ Source of Truth, Canonical Documentation, L 3db9bb7d023f81b08c9fd60fe7dc97bb.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/12 10 тАФ Prumo CLI Workflow, Goals Waves, Implement 3dc9bb7d023f81ba8bbfd27c9cb81baf.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/12 2 тАФ Code Agent Operating Protocol, Microcontext 3db9bb7d023f81eba360d7f459ebac35.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/12 3 тАФ Living Documentation Pipeline VitePress, i1 3db9bb7d023f8168a7b6e4d378b02d12.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/12 4 тАФ Implementation Plan Template, Definition of 3db9bb7d023f819687aae98591d81fcb.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/12 5 тАФ API Documentation Standard for Core, Plugin 3db9bb7d023f81ae9b64f4236b9f7a03.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/12 6 тАФ Documentation Quality Gauntlet, Translation 3db9bb7d023f816f97acdec5a8a82f79.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/12 7 тАФ Repository, Contribution, Review & Document 3db9bb7d023f8166a88fdc1a5fa53e03.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/12 8 тАФ Requirement Status, Scope Taxonomy, Backlog 3db9bb7d023f81a0b529c767560d3f7f.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/12 9 тАФ Change Impact Matrix What Agents Must Updat 3db9bb7d023f81ceaf86dbf91a4bd2bf.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/12 тАФ Code Agent Implementation Handbook & Living D 3db9bb7d023f81049058df8d98185faa.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/13 тАФ Full Notebook Page-by-Page Audit & Conformanc 3db9bb7d023f810fb6fdf8aa804ef74e.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/14 1 тАФ Test Architecture, Conformance Matrix & Reg 3df9bb7d023f81708697efc517887807.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/14 2 тАФ Performance Contract, Hardware Tiers, Bench 3df9bb7d023f812e8de5e0c0328093ee.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/14 3 тАФ Golden Project, Fixture & Reproduction Corp 3df9bb7d023f81e7894fd7bc8dbe5141.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/14 4 тАФ Capability Detach, Feature Isolation & Depe 3df9bb7d023f819c8cc0efa23f7a2a0e.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/14 5 тАФ Security Verification, Fuzzing & Hostile-In 3df9bb7d023f8141850fdbebb6adbd67.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/14 6 тАФ Native Format Migration, Corruption, Atomic 3df9bb7d023f811fa42ef99f802cda98.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/14 7 тАФ UI UX Evidence Integration, Semantic Golden 3df9bb7d023f81219888de43696f641d.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/14 8 тАФ AgentOps, cargo xtask, CI Commands, Evidenc 3df9bb7d023f814daef3ebc28510d779.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/14 тАФ Implementation Evidence, Verification & Agent 3df9bb7d023f81a78feedf6410de5065.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/Aubrieta Design 3db9bb7d023f811192aff85b2efa8698.md",
+      "role": "canonical"
+    }
+  ],
+  "current_version": "0.6.0"
+}
