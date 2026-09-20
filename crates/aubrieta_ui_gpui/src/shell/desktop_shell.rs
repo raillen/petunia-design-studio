@@ -3,11 +3,14 @@ use aubrieta_foundation::AubrietaError;
 use aubrieta_geometry::{GPoint, GRect};
 
 use crate::bridge::{
-    AubrietaGuiBridge, DialogRequest, LayersPresentationModel, PropertiesPresentationModel,
-    SessionSnapshot,
+    AubrietaGuiBridge, DataMergePresentationModel, DialogRequest, LayersPresentationModel,
+    PropertiesPresentationModel, SessionSnapshot,
 };
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
-use crate::panels::{HistoryPanelController, LayersPanelController, PropertiesPanelController};
+use crate::panels::{
+    DataMergePanelController, HistoryPanelController, LayersPanelController,
+    PropertiesPanelController,
+};
 use crate::tools::{NormalizedPointerEvent, ToolKind, ToolManager};
 
 /// Complete desktop application shell coordinating canvas, tools, panels, and bridge.
@@ -27,6 +30,8 @@ pub struct AubrietaShell {
     pub properties_panel: PropertiesPanelController,
     /// History panel controller.
     pub history_panel: HistoryPanelController,
+    /// Data merge panel controller.
+    pub data_merge_panel: DataMergePanelController,
     /// Pending dialog requests awaiting UI presentation.
     pub dialog_queue: Vec<DialogRequest>,
 }
@@ -49,6 +54,7 @@ impl AubrietaShell {
             layers_panel: LayersPanelController::new(),
             properties_panel: PropertiesPanelController::new(),
             history_panel: HistoryPanelController::new(),
+            data_merge_panel: DataMergePanelController::new(),
             dialog_queue: Vec::new(),
         }
     }
@@ -122,6 +128,12 @@ impl AubrietaShell {
     #[must_use]
     pub fn query_properties(&self) -> PropertiesPresentationModel {
         self.properties_panel.query_model(&self.bridge)
+    }
+
+    /// Resolves data merge presentation model.
+    #[must_use]
+    pub fn query_data_merge(&self) -> DataMergePresentationModel {
+        self.data_merge_panel.query_model(&self.bridge)
     }
 
     /// Invokes undo via history controller.
