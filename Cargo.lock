@@ -181,9 +181,11 @@ dependencies = [
 name = "aubrieta_render"
 version = "0.1.0"
 dependencies = [
+ "aubrieta_color",
  "aubrieta_document",
  "aubrieta_foundation",
  "aubrieta_geometry",
+ "proptest",
  "serde",
  "thiserror",
 ]

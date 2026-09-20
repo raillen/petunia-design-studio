@@ -1,0 +1,52 @@
+{
+  "acceptance": [
+    "Definição de ProofContext com perfil de simulação e opções de render intent em aubrieta_color",
+    "Detecção e flags de out-of-gamut sem alterar valores originais do documento",
+    "Política explícita de preservação de números CMYK (PreserveNumbersPolicy) para saída gráfica",
+    "Extensão de ColorManagementProvider para suportar pipelines de prova e validação de gamut",
+    "100% de cobertura de testes para simulação de gamut e preservação de números"
+  ],
+  "constraints": [
+    "Proofing é estritamente contexto de renderização/análise, nunca muta dados canônicos do documento",
+    "moxcms permanece o backend CMM primário seguro em Rust"
+  ],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [
+    "P04-G01"
+  ],
+  "evidence": [],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-20T02:40:50.121823664Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-20T02:41:15.518505283Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "",
+      "to": "PLANNED"
+    }
+  ],
+  "id": "P04-G04",
+  "non_goals": [
+    "Manipulação direta de tabelas binárias raw de ICC sem CMM abstrato",
+    "Integração direta de LittleCMS C dynamic linking no core seguro padrão"
+  ],
+  "objective": "Implementar contexto de soft-proofing, deteccao de cores fora de gama e politicas de preservacao de numeros CMYK",
+  "phase": "P04",
+  "revision": 1,
+  "state": "PLANNED",
+  "title": "Gestao de Cor Avancada, Soft Proofing e Politicas de Preservacao"
+}

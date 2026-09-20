@@ -1,0 +1,52 @@
+{
+  "acceptance": [
+    "Adaptadores de exportação e importação raster (aubrieta_io::image_io) suportando PNG, JPEG, WebP e TIFF",
+    "Preservação simétrica de profundidades de 8-bit e 16-bit com roundtrip sem perda para tiles de aubrieta_raster",
+    "Detecção e registro de degradações destrutivas (truncamento 16-\u003e8 bits, descarte de canal alfa em JPEG) no DegradationPlan",
+    "Sniffing de assinaturas mágicas e validação defensiva contra estouro de memória",
+    "100% de cobertura de testes com roundtrip para 8-bit e 16-bit e verificação de degradação"
+  ],
+  "constraints": [
+    "Decodificadores operam com limites defensivos de alocação de memória",
+    "Domain crates não importam crates pesados de imagem diretamente"
+  ],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [
+    "P04-G01"
+  ],
+  "evidence": [],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-20T02:40:50.105612399Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-20T02:41:06.743897273Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "",
+      "to": "PLANNED"
+    }
+  ],
+  "id": "P04-G03",
+  "non_goals": [
+    "Decodificação de formatos RAW proprietários de câmeras digitais (escopo Post-V1/Photo especializado)",
+    "Aceleração por hardware específica de GPU para codificação JPEG/WebP"
+  ],
+  "objective": "Implementar adaptadores de raster para PNG, JPEG, WebP e TIFF preservando profundidades de 8 e 16 bits com relatorio de degradacao",
+  "phase": "P04",
+  "revision": 1,
+  "state": "PLANNED",
+  "title": "Importacao e Exportacao de Imagens Raster com Fidelidade de Profundidade"
+}

@@ -8,5 +8,9 @@ license.workspace = true
 aubrieta_foundation = { path = "../aubrieta_foundation" }
 aubrieta_document = { path = "../aubrieta_document" }
 aubrieta_geometry = { path = "../aubrieta_geometry" }
+aubrieta_color = { path = "../aubrieta_color" }
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+proptest = "1"
