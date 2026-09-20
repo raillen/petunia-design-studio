@@ -1,0 +1,71 @@
+{
+  "acceptance": [
+    "aubrieta_extension provides PluginManifest and PluginPermission taxonomy",
+    "CapabilityBroker enforces fine-grained permissions per plugin without panic",
+    "PluginHost embeds sandboxed Lua state with access restricted to brokered Aubrieta APIs",
+    "Plugin actions emit ActionRequest/CommandRequest across architectural boundaries",
+    "100% test coverage for sandboxing, permission rejection, and plugin action dispatch"
+  ],
+  "constraints": [
+    "Domain crates never import mlua or extension types",
+    "Strict capability isolation: missing permission returns disabled reason, never panic",
+    "Lua sandbox strips dangerous standard libraries (os, io, debug, loadlib)"
+  ],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [
+    "P03-G01",
+    "P03-G02"
+  ],
+  "evidence": [
+    "cargo test -p aubrieta_extension: 7 unit tests + 2 proptests passed",
+    "cargo clippy -p aubrieta_extension: 0 warnings",
+    "apps/aubrieta-cli step 12: sandboxed Lua plugin executed query and mutation request",
+    "cargo xtask gauntlet: passed clean (76 tests total)"
+  ],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-20T02:27:00.000000000Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-20T02:27:05.000000000Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "Starting aubrieta_extension implementation",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-20T02:32:38.694873+00:00",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "Plugin SDK, capability broker and Lua 5.4 sandbox complete",
+      "to": "REVIEWING"
+    }
+  ],
+  "id": "P03-G03",
+  "lock": {
+    "digest": "d54a55976258000085025d15f620a566f963f4028bb1bafa4e24b7ce43e49e00",
+    "locked_at": "2026-09-20T02:27:02.277313+00:00",
+    "revision": 1
+  },
+  "non_goals": [
+    "Dynamic C ABI shared library loading (.so / .dll)",
+    "Full WASM component runtime in this wave (POST_V1_CANDIDATE)"
+  ],
+  "objective": "Implementar aubrieta_extension com Plugin SDK neutro, manifestos, sandbox seguro Lua 5.4/5.5 e capability broker",
+  "phase": "P03",
+  "revision": 1,
+  "state": "REVIEWING",
+  "title": "Runtime e Host de Extensoes"
+}

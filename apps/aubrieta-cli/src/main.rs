@@ -8,6 +8,7 @@ use aubrieta_application::{Command, CommandRequest, History};
 use aubrieta_color::{convert_for_display, ColorValue, Lab, RenderingIntent};
 use aubrieta_document::Document;
 use aubrieta_evaluation::Evaluator;
+use aubrieta_extension::{PluginHost, PluginId, PluginManifest, PluginPermission};
 use aubrieta_foundation::IdGenerator;
 use aubrieta_geometry::{boolean_op, BooleanInput, BooleanOp, GAffine, GPath, GPoint, PathVerb};
 use aubrieta_platform::{
@@ -218,8 +219,44 @@ fn run() -> Result<(), String> {
         .map_err(|e| format!("env query: {e}"))?;
     assert_eq!(platform_env.scale_factor, 1.0);
 
+    // 12. Sandboxed Lua Scripting Plugin Host (aubrieta_extension).
+    let mut plugin_host = PluginHost::new();
+    plugin_host.set_document(document.clone());
+    let sample_manifest = PluginManifest::new(
+        PluginId::new("aubrieta.sample.calculator"),
+        "Sample Calculator",
+        "1.0.0",
+        "main.lua",
+    )
+    .with_permission(PluginPermission::DocumentRead)
+    .with_permission(PluginPermission::DocumentWrite);
+
+    let lua_source = r#"
+        function calculate_stats()
+            local surfaces = aubrieta.document.surface_count()
+            aubrieta.actions.request("aubrieta.action.stamp_verified", "conformance_ok")
+            return "stats: surfaces=" .. surfaces .. " app=" .. aubrieta.app.name
+        end
+    "#;
+    plugin_host
+        .load_plugin(sample_manifest, lua_source)
+        .map_err(|e| format!("plugin load: {e}"))?;
+    let plugin_output = plugin_host
+        .execute_action(
+            &PluginId::new("aubrieta.sample.calculator"),
+            "calculate_stats",
+            None,
+        )
+        .map_err(|e| format!("plugin exec: {e}"))?;
+    let plugin_record = plugin_host.take_record();
+    assert_eq!(plugin_record.actions_requested.len(), 1);
+    assert_eq!(
+        plugin_record.actions_requested[0].action.0.as_str(),
+        "aubrieta.action.stamp_verified"
+    );
+
     println!(
-        "OK surfaces={} objects={} gen={} bounds=({},{}) union_contours={} white=({:.2},{:.2},{:.2}) lines={} raster_tiles={} svg_len={} tokens={} locales=2 clip_len={}",
+        "OK surfaces={} objects={} gen={} bounds=({},{}) union_contours={} white=({:.2},{:.2},{:.2}) lines={} raster_tiles={} svg_len={} tokens={} locales=2 clip_len={} plugin_out=\"{}\"",
         summary.surfaces,
         summary.objects,
         summary.generation,
@@ -234,6 +271,7 @@ fn run() -> Result<(), String> {
         svg_content.len(),
         core_pack.tokens.len(),
         pasted_svg.len(),
+        plugin_output,
     );
     println!("i18n en-US: \"{en_msg}\"");
     println!("i18n pt-BR: \"{pt_msg}\"");

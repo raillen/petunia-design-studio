@@ -4,7 +4,7 @@
 
 - P03-G01 `REVIEWING` (Pacotes de Recursos, Tokens e i18n — DTCG tokens, temas Light/Dark, ciclo de alias, catálogo en-US e pt-BR, IconMap)
 - P03-G02 `REVIEWING` (Portas e Adaptadores de Plataforma — ClipboardService, FileDialogService, EnvironmentService e adaptadores Headless)
-- P03-G03 `PLANNED` (Runtime e Host de Extensões — API neutra de plugins e sandbox Lua 5.5 / WASM)
+- P03-G03 `REVIEWING` (Runtime e Host de Extensões — API neutra de plugins, capability broker e sandbox Lua 5.4/5.5 via `mlua`)
 - P03-G04 `PLANNED` (Servidor e Ferramentas MCP — automação e inspeção via Model Context Protocol)
 - Escopo: `V1_REQUIRED` (camada de plataforma, recursos e desacoplamento do SO).
 
@@ -23,19 +23,24 @@
    - `EnvironmentService`: leitura de métricas do sistema operacional (HiDPI scale factor, modo escuro, idiomas preferidos).
    - Adapters *Headless* determinísticos (`HeadlessClipboard`, `HeadlessFileDialog`, `HeadlessEnvironment`) que garantem testes e automação em CI sem necessidade de servidor gráfico (X11/Wayland/Windows).
 
-3. **Conformidade E2E e Gauntlet (`apps/aubrieta-cli` & `xtask`)**:
-   - `aubrieta-cli` expandido para os passos 10 e 11: resolução de tokens, validação bilingue de mensagens e transferência de conteúdo via clipboard em memória.
-   - Regras de arestas proibidas em `xtask` estendidas para `aubrieta_resources` e `aubrieta_platform` (isolamento estrito de GPUI, Vello e WGPU no domínio).
+3. **Sistema de Extensões & Plugins (`aubrieta_extension`)**:
+   - Manifestos de plugins (`PluginManifest`) com taxonomia fina de permissões (`DocumentRead`, `DocumentWrite`, `Clipboard`, `ScopedStorage`, `Network`).
+   - `CapabilityBroker`: autorização em tempo de execução com razão descritiva de recusa, garantindo a invariante "capability ausente nunca causa pânico".
+   - `PluginHost`: runtime isolado em Lua 5.4 via `mlua` com stripping de bibliotecas perigosas do SO (`os`, `io`, `debug`, `package.loadlib`).
+   - API de script `aubrieta`: consultas de documento e solicitações de mutação emitindo `ActionRequest` canônicos.
 
-## Evidência de verificação P03 (Onda 1)
+4. **Conformidade E2E e Gauntlet (`apps/aubrieta-cli` & `xtask`)**:
+   - `aubrieta-cli` expandido para os passos 10, 11 e 12 (resolução de tokens, i18n bilíngue, clipboard e execução de ação via plugin Lua em sandbox).
+   - Regras de arestas proibidas em `xtask` estendidas para `aubrieta_resources`, `aubrieta_platform` e `aubrieta_extension`.
 
-- `cargo test --workspace`: **67 passed** (53 testes unitários + 14 testes de propriedade `proptest`), 0 failed.
+## Evidência de verificação P03
+
+- `cargo test --workspace`: **76 passed** (60 testes unitários + 16 testes de propriedade `proptest`), 0 failed.
 - `cargo clippy --workspace --all-targets -- -D warnings`: **0 warnings** (limpo).
 - `cargo fmt --all --check`: **100% formatado**.
 - `cargo xtask gauntlet`: **verde total** (fmt, clippy, testes unitários, testes de propriedade, arestas arquiteturais, fixtures e conformidade CLI).
 - `prumo doctor .`: **todos os checks passaram sem erros**.
 
-## Handoff e Próximos Passos (P03 Continuação)
+## Handoff e Próximos Passos (P03 Conclusão)
 
-1. `P03-G03`: Implementação do contrato de Plugins e runtime de script (`aubrieta_extension`).
-2. `P03-G04`: Implementação do servidor de inspeção e mutação MCP (`aubrieta_mcp`).
+1. `P03-G04`: Implementação do servidor de inspeção e mutação MCP (`aubrieta_mcp`).

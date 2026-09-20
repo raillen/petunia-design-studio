@@ -21,3 +21,4 @@ aubrieta_raster = { path = "../../crates/aubrieta_raster" }
 aubrieta_io = { path = "../../crates/aubrieta_io" }
 aubrieta_resources = { path = "../../crates/aubrieta_resources" }
 aubrieta_platform = { path = "../../crates/aubrieta_platform" }
+aubrieta_extension = { path = "../../crates/aubrieta_extension" }
