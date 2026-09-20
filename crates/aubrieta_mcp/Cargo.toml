@@ -1,0 +1,19 @@
+[package]
+name = "aubrieta_mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+aubrieta_foundation = { path = "../aubrieta_foundation" }
+aubrieta_document = { path = "../aubrieta_document" }
+aubrieta_application = { path = "../aubrieta_application" }
+aubrieta_evaluation = { path = "../aubrieta_evaluation" }
+aubrieta_io = { path = "../aubrieta_io" }
+aubrieta_resources = { path = "../aubrieta_resources" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest = "1.11.0"

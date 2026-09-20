@@ -31,11 +31,13 @@ dependencies = [
  "aubrieta_foundation",
  "aubrieta_geometry",
  "aubrieta_io",
+ "aubrieta_mcp",
  "aubrieta_platform",
  "aubrieta_raster",
  "aubrieta_render",
  "aubrieta_resources",
  "aubrieta_text",
+ "serde_json",
 ]
 
 [[package]]
@@ -136,6 +138,22 @@ version = "0.1.0"
 dependencies = [
  "aubrieta_foundation",
  "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "aubrieta_mcp"
+version = "0.1.0"
+dependencies = [
+ "aubrieta_application",
+ "aubrieta_document",
+ "aubrieta_evaluation",
+ "aubrieta_foundation",
+ "aubrieta_io",
+ "aubrieta_resources",
+ "proptest",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

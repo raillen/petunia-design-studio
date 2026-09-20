@@ -1,0 +1,73 @@
+{
+  "acceptance": [
+    "aubrieta_mcp provides JSON-RPC 2.0 compliant MCP request/response dispatcher",
+    "Discovery endpoint lists available tools, capabilities and schema version",
+    "Document queries return revision and semantic summaries without exposing raw pointers",
+    "Mutations execute via CommandRequest through History and support undo/redo",
+    "Stale revision detection rejects mutations with descriptive error code",
+    "100% test coverage for discovery, queries, mutations, and error handling"
+  ],
+  "constraints": [
+    "Domain crates never import MCP or transport protocols",
+    "Every MCP mutation strictly flows through Command/History/DocumentMutator",
+    "Support revision check to prevent LLM acting on stale context"
+  ],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [
+    "P03-G01",
+    "P03-G02",
+    "P03-G03"
+  ],
+  "evidence": [
+    "cargo test -p aubrieta_mcp: 2 unit tests + 2 proptests passed",
+    "cargo clippy -p aubrieta_mcp: 0 warnings",
+    "apps/aubrieta-cli step 13: MCP discovery and document.create_surface mutation with revision check passed",
+    "cargo xtask gauntlet: passed clean (80 tests total across workspace)"
+  ],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-20T02:33:00.000000000Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-20T02:33:05.000000000Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "Starting aubrieta_mcp implementation",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-20T02:38:25.409652+00:00",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "MCP server, JSON-RPC protocol, and transactional tools complete",
+      "to": "REVIEWING"
+    }
+  ],
+  "id": "P03-G04",
+  "lock": {
+    "digest": "d23bb5ca7f7a7c670ce5a1603d97fc3873012f4cf1de1f1e09f3f06f2e530701",
+    "locked_at": "2026-09-20T02:33:35.909252+00:00",
+    "revision": 1
+  },
+  "non_goals": [
+    "Raw HTTP/WebSocket daemon transport (Layer 8/Apps concern)",
+    "Authentication / OAuth token exchange in domain layer"
+  ],
+  "objective": "Implementar aubrieta_mcp com protocolo MCP para descoberta, consultas de documento, mutacoes transacionais e exportacao",
+  "phase": "P03",
+  "revision": 1,
+  "state": "REVIEWING",
+  "title": "Servidor e Ferramentas MCP"
+}

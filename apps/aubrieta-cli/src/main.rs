@@ -11,6 +11,7 @@ use aubrieta_evaluation::Evaluator;
 use aubrieta_extension::{PluginHost, PluginId, PluginManifest, PluginPermission};
 use aubrieta_foundation::IdGenerator;
 use aubrieta_geometry::{boolean_op, BooleanInput, BooleanOp, GAffine, GPath, GPoint, PathVerb};
+use aubrieta_mcp::{McpRequest, McpServer};
 use aubrieta_platform::{
     ClipboardService, EnvironmentService, FileFilter, HeadlessClipboard, HeadlessEnvironment,
 };
@@ -20,6 +21,7 @@ use aubrieta_resources::{
     IconId, Locale, ResourcePack, TextId, ThemeMode, ID_ACTION_EXPORT, ID_EXPORT_SUMMARY,
 };
 use aubrieta_text::{TextLayout, TextOffset, TextStory};
+use serde_json::json;
 use std::collections::HashMap;
 
 fn main() {
@@ -255,8 +257,27 @@ fn run() -> Result<(), String> {
         "aubrieta.action.stamp_verified"
     );
 
+    // 13. Model Context Protocol (MCP) Server integration (aubrieta_mcp).
+    let mut mcp_server = McpServer::new().with_document(document.clone());
+    let discover_req = McpRequest::new(1, "aubrieta.discover", json!({}));
+    let discover_resp = mcp_server.dispatch(discover_req);
+    assert!(discover_resp.error.is_none());
+    assert_eq!(discover_resp.result.unwrap()["app"], "Aubrieta Design");
+
+    let create_surface_req = McpRequest::new(
+        2,
+        "document.create_surface",
+        json!({ "name": "MCP Automation Page", "expected_revision": mcp_server.revision() }),
+    );
+    let create_surface_resp = mcp_server.dispatch(create_surface_req);
+    assert!(create_surface_resp.error.is_none());
+    let mcp_rev = create_surface_resp.result.unwrap()["revision"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(mcp_rev, 2);
+
     println!(
-        "OK surfaces={} objects={} gen={} bounds=({},{}) union_contours={} white=({:.2},{:.2},{:.2}) lines={} raster_tiles={} svg_len={} tokens={} locales=2 clip_len={} plugin_out=\"{}\"",
+        "OK surfaces={} objects={} gen={} bounds=({},{}) union_contours={} white=({:.2},{:.2},{:.2}) lines={} raster_tiles={} svg_len={} tokens={} locales=2 clip_len={} plugin_out=\"{}\" mcp_rev={}",
         summary.surfaces,
         summary.objects,
         summary.generation,
@@ -272,6 +293,7 @@ fn run() -> Result<(), String> {
         core_pack.tokens.len(),
         pasted_svg.len(),
         plugin_output,
+        mcp_rev,
     );
     println!("i18n en-US: \"{en_msg}\"");
     println!("i18n pt-BR: \"{pt_msg}\"");

@@ -162,6 +162,10 @@ fn cmd_architecture(root: &Path) -> i32 {
             "aubrieta_extension",
             &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
         ),
+        (
+            "aubrieta_mcp",
+            &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
+        ),
     ];
     let mut failures = 0;
     for (crate_name, forbidden) in rules {

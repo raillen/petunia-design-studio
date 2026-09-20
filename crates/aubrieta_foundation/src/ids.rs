@@ -79,6 +79,12 @@ impl IdGenerator {
         Self { next: 1 }
     }
 
+    /// Starts a generator at an explicit value (at least 1).
+    #[must_use]
+    pub fn with_start(start: u64) -> Self {
+        Self { next: start.max(1) }
+    }
+
     /// Issues the next `ObjectId`.
     pub fn next_object(&mut self) -> ObjectId {
         let id = ObjectId(self.next);
