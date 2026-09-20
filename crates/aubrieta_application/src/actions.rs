@@ -19,6 +19,12 @@ impl ActionId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
+
+    /// Borrows the string identifier.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 /// User intent before it becomes an undoable [`crate::Command`].
@@ -35,5 +41,14 @@ impl ActionRequest {
     #[must_use]
     pub fn new(action: ActionId, payload: serde_json::Value) -> Self {
         Self { action, payload }
+    }
+
+    /// Creates a request without payload.
+    #[must_use]
+    pub fn without_payload(action: ActionId) -> Self {
+        Self {
+            action,
+            payload: serde_json::Value::Null,
+        }
     }
 }

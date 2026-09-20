@@ -230,6 +230,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "aubrieta_ui_gpui"
+version = "0.1.0"
+dependencies = [
+ "aubrieta_application",
+ "aubrieta_color",
+ "aubrieta_document",
+ "aubrieta_foundation",
+ "aubrieta_geometry",
+ "aubrieta_platform",
+ "aubrieta_resources",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

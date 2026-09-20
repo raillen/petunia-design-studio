@@ -1,0 +1,73 @@
+{
+  "acceptance": [
+    "Replace this placeholder with objective acceptance criteria."
+  ],
+  "constraints": [],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [],
+  "evidence": [],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-20T03:22:14.745868083Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-20T03:22:21.681066395Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "",
+      "to": "PLANNED"
+    },
+    {
+      "at": "2026-09-20T03:22:21.711232026Z",
+      "event": "state-transition",
+      "from": "PLANNED",
+      "reason": "",
+      "to": "LOCKED"
+    },
+    {
+      "at": "2026-09-20T04:07:09.706094039Z",
+      "event": "state-transition",
+      "from": "LOCKED",
+      "reason": "",
+      "to": "EXECUTING"
+    },
+    {
+      "at": "2026-09-20T04:07:09.745173924Z",
+      "event": "state-transition",
+      "from": "EXECUTING",
+      "reason": "",
+      "to": "VERIFYING"
+    },
+    {
+      "at": "2026-09-20T04:07:09.760756074Z",
+      "event": "state-transition",
+      "from": "VERIFYING",
+      "reason": "",
+      "to": "REVIEWING"
+    }
+  ],
+  "id": "P05-G03",
+  "lock": {
+    "digest": "e6894044c02fed32097c12d0884963d9fe1b19cf756c130d37a1c3e7d0747418",
+    "locked_at": "2026-09-20T03:22:21.711224051Z",
+    "revision": 1
+  },
+  "non_goals": [],
+  "objective": "Implementar maquina de ferramentas (Select, Pen, Node, Shape), normalizacao de eventos de input, manipuladores de transformacao e transacoes atômicas.",
+  "phase": "P05",
+  "revision": 1,
+  "state": "REVIEWING",
+  "title": "Maquina de Ferramentas Vetoriais Interativas"
+}

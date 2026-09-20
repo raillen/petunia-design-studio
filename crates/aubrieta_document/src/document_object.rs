@@ -3,6 +3,14 @@
 use aubrieta_foundation::ObjectId;
 use serde::{Deserialize, Serialize};
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_one() -> f64 {
+    1.0
+}
+
 /// Single node in the document tree.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DocumentObject {
@@ -12,6 +20,27 @@ pub struct DocumentObject {
     pub name: String,
     /// Fill color as semantic token reference (e.g. `aubrieta.red/500`).
     pub fill: Option<String>,
+    /// Whether this object is visible in viewports and render passes.
+    #[serde(default = "default_true")]
+    pub visible: bool,
+    /// Whether this object is locked against interactive transformation.
+    #[serde(default)]
+    pub locked: bool,
+    /// Object opacity factor in `[0.0, 1.0]`.
+    #[serde(default = "default_one")]
+    pub opacity: f64,
+    /// Stroke color token reference.
+    #[serde(default)]
+    pub stroke: Option<String>,
+    /// Stroke line width in document points.
+    #[serde(default = "default_one")]
+    pub stroke_width: f64,
+    /// Axis-aligned bounds `[x, y, width, height]` in document points.
+    #[serde(default)]
+    pub bounds: Option<[f64; 4]>,
+    /// In-plane rotation angle in radians.
+    #[serde(default)]
+    pub rotation: f64,
 }
 
 impl DocumentObject {
@@ -22,6 +51,13 @@ impl DocumentObject {
             id,
             name: name.into(),
             fill: None,
+            visible: true,
+            locked: false,
+            opacity: 1.0,
+            stroke: None,
+            stroke_width: 1.0,
+            bounds: None,
+            rotation: 0.0,
         }
     }
 }

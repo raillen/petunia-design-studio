@@ -20,7 +20,6 @@ impl GPoint {
     pub const fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }
-
     /// True when both coordinates are finite.
     #[must_use]
     pub fn is_finite(self) -> bool {
@@ -31,6 +30,12 @@ impl GPoint {
     #[must_use]
     pub fn distance_to(self, other: Self) -> f64 {
         (self.x - other.x).hypot(self.y - other.y)
+    }
+}
+
+impl Default for GPoint {
+    fn default() -> Self {
+        Self::ORIGIN
     }
 }
 

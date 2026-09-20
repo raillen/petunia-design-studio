@@ -1,0 +1,248 @@
+//! Immutable presentation models and view-models for UI consumption (09.27).
+//!
+//! Rules:
+//! - Identified by stable semantic IDs;
+//! - Cheap to clone or diff;
+//! - No hidden mutation methods;
+//! - No toolkit types or raw widget dependencies;
+//! - Localization keys and tokens rather than hardcoded UI strings.
+
+use std::collections::HashMap;
+
+use aubrieta_application::ActionId;
+use aubrieta_foundation::{ObjectId, SurfaceId};
+use serde::{Deserialize, Serialize};
+
+/// High-level session snapshot for title bar, tabs, and shell status.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SessionSnapshot {
+    /// Active surface ID, if any.
+    pub active_surface: Option<SurfaceId>,
+    /// Document display title.
+    pub title: String,
+    /// Monotonic revision number.
+    pub revision: u64,
+    /// Whether document has unsaved modifications.
+    pub is_dirty: bool,
+    /// Number of surfaces in the document.
+    pub surface_count: usize,
+    /// Total count of objects across surfaces.
+    pub total_objects: usize,
+    /// Number of currently selected objects.
+    pub selected_count: usize,
+    /// Whether undo is currently available.
+    pub can_undo: bool,
+    /// Whether redo is currently available.
+    pub can_redo: bool,
+}
+
+/// Document-level summary metrics.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DocumentSummary {
+    /// Document title.
+    pub title: String,
+    /// Number of surfaces.
+    pub surface_count: usize,
+    /// Total objects across all surfaces.
+    pub total_objects: usize,
+    /// Monotonic revision.
+    pub revision: u64,
+    /// Unsaved modifications present.
+    pub is_dirty: bool,
+}
+
+/// Selection summary without widget ownership.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct SelectionViewModel {
+    /// Stable IDs of selected objects in intentional order.
+    pub selected_ids: Vec<ObjectId>,
+    /// Key (primary) object for alignment and property anchoring.
+    pub key_object: Option<ObjectId>,
+    /// Combined bounding box `[x, y, width, height]` in document points.
+    pub combined_bounds: Option<[f64; 4]>,
+    /// Number of selected objects.
+    pub count: usize,
+    /// True when nothing is selected.
+    pub is_empty: bool,
+}
+
+impl SelectionViewModel {
+    /// Checks if a specific object ID is selected.
+    #[must_use]
+    pub fn contains(&self, id: ObjectId) -> bool {
+        self.selected_ids.contains(&id)
+    }
+}
+
+/// Single row in the unified layers tree presentation model (10.5).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LayerRowViewModel {
+    /// Stable object ID.
+    pub id: ObjectId,
+    /// Surface where this object resides.
+    pub surface_id: SurfaceId,
+    /// Object human-readable name.
+    pub name: String,
+    /// Visibility status.
+    pub visible: bool,
+    /// Locked status against interactive edits.
+    pub locked: bool,
+    /// Whether this row is currently selected.
+    pub is_selected: bool,
+    /// Hierarchy nesting depth (0 = top-level child of surface).
+    pub depth: usize,
+    /// Semantic fill token, if any.
+    pub fill_token: Option<String>,
+    /// Semantic stroke token, if any.
+    pub stroke_token: Option<String>,
+    /// Opacity factor in `[0.0, 1.0]`.
+    pub opacity: f64,
+    /// Evaluated bounding box `[x, y, w, h]`, if defined.
+    pub bounds: Option<[f64; 4]>,
+}
+
+/// Presentation model for a surface container in the layers panel.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SurfaceRowViewModel {
+    /// Stable surface ID.
+    pub id: SurfaceId,
+    /// Surface human-readable name.
+    pub name: String,
+    /// True if this is the currently active/focused surface.
+    pub is_active: bool,
+    /// Number of objects in this surface.
+    pub object_count: usize,
+}
+
+/// Complete presentation model for the Layers Panel (10.5).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LayersPresentationModel {
+    /// Available surfaces.
+    pub surfaces: Vec<SurfaceRowViewModel>,
+    /// Flattened display rows representing the canonical tree.
+    pub rows: Vec<LayerRowViewModel>,
+    /// Total count of rows.
+    pub total_count: usize,
+    /// Number of selected rows.
+    pub selected_count: usize,
+}
+
+/// Presentation model for the Properties Inspector (09.25, 10.1, 10.4).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PropertiesPresentationModel {
+    /// Whether the selection is empty (controls inspect canvas/document properties).
+    pub selection_empty: bool,
+    /// Whether multiple objects with heterogeneous values are selected.
+    pub is_mixed: bool,
+    /// Name of the primary selected object.
+    pub name: Option<String>,
+    /// Fill token reference or hex string.
+    pub fill: Option<String>,
+    /// Stroke token reference.
+    pub stroke: Option<String>,
+    /// Stroke line width.
+    pub stroke_width: f64,
+    /// Opacity factor in `[0.0, 1.0]`.
+    pub opacity: f64,
+    /// Visibility status.
+    pub visible: bool,
+    /// Locked status.
+    pub locked: bool,
+    /// Coordinate and dimension bounds `[x, y, width, height]`.
+    pub bounds: Option<[f64; 4]>,
+    /// Rotation angle in radians.
+    pub rotation: f64,
+}
+
+impl Default for PropertiesPresentationModel {
+    fn default() -> Self {
+        Self {
+            selection_empty: true,
+            is_mixed: false,
+            name: None,
+            fill: None,
+            stroke: None,
+            stroke_width: 1.0,
+            opacity: 1.0,
+            visible: true,
+            locked: false,
+            bounds: None,
+            rotation: 0.0,
+        }
+    }
+}
+
+/// History entry presentation descriptor.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HistoryItemViewModel {
+    /// Stable zero-based index in history list.
+    pub index: usize,
+    /// Human-readable description of the operation.
+    pub description: String,
+    /// Number of changes produced by this command.
+    pub change_count: usize,
+}
+
+/// Presentation model for the History Panel / Undo Stack (09.3).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct HistoryPresentationModel {
+    /// Undoable actions in order from oldest to newest.
+    pub undo_stack: Vec<HistoryItemViewModel>,
+    /// Redoable actions in reverse order.
+    pub redo_stack: Vec<HistoryItemViewModel>,
+    /// Whether undo is currently available.
+    pub can_undo: bool,
+    /// Whether redo is currently available.
+    pub can_redo: bool,
+    /// Current undo step label, if any.
+    pub active_undo_label: Option<String>,
+}
+
+/// Action state for command menus, buttons, and shortcuts (09.27).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ActionStateViewModel {
+    /// Action identifier.
+    pub action_id: ActionId,
+    /// Whether the action is currently invokable.
+    pub is_enabled: bool,
+    /// Whether the action is in a toggled/checked state.
+    pub is_checked: bool,
+    /// Diagnostic or help reason if disabled.
+    pub disabled_reason: Option<String>,
+}
+
+/// Map of all action states by ID.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ActionStateMap {
+    /// Inner state mapping.
+    pub states: HashMap<String, ActionStateViewModel>,
+}
+
+impl ActionStateMap {
+    /// Looks up the state for an action.
+    #[must_use]
+    pub fn get(&self, action: &ActionId) -> Option<&ActionStateViewModel> {
+        self.states.get(action.as_str())
+    }
+}
+
+/// Semantic dialog requests emitted from core to UI adapters (09.27).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum DialogRequest {
+    /// Request to select a file for opening or importing.
+    ChooseOpenFile {
+        title: String,
+        extensions: Vec<String>,
+    },
+    /// Request to choose a file path for saving or exporting.
+    ChooseSaveDestination {
+        default_name: String,
+        extension: String,
+    },
+    /// Request confirmation for a destructive action.
+    ConfirmDestructiveAction {
+        title: String,
+        message: String,
+        confirm_label: String,
+    },
+}

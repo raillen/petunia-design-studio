@@ -26,6 +26,47 @@ pub enum Change {
         previous: Option<String>,
         next: Option<String>,
     },
+    /// An object's visibility flag changed.
+    VisibilityChanged {
+        id: ObjectId,
+        previous: bool,
+        next: bool,
+    },
+    /// An object's locked flag changed.
+    LockChanged {
+        id: ObjectId,
+        previous: bool,
+        next: bool,
+    },
+    /// An object's opacity changed.
+    OpacityChanged {
+        id: ObjectId,
+        previous: f64,
+        next: f64,
+    },
+    /// An object's stroke changed.
+    StrokeChanged {
+        id: ObjectId,
+        previous_stroke: Option<String>,
+        next_stroke: Option<String>,
+        previous_width: f64,
+        next_width: f64,
+    },
+    /// An object's bounds or rotation changed.
+    BoundsChanged {
+        id: ObjectId,
+        previous_bounds: Option<[f64; 4]>,
+        next_bounds: Option<[f64; 4]>,
+        previous_rotation: f64,
+        next_rotation: f64,
+    },
+    /// An object was reordered within its surface.
+    ObjectReordered {
+        surface: SurfaceId,
+        id: ObjectId,
+        previous_index: usize,
+        next_index: usize,
+    },
 }
 
 /// Ordered list of changes produced by one mutation.

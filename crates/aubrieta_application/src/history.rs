@@ -67,6 +67,36 @@ impl History {
     pub fn undo_len(&self) -> usize {
         self.undo.len()
     }
+
+    /// Number of redoable entries.
+    #[must_use]
+    pub fn redo_len(&self) -> usize {
+        self.redo.len()
+    }
+
+    /// True when undo is available.
+    #[must_use]
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    /// True when redo is available.
+    #[must_use]
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    /// Slice of undo entries.
+    #[must_use]
+    pub fn undo_entries(&self) -> &[ChangeSet] {
+        &self.undo
+    }
+
+    /// Slice of redo entries.
+    #[must_use]
+    pub fn redo_entries(&self) -> &[ChangeSet] {
+        &self.redo
+    }
 }
 
 use aubrieta_document::Change;
@@ -91,6 +121,39 @@ impl Replayer {
                 }
                 Change::FillChanged { id, next, .. } => {
                     mutator.set_fill(id, next)?;
+                }
+                Change::VisibilityChanged { id, next, .. } => {
+                    mutator.set_visibility(id, next)?;
+                }
+                Change::LockChanged { id, next, .. } => {
+                    mutator.set_locked(id, next)?;
+                }
+                Change::OpacityChanged { id, next, .. } => {
+                    mutator.set_opacity(id, next)?;
+                }
+                Change::StrokeChanged {
+                    id,
+                    next_stroke,
+                    next_width,
+                    ..
+                } => {
+                    mutator.set_stroke(id, next_stroke, next_width)?;
+                }
+                Change::BoundsChanged {
+                    id,
+                    next_bounds,
+                    next_rotation,
+                    ..
+                } => {
+                    mutator.set_bounds(id, next_bounds, next_rotation)?;
+                }
+                Change::ObjectReordered {
+                    surface,
+                    id,
+                    next_index,
+                    ..
+                } => {
+                    mutator.reorder_object(surface, id, next_index)?;
                 }
             }
         }

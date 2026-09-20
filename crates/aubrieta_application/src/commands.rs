@@ -18,6 +18,30 @@ pub enum Command {
     DeleteObject { id: ObjectId },
     /// Set an object's semantic fill token.
     SetFill { id: ObjectId, fill: Option<String> },
+    /// Set an object's visibility flag.
+    SetVisibility { id: ObjectId, visible: bool },
+    /// Set an object's locked flag.
+    SetLocked { id: ObjectId, locked: bool },
+    /// Set an object's opacity factor in [0.0, 1.0].
+    SetOpacity { id: ObjectId, opacity: f64 },
+    /// Set an object's stroke and stroke width.
+    SetStroke {
+        id: ObjectId,
+        stroke: Option<String>,
+        width: f64,
+    },
+    /// Set an object's bounds and rotation.
+    SetBounds {
+        id: ObjectId,
+        bounds: Option<[f64; 4]>,
+        rotation: f64,
+    },
+    /// Reorder an object within a surface.
+    ReorderObject {
+        surface: SurfaceId,
+        id: ObjectId,
+        new_index: usize,
+    },
 }
 
 /// Validated command ready for execution.
@@ -48,5 +72,19 @@ pub fn execute(
         }
         Command::DeleteObject { id } => mutator.remove_object(*id),
         Command::SetFill { id, fill } => mutator.set_fill(*id, fill.clone()),
+        Command::SetVisibility { id, visible } => mutator.set_visibility(*id, *visible),
+        Command::SetLocked { id, locked } => mutator.set_locked(*id, *locked),
+        Command::SetOpacity { id, opacity } => mutator.set_opacity(*id, *opacity),
+        Command::SetStroke { id, stroke, width } => mutator.set_stroke(*id, stroke.clone(), *width),
+        Command::SetBounds {
+            id,
+            bounds,
+            rotation,
+        } => mutator.set_bounds(*id, *bounds, *rotation),
+        Command::ReorderObject {
+            surface,
+            id,
+            new_index,
+        } => mutator.reorder_object(*surface, *id, *new_index),
     }
 }
