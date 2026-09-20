@@ -40,6 +40,11 @@ O núcleo completo, o subsistema de renderização/I/O e a camada de interface d
     - Renderizador 2D com fonte bitmap 8x8 embarcada, barra de menu, barra de ferramentas de contexto, barra de ferramentas lateral, canvas interativo com pranchetas/sangrias/margens/guias e dock com painéis de Camadas, Propriedades, Histórico e Data Merge.
     - Suporte a execução gráfica nativa e fallback automático para modo de smoke test em ambientes headless/CI.
 18. Pipeline de validação `cargo xtask gauntlet` aprovando **146+ testes** (unitários, integração e proptests), clippy sem advertências e sem arestas proibidas de arquitetura.
+19. Arquitetura de GUIs Desktop (Decisão Homologada Setembro 2026):
+    - `apps/aubrieta-slint`: Shell primária canônica com DSL declarativa, Live Preview instantâneo e aceleração FemtoVG/OpenGL 4.2+.
+    - `apps/aubrieta-egui`: Interface secundária experimental e workbench técnico de diagnóstico e telemetria profunda (60 FPS Glow/OpenGL).
+    - `apps/aubrieta-iced`: Contingência estratégica e reserva arquitetural (The Elm Architecture, licença MIT irrestrita, canvas vetorial nativo).
+    - Descontinuação formal de GPUI, Floem e Xilem do workspace.
 
 ## Matriz de Implementação de Fases
 

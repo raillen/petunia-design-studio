@@ -3,7 +3,7 @@
 <aside>
 🔌
 
-**Architectural invariant:** changing GPUI to another shell must not require rewriting document semantics, command logic, persistence, geometry, raster, color, typography, plugin contracts or MCP schemas.
+**Architectural invariant:** changing the GUI shell (e.g. Slint, Egui, Iced) must not require rewriting document semantics, command logic, persistence, geometry, raster, color, typography, plugin contracts or MCP schemas.
 
 </aside>
 
@@ -12,23 +12,23 @@
 Aubrieta follows a ports-and-adapters model around application/domain state. The UI is one adapter among several external actors, alongside MCP, plugins, CLI/headless tools and tests.
 
 ```
-GPUI Shell      MCP      Plugins      CLI/Tests
-    \            |          |            /
-     \           |          |           /
-        Semantic Application Ports
-                 ↓
-        Actions / Commands / Jobs
-                 ↓
-           Domain + Engines
-                 ↓
-       Persistence / Render Scene
+Slint / Egui / Iced      MCP      Plugins      CLI/Tests
+         \                |          |            /
+          \               |          |           /
+             Semantic Application Ports
+                      ↓
+             Actions / Commands / Jobs
+                      ↓
+                Domain + Engines
+                      ↓
+            Persistence / Render Scene
 ```
 
 # Forbidden dependency direction
 
 Domain/application crates must not import:
 
-- GPUI/GPUI Kit types;
+- GUI toolkit types (Slint, Egui, Iced, GPUI, Floem, Qt, WebView);
 - window/entity/component handles;
 - toolkit event types;
 - toolkit colors/fonts/icons;

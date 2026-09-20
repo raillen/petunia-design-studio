@@ -15,8 +15,8 @@ Recommended logical layers:
 5. `io`: native format, SVG/PDF/raster import/export;
 6. `extension`: plugin host, MCP, resource packs;
 7. `platform`: OS services;
-8. `ui`: GPUI adapter/design system/personas/panels;
-9. `apps`: desktop binary, CLI/headless/testing binaries.
+8. `ui`: GUI adapters (`aubrieta-slint` primary, `aubrieta-egui` secondary, `aubrieta-iced` contingency), bridge, design system, panels;
+9. `apps`: desktop binary (`aubrieta-desktop`), GUI apps (`aubrieta-slint`, `aubrieta-egui`, `aubrieta-iced`), CLI/headless (`aubrieta-cli`).
 
 # Dependency rule
 
@@ -117,7 +117,7 @@ Lateral peers cooperate through lower-layer contracts/registries; they do not de
 
 CI must reject patterns such as:
 
-- `aubrieta_document -> gpui`;
+- `aubrieta_document -> slint / egui / iced / gui toolkits`;
 - `aubrieta_document -> wgpu/vello`;
 - `aubrieta_geometry -> aubrieta_ui_gpui`;
 - `aubrieta_color -> krilla`;
@@ -135,7 +135,7 @@ Examples:
 - Kurbo path/affine types converted at `aubrieta_geometry` adapter boundary;
 - Vello Scene/Brush types stay in render backend;
 - `mlua::Lua/Value` stay in Lua binding/host crate;
-- GPUI Entity/Element stay in `aubrieta_ui_gpui`;
+- GUI toolkit types (Slint Window/Model, Egui Context, Iced Element) stay in their respective app crates;
 - LittleCMS handles stay in color-engine adapter;
 - ZIP/parser implementation types stay inside native IO.
 

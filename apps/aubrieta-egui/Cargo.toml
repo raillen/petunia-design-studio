@@ -1,0 +1,20 @@
+[package]
+name = "aubrieta-egui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aubrieta-egui"
+path = "src/main.rs"
+
+[dependencies]
+aubrieta_foundation = { path = "../../crates/aubrieta_foundation" }
+aubrieta_document = { path = "../../crates/aubrieta_document" }
+aubrieta_application = { path = "../../crates/aubrieta_application" }
+aubrieta_geometry = { path = "../../crates/aubrieta_geometry" }
+aubrieta_color = { path = "../../crates/aubrieta_color" }
+aubrieta_ui_gpui = { path = "../../crates/aubrieta_ui_gpui" }
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
+egui = "0.31"
+serde.workspace = true

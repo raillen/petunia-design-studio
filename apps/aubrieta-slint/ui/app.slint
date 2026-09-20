@@ -1,0 +1,643 @@
+import { Button, CheckBox, Slider, ScrollView } from "std-widgets.slint";
+
+export struct LayerRowItem {
+    name: string,
+    visible: bool,
+    locked: bool,
+    selected: bool,
+}
+
+export struct HistoryRowItem {
+    index: int,
+    description: string,
+}
+
+export struct CanvasObjectItem {
+    id: string,
+    name: string,
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    bg_color: color,
+    selected: bool,
+    is_circle: bool,
+}
+
+export component MainWindow inherits Window {
+    title: "Aubrieta Design Studio — Slint";
+    preferred-width: 1280px;
+    preferred-height: 800px;
+    background: #18181b;
+
+    in-out property <string> active_tool_name: "Select";
+    in-out property <int> zoom_pct: 100;
+    in-out property <bool> snap_enabled: true;
+    in-out property <string> status_coords: "Doc: X: 0.0 pt  Y: 0.0 pt";
+    in-out property <int> active_tab_index: 0; // 0: Layers, 1: Props, 2: History, 3: Merge
+
+    // Inspector Properties
+    in-out property <string> selected_name: "Hero Card";
+    in-out property <string> selected_bounds: "X: 60.0 pt   Y: 60.0 pt   W: 300.0 pt   H: 180.0 pt";
+    in-out property <string> selected_fill: "aubrieta.blue/500";
+    in-out property <float> selected_opacity: 100.0;
+
+    // Data merge
+    in-out property <string> merge_source: "showcase_data.csv";
+    in-out property <int> merge_records: 120;
+    in-out property <int> merge_bindings: 4;
+
+    // Layers & History models
+    in-out property <[LayerRowItem]> layer_rows: [
+        { name: "Hero Card", visible: true, locked: false, selected: true },
+        { name: "Accent Circle", visible: true, locked: false, selected: false },
+    ];
+    in-out property <[HistoryRowItem]> history_rows: [
+        { index: 1, description: "Create Main Artboard" },
+        { index: 2, description: "Create Hero Card" },
+        { index: 3, description: "Create Accent Circle" },
+    ];
+
+    // Canvas geometry
+    in-out property <length> artboard_x: 60px;
+    in-out property <length> artboard_y: 60px;
+    in-out property <length> artboard_w: 800px;
+    in-out property <length> artboard_h: 600px;
+    in-out property <length> bleed_margin: 10px;
+    in-out property <length> margin_inset: 36px;
+    in-out property <length> guide_x: 200px;
+
+    // Canvas dynamic objects and interactive preview
+    in-out property <[CanvasObjectItem]> canvas_objects: [
+        { id: "1", name: "Hero Card", x: 60px, y: 60px, w: 300px, h: 180px, bg_color: #3b82f6, selected: true, is_circle: false },
+        { id: "2", name: "Accent Circle", x: 400px, y: 120px, w: 140px, h: 140px, bg_color: #eab308, selected: false, is_circle: true },
+    ];
+    in-out property <bool> has_preview: false;
+    in-out property <length> preview_x: 0px;
+    in-out property <length> preview_y: 0px;
+    in-out property <length> preview_w: 0px;
+    in-out property <length> preview_h: 0px;
+
+    callback select_tool(string);
+    callback undo_clicked();
+    callback redo_clicked();
+    callback zoom_in_clicked();
+    callback zoom_out_clicked();
+    callback fit_canvas_clicked();
+    callback new_doc_clicked();
+    callback snap_toggled(bool);
+    callback tab_changed(int);
+    callback canvas_dragged(length, length);
+    callback canvas_pointer_down(length, length);
+    callback canvas_pointer_up(length, length);
+    callback select_layer_by_index(int);
+    callback delete_selected_clicked();
+    callback add_rectangle_clicked();
+    callback add_circle_clicked();
+    callback set_selected_color(color);
+
+    VerticalLayout {
+        padding: 0px;
+        spacing: 0px;
+
+        // 1. Top Panel: Header & Context Toolbar
+        Rectangle {
+            height: 70px;
+            background: #27272a;
+            border-width: 1px;
+            border-color: #3f3f46;
+
+            VerticalLayout {
+                padding: 6px;
+                spacing: 4px;
+
+                // Menu row
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+
+                    Text {
+                        text: "🎨 Aubrieta Design Studio [Slint Primary]";
+                        color: #60a5fa;
+                        font-weight: 700;
+                        font-size: 14px;
+                        vertical-alignment: center;
+                    }
+
+                    Button {
+                        text: "New Document";
+                        clicked => { root.new_doc_clicked(); }
+                    }
+
+                    Button {
+                        text: "Fit Canvas";
+                        clicked => { root.fit_canvas_clicked(); }
+                    }
+
+                    Button {
+                        text: "+ Retângulo";
+                        clicked => { root.add_rectangle_clicked(); }
+                    }
+
+                    Button {
+                        text: "+ Elipse";
+                        clicked => { root.add_circle_clicked(); }
+                    }
+
+                    Button {
+                        text: "🗑 Deletar";
+                        clicked => { root.delete_selected_clicked(); }
+                    }
+                }
+
+                // Context bar
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: start;
+
+                    Text {
+                        text: "Ferramenta: " + root.active_tool_name;
+                        color: #93c5fd;
+                        font-weight: 600;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+
+                    Button {
+                        text: "Undo (Ctrl+Z)";
+                        clicked => { root.undo_clicked(); }
+                    }
+
+                    Button {
+                        text: "Redo (Ctrl+Y)";
+                        clicked => { root.redo_clicked(); }
+                    }
+
+                    Text {
+                        text: "Zoom: " + root.zoom_pct + "%";
+                        color: #e4e4e7;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+
+                    Button {
+                        text: "+";
+                        width: 32px;
+                        clicked => { root.zoom_in_clicked(); }
+                    }
+
+                    Button {
+                        text: "-";
+                        width: 32px;
+                        clicked => { root.zoom_out_clicked(); }
+                    }
+
+                    CheckBox {
+                        text: "Magnetic Snap";
+                        checked: root.snap_enabled;
+                        toggled => { root.snap_toggled(self.checked); }
+                    }
+                }
+            }
+        }
+
+        // 2. Middle Row: Tool Rail + Central Canvas + Right Dock Inspector
+        HorizontalLayout {
+            spacing: 0px;
+
+            // Left Tool Rail
+            Rectangle {
+                width: 54px;
+                background: #202023;
+                border-width: 1px;
+                border-color: #3f3f46;
+
+                VerticalLayout {
+                    padding: 4px;
+                    spacing: 4px;
+                    alignment: start;
+
+                    Button {
+                        text: "V\nSel";
+                        height: 44px;
+                        clicked => { root.select_tool("Select"); }
+                    }
+                    Button {
+                        text: "A\nNod";
+                        height: 44px;
+                        clicked => { root.select_tool("Node"); }
+                    }
+                    Button {
+                        text: "P\nPen";
+                        height: 44px;
+                        clicked => { root.select_tool("Pen"); }
+                    }
+                    Button {
+                        text: "M\nRec";
+                        height: 44px;
+                        clicked => { root.select_tool("Rectangle"); }
+                    }
+                    Button {
+                        text: "E\nEll";
+                        height: 44px;
+                        clicked => { root.select_tool("Ellipse"); }
+                    }
+                    Button {
+                        text: "G\nPol";
+                        height: 44px;
+                        clicked => { root.select_tool("Polygon"); }
+                    }
+                }
+            }
+
+            // Central Canvas
+            canvas_area := Rectangle {
+                horizontal-stretch: 1;
+                background: #141416;
+                clip: true;
+
+                // Artboard Shadow
+                Rectangle {
+                    x: root.artboard_x + 4px;
+                    y: root.artboard_y + 4px;
+                    width: root.artboard_w;
+                    height: root.artboard_h;
+                    background: #00000055;
+                    border-radius: 2px;
+                }
+
+                // Bleed Guideline (Magenta)
+                Rectangle {
+                    x: root.artboard_x - root.bleed_margin;
+                    y: root.artboard_y - root.bleed_margin;
+                    width: root.artboard_w + (root.bleed_margin * 2);
+                    height: root.artboard_h + (root.bleed_margin * 2);
+                    border-width: 1px;
+                    border-color: #f43f5e;
+                }
+
+                // Artboard Paper White
+                artboard := Rectangle {
+                    x: root.artboard_x;
+                    y: root.artboard_y;
+                    width: root.artboard_w;
+                    height: root.artboard_h;
+                    background: #ffffff;
+                    border-width: 1px;
+                    border-color: #cbd5e1;
+
+                    // Header text
+                    Text {
+                        x: 8px;
+                        y: -18px;
+                        text: "📄 Main Artboard (800x600 pt) • Clique ou arraste para desenhar / mover";
+                        color: #94a3b8;
+                        font-size: 12px;
+                    }
+
+                    // Margin Guideline (Cyan)
+                    Rectangle {
+                        x: root.margin_inset;
+                        y: root.margin_inset;
+                        width: parent.width - (root.margin_inset * 2);
+                        height: parent.height - (root.margin_inset * 2);
+                        border-width: 1px;
+                        border-color: #38bdf8;
+                    }
+
+                    // Vertical Guide line
+                    Rectangle {
+                        x: root.guide_x;
+                        y: 0px;
+                        width: 1px;
+                        height: parent.height;
+                        background: #06b6d4;
+                    }
+
+                    // Dynamic objects list
+                    for obj in root.canvas_objects : Rectangle {
+                        x: obj.x;
+                        y: obj.y;
+                        width: obj.w;
+                        height: obj.h;
+                        background: obj.bg_color;
+                        border-radius: obj.is_circle ? (obj.w / 2) : 4px;
+                        border-width: obj.selected ? 2.5px : 1px;
+                        border-color: obj.selected ? #60a5fa : #ffffff88;
+
+                        // Selection indicator ring
+                        if obj.selected : Rectangle {
+                            x: -4px;
+                            y: -4px;
+                            width: parent.width + 8px;
+                            height: parent.height + 8px;
+                            border-width: 1.5px;
+                            border-color: #3b82f6;
+                            border-radius: obj.is_circle ? (parent.width + 8px) / 2 : 6px;
+                        }
+
+                        Text {
+                            text: obj.name;
+                            color: #ffffff;
+                            font-weight: 600;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    // Active drawing preview box
+                    if root.has_preview : Rectangle {
+                        x: root.preview_x;
+                        y: root.preview_y;
+                        width: root.preview_w;
+                        height: root.preview_h;
+                        background: #3b82f633;
+                        border-width: 1.5px;
+                        border-color: #3b82f6;
+                        border-radius: 3px;
+                    }
+                }
+
+                // Interactive TouchArea on top of canvas capturing all mouse events
+                TouchArea {
+                    width: parent.width;
+                    height: parent.height;
+
+                    pointer-event(evt) => {
+                        if (evt.kind == PointerEventKind.down) {
+                            root.canvas_pointer_down(self.mouse-x, self.mouse-y);
+                        } else if (evt.kind == PointerEventKind.up) {
+                            root.canvas_pointer_up(self.mouse-x, self.mouse-y);
+                        }
+                    }
+
+                    moved => {
+                        if (self.pressed) {
+                            root.canvas_dragged(self.mouse-x, self.mouse-y);
+                        }
+                    }
+                }
+            }
+
+            // Right Dock Inspector
+            Rectangle {
+                width: 290px;
+                background: #202023;
+                border-width: 1px;
+                border-color: #3f3f46;
+
+                VerticalLayout {
+                    padding: 8px;
+                    spacing: 8px;
+
+                    // Tab selector
+                    HorizontalLayout {
+                        spacing: 4px;
+                        Button {
+                            text: "Layers";
+                            clicked => { root.tab_changed(0); }
+                        }
+                        Button {
+                            text: "Props";
+                            clicked => { root.tab_changed(1); }
+                        }
+                        Button {
+                            text: "History";
+                            clicked => { root.tab_changed(2); }
+                        }
+                        Button {
+                            text: "Merge";
+                            clicked => { root.tab_changed(3); }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: #3f3f46;
+                    }
+
+                    // Tab 0: Layers
+                    if root.active_tab_index == 0 : VerticalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: "Object Hierarchy";
+                            font-weight: 700;
+                            color: #60a5fa;
+                            font-size: 14px;
+                        }
+                        Text {
+                            text: "📄 Main Artboard (clique para selecionar)";
+                            color: #93c5fd;
+                            font-size: 12px;
+                        }
+                        for item[idx] in root.layer_rows : Rectangle {
+                            height: 28px;
+                            background: item.selected ? #2563eb44 : #27272a;
+                            border-radius: 3px;
+                            border-width: item.selected ? 1px : 0px;
+                            border-color: #3b82f6;
+
+                            TouchArea {
+                                width: parent.width;
+                                height: parent.height;
+                                clicked => { root.select_layer_by_index(idx); }
+                            }
+
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+                                spacing: 8px;
+                                Text {
+                                    text: item.selected ? "●" : "○";
+                                    color: #60a5fa;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: item.visible ? "👁" : " ";
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: item.locked ? "🔒" : " ";
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: item.name;
+                                    color: #f4f4f5;
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+
+                    // Tab 1: Properties
+                    if root.active_tab_index == 1 : VerticalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: "Properties Inspector";
+                            font-weight: 700;
+                            color: #60a5fa;
+                            font-size: 14px;
+                        }
+                        Text {
+                            text: "Objeto: " + root.selected_name;
+                            color: #f4f4f5;
+                            font-size: 13px;
+                        }
+                        Text {
+                            text: root.selected_bounds;
+                            color: #a1a1aa;
+                            font-size: 12px;
+                        }
+                        Text {
+                            text: "Fill: " + root.selected_fill;
+                            color: #a1a1aa;
+                            font-size: 12px;
+                        }
+                        Text {
+                            text: "Opacidade: " + root.selected_opacity + "%";
+                            color: #a1a1aa;
+                            font-size: 12px;
+                        }
+                        Slider {
+                            value: root.selected_opacity;
+                            minimum: 0.0;
+                            maximum: 100.0;
+                        }
+
+                        Rectangle {
+                            height: 1px;
+                            background: #3f3f46;
+                        }
+
+                        Text {
+                            text: "Paleta Rápida de Cores:";
+                            color: #94a3b8;
+                            font-size: 12px;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Rectangle {
+                                width: 28px; height: 28px; border-radius: 4px; background: #3b82f6;
+                                TouchArea { clicked => { root.set_selected_color(#3b82f6); } }
+                            }
+                            Rectangle {
+                                width: 28px; height: 28px; border-radius: 4px; background: #10b981;
+                                TouchArea { clicked => { root.set_selected_color(#10b981); } }
+                            }
+                            Rectangle {
+                                width: 28px; height: 28px; border-radius: 4px; background: #eab308;
+                                TouchArea { clicked => { root.set_selected_color(#eab308); } }
+                            }
+                            Rectangle {
+                                width: 28px; height: 28px; border-radius: 4px; background: #8b5cf6;
+                                TouchArea { clicked => { root.set_selected_color(#8b5cf6); } }
+                            }
+                            Rectangle {
+                                width: 28px; height: 28px; border-radius: 4px; background: #f43f5e;
+                                TouchArea { clicked => { root.set_selected_color(#f43f5e); } }
+                            }
+                        }
+
+                        Button {
+                            text: "🗑 Excluir Objeto";
+                            clicked => { root.delete_selected_clicked(); }
+                        }
+                    }
+
+                    // Tab 2: History
+                    if root.active_tab_index == 2 : VerticalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: "Transaction History";
+                            font-weight: 700;
+                            color: #60a5fa;
+                            font-size: 14px;
+                        }
+                        for item in root.history_rows : Rectangle {
+                            height: 24px;
+                            background: #27272a;
+                            border-radius: 3px;
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                spacing: 6px;
+                                Text {
+                                    text: "[" + item.index + "] " + item.description;
+                                    color: #e4e4e7;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+
+                    // Tab 3: Data Merge
+                    if root.active_tab_index == 3 : VerticalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: "Variable Data Merge";
+                            font-weight: 700;
+                            color: #60a5fa;
+                            font-size: 14px;
+                        }
+                        Text {
+                            text: "Source: " + root.merge_source;
+                            color: #e4e4e7;
+                            font-size: 13px;
+                        }
+                        Text {
+                            text: "Records: " + root.merge_records + " | Bindings: " + root.merge_bindings;
+                            color: #a1a1aa;
+                            font-size: 12px;
+                        }
+                        Text {
+                            text: "Status: Ready to Merge";
+                            color: #22c55e;
+                            font-weight: 600;
+                            font-size: 13px;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Bottom Status Bar
+        Rectangle {
+            height: 28px;
+            background: #18181b;
+            border-width: 1px;
+            border-color: #27272a;
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 16px;
+
+                Text {
+                    text: root.status_coords;
+                    color: #71717a;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "Ativa: " + root.active_tool_name;
+                    color: #60a5fa;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "Aubrieta Shell [Slint] • One-Tree Document Engine • Nondestructive";
+                    color: #52525b;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

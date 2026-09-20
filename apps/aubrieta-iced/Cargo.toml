@@ -1,0 +1,18 @@
+[package]
+name = "aubrieta-iced"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aubrieta-iced"
+path = "src/main.rs"
+
+[dependencies]
+aubrieta_foundation = { path = "../../crates/aubrieta_foundation" }
+aubrieta_geometry = { path = "../../crates/aubrieta_geometry" }
+aubrieta_color = { path = "../../crates/aubrieta_color" }
+aubrieta_document = { path = "../../crates/aubrieta_document" }
+aubrieta_application = { path = "../../crates/aubrieta_application" }
+aubrieta_ui_gpui = { path = "../../crates/aubrieta_ui_gpui" }
+iced = { version = "0.14", default-features = true, features = ["canvas"] }

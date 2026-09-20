@@ -1,2 +1,6 @@
+[build]
+target-dir = "/home/raillen/.cargo-targets/aubrieta"
+
 [alias]
 xtask = "run -p xtask --"
+

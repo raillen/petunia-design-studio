@@ -19,6 +19,9 @@ members = [
     "crates/aubrieta_ui_gpui",
     "apps/aubrieta-cli",
     "apps/aubrieta-desktop",
+    "apps/aubrieta-egui",
+    "apps/aubrieta-slint",
+    "apps/aubrieta-iced",
     "xtask",
 ]
 exclude = [".opencode"]
