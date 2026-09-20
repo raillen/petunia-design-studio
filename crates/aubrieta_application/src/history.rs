@@ -147,6 +147,9 @@ impl Replayer {
                 } => {
                     mutator.set_bounds(id, next_bounds, next_rotation)?;
                 }
+                Change::ShapeChanged { id, next, .. } => {
+                    mutator.set_shape(id, next)?;
+                }
                 Change::ObjectReordered {
                     surface,
                     id,

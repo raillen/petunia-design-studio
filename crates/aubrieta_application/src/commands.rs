@@ -123,6 +123,30 @@ pub enum Command {
         source_id: aubrieta_document::DataSourceId,
         template_surface: SurfaceId,
     },
+    /// Create an object with explicit shape and appearance.
+    CreateShapeObject {
+        surface: SurfaceId,
+        id: ObjectId,
+        name: String,
+        shape: aubrieta_document::ShapeKind,
+        bounds: Option<[f64; 4]>,
+        fill: Option<String>,
+        stroke: Option<String>,
+        stroke_width: f64,
+    },
+    /// Set an object's vector shape or text content.
+    SetShape {
+        id: ObjectId,
+        shape: Option<aubrieta_document::ShapeKind>,
+    },
+    /// Executes a vector boolean operation on two objects.
+    ApplyBoolean {
+        surface: SurfaceId,
+        target_id: ObjectId,
+        subject_id: ObjectId,
+        clip_id: ObjectId,
+        op: aubrieta_geometry::BooleanOp,
+    },
 }
 
 /// Validated command ready for execution.
@@ -237,6 +261,72 @@ pub fn execute(
             let start = max_surf_id.max(max_obj_id) + 1;
             let mut gen = aubrieta_foundation::IdGenerator::with_start(start);
             mutator.materialize_data_merge(*source_id, *template_surface, &mut gen)
+        }
+        Command::CreateShapeObject {
+            surface,
+            id,
+            name,
+            shape,
+            bounds,
+            fill,
+            stroke,
+            stroke_width,
+        } => {
+            let mut obj = DocumentObject::new(*id, name.clone());
+            obj.shape = Some(shape.clone());
+            obj.bounds = *bounds;
+            obj.fill = fill.clone();
+            obj.stroke = stroke.clone();
+            obj.stroke_width = *stroke_width;
+            mutator.add_object(*surface, obj)
+        }
+        Command::SetShape { id, shape } => mutator.set_shape(*id, shape.clone()),
+        Command::ApplyBoolean {
+            surface,
+            target_id,
+            subject_id,
+            clip_id,
+            op,
+        } => {
+            let subject = mutator
+                .document()
+                .find_object(*subject_id)
+                .ok_or_else(|| AubrietaError::not_found(format!("subject `{subject_id}` not found")))?
+                .clone();
+            let clip = mutator
+                .document()
+                .find_object(*clip_id)
+                .ok_or_else(|| AubrietaError::not_found(format!("clip `{clip_id}` not found")))?
+                .clone();
+
+            let subj_path = subject.to_path();
+            let clip_path = clip.to_path();
+
+            let subj_input = aubrieta_geometry::BooleanInput::new(subj_path.to_polygons(0.5));
+            let clip_input = aubrieta_geometry::BooleanInput::new(clip_path.to_polygons(0.5));
+
+            let result_contours = aubrieta_geometry::boolean_op(&subj_input, &clip_input, *op);
+            let result_path = aubrieta_geometry::GPath::from_polygons(&result_contours);
+            let bounds = result_path
+                .bounding_box()
+                .map(|r| [r.x0, r.y0, r.width(), r.height()]);
+
+            let mut result_obj = DocumentObject::new(*target_id, format!("{op:?} Result"));
+            result_obj.shape = Some(aubrieta_document::ShapeKind::Path(result_path));
+            result_obj.bounds = bounds;
+            result_obj.fill = subject.fill.clone();
+            result_obj.stroke = subject.stroke.clone();
+            result_obj.stroke_width = subject.stroke_width;
+
+            let mut changes = ChangeSet::empty();
+            let c1 = mutator.remove_object(*subject_id)?;
+            changes.extend(c1);
+            let c2 = mutator.remove_object(*clip_id)?;
+            changes.extend(c2);
+            let c3 = mutator.add_object(*surface, result_obj)?;
+            changes.extend(c3);
+
+            Ok(changes)
         }
     }
 }

@@ -60,6 +60,12 @@ pub enum Change {
         previous_rotation: f64,
         next_rotation: f64,
     },
+    /// An object's vector shape changed.
+    ShapeChanged {
+        id: ObjectId,
+        previous: Option<crate::ShapeKind>,
+        next: Option<crate::ShapeKind>,
+    },
     /// An object was reordered within its surface.
     ObjectReordered {
         surface: SurfaceId,
@@ -178,6 +184,11 @@ impl ChangeSet {
     /// Records one change.
     pub fn push(&mut self, change: Change) {
         self.changes.push(change);
+    }
+
+    /// Appends all changes from another change set.
+    pub fn extend(&mut self, other: ChangeSet) {
+        self.changes.extend(other.changes);
     }
 
     /// True when the mutation produced no observable change.

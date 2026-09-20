@@ -8,9 +8,10 @@ use std::collections::HashMap;
 use aubrieta_application::{ActionId, ActionRequest, CapabilityRegistry, Command, CommandRequest};
 use aubrieta_document::{
     AppearanceStack, BindingId, Bleed, ChangeSet, ContainerRole, DataBinding, DataSourceDefinition,
-    DataSourceId, Document, Guide, Margins,
+    DataSourceId, Document, Guide, Margins, ShapeKind,
 };
 use aubrieta_foundation::{AubrietaError, ObjectId, SurfaceId};
+use aubrieta_geometry::BooleanOp;
 
 use super::ports::{
     ActionQueryPort, CommandPort, DocumentQueryPort, HierarchyPort, InspectionPort, PropertyPort,
@@ -258,6 +259,57 @@ impl AubrietaGuiBridge {
         appearance: Option<AppearanceStack>,
     ) -> Result<ChangeSet, AubrietaError> {
         PropertyPort::set_appearance(self, id, appearance)
+    }
+
+    /// Creates a shape or text object with explicit shape, geometry and appearance.
+    pub fn create_shape_object(
+        &mut self,
+        surface: SurfaceId,
+        id: ObjectId,
+        name: String,
+        shape: ShapeKind,
+        bounds: Option<[f64; 4]>,
+        fill: Option<String>,
+        stroke: Option<String>,
+        stroke_width: f64,
+    ) -> Result<ChangeSet, AubrietaError> {
+        self.submit_command(CommandRequest::new(Command::CreateShapeObject {
+            surface,
+            id,
+            name,
+            shape,
+            bounds,
+            fill,
+            stroke,
+            stroke_width,
+        }))
+    }
+
+    /// Sets an object's vector shape or text descriptor.
+    pub fn set_shape(
+        &mut self,
+        id: ObjectId,
+        shape: Option<ShapeKind>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        self.submit_command(CommandRequest::new(Command::SetShape { id, shape }))
+    }
+
+    /// Executes a vector boolean operation on two objects.
+    pub fn apply_boolean(
+        &mut self,
+        surface: SurfaceId,
+        target_id: ObjectId,
+        subject_id: ObjectId,
+        clip_id: ObjectId,
+        op: BooleanOp,
+    ) -> Result<ChangeSet, AubrietaError> {
+        self.submit_command(CommandRequest::new(Command::ApplyBoolean {
+            surface,
+            target_id,
+            subject_id,
+            clip_id,
+            op,
+        }))
     }
 
     /// Groups objects into a container with a designated role (10.5 One-Tree).
