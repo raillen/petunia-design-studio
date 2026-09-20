@@ -1,4 +1,7 @@
 import { Button, CheckBox, Slider, ScrollView } from "std-widgets.slint";
+import { IconDisplay, IconSet, Icon } from "@lucide";
+import { Badge, BadgeVariant } from "slintcn/components/badge.slint";
+import { Tokens } from "slintcn/theme/tokens.slint";
 
 export struct LayerRowItem {
     name: string,
@@ -24,6 +27,31 @@ export struct CanvasObjectItem {
     is_circle: bool,
 }
 
+component ToolButton inherits Rectangle {
+    in property <Icon> icon;
+    in property <bool> active: false;
+    callback clicked;
+
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    background: active ? #3b82f633 : (touch.has-hover ? #ffffff15 : transparent);
+    border-width: active ? 1px : 0px;
+    border-color: #3b82f6;
+
+    IconDisplay {
+        icon: root.icon;
+        size: 20px;
+        stroke: root.active ? #60a5fa : (touch.has-hover ? #f4f4f5 : #a1a1aa);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
 export component MainWindow inherits Window {
     title: "Aubrieta Design Studio — Slint";
     preferred-width: 1280px;
@@ -37,10 +65,15 @@ export component MainWindow inherits Window {
     in-out property <int> active_tab_index: 0; // 0: Layers, 1: Props, 2: History, 3: Merge
 
     // Inspector Properties
+    in-out property <bool> has_selection: true;
     in-out property <string> selected_name: "Hero Card";
     in-out property <string> selected_bounds: "X: 60.0 pt   Y: 60.0 pt   W: 300.0 pt   H: 180.0 pt";
     in-out property <string> selected_fill: "aubrieta.blue/500";
     in-out property <float> selected_opacity: 100.0;
+    in-out property <length> prop_x: 100px;
+    in-out property <length> prop_y: 100px;
+    in-out property <length> prop_w: 300px;
+    in-out property <length> prop_h: 180px;
 
     // Data merge
     in-out property <string> merge_source: "showcase_data.csv";
@@ -85,6 +118,9 @@ export component MainWindow inherits Window {
     callback zoom_out_clicked();
     callback fit_canvas_clicked();
     callback new_doc_clicked();
+    callback open_doc_clicked();
+    callback save_doc_clicked();
+    callback place_image_clicked();
     callback snap_toggled(bool);
     callback tab_changed(int);
     callback canvas_dragged(length, length);
@@ -95,6 +131,16 @@ export component MainWindow inherits Window {
     callback add_rectangle_clicked();
     callback add_circle_clicked();
     callback set_selected_color(color);
+    callback adjust_prop_x(length);
+    callback adjust_prop_y(length);
+    callback adjust_prop_w(length);
+    callback adjust_prop_h(length);
+    callback set_opacity_value(float);
+    callback duplicate_selected_clicked();
+    callback toggle_layer_visibility(int);
+    callback toggle_layer_lock(int);
+    callback reorder_layer_up(int);
+    callback reorder_layer_down(int);
 
     VerticalLayout {
         padding: 0px;
@@ -113,24 +159,44 @@ export component MainWindow inherits Window {
 
                 // Menu row
                 HorizontalLayout {
-                    spacing: 12px;
+                    spacing: 10px;
                     alignment: start;
 
                     Text {
-                        text: "🎨 Aubrieta Design Studio [Slint Primary]";
+                        text: "🎨 Aubrieta Studio";
                         color: #60a5fa;
                         font-weight: 700;
                         font-size: 14px;
                         vertical-alignment: center;
                     }
 
+                    Badge {
+                        text: "Slint UI";
+                        variant: BadgeVariant.outline;
+                    }
+
                     Button {
-                        text: "New Document";
+                        text: "Novo";
                         clicked => { root.new_doc_clicked(); }
                     }
 
                     Button {
-                        text: "Fit Canvas";
+                        text: "Abrir...";
+                        clicked => { root.open_doc_clicked(); }
+                    }
+
+                    Button {
+                        text: "Salvar...";
+                        clicked => { root.save_doc_clicked(); }
+                    }
+
+                    Button {
+                        text: "Inserir Imagem...";
+                        clicked => { root.place_image_clicked(); }
+                    }
+
+                    Button {
+                        text: "Ajustar Tela";
                         clicked => { root.fit_canvas_clicked(); }
                     }
 
@@ -207,45 +273,40 @@ export component MainWindow inherits Window {
 
             // Left Tool Rail
             Rectangle {
-                width: 54px;
+                width: 52px;
                 background: #202023;
                 border-width: 1px;
                 border-color: #3f3f46;
 
                 VerticalLayout {
-                    padding: 4px;
-                    spacing: 4px;
+                    padding: 5px;
+                    spacing: 6px;
                     alignment: start;
 
-                    Button {
-                        text: "V\nSel";
-                        height: 44px;
+                    ToolButton {
+                        icon: IconSet.MousePointer2;
+                        active: root.active_tool_name == "Select";
                         clicked => { root.select_tool("Select"); }
                     }
-                    Button {
-                        text: "A\nNod";
-                        height: 44px;
+                    ToolButton {
+                        icon: IconSet.Pointer;
+                        active: root.active_tool_name == "Node";
                         clicked => { root.select_tool("Node"); }
                     }
-                    Button {
-                        text: "P\nPen";
-                        height: 44px;
-                        clicked => { root.select_tool("Pen"); }
-                    }
-                    Button {
-                        text: "M\nRec";
-                        height: 44px;
+                    ToolButton {
+                        icon: IconSet.Square;
+                        active: root.active_tool_name == "Rectangle";
                         clicked => { root.select_tool("Rectangle"); }
                     }
-                    Button {
-                        text: "E\nEll";
-                        height: 44px;
+                    ToolButton {
+                        icon: IconSet.Circle;
+                        active: root.active_tool_name == "Ellipse";
                         clicked => { root.select_tool("Ellipse"); }
                     }
-                    Button {
-                        text: "G\nPol";
-                        height: 44px;
-                        clicked => { root.select_tool("Polygon"); }
+                    ToolButton {
+                        icon: IconSet.Trash2;
+                        active: false;
+                        clicked => { root.delete_selected_clicked(); }
                     }
                 }
             }
@@ -325,15 +386,27 @@ export component MainWindow inherits Window {
                         border-width: obj.selected ? 2.5px : 1px;
                         border-color: obj.selected ? #60a5fa : #ffffff88;
 
-                        // Selection indicator ring
+                        // Selection indicator & 8 resize handles
                         if obj.selected : Rectangle {
-                            x: -4px;
-                            y: -4px;
-                            width: parent.width + 8px;
-                            height: parent.height + 8px;
+                            x: -3px;
+                            y: -3px;
+                            width: parent.width + 6px;
+                            height: parent.height + 6px;
                             border-width: 1.5px;
                             border-color: #3b82f6;
-                            border-radius: obj.is_circle ? (parent.width + 8px) / 2 : 6px;
+                            border-radius: obj.is_circle ? (parent.width + 6px) / 2 : 2px;
+
+                            // 4 corner handles
+                            Rectangle { x: -4px; y: -4px; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
+                            Rectangle { x: parent.width - 4px; y: -4px; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
+                            Rectangle { x: -4px; y: parent.height - 4px; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
+                            Rectangle { x: parent.width - 4px; y: parent.height - 4px; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
+
+                            // 4 edge midpoint handles
+                            Rectangle { x: (parent.width - 8px) / 2; y: -4px; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
+                            Rectangle { x: (parent.width - 8px) / 2; y: parent.height - 4px; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
+                            Rectangle { x: -4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
+                            Rectangle { x: parent.width - 4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: #ffffff; border-width: 1.5px; border-color: #2563eb; border-radius: 1px; }
                         }
 
                         Text {
@@ -427,48 +500,115 @@ export component MainWindow inherits Window {
                             font-size: 14px;
                         }
                         Text {
-                            text: "📄 Main Artboard (clique para selecionar)";
+                            text: "📄 Main Artboard";
                             color: #93c5fd;
                             font-size: 12px;
                         }
                         for item[idx] in root.layer_rows : Rectangle {
-                            height: 28px;
-                            background: item.selected ? #2563eb44 : #27272a;
-                            border-radius: 3px;
+                            height: 32px;
+                            background: item.selected ? #2563eb33 : #27272a;
+                            border-radius: 4px;
                             border-width: item.selected ? 1px : 0px;
                             border-color: #3b82f6;
-
-                            TouchArea {
-                                width: parent.width;
-                                height: parent.height;
-                                clicked => { root.select_layer_by_index(idx); }
-                            }
 
                             HorizontalLayout {
                                 padding-left: 6px;
                                 padding-right: 6px;
-                                spacing: 8px;
-                                Text {
-                                    text: item.selected ? "●" : "○";
-                                    color: #60a5fa;
-                                    font-size: 12px;
-                                    vertical-alignment: center;
+                                spacing: 6px;
+
+                                // Selection indicator
+                                TouchArea {
+                                    width: 18px;
+                                    clicked => { root.select_layer_by_index(idx); }
+                                    Text {
+                                        text: item.selected ? "●" : "○";
+                                        color: item.selected ? #60a5fa : #71717a;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
                                 }
-                                Text {
-                                    text: item.visible ? "👁" : " ";
-                                    font-size: 12px;
-                                    vertical-alignment: center;
+
+                                // Visibility toggle
+                                Rectangle {
+                                    width: 22px;
+                                    height: 22px;
+                                    border-radius: 3px;
+                                    background: touch_vis.has-hover ? #3f3f46 : transparent;
+                                    touch_vis := TouchArea {
+                                        clicked => { root.toggle_layer_visibility(idx); }
+                                    }
+                                    Text {
+                                        text: item.visible ? "👁" : "🕶";
+                                        font-size: 11px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
                                 }
-                                Text {
-                                    text: item.locked ? "🔒" : " ";
-                                    font-size: 12px;
-                                    vertical-alignment: center;
+
+                                // Lock toggle
+                                Rectangle {
+                                    width: 22px;
+                                    height: 22px;
+                                    border-radius: 3px;
+                                    background: touch_lock.has-hover ? #3f3f46 : transparent;
+                                    touch_lock := TouchArea {
+                                        clicked => { root.toggle_layer_lock(idx); }
+                                    }
+                                    Text {
+                                        text: item.locked ? "🔒" : "🔓";
+                                        font-size: 11px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
                                 }
-                                Text {
-                                    text: item.name;
-                                    color: #f4f4f5;
-                                    font-size: 13px;
-                                    vertical-alignment: center;
+
+                                // Layer name (clickable to select)
+                                TouchArea {
+                                    horizontal-stretch: 1;
+                                    clicked => { root.select_layer_by_index(idx); }
+                                    Text {
+                                        text: item.name;
+                                        color: item.selected ? #ffffff : #d4d4d8;
+                                        font-size: 13px;
+                                        font-weight: item.selected ? 600 : 400;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                }
+
+                                // Reorder buttons
+                                Rectangle {
+                                    width: 18px;
+                                    height: 20px;
+                                    border-radius: 3px;
+                                    background: touch_up.has-hover ? #3f3f46 : transparent;
+                                    touch_up := TouchArea {
+                                        clicked => { root.reorder_layer_up(idx); }
+                                    }
+                                    Text {
+                                        text: "▲";
+                                        font-size: 10px;
+                                        color: #a1a1aa;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: 18px;
+                                    height: 20px;
+                                    border-radius: 3px;
+                                    background: touch_dn.has-hover ? #3f3f46 : transparent;
+                                    touch_dn := TouchArea {
+                                        clicked => { root.reorder_layer_down(idx); }
+                                    }
+                                    Text {
+                                        text: "▼";
+                                        font-size: 10px;
+                                        color: #a1a1aa;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
                                 }
                             }
                         }
@@ -476,76 +616,140 @@ export component MainWindow inherits Window {
 
                     // Tab 1: Properties
                     if root.active_tab_index == 1 : VerticalLayout {
-                        spacing: 6px;
+                        spacing: 8px;
                         Text {
                             text: "Properties Inspector";
                             font-weight: 700;
                             color: #60a5fa;
                             font-size: 14px;
                         }
-                        Text {
-                            text: "Objeto: " + root.selected_name;
-                            color: #f4f4f5;
-                            font-size: 13px;
-                        }
-                        Text {
-                            text: root.selected_bounds;
-                            color: #a1a1aa;
-                            font-size: 12px;
-                        }
-                        Text {
-                            text: "Fill: " + root.selected_fill;
-                            color: #a1a1aa;
-                            font-size: 12px;
-                        }
-                        Text {
-                            text: "Opacidade: " + root.selected_opacity + "%";
-                            color: #a1a1aa;
-                            font-size: 12px;
-                        }
-                        Slider {
-                            value: root.selected_opacity;
-                            minimum: 0.0;
-                            maximum: 100.0;
-                        }
 
-                        Rectangle {
-                            height: 1px;
-                            background: #3f3f46;
-                        }
-
-                        Text {
-                            text: "Paleta Rápida de Cores:";
-                            color: #94a3b8;
-                            font-size: 12px;
-                        }
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Rectangle {
-                                width: 28px; height: 28px; border-radius: 4px; background: #3b82f6;
-                                TouchArea { clicked => { root.set_selected_color(#3b82f6); } }
+                        if !root.has_selection : VerticalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: "(Nenhum objeto selecionado)";
+                                color: #71717a;
+                                font-italic: true;
+                                font-size: 12px;
                             }
-                            Rectangle {
-                                width: 28px; height: 28px; border-radius: 4px; background: #10b981;
-                                TouchArea { clicked => { root.set_selected_color(#10b981); } }
-                            }
-                            Rectangle {
-                                width: 28px; height: 28px; border-radius: 4px; background: #eab308;
-                                TouchArea { clicked => { root.set_selected_color(#eab308); } }
-                            }
-                            Rectangle {
-                                width: 28px; height: 28px; border-radius: 4px; background: #8b5cf6;
-                                TouchArea { clicked => { root.set_selected_color(#8b5cf6); } }
-                            }
-                            Rectangle {
-                                width: 28px; height: 28px; border-radius: 4px; background: #f43f5e;
-                                TouchArea { clicked => { root.set_selected_color(#f43f5e); } }
+                            Text {
+                                text: "Clique em um objeto no canvas ou nas camadas para inspecionar e editar suas propriedades.";
+                                color: #a1a1aa;
+                                font-size: 11px;
+                                wrap: word-wrap;
                             }
                         }
 
-                        Button {
-                            text: "🗑 Excluir Objeto";
-                            clicked => { root.delete_selected_clicked(); }
+                        if root.has_selection : VerticalLayout {
+                            spacing: 6px;
+                            HorizontalLayout {
+                                alignment: space-between;
+                                Text {
+                                    text: root.selected_name;
+                                    color: #f4f4f5;
+                                    font-size: 14px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                                Badge {
+                                    text: "Vetorial";
+                                    variant: BadgeVariant.secondary;
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: #3f3f46; }
+
+                            Text {
+                                text: "Geometria & Posição:";
+                                color: #93c5fd;
+                                font-size: 12px;
+                                font-weight: 600;
+                            }
+
+                            // Coordinate adjusters (X, Y)
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: "X: " + round(root.prop_x / 1px) + " px"; color: #d4d4d8; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+                                Button { text: "-10"; height: 26px; clicked => { root.adjust_prop_x(-10px); } }
+                                Button { text: "+10"; height: 26px; clicked => { root.adjust_prop_x(10px); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: "Y: " + round(root.prop_y / 1px) + " px"; color: #d4d4d8; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+                                Button { text: "-10"; height: 26px; clicked => { root.adjust_prop_y(-10px); } }
+                                Button { text: "+10"; height: 26px; clicked => { root.adjust_prop_y(10px); } }
+                            }
+
+                            // Dimension adjusters (W, H)
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: "W: " + round(root.prop_w / 1px) + " px"; color: #d4d4d8; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+                                Button { text: "-10"; height: 26px; clicked => { root.adjust_prop_w(-10px); } }
+                                Button { text: "+10"; height: 26px; clicked => { root.adjust_prop_w(10px); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: "H: " + round(root.prop_h / 1px) + " px"; color: #d4d4d8; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+                                Button { text: "-10"; height: 26px; clicked => { root.adjust_prop_h(-10px); } }
+                                Button { text: "+10"; height: 26px; clicked => { root.adjust_prop_h(10px); } }
+                            }
+
+                            Rectangle { height: 1px; background: #3f3f46; }
+
+                            // Opacity
+                            HorizontalLayout {
+                                alignment: space-between;
+                                Text { text: "Opacidade:"; color: #93c5fd; font-size: 12px; font-weight: 600; }
+                                Text { text: round(root.selected_opacity) + "%"; color: #f4f4f5; font-size: 12px; }
+                            }
+                            Slider {
+                                value: root.selected_opacity;
+                                minimum: 0.0;
+                                maximum: 100.0;
+                                changed(val) => { root.set_opacity_value(val); }
+                            }
+
+                            Rectangle { height: 1px; background: #3f3f46; }
+
+                            Text {
+                                text: "Preenchimento Rápido:";
+                                color: #93c5fd;
+                                font-size: 12px;
+                                font-weight: 600;
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Rectangle {
+                                    width: 30px; height: 30px; border-radius: 4px; background: #3b82f6; border-width: 1px; border-color: #ffffff44;
+                                    TouchArea { clicked => { root.set_selected_color(#3b82f6); } }
+                                }
+                                Rectangle {
+                                    width: 30px; height: 30px; border-radius: 4px; background: #10b981; border-width: 1px; border-color: #ffffff44;
+                                    TouchArea { clicked => { root.set_selected_color(#10b981); } }
+                                }
+                                Rectangle {
+                                    width: 30px; height: 30px; border-radius: 4px; background: #eab308; border-width: 1px; border-color: #ffffff44;
+                                    TouchArea { clicked => { root.set_selected_color(#eab308); } }
+                                }
+                                Rectangle {
+                                    width: 30px; height: 30px; border-radius: 4px; background: #8b5cf6; border-width: 1px; border-color: #ffffff44;
+                                    TouchArea { clicked => { root.set_selected_color(#8b5cf6); } }
+                                }
+                                Rectangle {
+                                    width: 30px; height: 30px; border-radius: 4px; background: #f43f5e; border-width: 1px; border-color: #ffffff44;
+                                    TouchArea { clicked => { root.set_selected_color(#f43f5e); } }
+                                }
+                            }
+
+                            Button {
+                                text: "📋 Duplicar Objeto";
+                                clicked => { root.duplicate_selected_clicked(); }
+                            }
+
+                            Button {
+                                text: "🗑 Excluir Objeto";
+                                clicked => { root.delete_selected_clicked(); }
+                            }
                         }
                     }
 

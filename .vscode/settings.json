@@ -1,0 +1,12 @@
+{
+  "slint.includePaths": [
+    "${workspaceFolder}/apps/aubrieta-slint/ui",
+    "${workspaceFolder}/apps/aubrieta-slint/ui/slintcn"
+  ],
+  "slint.libraryPaths": {
+    "lucide": "${workspaceFolder}/apps/aubrieta-slint/ui/lucide-shim.slint"
+  },
+  "rust-analyzer.linkedProjects": [
+    "Cargo.toml"
+  ]
+}

@@ -16,6 +16,8 @@ aubrieta_document = { path = "../../crates/aubrieta_document" }
 aubrieta_application = { path = "../../crates/aubrieta_application" }
 aubrieta_ui_gpui = { path = "../../crates/aubrieta_ui_gpui" }
 slint = { version = "1.18", default-features = true }
+rfd = "0.15"
 
 [build-dependencies]
 slint-build = "1.18"
+lucide-slint = "1.47"

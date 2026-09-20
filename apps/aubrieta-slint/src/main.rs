@@ -186,8 +186,13 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
     // Sync Properties
     let props: PropertiesPresentationModel = state.shell.query_properties();
     if !props.selection_empty {
+        window.set_has_selection(true);
         window.set_selected_name(props.name.unwrap_or_else(|| "Objeto".to_string()).into());
         if let Some(b) = props.bounds {
+            window.set_prop_x(b[0] as f32);
+            window.set_prop_y(b[1] as f32);
+            window.set_prop_w(b[2] as f32);
+            window.set_prop_h(b[3] as f32);
             window.set_selected_bounds(
                 format!("X: {:.1} pt   Y: {:.1} pt   W: {:.1} pt   H: {:.1} pt", b[0], b[1], b[2], b[3]).into(),
             );
@@ -197,10 +202,15 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
         }
         window.set_selected_opacity((props.opacity * 100.0) as f32);
     } else {
+        window.set_has_selection(false);
         window.set_selected_name("(Nenhuma seleção)".into());
         window.set_selected_bounds("—".into());
         window.set_selected_fill("—".into());
         window.set_selected_opacity(100.0);
+        window.set_prop_x(0.0);
+        window.set_prop_y(0.0);
+        window.set_prop_w(0.0);
+        window.set_prop_h(0.0);
     }
 
     // Sync History
@@ -337,6 +347,86 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // Open Document via RFD
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_open_doc_clicked(move || {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("Aubrieta Design (*.aub)", &["aub"])
+                .add_filter("Gráficos Vetoriais SVG (*.svg)", &["svg"])
+                .add_filter("Todos os arquivos (*.*)", &["*"])
+                .set_title("Abrir Documento Aubrieta")
+                .pick_file()
+            {
+                println!("RFD: Arquivo selecionado para abertura: {:?}", path);
+                let title = path.file_name().and_then(|n| n.to_str()).unwrap_or("Novo Documento");
+                let _ = state_clone.borrow_mut().shell.new_document(title);
+                if let Some(win) = win_weak.upgrade() {
+                    sync_ui_from_shell(&win, &state_clone.borrow());
+                }
+            }
+        });
+    }
+
+    // Save Document via RFD
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_save_doc_clicked(move || {
+            let default_name = state_clone
+                .borrow()
+                .shell
+                .bridge
+                .session()
+                .map(|s| format!("{}.aub", s.title))
+                .unwrap_or_else(|| "projeto.aub".to_string());
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("Aubrieta Design (*.aub)", &["aub"])
+                .set_file_name(&default_name)
+                .set_title("Salvar Projeto Aubrieta")
+                .save_file()
+            {
+                println!("RFD: Salvando projeto em: {:?}", path);
+                if let Some(win) = win_weak.upgrade() {
+                    sync_ui_from_shell(&win, &state_clone.borrow());
+                }
+            }
+        });
+    }
+
+    // Place Image via RFD
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_place_image_clicked(move || {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("Imagens Raster/Vetoriais (*.png, *.jpg, *.jpeg, *.svg)", &["png", "jpg", "jpeg", "svg"])
+                .set_title("Inserir Imagem no Documento")
+                .pick_file()
+            {
+                println!("RFD: Inserindo imagem: {:?}", path);
+                let mut st = state_clone.borrow_mut();
+                let mut id_gen = IdGenerator::new();
+                let obj_id = id_gen.next_object();
+                if let Some(surface) = st.shell.bridge.session().and_then(|s| s.document.surfaces.first().cloned()) {
+                    let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Imagem");
+                    let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::CreateObject {
+                        surface: surface.id,
+                        id: obj_id,
+                        name: format!("Imagem: {file_stem}"),
+                    }));
+                    let _ = st.shell.bridge.set_bounds(obj_id, Some([180.0, 180.0, 240.0, 160.0]), 0.0);
+                    let _ = st.shell.bridge.set_fill(obj_id, Some("aubrieta.green/500".to_string()));
+                    st.shell.bridge.set_selection(vec![obj_id]);
+                }
+                if let Some(win) = win_weak.upgrade() {
+                    sync_ui_from_shell(&win, &st);
+                }
+            }
+        });
+    }
+
     {
         let state_clone = state.clone();
         main_window.on_snap_toggled(move |enabled| {
@@ -464,6 +554,266 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             for id in sel.selected_ids {
                 let _ = st.shell.bridge.set_fill(id, Some(color_name.to_string()));
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Adjust properties callbacks
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_adjust_prop_x(move |dx| {
+            let mut st = state_clone.borrow_mut();
+            if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
+                if let Some(session) = st.shell.bridge.session() {
+                    if let Some(obj) = session.document.surfaces.iter().flat_map(|s| &s.objects).find(|o| o.id == sel_id) {
+                        if let Some(b) = obj.bounds {
+                            let new_bounds = [b[0] + dx as f64, b[1], b[2], b[3]];
+                            let _ = st.shell.bridge.set_bounds(sel_id, Some(new_bounds), 0.0);
+                        }
+                    }
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_adjust_prop_y(move |dy| {
+            let mut st = state_clone.borrow_mut();
+            if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
+                if let Some(session) = st.shell.bridge.session() {
+                    if let Some(obj) = session.document.surfaces.iter().flat_map(|s| &s.objects).find(|o| o.id == sel_id) {
+                        if let Some(b) = obj.bounds {
+                            let new_bounds = [b[0], b[1] + dy as f64, b[2], b[3]];
+                            let _ = st.shell.bridge.set_bounds(sel_id, Some(new_bounds), 0.0);
+                        }
+                    }
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_adjust_prop_w(move |dw| {
+            let mut st = state_clone.borrow_mut();
+            if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
+                if let Some(session) = st.shell.bridge.session() {
+                    if let Some(obj) = session.document.surfaces.iter().flat_map(|s| &s.objects).find(|o| o.id == sel_id) {
+                        if let Some(b) = obj.bounds {
+                            let new_bounds = [b[0], b[1], (b[2] + dw as f64).max(10.0), b[3]];
+                            let _ = st.shell.bridge.set_bounds(sel_id, Some(new_bounds), 0.0);
+                        }
+                    }
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_adjust_prop_h(move |dh| {
+            let mut st = state_clone.borrow_mut();
+            if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
+                if let Some(session) = st.shell.bridge.session() {
+                    if let Some(obj) = session.document.surfaces.iter().flat_map(|s| &s.objects).find(|o| o.id == sel_id) {
+                        if let Some(b) = obj.bounds {
+                            let new_bounds = [b[0], b[1], b[2], (b[3] + dh as f64).max(10.0)];
+                            let _ = st.shell.bridge.set_bounds(sel_id, Some(new_bounds), 0.0);
+                        }
+                    }
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_set_opacity_value(move |val| {
+            let mut st = state_clone.borrow_mut();
+            if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
+                let opacity = (val as f64 / 100.0).clamp(0.0, 1.0);
+                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::SetOpacity { id: sel_id, opacity }));
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_duplicate_selected_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let mut new_id = None;
+            let clone_info = if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
+                if let Some(session) = st.shell.bridge.session() {
+                    if let Some(surface) = session.document.surfaces.first() {
+                        if let Some(obj) = surface.objects.iter().find(|o| o.id == sel_id) {
+                            let b = obj.bounds.unwrap_or([100.0, 100.0, 100.0, 100.0]);
+                            let clone_bounds = [b[0] + 20.0, b[1] + 20.0, b[2], b[3]];
+                            let fill = obj.fill.clone();
+                            let name = format!("{} (cópia)", obj.name);
+                            let surf_id = surface.id;
+                            Some((surf_id, name, clone_bounds, fill))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            if let Some((surf_id, name, clone_bounds, fill)) = clone_info {
+                let mut id_gen = IdGenerator::new();
+                let clone_id = id_gen.next_object();
+                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::CreateObject {
+                    surface: surf_id,
+                    id: clone_id,
+                    name,
+                }));
+                let _ = st.shell.bridge.set_bounds(clone_id, Some(clone_bounds), 0.0);
+                if let Some(f) = fill {
+                    let _ = st.shell.bridge.set_fill(clone_id, Some(f));
+                }
+                new_id = Some(clone_id);
+            }
+            if let Some(id) = new_id {
+                st.shell.bridge.set_selection(vec![id]);
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_toggle_layer_visibility(move |idx| {
+            let mut st = state_clone.borrow_mut();
+            let toggle = if let Some(session) = st.shell.bridge.session() {
+                if let Some(surface) = session.document.surfaces.first() {
+                    surface.objects.get(idx as usize).map(|obj| (obj.id, !obj.visible))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some((id, visible)) = toggle {
+                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::SetVisibility { id, visible }));
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_toggle_layer_lock(move |idx| {
+            let mut st = state_clone.borrow_mut();
+            let toggle = if let Some(session) = st.shell.bridge.session() {
+                if let Some(surface) = session.document.surfaces.first() {
+                    surface.objects.get(idx as usize).map(|obj| (obj.id, !obj.locked))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some((id, locked)) = toggle {
+                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::SetLocked { id, locked }));
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_reorder_layer_up(move |idx| {
+            let mut st = state_clone.borrow_mut();
+            let reorder = if idx > 0 {
+                if let Some(session) = st.shell.bridge.session() {
+                    if let Some(surface) = session.document.surfaces.first() {
+                        surface.objects.get(idx as usize).map(|obj| (surface.id, obj.id, (idx - 1) as usize))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some((surf_id, id, new_index)) = reorder {
+                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::ReorderObject {
+                    surface: surf_id,
+                    id,
+                    new_index,
+                }));
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_reorder_layer_down(move |idx| {
+            let mut st = state_clone.borrow_mut();
+            let reorder = if let Some(session) = st.shell.bridge.session() {
+                if let Some(surface) = session.document.surfaces.first() {
+                    if (idx as usize) + 1 < surface.objects.len() {
+                        surface.objects.get(idx as usize).map(|obj| (surface.id, obj.id, (idx + 1) as usize))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some((surf_id, id, new_index)) = reorder {
+                let _ = st.shell.bridge.submit_command(CommandRequest::new(Command::ReorderObject {
+                    surface: surf_id,
+                    id,
+                    new_index,
+                }));
             }
             if let Some(win) = win_weak.upgrade() {
                 sync_ui_from_shell(&win, &st);
