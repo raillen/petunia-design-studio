@@ -18,7 +18,7 @@ A UI Slint ainda **não está ligada a esse pipeline** — esse é o próximo sa
 
 | | |
 |---|---|
-| Repositório | `git@github.com:raillen/aubrieta-design.git` |
+| Repositório | `git@github.com:raillen/petunia-design-studio.git` |
 | Branch de trabalho | `refactor/petunia-design-studio` |
 | Base | `dad0904` (branch `slint_ui`) |
 | HEAD | `252eead` |
