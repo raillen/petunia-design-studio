@@ -449,6 +449,47 @@ impl DocumentSession {
                 self.view.toggle_snapping();
                 Ok(ChangeSet::empty())
             }
+            // Group/ungroup map straight onto the One-Tree commands (10.5);
+            // the mutator already owns the invariants and their undo tests.
+            "ptnd.action.object.group" => {
+                let ids = self.selection.selected_ids.clone();
+                if ids.len() < 2 {
+                    return Ok(ChangeSet::empty());
+                }
+                let surface = self
+                    .document
+                    .find_object_surface(ids[0])
+                    .ok_or_else(|| PetuniaError::invalid_input("selection has no surface"))?;
+                let group_id = self.id_generator.next_object();
+                let changes = self.execute_command(CommandRequest::new(Command::GroupObjects {
+                    surface,
+                    group_id,
+                    child_ids: ids,
+                    role: petunia_design_document::ContainerRole::Group,
+                }))?;
+                // Select the container: the gesture's subject is now the group.
+                self.selection.selected_ids = vec![group_id];
+                Ok(changes)
+            }
+            "ptnd.action.object.ungroup" => {
+                let ids = self.selection.selected_ids.clone();
+                let groups: Vec<ObjectId> = ids
+                    .into_iter()
+                    .filter(|id| {
+                        self.document
+                            .find_object(*id)
+                            .is_some_and(|o| o.children.len() > 1 || o.role.is_some())
+                    })
+                    .collect();
+                if groups.is_empty() {
+                    return Ok(ChangeSet::empty());
+                }
+                let cmds = groups
+                    .into_iter()
+                    .map(|group_id| Command::Ungroup { group_id })
+                    .collect();
+                self.transact("Ungroup", cmds)
+            }
             // Duplicate copies the selection with fresh identities and a small
             // visual offset, so the copy is distinguishable from the original.
             "ptnd.action.edit.duplicate" => {
@@ -1600,5 +1641,94 @@ mod duplicate_action_tests {
         let changes = dispatch(&mut session, "ptnd.action.edit.duplicate");
         assert!(changes.is_empty());
         assert_eq!(session.current_revision(), revision);
+    }
+}
+
+#[cfg(test)]
+mod group_action_tests {
+    use super::*;
+    use crate::ActionId;
+    use serde_json::json;
+
+    fn session_with_two() -> DocumentSession {
+        let mut session = DocumentSession::new("group");
+        let surface = SurfaceId::new(1);
+        session
+            .execute_command(CommandRequest::new(Command::CreateSurface {
+                id: surface,
+                name: "Surface".to_string(),
+            }))
+            .unwrap();
+        for id in [1u64, 2] {
+            session
+                .execute_command(CommandRequest::new(Command::CreateObject {
+                    surface,
+                    id: ObjectId::new(id),
+                    name: format!("Obj {id}"),
+                }))
+                .unwrap();
+        }
+        session.selection.selected_ids = vec![ObjectId::new(1), ObjectId::new(2)];
+        session
+    }
+
+    fn dispatch(session: &mut DocumentSession, action: &str) -> ChangeSet {
+        session
+            .dispatch_action(ActionRequest::new(ActionId::new(action), json!({})))
+            .expect("group action must dispatch")
+    }
+
+    #[test]
+    fn group_wraps_the_selection_in_a_container_and_selects_it() {
+        let mut session = session_with_two();
+        let changes = dispatch(&mut session, "ptnd.action.object.group");
+        assert!(!changes.is_empty());
+
+        let group = session.selection.selected_ids[0];
+        let container = session.document.find_object(group).expect("container exists");
+        assert_eq!(container.children.len(), 2, "both objects must be inside");
+        assert!(container.role.is_some(), "the container carries a group role");
+    }
+
+    #[test]
+    fn ungroup_releases_the_children_back_to_the_surface() {
+        let mut session = session_with_two();
+        dispatch(&mut session, "ptnd.action.object.group");
+        let changes = dispatch(&mut session, "ptnd.action.object.ungroup");
+        assert!(!changes.is_empty(), "ungroup must report a change");
+        let objects = session.surfaces().first().unwrap().objects();
+        assert!(
+            objects.iter().all(|o| o.parent.is_none()),
+            "released children must return to the surface root"
+        );
+    }
+
+    #[test]
+    fn group_is_a_no_op_below_two_objects() {
+        let mut session = session_with_two();
+        session.selection.selected_ids = vec![ObjectId::new(1)];
+        let revision = session.current_revision();
+        let changes = dispatch(&mut session, "ptnd.action.object.group");
+        assert!(changes.is_empty(), "one object is not a group");
+        assert_eq!(session.current_revision(), revision);
+    }
+
+    #[test]
+    fn group_and_ungroup_round_trip_through_undo() {
+        let mut session = session_with_two();
+        let before = session.surfaces().first().unwrap().objects().len();
+
+        dispatch(&mut session, "ptnd.action.object.group");
+        assert_eq!(
+            session.surfaces().first().unwrap().objects().len(),
+            before + 1,
+            "grouping adds the container"
+        );
+        dispatch(&mut session, "ptnd.action.object.ungroup");
+        assert_eq!(
+            session.surfaces().first().unwrap().objects().len(),
+            before,
+            "ungrouping releases the children and drops the empty container"
+        );
     }
 }

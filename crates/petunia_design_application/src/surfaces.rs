@@ -135,8 +135,8 @@ pub const SURFACES: &[SurfaceEntry] = &[
     SurfaceEntry { id: "ptnd.action.select.invert", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.select.invert", action: None, shortcut: None },
 
     // ── Object actions ──────────────────────────────────────────────────────
-    SurfaceEntry { id: "ptnd.action.object.group", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.object.group", action: None, shortcut: Some("Ctrl+G") },
-    SurfaceEntry { id: "ptnd.action.object.ungroup", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.object.ungroup", action: None, shortcut: Some("Ctrl+Shift+G") },
+    SurfaceEntry { id: "ptnd.action.object.group", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.group", action: None, shortcut: Some("Ctrl+G") },
+    SurfaceEntry { id: "ptnd.action.object.ungroup", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.ungroup", action: None, shortcut: Some("Ctrl+Shift+G") },
     SurfaceEntry { id: "ptnd.action.object.arrange.front", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.arrange.front", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.action.object.arrange.back", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.arrange.back", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.action.object.align", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.align", action: None, shortcut: None },
@@ -241,8 +241,10 @@ pub const LIVE_ACTIONS: &[&str] = &[
     "ptnd.action.object.arrange.back",
     "ptnd.action.object.arrange.front",
     "ptnd.action.object.distribute",
+    "ptnd.action.object.group",
     "ptnd.action.object.hide",
     "ptnd.action.object.lock",
+    "ptnd.action.object.ungroup",
     "ptnd.action.view.fit_surface",
     "ptnd.action.view.toggle_rulers",
     "ptnd.action.view.toggle_snapping",
@@ -291,8 +293,6 @@ pub const LIVE_ACTIONS: &[&str] = &[
 pub const DECLARED_NOT_LIVE: &[&str] = &[
     "ptnd.action.file.export",
     "ptnd.action.file.place",
-    "ptnd.action.object.group",
-    "ptnd.action.object.ungroup",
     "ptnd.action.view.command_palette",
 ];
 
