@@ -9,10 +9,10 @@ pub struct ActionId(pub String);
 
 impl ActionId {
     /// Well-known actions for the P00 MVP slice.
-    pub const SURFACE_CREATE: &'static str = "ptnd.surface.create";
-    pub const OBJECT_CREATE: &'static str = "ptnd.object.create";
-    pub const OBJECT_DELETE: &'static str = "ptnd.object.delete";
-    pub const FILL_SET: &'static str = "ptnd.fill.set";
+    pub const SURFACE_CREATE: &'static str = "ptnd.action.surface.create";
+    pub const OBJECT_CREATE: &'static str = "ptnd.action.object.create";
+    pub const OBJECT_DELETE: &'static str = "ptnd.action.object.delete";
+    pub const FILL_SET: &'static str = "ptnd.action.fill.set";
 
     // Design Persona Tool Actions (08.24, 08.33, 10.1 - 10.7)
     pub const TOOL_SELECT: &'static str = "ptnd.tool.select";
@@ -53,13 +53,13 @@ impl ActionId {
     pub const TOOL_PHOTO_CROP: &'static str = "ptnd.tool.photo.crop";
 
     // Transformation, Alignment, Geometry Operations (10.1, 10.2, 10.3)
-    pub const OBJECT_CONVERT_TO_CURVES: &'static str = "ptnd.object.convert_to_curves";
-    pub const OBJECT_ALIGN: &'static str = "ptnd.object.align";
-    pub const OBJECT_DISTRIBUTE: &'static str = "ptnd.object.distribute";
-    pub const OBJECT_BOOLEAN: &'static str = "ptnd.object.boolean";
-    pub const OBJECT_BAKE_CORNERS: &'static str = "ptnd.object.bake_corners";
-    pub const OBJECT_OFFSET_PATH: &'static str = "ptnd.object.offset_path";
-    pub const OBJECT_SLICE_PATH: &'static str = "ptnd.object.slice_path";
+    pub const OBJECT_CONVERT_TO_CURVES: &'static str = "ptnd.action.object.convert_to_curves";
+    pub const OBJECT_ALIGN: &'static str = "ptnd.action.object.align";
+    pub const OBJECT_DISTRIBUTE: &'static str = "ptnd.action.object.distribute";
+    pub const OBJECT_BOOLEAN: &'static str = "ptnd.action.object.boolean";
+    pub const OBJECT_BAKE_CORNERS: &'static str = "ptnd.action.object.bake_corners";
+    pub const OBJECT_OFFSET_PATH: &'static str = "ptnd.action.object.offset_path";
+    pub const OBJECT_SLICE_PATH: &'static str = "ptnd.action.object.slice_path";
 
     /// Creates an action ID. Callers must use the `ptnd.*` namespace.
     #[must_use]

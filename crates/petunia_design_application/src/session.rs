@@ -294,9 +294,13 @@ impl DocumentSession {
     /// Legacy `aubrieta.*` action identifiers are accepted on read and
     /// normalized to `ptnd.*` (15.A); new code never emits the old form.
     pub fn dispatch_action(&mut self, request: ActionRequest) -> Result<ChangeSet, PetuniaError> {
-        let action = petunia_design_foundation::normalized(request.action.as_str());
+        // Two read-only migration shims, applied in order: the product rename
+        // (`aubrieta.*` -> `ptnd.*`) and the action grammar move
+        // (`ptnd.<domain>.*` -> `ptnd.action.<domain>.*`, 15.G).
+        let renamed = petunia_design_foundation::normalized(request.action.as_str());
+        let action = petunia_design_foundation::normalize_action_id(&renamed);
         match action.as_str() {
-            "ptnd.edit.delete" => {
+            "ptnd.action.edit.delete" => {
                 let mut combined = ChangeSet::empty();
                 let to_delete = self.selection.selected_ids.clone();
                 for id in to_delete {
@@ -309,20 +313,20 @@ impl DocumentSession {
                 self.selection.clear();
                 Ok(combined)
             }
-            "ptnd.edit.select_all" => {
+            "ptnd.action.edit.select_all" => {
                 self.select_all();
                 Ok(ChangeSet::empty())
             }
-            "ptnd.edit.deselect" => {
+            "ptnd.action.edit.deselect" => {
                 self.selection.clear();
                 Ok(ChangeSet::empty())
             }
-            "ptnd.object.align" => {
+            "ptnd.action.object.align" => {
                 let (surface, ids, mode) = align_payload(&request.payload)?;
                 let cmd = CommandRequest::new(Command::AlignObjects { surface, ids, mode });
                 self.execute_command(cmd)
             }
-            "ptnd.object.distribute" => {
+            "ptnd.action.object.distribute" => {
                 let (surface, ids, axis) = distribute_payload(&request.payload)?;
                 let cmd = CommandRequest::new(Command::DistributeObjects { surface, ids, axis });
                 self.execute_command(cmd)

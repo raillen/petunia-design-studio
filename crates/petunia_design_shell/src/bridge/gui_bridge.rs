@@ -769,7 +769,7 @@ impl ActionQueryPort for PetuniaDesignGuiBridge {
                 },
             ),
             (
-                "ptnd.edit.undo",
+                "ptnd.action.edit.undo",
                 can_undo,
                 if can_undo {
                     None
@@ -778,7 +778,7 @@ impl ActionQueryPort for PetuniaDesignGuiBridge {
                 },
             ),
             (
-                "ptnd.edit.redo",
+                "ptnd.action.edit.redo",
                 can_redo,
                 if can_redo {
                     None
@@ -787,7 +787,7 @@ impl ActionQueryPort for PetuniaDesignGuiBridge {
                 },
             ),
             (
-                "ptnd.edit.delete",
+                "ptnd.action.edit.delete",
                 has_selection,
                 if has_selection {
                     None
@@ -796,7 +796,7 @@ impl ActionQueryPort for PetuniaDesignGuiBridge {
                 },
             ),
             (
-                "ptnd.edit.select_all",
+                "ptnd.action.edit.select_all",
                 has_session,
                 if has_session {
                     None
@@ -805,7 +805,7 @@ impl ActionQueryPort for PetuniaDesignGuiBridge {
                 },
             ),
             (
-                "ptnd.edit.deselect",
+                "ptnd.action.edit.deselect",
                 has_selection,
                 if has_selection {
                     None

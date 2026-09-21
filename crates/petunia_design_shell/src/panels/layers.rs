@@ -92,7 +92,7 @@ impl LayersPanelController {
         bridge: &mut PetuniaDesignGuiBridge,
     ) -> Result<ChangeSet, PetuniaError> {
         bridge.dispatch_action(ActionRequest::without_payload(ActionId::new(
-            "ptnd.edit.delete",
+            "ptnd.action.edit.delete",
         )))
     }
 

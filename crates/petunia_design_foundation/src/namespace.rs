@@ -40,6 +40,36 @@ pub fn is_current_namespace(token: &str) -> bool {
         .is_some_and(|rest| rest.starts_with('.'))
 }
 
+/// Action domains that moved from `ptnd.<domain>.*` to the canonical
+/// `ptnd.action.<domain>.*` grammar mandated by 15.G.
+const ACTION_DOMAINS: &[&str] = &["object", "edit", "fill", "surface"];
+
+/// Rewrites a pre-grammar action id to its canonical form.
+///
+/// `ptnd.object.align` becomes `ptnd.action.object.align`. Ids that already
+/// carry the `action` segment, ids in other namespaces (`ptnd.tool.*`, ...)
+/// and unknown strings are returned unchanged. Read-only shim: canonical ids
+/// are the only form ever written back out.
+#[must_use]
+pub fn normalize_action_id(action_id: &str) -> String {
+    let Some(rest) = action_id.strip_prefix("ptnd.") else {
+        return action_id.to_owned();
+    };
+    let Some((domain, _)) = rest.split_once('.') else {
+        return action_id.to_owned();
+    };
+    if !ACTION_DOMAINS.contains(&domain) {
+        return action_id.to_owned();
+    }
+    format!("{NAMESPACE}.action.{rest}")
+}
+
+/// True when the id already uses the canonical action grammar.
+#[must_use]
+pub fn is_canonical_action_id(action_id: &str) -> bool {
+    action_id.starts_with("ptnd.action.")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -62,6 +92,26 @@ mod tests {
         assert_eq!(normalize_legacy_namespace("#ff0000"), None);
         assert_eq!(normalize_legacy_namespace("aubrietax.y"), None);
         assert_eq!(normalize_legacy_namespace("aubrieta"), None);
+    }
+
+    #[test]
+    fn pre_grammar_actions_are_rewritten_once() {
+        assert_eq!(normalize_action_id("ptnd.object.align"), "ptnd.action.object.align");
+        assert_eq!(normalize_action_id("ptnd.edit.delete"), "ptnd.action.edit.delete");
+        assert_eq!(normalize_action_id("ptnd.fill.set"), "ptnd.action.fill.set");
+        assert_eq!(normalize_action_id("ptnd.surface.create"), "ptnd.action.surface.create");
+        let canonical = normalize_action_id("ptnd.object.align");
+        assert_eq!(normalize_action_id(&canonical), canonical);
+        assert!(is_canonical_action_id(&canonical));
+    }
+
+    #[test]
+    fn tools_and_foreign_ids_keep_their_namespace() {
+        assert_eq!(normalize_action_id("ptnd.tool.pen"), "ptnd.tool.pen");
+        assert_eq!(normalize_action_id("ptnd.panel.layers"), "ptnd.panel.layers");
+        assert_eq!(normalize_action_id("aubrieta.object.align"), "aubrieta.object.align");
+        assert_eq!(normalize_action_id("ptnd"), "ptnd");
+        assert!(!is_canonical_action_id("ptnd.tool.pen"));
     }
 
     #[test]

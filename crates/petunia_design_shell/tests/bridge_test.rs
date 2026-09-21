@@ -100,13 +100,13 @@ fn bridge_action_query_enabled_states_and_dispatch() {
     );
     assert!(
         !actions_none
-            .get(&ActionId::new("ptnd.edit.undo"))
+            .get(&ActionId::new("ptnd.action.edit.undo"))
             .unwrap()
             .is_enabled
     );
     assert!(
         !actions_none
-            .get(&ActionId::new("ptnd.edit.delete"))
+            .get(&ActionId::new("ptnd.action.edit.delete"))
             .unwrap()
             .is_enabled
     );
@@ -134,13 +134,13 @@ fn bridge_action_query_enabled_states_and_dispatch() {
     );
     assert!(
         actions_dirty
-            .get(&ActionId::new("ptnd.edit.undo"))
+            .get(&ActionId::new("ptnd.action.edit.undo"))
             .unwrap()
             .is_enabled
     );
     assert!(
         !actions_dirty
-            .get(&ActionId::new("ptnd.edit.delete"))
+            .get(&ActionId::new("ptnd.action.edit.delete"))
             .unwrap()
             .is_enabled
     );
@@ -150,7 +150,7 @@ fn bridge_action_query_enabled_states_and_dispatch() {
     let actions_selected = bridge.query_actions();
     assert!(
         actions_selected
-            .get(&ActionId::new("ptnd.edit.delete"))
+            .get(&ActionId::new("ptnd.action.edit.delete"))
             .unwrap()
             .is_enabled
     );
@@ -158,7 +158,7 @@ fn bridge_action_query_enabled_states_and_dispatch() {
     // Dispatch delete action
     let del_res = bridge
         .dispatch_action(ActionRequest::without_payload(ActionId::new(
-            "ptnd.edit.delete",
+            "ptnd.action.edit.delete",
         )))
         .expect("delete");
     assert_eq!(del_res.len(), 1);
