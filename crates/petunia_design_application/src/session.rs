@@ -330,9 +330,25 @@ impl DocumentSession {
         let changes = self.history.execute(&mut self.document, &request)?;
         if !changes.is_empty() {
             self.current_revision += 1;
+            self.observe_document_identities();
         }
         self.prune_selection();
         Ok(changes)
+    }
+
+    /// Keeps the ID generator ahead of every identity the document holds.
+    ///
+    /// Identities can enter through commands the generator never issued, so
+    /// without this the next generated id would collide.
+    fn observe_document_identities(&mut self) {
+        let mut highest = 0;
+        for surface in self.document.surfaces() {
+            highest = highest.max(surface.id.raw());
+            for object in surface.objects() {
+                highest = highest.max(object.id.raw());
+            }
+        }
+        self.id_generator.observe(highest);
     }
 
     /// Dispatches an action request by translating it into validated commands.
@@ -432,6 +448,35 @@ impl DocumentSession {
             "ptnd.action.view.toggle_snapping" => {
                 self.view.toggle_snapping();
                 Ok(ChangeSet::empty())
+            }
+            // Duplicate copies the selection with fresh identities and a small
+            // visual offset, so the copy is distinguishable from the original.
+            "ptnd.action.edit.duplicate" => {
+                let ids = self.selection.selected_ids.clone();
+                if ids.is_empty() {
+                    return Ok(ChangeSet::empty());
+                }
+                let surface = self
+                    .document
+                    .find_object_surface(ids[0])
+                    .ok_or_else(|| PetuniaError::invalid_input("selection has no surface"))?;
+                let mut cmds = Vec::new();
+                let mut created = Vec::new();
+                for id in ids {
+                    let next = self.id_generator.next_object();
+                    created.push(next);
+                    cmds.push(Command::DuplicateObject {
+                        surface,
+                        source: id,
+                        id: next,
+                        offset: [12.0, 12.0],
+                    });
+                }
+                let changes = self.transact("Duplicate", cmds)?;
+                // Select the copies so a follow-up drag moves the duplicate,
+                // not the original.
+                self.selection.selected_ids = created;
+                Ok(changes)
             }
             // Arrange moves the whole selection to a z-order edge. Objects are
             // arranged back-to-front so their relative order survives the move.
@@ -1470,6 +1515,89 @@ mod arrange_action_tests {
         session.selection.selected_ids.clear();
         let revision = session.current_revision();
         let changes = dispatch(&mut session, "ptnd.action.object.arrange.front");
+        assert!(changes.is_empty());
+        assert_eq!(session.current_revision(), revision);
+    }
+}
+
+#[cfg(test)]
+mod duplicate_action_tests {
+    use super::*;
+    use crate::ActionId;
+    use serde_json::json;
+
+    fn session_with_object() -> DocumentSession {
+        let mut session = DocumentSession::new("duplicate");
+        let surface = SurfaceId::new(1);
+        session
+            .execute_command(CommandRequest::new(Command::CreateSurface {
+                id: surface,
+                name: "Surface".to_string(),
+            }))
+            .unwrap();
+        session
+            .execute_command(CommandRequest::new(Command::CreateObject {
+                surface,
+                id: ObjectId::new(1),
+                name: "Rect".to_string(),
+            }))
+            .unwrap();
+        session
+            .execute_command(CommandRequest::new(Command::SetFill {
+                id: ObjectId::new(1),
+                fill: Some("ptnd.blue/500".to_string()),
+            }))
+            .unwrap();
+        session.selection.selected_ids = vec![ObjectId::new(1)];
+        session
+    }
+
+    fn dispatch(session: &mut DocumentSession, action: &str) -> ChangeSet {
+        session
+            .dispatch_action(ActionRequest::new(ActionId::new(action), json!({})))
+            .expect("duplicate must dispatch")
+    }
+
+    #[test]
+    fn duplicate_creates_a_distinct_copy_that_keeps_appearance() {
+        let mut session = session_with_object();
+        let changes = dispatch(&mut session, "ptnd.action.edit.duplicate");
+        assert!(!changes.is_empty());
+
+        let objects = &session.surfaces().first().unwrap().objects();
+        assert_eq!(objects.len(), 2);
+        assert_ne!(objects[0].id, objects[1].id, "the copy needs a fresh identity");
+        assert_eq!(objects[1].fill, objects[0].fill, "appearance must carry over");
+    }
+
+    #[test]
+    fn the_copy_is_selected_so_a_drag_moves_the_duplicate() {
+        let mut session = session_with_object();
+        dispatch(&mut session, "ptnd.action.edit.duplicate");
+        let original = ObjectId::new(1);
+        assert_eq!(session.selection.selected_ids.len(), 1);
+        assert_ne!(
+            session.selection.selected_ids[0], original,
+            "the duplicate must become the selection"
+        );
+    }
+
+    #[test]
+    fn duplicate_is_one_undo_entry_and_a_no_op_without_selection() {
+        let mut session = session_with_object();
+        dispatch(&mut session, "ptnd.action.edit.duplicate");
+        assert_eq!(session.surfaces().first().unwrap().objects().len(), 2);
+
+        dispatch(&mut session, "ptnd.action.edit.undo");
+        assert_eq!(
+            session.surfaces().first().unwrap().objects().len(),
+            1,
+            "one undo must remove the copy"
+        );
+
+        session.selection.selected_ids.clear();
+        let revision = session.current_revision();
+        let changes = dispatch(&mut session, "ptnd.action.edit.duplicate");
         assert!(changes.is_empty());
         assert_eq!(session.current_revision(), revision);
     }

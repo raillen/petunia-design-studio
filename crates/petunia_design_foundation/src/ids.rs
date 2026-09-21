@@ -85,6 +85,15 @@ impl IdGenerator {
         Self { next: start.max(1) }
     }
 
+    /// Raises the counter so `raw` can never be issued again.
+    ///
+    /// Commands can introduce identities the generator never issued (a project
+    /// loaded from disk, a plugin, a duplicate). Without observing them the
+    /// next `next_object` would collide with an existing object.
+    pub fn observe(&mut self, raw: u64) {
+        self.next = self.next.max(raw.saturating_add(1));
+    }
+
     /// Issues the next `ObjectId`.
     pub fn next_object(&mut self) -> ObjectId {
         let id = ObjectId(self.next);

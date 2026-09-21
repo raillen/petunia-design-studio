@@ -48,6 +48,17 @@ pub enum Command {
         id: ObjectId,
         position: petunia_design_document::ArrangePosition,
     },
+    /// Duplicate an object onto the same surface under a new identity.
+    ///
+    /// The copy keeps appearance, shape and flags but drops container
+    /// relationships: it must not inherit a parent or children it does not
+    /// actually contain.
+    DuplicateObject {
+        surface: SurfaceId,
+        source: ObjectId,
+        id: ObjectId,
+        offset: [f64; 2],
+    },
     /// Set an object's complete appearance stack (10.4).
     SetAppearance {
         id: ObjectId,
@@ -313,6 +324,32 @@ pub fn execute(
             mutator.add_object(*surface, DocumentObject::new(*id, name.clone()))
         }
         Command::DeleteObject { id } => mutator.remove_object(*id),
+        Command::DuplicateObject {
+            surface,
+            source,
+            id,
+            offset,
+        } => {
+            let original = mutator
+                .document()
+                .find_object(*source)
+                .cloned()
+                .ok_or_else(|| {
+                    petunia_design_foundation::PetuniaError::invalid_input(format!(
+                        "cannot duplicate unknown object `{source}`"
+                    ))
+                })?;
+            let mut copy = original;
+            copy.id = *id;
+            copy.parent = None;
+            copy.children = Vec::new();
+            copy.role = None;
+            copy.clip_mask_id = None;
+            if let Some([x, y, w, h]) = copy.bounds {
+                copy.bounds = Some([x + offset[0], y + offset[1], w, h]);
+            }
+            mutator.add_object(*surface, copy)
+        }
         Command::SetFill { id, fill } => mutator.set_fill(*id, fill.clone()),
         Command::SetVisibility { id, visible } => mutator.set_visibility(*id, *visible),
         Command::SetLocked { id, locked } => mutator.set_locked(*id, *locked),

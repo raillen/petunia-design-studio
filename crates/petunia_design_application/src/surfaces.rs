@@ -125,7 +125,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
     SurfaceEntry { id: "ptnd.action.edit.cut", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.edit.cut", action: None, shortcut: Some("Ctrl+X") },
     SurfaceEntry { id: "ptnd.action.edit.copy", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.edit.copy", action: None, shortcut: Some("Ctrl+C") },
     SurfaceEntry { id: "ptnd.action.edit.paste", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.edit.paste", action: None, shortcut: Some("Ctrl+V") },
-    SurfaceEntry { id: "ptnd.action.edit.duplicate", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.edit.duplicate", action: None, shortcut: Some("Ctrl+D") },
+    SurfaceEntry { id: "ptnd.action.edit.duplicate", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.edit.duplicate", action: None, shortcut: Some("Ctrl+D") },
     SurfaceEntry { id: "ptnd.action.edit.delete", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.edit.delete", action: None, shortcut: Some("Delete") },
     SurfaceEntry { id: "ptnd.action.edit.preferences", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.edit.preferences", action: None, shortcut: None },
 
@@ -229,6 +229,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
 pub const LIVE_ACTIONS: &[&str] = &[
     "ptnd.action.edit.delete",
     "ptnd.action.edit.deselect",
+    "ptnd.action.edit.duplicate",
     "ptnd.action.edit.redo",
     "ptnd.action.edit.select_all",
     "ptnd.action.edit.undo",
@@ -288,7 +289,6 @@ pub const LIVE_ACTIONS: &[&str] = &[
 /// hidden behind a registry claim. Moving an id from this list to
 /// [`LIVE_ACTIONS`] is the definition of wiring it.
 pub const DECLARED_NOT_LIVE: &[&str] = &[
-    "ptnd.action.edit.duplicate",
     "ptnd.action.file.export",
     "ptnd.action.file.place",
     "ptnd.action.object.group",
