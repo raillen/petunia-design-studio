@@ -88,6 +88,9 @@ pub struct DocumentSession {
     history: History,
     /// Viewport/window-shared selection session.
     pub selection: SelectionSession,
+    /// Non-document view state (camera, rulers, snapping). Lives here so view
+    /// actions travel the same Action lane as document actions (15.B).
+    pub view: crate::view_camera::ViewState,
     /// Monotonic ID generator for session-originated objects.
     id_generator: IdGenerator,
     /// Document title or filename.
@@ -122,6 +125,7 @@ impl DocumentSession {
             document,
             history: History::new(0),
             selection: SelectionSession::new(),
+            view: crate::view_camera::ViewState::default(),
             id_generator: IdGenerator::with_start(max_id + 1),
             title: title.into(),
             active_surface,
@@ -150,6 +154,7 @@ impl DocumentSession {
             document,
             history: History::new(0),
             selection: SelectionSession::new(),
+            view: crate::view_camera::ViewState::default(),
             id_generator: IdGenerator::with_start(max_id + 1),
             title: title.into(),
             active_surface,
@@ -319,6 +324,39 @@ impl DocumentSession {
             }
             "ptnd.action.edit.deselect" => {
                 self.selection.clear();
+                Ok(ChangeSet::empty())
+            }
+            // View actions mutate view state, not the document, so they
+            // return an empty ChangeSet: something observable happened, but
+            // nothing entered history (15.B).
+            "ptnd.action.view.zoom_in" => {
+                self.view.zoom_in();
+                Ok(ChangeSet::empty())
+            }
+            "ptnd.action.view.zoom_out" => {
+                self.view.zoom_out();
+                Ok(ChangeSet::empty())
+            }
+            "ptnd.action.view.zoom_100" => {
+                self.view.camera.reset_100();
+                Ok(ChangeSet::empty())
+            }
+            "ptnd.action.view.fit_surface" => {
+                if let Some(id) = self.active_surface() {
+                    if let Ok(surface) = self.document.surface(id) {
+                        let [x, y, w, h] = surface.bounds();
+                        self.view
+                            .fit_rect(petunia_design_geometry::GRect::new(x, y, x + w, y + h));
+                    }
+                }
+                Ok(ChangeSet::empty())
+            }
+            "ptnd.action.view.toggle_rulers" => {
+                self.view.toggle_rulers();
+                Ok(ChangeSet::empty())
+            }
+            "ptnd.action.view.toggle_snapping" => {
+                self.view.toggle_snapping();
                 Ok(ChangeSet::empty())
             }
             "ptnd.action.object.align" => {
@@ -812,4 +850,76 @@ fn distribute_payload(
         }
     };
     Ok((surface, ids, axis))
+}
+
+#[cfg(test)]
+mod view_action_tests {
+    use super::*;
+    use crate::ActionId;
+    use serde_json::json;
+
+    fn session() -> DocumentSession {
+        DocumentSession::new("view")
+    }
+
+    fn dispatch(session: &mut DocumentSession, action: &str) -> ChangeSet {
+        session
+            .dispatch_action(ActionRequest::new(ActionId::new(action), json!({})))
+            .expect("view action must dispatch")
+    }
+
+    #[test]
+    fn view_actions_change_view_state_without_touching_the_document() {
+        let mut session = session();
+        let revision = session.current_revision();
+
+        dispatch(&mut session, "ptnd.action.view.zoom_in");
+        assert!(session.view.camera.zoom > 1.0);
+
+        dispatch(&mut session, "ptnd.action.view.zoom_out");
+        assert!((session.view.camera.zoom - 1.0).abs() < 1e-9);
+
+        dispatch(&mut session, "ptnd.action.view.zoom_in");
+        dispatch(&mut session, "ptnd.action.view.zoom_100");
+        assert!((session.view.camera.zoom - 1.0).abs() < 1e-9);
+
+        assert_eq!(session.current_revision(), revision, "view must not mutate the document");
+    }
+
+    #[test]
+    fn view_toggles_flip_and_are_idempotent_per_call() {
+        let mut session = session();
+        let rulers = session.view.rulers_visible;
+        let snapping = session.view.snapping_enabled;
+
+        dispatch(&mut session, "ptnd.action.view.toggle_rulers");
+        dispatch(&mut session, "ptnd.action.view.toggle_snapping");
+        assert_eq!(session.view.rulers_visible, !rulers);
+        assert_eq!(session.view.snapping_enabled, !snapping);
+
+        dispatch(&mut session, "ptnd.action.view.toggle_rulers");
+        dispatch(&mut session, "ptnd.action.view.toggle_snapping");
+        assert_eq!(session.view.rulers_visible, rulers);
+        assert_eq!(session.view.snapping_enabled, snapping);
+    }
+
+    #[test]
+    fn fit_surface_is_a_safe_no_op_without_an_active_surface() {
+        // `surface.create` is declared but not dispatched yet, so a fresh
+        // session has nothing to frame. The action must stay harmless; the
+        // framing math itself is covered by `view_camera::view_state_tests`.
+        let mut session = session();
+        let camera = session.view.camera.clone();
+        dispatch(&mut session, "ptnd.action.view.fit_surface");
+        assert_eq!(session.view.camera, camera);
+        assert!(session.active_surface().is_none());
+    }
+
+    #[test]
+    fn pre_grammar_view_ids_still_dispatch() {
+        let mut session = session();
+        // A project or plugin written before the grammar move sends the old id.
+        dispatch(&mut session, "ptnd.view.zoom_in");
+        assert!(session.view.camera.zoom > 1.0);
+    }
 }

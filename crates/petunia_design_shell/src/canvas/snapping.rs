@@ -2,7 +2,7 @@
 
 use petunia_design_geometry::{GPoint, GRect};
 
-use super::camera::ViewportCamera;
+use petunia_design_application::view_camera::ViewportCamera;
 
 /// Orientation for dynamic snapping alignment lines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

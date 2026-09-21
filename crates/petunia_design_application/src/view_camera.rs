@@ -1,4 +1,8 @@
 //! Viewport camera with arbitrary zoom, pan, and coordinate mapping (08.6).
+//!
+//! This module lives in the application layer because it is GUI-agnostic view
+//! state (15.B): the camera is pure geometry, so view actions can travel the
+//! normal Action -> Command lane and the UI only renders the result.
 
 use petunia_design_geometry::{GPoint, GRect};
 
@@ -125,5 +129,122 @@ impl ViewportCamera {
 
         self.pan_x = (self.viewport_width / 2.0) - center_doc_x * self.zoom;
         self.pan_y = (self.viewport_height / 2.0) - center_doc_y * self.zoom;
+    }
+}
+
+/// Screen-space working zoom step for the `view.zoom_in`/`view.zoom_out`
+/// actions (08.35 keeps toolbar zoom discrete rather than continuous).
+pub const ZOOM_STEP: f64 = 1.25;
+
+/// Non-document view state owned by an editing session.
+///
+/// Rulers and snapping are view preferences (08.6): they change what the user
+/// sees and how input is interpreted, never the document itself.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ViewState {
+    /// Pan/zoom camera for the active viewport.
+    pub camera: ViewportCamera,
+    /// Whether rulers are shown around the canvas.
+    pub rulers_visible: bool,
+    /// Whether snapping is armed for interactive transform.
+    pub snapping_enabled: bool,
+}
+
+impl Default for ViewState {
+    fn default() -> Self {
+        Self {
+            camera: ViewportCamera::default(),
+            rulers_visible: true,
+            snapping_enabled: true,
+        }
+    }
+}
+
+impl ViewState {
+    /// Zooms in one discrete step around the viewport centre.
+    pub fn zoom_in(&mut self) {
+        let focus = self.viewport_center();
+        self.camera.zoom_at(focus, ZOOM_STEP);
+    }
+
+    /// Zooms out one discrete step around the viewport centre.
+    pub fn zoom_out(&mut self) {
+        let focus = self.viewport_center();
+        self.camera.zoom_at(focus, 1.0 / ZOOM_STEP);
+    }
+
+    /// Returns the viewport centre in screen space.
+    #[must_use]
+    pub fn viewport_center(&self) -> GPoint {
+        GPoint::new(
+            self.camera.viewport_width / 2.0,
+            self.camera.viewport_height / 2.0,
+        )
+    }
+
+    /// Frames `target` (document space) with breathing room.
+    pub fn fit_rect(&mut self, target: GRect) {
+        self.camera.fit_rect(target, 24.0);
+    }
+
+    /// Toggles ruler visibility.
+    pub fn toggle_rulers(&mut self) {
+        self.rulers_visible = !self.rulers_visible;
+    }
+
+    /// Toggles snapping.
+    pub fn toggle_snapping(&mut self) {
+        self.snapping_enabled = !self.snapping_enabled;
+    }
+}
+
+#[cfg(test)]
+mod view_state_tests {
+    use super::*;
+
+    #[test]
+    fn discrete_zoom_steps_are_relative_to_the_centre() {
+        let mut view = ViewState::default();
+        view.camera.set_zoom(1.0);
+        view.zoom_in();
+        assert!((view.camera.zoom - ZOOM_STEP).abs() < 1e-9);
+        view.zoom_out();
+        assert!((view.camera.zoom - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn zoom_is_clamped_at_the_documented_bounds() {
+        let mut view = ViewState::default();
+        for _ in 0..200 {
+            view.zoom_in();
+        }
+        assert!(view.camera.zoom <= MAX_ZOOM);
+        for _ in 0..400 {
+            view.zoom_out();
+        }
+        assert!(view.camera.zoom >= MIN_ZOOM);
+    }
+
+    #[test]
+    fn toggles_flip_without_touching_the_camera() {
+        let mut view = ViewState::default();
+        let camera = view.camera.clone();
+        let rulers = view.rulers_visible;
+        let snapping = view.snapping_enabled;
+        view.toggle_rulers();
+        view.toggle_snapping();
+        assert_eq!(view.rulers_visible, !rulers);
+        assert_eq!(view.snapping_enabled, !snapping);
+        assert_eq!(view.camera, camera);
+    }
+
+    #[test]
+    fn fit_rect_frames_the_target_inside_the_viewport() {
+        let mut view = ViewState::default();
+        view.fit_rect(GRect::new(0.0, 0.0, 400.0, 300.0));
+        assert!(view.camera.zoom > 0.0);
+        let visible = view.camera.visible_doc_rect();
+        assert!(visible.width() >= 400.0);
+        assert!(visible.height() >= 300.0);
     }
 }

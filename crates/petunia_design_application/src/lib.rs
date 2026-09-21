@@ -18,6 +18,7 @@ pub mod interaction;
 pub mod ports;
 pub mod session;
 pub mod surfaces;
+pub mod view_camera;
 pub mod surface_service;
 pub mod tools;
 mod transaction;

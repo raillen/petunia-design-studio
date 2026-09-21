@@ -40,9 +40,14 @@ pub fn is_current_namespace(token: &str) -> bool {
         .is_some_and(|rest| rest.starts_with('.'))
 }
 
-/// Action domains that moved from `ptnd.<domain>.*` to the canonical
-/// `ptnd.action.<domain>.*` grammar mandated by 15.G.
-const ACTION_DOMAINS: &[&str] = &["object", "edit", "fill", "surface"];
+/// Action domains that moved wholesale from `ptnd.<domain>.*` to the
+/// canonical `ptnd.action.<domain>.*` grammar mandated by 15.G.
+const ACTION_DOMAINS: &[&str] = &["object", "edit", "fill", "view", "file"];
+
+/// Verbs under `ptnd.surface.*` that are actions. The `surface` prefix is
+/// overloaded: `ptnd.surface.shell.*` names a *shell surface* (a UI region),
+/// while `ptnd.surface.create` names an *action*. Only the latter moves.
+const SURFACE_ACTION_VERBS: &[&str] = &["create", "delete"];
 
 /// Rewrites a pre-grammar action id to its canonical form.
 ///
@@ -55,10 +60,16 @@ pub fn normalize_action_id(action_id: &str) -> String {
     let Some(rest) = action_id.strip_prefix("ptnd.") else {
         return action_id.to_owned();
     };
-    let Some((domain, _)) = rest.split_once('.') else {
+    let Some((domain, remainder)) = rest.split_once('.') else {
         return action_id.to_owned();
     };
-    if !ACTION_DOMAINS.contains(&domain) {
+    let migrates = if domain == "surface" {
+        let verb = remainder.split_once('.').map_or(remainder, |(verb, _)| verb);
+        SURFACE_ACTION_VERBS.contains(&verb)
+    } else {
+        ACTION_DOMAINS.contains(&domain)
+    };
+    if !migrates {
         return action_id.to_owned();
     }
     format!("{NAMESPACE}.action.{rest}")
@@ -100,6 +111,8 @@ mod tests {
         assert_eq!(normalize_action_id("ptnd.edit.delete"), "ptnd.action.edit.delete");
         assert_eq!(normalize_action_id("ptnd.fill.set"), "ptnd.action.fill.set");
         assert_eq!(normalize_action_id("ptnd.surface.create"), "ptnd.action.surface.create");
+        assert_eq!(normalize_action_id("ptnd.view.zoom_in"), "ptnd.action.view.zoom_in");
+        assert_eq!(normalize_action_id("ptnd.file.save"), "ptnd.action.file.save");
         let canonical = normalize_action_id("ptnd.object.align");
         assert_eq!(normalize_action_id(&canonical), canonical);
         assert!(is_canonical_action_id(&canonical));
@@ -109,6 +122,11 @@ mod tests {
     fn tools_and_foreign_ids_keep_their_namespace() {
         assert_eq!(normalize_action_id("ptnd.tool.pen"), "ptnd.tool.pen");
         assert_eq!(normalize_action_id("ptnd.panel.layers"), "ptnd.panel.layers");
+        // `ptnd.surface.shell.*` is a UI region, not an action.
+        assert_eq!(
+            normalize_action_id("ptnd.surface.shell.brand"),
+            "ptnd.surface.shell.brand"
+        );
         assert_eq!(normalize_action_id("aubrieta.object.align"), "aubrieta.object.align");
         assert_eq!(normalize_action_id("ptnd"), "ptnd");
         assert!(!is_canonical_action_id("ptnd.tool.pen"));
