@@ -120,8 +120,8 @@ pub const SURFACES: &[SurfaceEntry] = &[
     SurfaceEntry { id: "ptnd.action.file.quit", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.quit", action: None, shortcut: None },
 
     // ── Edit actions ────────────────────────────────────────────────────────
-    SurfaceEntry { id: "ptnd.action.edit.undo", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.edit.undo", action: None, shortcut: Some("Ctrl+Z") },
-    SurfaceEntry { id: "ptnd.action.edit.redo", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.edit.redo", action: None, shortcut: Some("Ctrl+Y") },
+    SurfaceEntry { id: "ptnd.action.edit.undo", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.edit.undo", action: None, shortcut: Some("Ctrl+Z") },
+    SurfaceEntry { id: "ptnd.action.edit.redo", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.edit.redo", action: None, shortcut: Some("Ctrl+Y") },
     SurfaceEntry { id: "ptnd.action.edit.cut", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.edit.cut", action: None, shortcut: Some("Ctrl+X") },
     SurfaceEntry { id: "ptnd.action.edit.copy", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.edit.copy", action: None, shortcut: Some("Ctrl+C") },
     SurfaceEntry { id: "ptnd.action.edit.paste", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.edit.paste", action: None, shortcut: Some("Ctrl+V") },
@@ -228,7 +228,9 @@ pub const SURFACES: &[SurfaceEntry] = &[
 pub const LIVE_ACTIONS: &[&str] = &[
     "ptnd.action.edit.delete",
     "ptnd.action.edit.deselect",
+    "ptnd.action.edit.redo",
     "ptnd.action.edit.select_all",
+    "ptnd.action.edit.undo",
     "ptnd.action.file.save",
     "ptnd.action.file.save_as",
     "ptnd.action.object.align",
@@ -280,8 +282,6 @@ pub const LIVE_ACTIONS: &[&str] = &[
 /// [`LIVE_ACTIONS`] is the definition of wiring it.
 pub const DECLARED_NOT_LIVE: &[&str] = &[
     "ptnd.action.edit.duplicate",
-    "ptnd.action.edit.redo",
-    "ptnd.action.edit.undo",
     "ptnd.action.file.export",
     "ptnd.action.file.new",
     "ptnd.action.file.open",

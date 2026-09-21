@@ -355,6 +355,25 @@ impl DocumentSession {
                 self.selection.clear();
                 Ok(ChangeSet::empty())
             }
+            // History actions rewind the document itself, so unlike view and
+            // file actions they report the ChangeSet they reversed.
+            "ptnd.action.edit.undo" => {
+                // Report the reversed set, not an empty one: an empty ChangeSet
+                // reads as "nothing happened" and would let the UI skip the
+                // redraw after an undo.
+                let Some(reversed) = self.history.undo_entries().last().cloned() else {
+                    return Ok(ChangeSet::empty());
+                };
+                self.undo()?;
+                Ok(reversed)
+            }
+            "ptnd.action.edit.redo" => {
+                let Some(replayed) = self.history.redo_entries().last().cloned() else {
+                    return Ok(ChangeSet::empty());
+                };
+                self.redo()?;
+                Ok(replayed)
+            }
             // File actions persist the document; they never mutate it, so the
             // returned ChangeSet stays empty and history is untouched.
             "ptnd.action.file.save" => {
@@ -1089,5 +1108,102 @@ mod file_action_tests {
         .unwrap();
         assert_eq!(written, dir.join("old.PTND"));
         assert!(!legacy.exists(), "the legacy file must be left untouched");
+    }
+}
+
+#[cfg(test)]
+mod history_action_tests {
+    use super::*;
+    use crate::ActionId;
+    use serde_json::json;
+
+    fn dispatch(session: &mut DocumentSession, action: &str) -> ChangeSet {
+        session
+            .dispatch_action(ActionRequest::new(ActionId::new(action), json!({})))
+            .expect("history action must dispatch")
+    }
+
+    /// Produces one undoable edit through the real command lane.
+    ///
+    /// `ptnd.action.object.create` is a declared constant with no dispatch arm
+    /// yet, so the test drives `execute_command` directly rather than asserting
+    /// against an action that does not resolve.
+    fn make_edit(session: &mut DocumentSession) {
+        // A fresh session owns no surface, so the edit starts by creating one.
+        let surface = SurfaceId::new(1);
+        session
+            .execute_command(CommandRequest::new(Command::CreateSurface {
+                id: surface,
+                name: "Surface".to_string(),
+            }))
+            .expect("surface must commit");
+        session
+            .execute_command(CommandRequest::new(Command::CreateObject {
+                surface,
+                id: ObjectId::new(1),
+                name: "Rect".to_string(),
+            }))
+            .expect("create must commit");
+    }
+
+    #[test]
+    fn undo_reports_the_reversed_changeset() {
+        let mut session = DocumentSession::new("history");
+        make_edit(&mut session);
+        let before = session.current_revision();
+
+        let reversed = dispatch(&mut session, "ptnd.action.edit.undo");
+        assert!(
+            !reversed.is_empty(),
+            "undo must report what it reversed so the UI redraws"
+        );
+        assert_ne!(session.current_revision(), before);
+    }
+
+    /// Object count on the first surface: the observable document state.
+    fn object_count(session: &DocumentSession) -> usize {
+        session
+            .surfaces()
+            .first()
+            .map_or(0, |surface| surface.objects().len())
+    }
+
+    #[test]
+    fn undo_then_redo_restores_the_document_state() {
+        let mut session = DocumentSession::new("history");
+        make_edit(&mut session);
+        let committed = object_count(&session);
+
+        // `current_revision` is a monotonic change counter, so undo and redo
+        // each advance it; the document *state* is what must round-trip.
+        dispatch(&mut session, "ptnd.action.edit.undo");
+        assert_ne!(object_count(&session), committed);
+
+        let replayed = dispatch(&mut session, "ptnd.action.edit.redo");
+        assert!(!replayed.is_empty(), "redo must report what it replayed");
+        assert_eq!(object_count(&session), committed);
+    }
+
+    #[test]
+    fn undo_on_empty_history_is_a_harmless_no_op() {
+        let mut session = DocumentSession::new("history");
+        let revision = session.current_revision();
+        let changes = dispatch(&mut session, "ptnd.action.edit.undo");
+        assert!(changes.is_empty());
+        assert_eq!(session.current_revision(), revision);
+        // Redo with nothing undone is equally harmless.
+        let changes = dispatch(&mut session, "ptnd.action.edit.redo");
+        assert!(changes.is_empty());
+        assert_eq!(session.current_revision(), revision);
+    }
+
+    #[test]
+    fn pre_grammar_history_ids_still_dispatch() {
+        let mut session = DocumentSession::new("history");
+        make_edit(&mut session);
+        let before = session.current_revision();
+        let reversed = dispatch(&mut session, "ptnd.edit.undo");
+        assert!(!reversed.is_empty());
+        assert_ne!(session.current_revision(), before);
     }
 }
