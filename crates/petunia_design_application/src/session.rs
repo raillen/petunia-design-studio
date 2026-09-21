@@ -422,6 +422,14 @@ impl DocumentSession {
                 self.view.toggle_snapping();
                 Ok(ChangeSet::empty())
             }
+            // Arrange moves the whole selection to a z-order edge. Objects are
+            // arranged back-to-front so their relative order survives the move.
+            "ptnd.action.object.arrange.front" => {
+                self.arrange_selection(petunia_design_document::ArrangePosition::Front)
+            }
+            "ptnd.action.object.arrange.back" => {
+                self.arrange_selection(petunia_design_document::ArrangePosition::Back)
+            }
             // Lock and hide act on the current selection and commit as one
             // transaction, so undoing "hide" restores every object at once.
             "ptnd.action.object.hide" => {
@@ -1005,6 +1013,49 @@ mod view_action_tests {
     }
 }
 
+impl DocumentSession {
+    /// Moves every selected object to a z-order edge as one transaction.
+    fn arrange_selection(
+        &mut self,
+        position: petunia_design_document::ArrangePosition,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let mut ids = self.selection.selected_ids.clone();
+        if ids.is_empty() {
+            return Ok(ChangeSet::empty());
+        }
+        // Derive the surface from the selection instead of trusting
+        // `active_surface`: a session can hold a selection without an active
+        // surface, and arranging would then silently do nothing.
+        let Some(surface) = self.document.find_object_surface(ids[0]) else {
+            return Ok(ChangeSet::empty());
+        };
+        // Mixed-surface selections are rejected rather than half-arranged.
+        if ids
+            .iter()
+            .any(|id| self.document.find_object_surface(*id) != Some(surface))
+        {
+            return Err(PetuniaError::invalid_input(
+                "arrange requires every selected object to share one surface",
+            ));
+        }
+        // Front: topmost last. Back: bottom-most first. Either way the order
+        // within the selection is preserved.
+        ids.sort_by_key(|id| id.raw());
+        if position == petunia_design_document::ArrangePosition::Back {
+            ids.reverse();
+        }
+        let cmds = ids
+            .into_iter()
+            .map(|id| Command::ArrangeObject {
+                surface,
+                id,
+                position,
+            })
+            .collect();
+        self.transact("Arrange", cmds)
+    }
+}
+
 /// Extracts the mandatory `path` string from a file-action payload.
 fn request_path(payload: &serde_json::Value) -> Result<std::path::PathBuf, PetuniaError> {
     payload
@@ -1317,5 +1368,98 @@ mod object_flag_action_tests {
         let changes = dispatch(&mut session, "ptnd.action.object.hide");
         assert!(changes.is_empty(), "nothing selected means nothing to hide");
         assert_eq!(session.current_revision(), revision, "a no-op must not bump the revision");
+    }
+}
+
+#[cfg(test)]
+mod arrange_action_tests {
+    use super::*;
+    use crate::ActionId;
+    use serde_json::json;
+
+    fn session_with_three() -> DocumentSession {
+        let mut session = DocumentSession::new("arrange");
+        let surface = SurfaceId::new(1);
+        session
+            .execute_command(CommandRequest::new(Command::CreateSurface {
+                id: surface,
+                name: "Surface".to_string(),
+            }))
+            .unwrap();
+        for id in [1u64, 2, 3] {
+            session
+                .execute_command(CommandRequest::new(Command::CreateObject {
+                    surface,
+                    id: ObjectId::new(id),
+                    name: format!("Obj {id}"),
+                }))
+                .unwrap();
+        }
+        session
+    }
+
+    fn order(session: &DocumentSession) -> Vec<u64> {
+        session
+            .surfaces()
+            .first()
+            .map(|s| s.objects().iter().map(|o| o.id.raw()).collect())
+            .unwrap_or_default()
+    }
+
+    fn dispatch(session: &mut DocumentSession, action: &str) -> ChangeSet {
+        session
+            .dispatch_action(ActionRequest::new(ActionId::new(action), json!({})))
+            .expect("arrange action must dispatch")
+    }
+
+    #[test]
+    fn front_moves_the_selection_above_everything_else() {
+        let mut session = session_with_three();
+        session.selection.selected_ids = vec![ObjectId::new(1)];
+        assert_eq!(order(&session), vec![1, 2, 3]);
+
+        dispatch(&mut session, "ptnd.action.object.arrange.front");
+        assert_eq!(order(&session), vec![2, 3, 1]);
+    }
+
+    #[test]
+    fn back_moves_the_selection_below_everything_else() {
+        let mut session = session_with_three();
+        session.selection.selected_ids = vec![ObjectId::new(3)];
+
+        dispatch(&mut session, "ptnd.action.object.arrange.back");
+        assert_eq!(order(&session), vec![3, 1, 2]);
+    }
+
+    #[test]
+    fn a_multi_object_selection_keeps_its_relative_order() {
+        let mut session = session_with_three();
+        session.selection.selected_ids = vec![ObjectId::new(3), ObjectId::new(1)];
+
+        dispatch(&mut session, "ptnd.action.object.arrange.front");
+        // 1 was below 3 before the move and must still be below it after.
+        let after = order(&session);
+        let pos_1 = after.iter().position(|id| *id == 1).unwrap();
+        let pos_3 = after.iter().position(|id| *id == 3).unwrap();
+        assert!(pos_1 < pos_3, "relative order must survive: {after:?}");
+        assert_eq!(after, vec![2, 1, 3]);
+    }
+
+    #[test]
+    fn arrange_is_one_undo_entry_and_a_no_op_without_selection() {
+        let mut session = session_with_three();
+        session.selection.selected_ids = vec![ObjectId::new(1), ObjectId::new(2)];
+        let original = order(&session);
+
+        dispatch(&mut session, "ptnd.action.object.arrange.front");
+        assert_ne!(order(&session), original);
+        dispatch(&mut session, "ptnd.action.edit.undo");
+        assert_eq!(order(&session), original, "one undo restores the whole selection");
+
+        session.selection.selected_ids.clear();
+        let revision = session.current_revision();
+        let changes = dispatch(&mut session, "ptnd.action.object.arrange.front");
+        assert!(changes.is_empty());
+        assert_eq!(session.current_revision(), revision);
     }
 }
