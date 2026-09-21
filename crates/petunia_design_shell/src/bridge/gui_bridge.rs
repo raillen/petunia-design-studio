@@ -99,6 +99,29 @@ impl PetuniaDesignGuiBridge {
         Ok(())
     }
 
+    /// Opens a project from disk, replacing the active session.
+    ///
+    /// A legacy package decodes into a canonical document but deliberately
+    /// records **no path**: the next save must go through Save As so the
+    /// original `.aubrieta`/`.aubri` file is never overwritten (15.A).
+    pub fn open_path(&mut self, path: &std::path::Path) -> Result<(), PetuniaError> {
+        let opened = petunia_design_io::open_package(path)?;
+        let title = path
+            .file_name()
+            .map_or_else(|| "Untitled".to_string(), |n| n.to_string_lossy().into_owned());
+        let mut session = DocumentSession::with_document(title, opened.document);
+        if session.active_surface().is_none() {
+            if let Some(first) = session.surfaces().first() {
+                session.set_active_surface(first.id);
+            }
+        }
+        if opened.format == petunia_design_io::PackageFormat::Ptnd {
+            session.adopt_path(path.to_path_buf());
+        }
+        self.active_session = Some(session);
+        Ok(())
+    }
+
     /// Closes the active session, checking unsaved dirty state.
     pub fn close_session(&mut self, force: bool) -> Result<bool, PetuniaError> {
         if let Some(session) = &self.active_session {
@@ -837,6 +860,29 @@ impl ActionQueryPort for PetuniaDesignGuiBridge {
     }
 
     fn dispatch_action(&mut self, request: ActionRequest) -> Result<ChangeSet, PetuniaError> {
+        // Document-lifecycle actions replace the session, so they are handled
+        // by the host before the active session is even borrowed.
+        let normalized = petunia_design_foundation::normalized(request.action.as_str());
+        let action = petunia_design_foundation::normalize_action_id(&normalized);
+        match action.as_str() {
+            "ptnd.action.file.new" => {
+                self.new_document("Untitled")?;
+                return Ok(ChangeSet::empty());
+            }
+            "ptnd.action.file.open" => {
+                let path = request
+                    .payload
+                    .get("path")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or_else(|| {
+                        PetuniaError::invalid_input("file.open requires a non-empty `path` payload field")
+                    })?;
+                self.open_path(std::path::Path::new(path))?;
+                return Ok(ChangeSet::empty());
+            }
+            _ => {}
+        }
         let session = self.session_req_mut()?;
         session.dispatch_action(request)
     }

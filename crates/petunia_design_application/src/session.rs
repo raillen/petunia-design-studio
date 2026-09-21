@@ -263,6 +263,17 @@ impl DocumentSession {
         self.path.as_deref()
     }
 
+    /// Records `path` as the location of an already-loaded document without
+    /// writing anything.
+    ///
+    /// Used when opening a native package: the file on disk already matches
+    /// the in-memory document, so this establishes the clean save point. A
+    /// legacy package must never call this, which is what forces Save As.
+    pub fn adopt_path(&mut self, path: std::path::PathBuf) {
+        self.path = Some(path);
+        self.mark_saved();
+    }
+
     /// Writes the document to `path` as a native `.PTND` package and records
     /// the location as the clean save point.
     ///

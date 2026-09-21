@@ -245,3 +245,164 @@ fn bridge_close_session_dirty_protection() {
     assert!(force_closed);
     assert!(bridge.session().is_none());
 }
+
+#[test]
+fn file_new_replaces_the_session_through_the_action_lane() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Artwork 1").expect("new document");
+    let surface = bridge.active_surface().expect("surface");
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface,
+            id: petunia_design_foundation::ObjectId::new(1),
+            name: "Rect".to_string(),
+        }))
+        .expect("create");
+    assert_eq!(bridge.snapshot().total_objects, 1);
+
+    bridge
+        .dispatch_action(ActionRequest::new(
+            ActionId::new("ptnd.action.file.new"),
+            serde_json::json!({}),
+        ))
+        .expect("file.new must dispatch");
+
+    let snap = bridge.snapshot();
+    assert_eq!(snap.title, "Untitled");
+    assert_eq!(snap.total_objects, 0, "file.new must discard the old document");
+    assert_eq!(snap.surface_count, 1, "the new session keeps its canvas");
+}
+
+#[test]
+fn file_open_loads_a_ptnd_package_and_records_its_path() {
+    let dir = std::env::temp_dir().join("petunia-design-bridge-open");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("opened.PTND");
+
+    // Produce a real package through the session save path.
+    {
+        let mut bridge = PetuniaDesignGuiBridge::new();
+        bridge.new_document("Source").expect("new document");
+        let surface = bridge.active_surface().expect("surface");
+        bridge
+            .submit_command(CommandRequest::new(Command::CreateObject {
+                surface,
+                id: petunia_design_foundation::ObjectId::new(7),
+                name: "Saved".to_string(),
+            }))
+            .expect("create");
+        bridge
+            .dispatch_action(ActionRequest::new(
+                ActionId::new("ptnd.action.file.save_as"),
+                serde_json::json!({ "path": path.to_string_lossy() }),
+            ))
+            .expect("save_as");
+    }
+
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge
+        .dispatch_action(ActionRequest::new(
+            ActionId::new("ptnd.action.file.open"),
+            serde_json::json!({ "path": path.to_string_lossy() }),
+        ))
+        .expect("file.open must dispatch");
+
+    let snap = bridge.snapshot();
+    assert_eq!(snap.total_objects, 1, "the saved object must come back");
+    assert_eq!(snap.title, "opened.PTND");
+    assert!(
+        !bridge.is_dirty(),
+        "opening a native package establishes a clean save point"
+    );
+}
+
+#[test]
+fn file_open_without_a_path_is_rejected_with_a_reason() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Artwork").expect("new document");
+    let error = bridge
+        .dispatch_action(ActionRequest::new(
+            ActionId::new("ptnd.action.file.open"),
+            serde_json::json!({}),
+        ))
+        .expect_err("file.open cannot guess a location");
+    assert!(error.to_string().contains("path"), "{error}");
+}
+
+#[test]
+fn pre_grammar_file_ids_still_dispatch() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Artwork").expect("new document");
+    bridge
+        .dispatch_action(ActionRequest::new(
+            ActionId::new("ptnd.file.new"),
+            serde_json::json!({}),
+        ))
+        .expect("the pre-grammar id must still resolve");
+    assert_eq!(bridge.snapshot().title, "Untitled");
+}
+
+#[test]
+fn opening_a_legacy_package_forces_save_as_and_never_overwrites_it() {
+    let dir = std::env::temp_dir().join("petunia-design-bridge-legacy");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // Produce a real package, then disguise it under the legacy suffix.
+    let native = dir.join("source.PTND");
+    {
+        let mut bridge = PetuniaDesignGuiBridge::new();
+        bridge.new_document("Source").expect("new document");
+        let surface = bridge.active_surface().expect("surface");
+        bridge
+            .submit_command(CommandRequest::new(Command::CreateObject {
+                surface,
+                id: petunia_design_foundation::ObjectId::new(3),
+                name: "Kept".to_string(),
+            }))
+            .expect("create");
+        bridge
+            .dispatch_action(ActionRequest::new(
+                ActionId::new("ptnd.action.file.save_as"),
+                serde_json::json!({ "path": native.to_string_lossy() }),
+            ))
+            .expect("save_as");
+    }
+    let legacy = dir.join("old-project.aubrieta");
+    let legacy_bytes_before = std::fs::read(&native).unwrap();
+    std::fs::write(&legacy, &legacy_bytes_before).unwrap();
+
+    // Open it: the document loads, but no path is recorded.
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge
+        .dispatch_action(ActionRequest::new(
+            ActionId::new("ptnd.action.file.open"),
+            serde_json::json!({ "path": legacy.to_string_lossy() }),
+        ))
+        .expect("a legacy project must still open");
+    assert_eq!(bridge.snapshot().total_objects, 1);
+
+    // Save with no payload must refuse: there is no recorded location.
+    let error = bridge
+        .dispatch_action(ActionRequest::new(
+            ActionId::new("ptnd.action.file.save"),
+            serde_json::json!({}),
+        ))
+        .expect_err("Save As must be required for a migrated project");
+    assert!(error.to_string().contains("path"), "{error}");
+
+    // Save As to the legacy path upgrades to .PTND and leaves the original alone.
+    bridge
+        .dispatch_action(ActionRequest::new(
+            ActionId::new("ptnd.action.file.save_as"),
+            serde_json::json!({ "path": legacy.to_string_lossy() }),
+        ))
+        .expect("save_as must upgrade the suffix");
+    assert_eq!(
+        std::fs::read(&legacy).unwrap(),
+        legacy_bytes_before,
+        "the legacy file must not be overwritten"
+    );
+    assert!(dir.join("old-project.PTND").exists());
+}

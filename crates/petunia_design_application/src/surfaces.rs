@@ -110,8 +110,8 @@ pub const SURFACES: &[SurfaceEntry] = &[
     SurfaceEntry { id: "ptnd.surface.canvas.viewport", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.canvas.viewport", action: None, shortcut: None },
 
     // ── File actions ────────────────────────────────────────────────────────
-    SurfaceEntry { id: "ptnd.action.file.new", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.new", action: None, shortcut: Some("Ctrl+N") },
-    SurfaceEntry { id: "ptnd.action.file.open", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.open", action: None, shortcut: Some("Ctrl+O") },
+    SurfaceEntry { id: "ptnd.action.file.new", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.file.new", action: None, shortcut: Some("Ctrl+N") },
+    SurfaceEntry { id: "ptnd.action.file.open", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.file.open", action: None, shortcut: Some("Ctrl+O") },
     SurfaceEntry { id: "ptnd.action.file.open_recent", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.file.open_recent", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.action.file.close", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.close", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.action.file.save", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.file.save", action: None, shortcut: Some("Ctrl+S") },
@@ -220,9 +220,10 @@ pub const SURFACES: &[SurfaceEntry] = &[
 ];
 
 /// Every action identifier that currently resolves to real behavior.
-/// Two lanes resolve actions today, both machine-extracted:
-/// `DocumentSession::dispatch_action` match arms in `session.rs`, and the
-/// `ToolKind::action_id` table in `tools.rs`. Only a resolution path proves
+/// Three lanes resolve actions today, all machine-extracted:
+/// `DocumentSession::dispatch_action` arms in `session.rs`, the
+/// `ToolKind::action_id` table in `tools.rs`, and the host-level arms in
+/// `gui_bridge.rs` (document lifecycle, which replaces the session). Only a resolution path proves
 /// behavior: an `ActionId` constant in `actions.rs` is a declaration, not an
 /// implementation. A surface claiming `Wired` MUST bind one of these (15.C/15.G).
 pub const LIVE_ACTIONS: &[&str] = &[
@@ -231,6 +232,8 @@ pub const LIVE_ACTIONS: &[&str] = &[
     "ptnd.action.edit.redo",
     "ptnd.action.edit.select_all",
     "ptnd.action.edit.undo",
+    "ptnd.action.file.new",
+    "ptnd.action.file.open",
     "ptnd.action.file.save",
     "ptnd.action.file.save_as",
     "ptnd.action.object.align",
@@ -287,8 +290,6 @@ pub const LIVE_ACTIONS: &[&str] = &[
 pub const DECLARED_NOT_LIVE: &[&str] = &[
     "ptnd.action.edit.duplicate",
     "ptnd.action.file.export",
-    "ptnd.action.file.new",
-    "ptnd.action.file.open",
     "ptnd.action.file.place",
     "ptnd.action.object.group",
     "ptnd.action.object.ungroup",

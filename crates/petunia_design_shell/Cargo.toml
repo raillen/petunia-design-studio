@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 petunia_design_foundation = { path = "../petunia_design_foundation" }
 petunia_design_document = { path = "../petunia_design_document" }
+petunia_design_io = { path = "../petunia_design_io" }
 petunia_design_application = { path = "../petunia_design_application" }
 petunia_design_geometry = { path = "../petunia_design_geometry" }
 petunia_design_color = { path = "../petunia_design_color" }

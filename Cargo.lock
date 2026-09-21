@@ -3906,6 +3906,7 @@ dependencies = [
  "petunia_design_document",
  "petunia_design_foundation",
  "petunia_design_geometry",
+ "petunia_design_io",
  "petunia_design_platform",
  "petunia_design_raster",
  "petunia_design_resources",
