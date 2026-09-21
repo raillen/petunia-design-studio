@@ -146,8 +146,8 @@ pub const SURFACES: &[SurfaceEntry] = &[
     SurfaceEntry { id: "ptnd.action.object.bake_corners", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.object.bake_corners", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.action.object.offset_path", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.object.offset_path", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.action.object.slice_path", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.object.slice_path", action: None, shortcut: None },
-    SurfaceEntry { id: "ptnd.action.object.lock", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.object.lock", action: None, shortcut: None },
-    SurfaceEntry { id: "ptnd.action.object.hide", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.object.hide", action: None, shortcut: None },
+    SurfaceEntry { id: "ptnd.action.object.lock", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.lock", action: None, shortcut: None },
+    SurfaceEntry { id: "ptnd.action.object.hide", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.hide", action: None, shortcut: None },
 
     // ── View actions ────────────────────────────────────────────────────────
     SurfaceEntry { id: "ptnd.action.view.zoom_in", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.view.zoom_in", action: None, shortcut: Some("Ctrl++") },
@@ -235,6 +235,8 @@ pub const LIVE_ACTIONS: &[&str] = &[
     "ptnd.action.file.save_as",
     "ptnd.action.object.align",
     "ptnd.action.object.distribute",
+    "ptnd.action.object.hide",
+    "ptnd.action.object.lock",
     "ptnd.action.view.fit_surface",
     "ptnd.action.view.toggle_rulers",
     "ptnd.action.view.toggle_snapping",
@@ -289,8 +291,6 @@ pub const DECLARED_NOT_LIVE: &[&str] = &[
     "ptnd.action.object.arrange.back",
     "ptnd.action.object.arrange.front",
     "ptnd.action.object.group",
-    "ptnd.action.object.hide",
-    "ptnd.action.object.lock",
     "ptnd.action.object.ungroup",
     "ptnd.action.view.command_palette",
 ];

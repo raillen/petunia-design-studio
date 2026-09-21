@@ -422,6 +422,24 @@ impl DocumentSession {
                 self.view.toggle_snapping();
                 Ok(ChangeSet::empty())
             }
+            // Lock and hide act on the current selection and commit as one
+            // transaction, so undoing "hide" restores every object at once.
+            "ptnd.action.object.hide" => {
+                let ids = self.selection.selected_ids.clone();
+                let cmds = ids
+                    .into_iter()
+                    .map(|id| Command::SetVisibility { id, visible: false })
+                    .collect();
+                self.transact("Hide", cmds)
+            }
+            "ptnd.action.object.lock" => {
+                let ids = self.selection.selected_ids.clone();
+                let cmds = ids
+                    .into_iter()
+                    .map(|id| Command::SetLocked { id, locked: true })
+                    .collect();
+                self.transact("Lock", cmds)
+            }
             "ptnd.action.object.align" => {
                 let (surface, ids, mode) = align_payload(&request.payload)?;
                 let cmd = CommandRequest::new(Command::AlignObjects { surface, ids, mode });
@@ -1205,5 +1223,99 @@ mod history_action_tests {
         let reversed = dispatch(&mut session, "ptnd.edit.undo");
         assert!(!reversed.is_empty());
         assert_ne!(session.current_revision(), before);
+    }
+}
+
+#[cfg(test)]
+mod object_flag_action_tests {
+    use super::*;
+    use crate::ActionId;
+    use serde_json::json;
+
+    /// One surface with two objects, both selected.
+    fn session_with_selection() -> DocumentSession {
+        let mut session = DocumentSession::new("flags");
+        let surface = SurfaceId::new(1);
+        session
+            .execute_command(CommandRequest::new(Command::CreateSurface {
+                id: surface,
+                name: "Surface".to_string(),
+            }))
+            .unwrap();
+        for id in [1u64, 2] {
+            session
+                .execute_command(CommandRequest::new(Command::CreateObject {
+                    surface,
+                    id: ObjectId::new(id),
+                    name: format!("Obj {id}"),
+                }))
+                .unwrap();
+        }
+        session.selection.selected_ids = vec![ObjectId::new(1), ObjectId::new(2)];
+        session
+    }
+
+    fn dispatch(session: &mut DocumentSession, action: &str) -> ChangeSet {
+        session
+            .dispatch_action(ActionRequest::new(ActionId::new(action), json!({})))
+            .expect("flag action must dispatch")
+    }
+
+    fn objects(session: &DocumentSession) -> Vec<(bool, bool)> {
+        session
+            .surfaces()
+            .first()
+            .map(|s| {
+                s.objects()
+                    .iter()
+                    .map(|o| (o.visible, o.locked))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn hide_clears_visibility_for_the_whole_selection() {
+        let mut session = session_with_selection();
+        let changes = dispatch(&mut session, "ptnd.action.object.hide");
+        assert!(!changes.is_empty(), "hiding must report a change");
+        assert!(
+            objects(&session).iter().all(|(visible, _)| !visible),
+            "every selected object must be hidden"
+        );
+    }
+
+    #[test]
+    fn lock_sets_the_locked_flag_without_touching_visibility() {
+        let mut session = session_with_selection();
+        let changes = dispatch(&mut session, "ptnd.action.object.lock");
+        assert!(!changes.is_empty());
+        let state = objects(&session);
+        assert!(state.iter().all(|(_, locked)| *locked));
+        assert!(state.iter().all(|(visible, _)| *visible), "lock is not hide");
+    }
+
+    #[test]
+    fn one_gesture_is_one_undo_entry() {
+        let mut session = session_with_selection();
+        dispatch(&mut session, "ptnd.action.object.hide");
+        assert!(objects(&session).iter().all(|(visible, _)| !visible));
+
+        dispatch(&mut session, "ptnd.action.edit.undo");
+        assert!(
+            objects(&session).iter().all(|(visible, _)| *visible),
+            "a single undo must restore the whole selection"
+        );
+    }
+
+    #[test]
+    fn an_empty_selection_is_a_harmless_no_op() {
+        let mut session = session_with_selection();
+        session.selection.selected_ids.clear();
+        let revision = session.current_revision();
+
+        let changes = dispatch(&mut session, "ptnd.action.object.hide");
+        assert!(changes.is_empty(), "nothing selected means nothing to hide");
+        assert_eq!(session.current_revision(), revision, "a no-op must not bump the revision");
     }
 }
