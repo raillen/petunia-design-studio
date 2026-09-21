@@ -1,6 +1,7 @@
 import { Button, CheckBox, LineEdit, Slider, ScrollView } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 import { Badge, BadgeVariant } from "slintcn/components/badge.slint";
+import { Tokens } from "tokens.slint";
 
 export struct LayerRowItem {
     name: string,
@@ -73,14 +74,14 @@ component StudioIconButton inherits Rectangle {
     width: 32px;
     height: 32px;
     border-radius: 4px;
-    background: active ? #3b82f633 : (touch.has-hover ? #ffffff18 : transparent);
+    background: active ? Tokens.accent-selection-soft : (touch.has-hover ? Tokens.overlay-hover : transparent);
     border-width: active ? 1px : 0px;
-    border-color: #3b82f6;
+    border-color: Tokens.accent-bloom;
 
     IconDisplay {
         icon: root.icon;
         size: 16px;
-        stroke: root.active ? #60a5fa : (touch.has-hover ? #f4f4f5 : #a1a1aa);
+        stroke: root.active ? Tokens.accent-bloom-hover : (touch.has-hover ? Tokens.text-primary : Tokens.text-tertiary);
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
     }
@@ -99,14 +100,14 @@ component StudioToolButton inherits Rectangle {
     width: 36px;
     height: 36px;
     border-radius: 6px;
-    background: active ? #3b82f628 : (touch.has-hover ? #ffffff12 : transparent);
+    background: active ? Tokens.accent-faint : (touch.has-hover ? Tokens.overlay-hover : transparent);
     border-width: active ? 1px : 0px;
-    border-color: #3b82f6;
+    border-color: Tokens.accent-bloom;
 
     IconDisplay {
         icon: root.icon;
         size: 18px;
-        stroke: root.active ? #60a5fa : (touch.has-hover ? #fafafa : #a1a1aa);
+        stroke: root.active ? Tokens.accent-bloom-hover : (touch.has-hover ? Tokens.text-primary : Tokens.text-tertiary);
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
     }
@@ -122,7 +123,7 @@ component StudioMenuButton inherits Rectangle {
 
     height: 24px;
     border-radius: 4px;
-    background: touch.has-hover ? #ffffff14 : transparent;
+    background: touch.has-hover ? Tokens.overlay-hover : transparent;
 
     HorizontalLayout {
         padding-left: 8px;
@@ -131,7 +132,7 @@ component StudioMenuButton inherits Rectangle {
         Text {
             text: root.label;
             font-size: 12px;
-            color: touch.has-hover ? #ffffff : #d4d4d8;
+            color: touch.has-hover ? Tokens.text-primary : Tokens.text-secondary;
             vertical-alignment: center;
         }
     }
@@ -149,7 +150,7 @@ component StudioPersonaTab inherits Rectangle {
 
     height: 24px;
     border-radius: 4px;
-    background: active ? #3b82f6 : (touch.has-hover ? #ffffff15 : transparent);
+    background: active ? Tokens.accent-bloom : (touch.has-hover ? Tokens.overlay-hover : transparent);
 
     HorizontalLayout {
         padding-left: 10px;
@@ -160,7 +161,7 @@ component StudioPersonaTab inherits Rectangle {
         IconDisplay {
             icon: root.icon;
             size: 13px;
-            stroke: root.active ? #ffffff : (touch.has-hover ? #f4f4f5 : #a1a1aa);
+            stroke: root.active ? Tokens.text-primary : (touch.has-hover ? Tokens.text-primary : Tokens.text-tertiary);
             y: (parent.height - self.height) / 2;
         }
 
@@ -168,7 +169,7 @@ component StudioPersonaTab inherits Rectangle {
             text: root.label;
             font-size: 11px;
             font-weight: root.active ? 600 : 500;
-            color: root.active ? #ffffff : #a1a1aa;
+            color: root.active ? Tokens.text-primary : Tokens.text-tertiary;
             vertical-alignment: center;
         }
     }
@@ -187,9 +188,9 @@ component StudioTabItem inherits Rectangle {
 
     height: 30px;
     border-radius: 4px;
-    background: active ? #202024 : #161618;
+    background: active ? Tokens.surface-panel : Tokens.surface-workspace;
     border-width: active ? 1px : 0px;
-    border-color: #2e2e33;
+    border-color: Tokens.border-subtle;
 
     HorizontalLayout {
         padding-left: 10px;
@@ -200,14 +201,14 @@ component StudioTabItem inherits Rectangle {
         IconDisplay {
             icon: IconSet.FileCode;
             size: 13px;
-            stroke: root.active ? #60a5fa : #71717a;
+            stroke: root.active ? Tokens.accent-bloom-hover : Tokens.text-disabled;
             y: (parent.height - self.height) / 2;
         }
 
         Text {
             text: root.title + (root.is_dirty ? " •" : "");
             font-size: 12px;
-            color: root.active ? #f4f4f5 : #8b8b93;
+            color: root.active ? Tokens.text-primary : Tokens.text-secondary;
             font-weight: root.active ? 600 : 400;
             vertical-alignment: center;
         }
@@ -216,12 +217,12 @@ component StudioTabItem inherits Rectangle {
             width: 16px;
             height: 16px;
             border-radius: 3px;
-            background: close_touch.has-hover ? #ef444433 : transparent;
+            background: close_touch.has-hover ? Tokens.status-error : transparent;
 
             IconDisplay {
                 icon: IconSet.X;
                 size: 10px;
-                stroke: close_touch.has-hover ? #f87171 : #71717a;
+                stroke: close_touch.has-hover ? Tokens.status-error : Tokens.text-disabled;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
             }
@@ -241,7 +242,7 @@ export component MainWindow inherits Window {
     title: "Petunia Design Studio";
     preferred-width: 1440px;
     preferred-height: 900px;
-    background: #161618;
+    background: Tokens.surface-workspace;
 
     forward-focus: root_fs;
     root_fs := FocusScope {
@@ -349,7 +350,7 @@ export component MainWindow inherits Window {
     in-out property <string> selected_name: "Hero Card";
     in-out property <string> selected_bounds: "X: 100.0 pt  Y: 100.0 pt  W: 300.0 pt  H: 180.0 pt";
     in-out property <string> selected_fill: "ptnd.blue/500";
-    in-out property <string> selected_stroke: "#2563eb (1.5 pt)";
+    in-out property <string> selected_stroke: "Tokens.accent-bloom-pressed (1.5 pt)";
     in-out property <float> selected_opacity: 100.0;
     in-out property <length> prop_x: 100px;
     in-out property <length> prop_y: 100px;
@@ -396,7 +397,7 @@ export component MainWindow inherits Window {
 
     // Dynamic Objects
     in-out property <[CanvasObjectItem]> canvas_objects: [
-        { id: "1", name: "Hero Card", x: 100px, y: 100px, w: 300px, h: 180px, bg_color: #3b82f6, stroke_color: #2563eb, stroke_width: 1.5px, corner_radius: 8px, selected: true, is_circle: false, is_path: false, is_text: false, text_content: "", text_size: 16.0, text_color: #18181b, svg_path: "", opacity: 1.0 },
+        { id: "1", name: "Hero Card", x: 100px, y: 100px, w: 300px, h: 180px, bg_color: Tokens.accent-bloom, stroke_color: Tokens.accent-bloom-pressed, stroke_width: 1.5px, corner_radius: 8px, selected: true, is_circle: false, is_path: false, is_text: false, text_content: "", text_size: 16.0, text_color: #18181b, svg_path: "", opacity: 1.0 },
         { id: "2", name: "Accent Circle", x: 450px, y: 140px, w: 140px, h: 140px, bg_color: #eab308, stroke_color: #ca8a04, stroke_width: 1.5px, corner_radius: 0px, selected: false, is_circle: true, is_path: false, is_text: false, text_content: "", text_size: 16.0, text_color: #18181b, svg_path: "", opacity: 1.0 },
         { id: "3", name: "Vector Headline", x: 100px, y: 320px, w: 300px, h: 50px, bg_color: #a855f7, stroke_color: transparent, stroke_width: 0px, corner_radius: 0px, selected: false, is_circle: false, is_path: false, is_text: true, text_content: "Petunia Design Studio", text_size: 20.0, text_color: #18181b, svg_path: "", opacity: 1.0 },
     ];
@@ -495,7 +496,7 @@ export component MainWindow inherits Window {
         // -------------------------------------------------------------
         Rectangle {
             height: 32px;
-            background: #1f1f23;
+            background: Tokens.surface-chrome;
 
             HorizontalLayout {
                 padding-left: 8px;
@@ -511,10 +512,10 @@ export component MainWindow inherits Window {
                         width: 18px;
                         height: 18px;
                         border-radius: 4px;
-                        background: #3b82f6;
+                        background: Tokens.accent-bloom;
                         Text {
                             text: "A";
-                            color: #ffffff;
+                            color: Tokens.text-primary;
                             font-size: 11px;
                             font-weight: 800;
                             horizontal-alignment: center;
@@ -523,7 +524,7 @@ export component MainWindow inherits Window {
                     }
                     Text {
                         text: "Petunia Design Studio";
-                        color: #ffffff;
+                        color: Tokens.text-primary;
                         font-weight: 700;
                         font-size: 12px;
                         vertical-alignment: center;
@@ -546,9 +547,9 @@ export component MainWindow inherits Window {
                 Rectangle {
                     height: 26px;
                     border-radius: 5px;
-                    background: #141416;
+                    background: Tokens.surface-chrome-strong;
                     border-width: 1px;
-                    border-color: #2e2e33;
+                    border-color: Tokens.border-subtle;
 
                     HorizontalLayout {
                         padding: 2px;
@@ -570,14 +571,14 @@ export component MainWindow inherits Window {
             }
         }
 
-        Rectangle { height: 1px; background: #2b2b30; }
+        Rectangle { height: 1px; background: Tokens.border-subtle; }
 
         // -------------------------------------------------------------
         // SECTION 2: DOCUMENT TAB STRIP (08.2)
         // -------------------------------------------------------------
         Rectangle {
             height: 32px;
-            background: #18181b;
+            background: Tokens.surface-chrome-strong;
 
             HorizontalLayout {
                 padding-left: 8px;
@@ -598,13 +599,13 @@ export component MainWindow inherits Window {
                     width: 24px;
                     height: 24px;
                     border-radius: 4px;
-                    background: touch_new_tab.has-hover ? #ffffff15 : transparent;
+                    background: touch_new_tab.has-hover ? Tokens.overlay-hover : transparent;
                     y: (parent.height - self.height) / 2;
 
                     IconDisplay {
                         icon: IconSet.Plus;
                         size: 12px;
-                        stroke: #a1a1aa;
+                        stroke: Tokens.text-tertiary;
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
                     }
@@ -632,7 +633,7 @@ export component MainWindow inherits Window {
                         clicked => { root.redo_clicked(); }
                     }
 
-                    Rectangle { width: 1px; height: 16px; background: #2e2e33; y: 8px; }
+                    Rectangle { width: 1px; height: 16px; background: Tokens.border-subtle; y: 8px; }
 
                     StudioIconButton {
                         icon: IconSet.Minus;
@@ -643,14 +644,14 @@ export component MainWindow inherits Window {
                     Rectangle {
                         height: 24px;
                         border-radius: 4px;
-                        background: #202024;
+                        background: Tokens.surface-panel;
                         HorizontalLayout {
                             padding-left: 8px;
                             padding-right: 8px;
                             Text {
                                 text: root.zoom_pct + "%";
                                 font-size: 11px;
-                                color: #d4d4d8;
+                                color: Tokens.text-secondary;
                                 font-weight: 600;
                                 vertical-alignment: center;
                                 horizontal-alignment: center;
@@ -669,15 +670,15 @@ export component MainWindow inherits Window {
                         clicked => { root.fit_canvas_clicked(); }
                     }
 
-                    Rectangle { width: 1px; height: 16px; background: #2e2e33; y: 8px; }
+                    Rectangle { width: 1px; height: 16px; background: Tokens.border-subtle; y: 8px; }
 
                     // Snap toggle
                     Rectangle {
                         height: 24px;
                         border-radius: 4px;
-                        background: root.snap_enabled ? #3b82f628 : #202024;
+                        background: root.snap_enabled ? Tokens.accent-faint : Tokens.surface-panel;
                         border-width: root.snap_enabled ? 1px : 0px;
-                        border-color: #3b82f6;
+                        border-color: Tokens.accent-bloom;
 
                         HorizontalLayout {
                             padding-left: 8px;
@@ -688,7 +689,7 @@ export component MainWindow inherits Window {
                             IconDisplay {
                                 icon: IconSet.Lock;
                                 size: 11px;
-                                stroke: root.snap_enabled ? #60a5fa : #71717a;
+                                stroke: root.snap_enabled ? Tokens.accent-bloom-hover : Tokens.text-disabled;
                                 y: (parent.height - self.height) / 2;
                             }
 
@@ -696,7 +697,7 @@ export component MainWindow inherits Window {
                                 text: "Snap";
                                 font-size: 11px;
                                 font-weight: 500;
-                                color: root.snap_enabled ? #93c5fd : #a1a1aa;
+                                color: root.snap_enabled ? Tokens.accent-bloom-hover : Tokens.text-tertiary;
                                 vertical-alignment: center;
                             }
                         }
@@ -712,14 +713,14 @@ export component MainWindow inherits Window {
             }
         }
 
-        Rectangle { height: 1px; background: #27272a; }
+        Rectangle { height: 1px; background: Tokens.border-subtle; }
 
         // -------------------------------------------------------------
         // SECTION 3: CANONICAL CONTEXT TOOLBAR (08.23)
         // -------------------------------------------------------------
         Rectangle {
             height: 38px;
-            background: #202024;
+            background: Tokens.surface-panel;
 
             HorizontalLayout {
                 padding-left: 12px;
@@ -731,9 +732,9 @@ export component MainWindow inherits Window {
                 Rectangle {
                     height: 24px;
                     border-radius: 4px;
-                    background: #27272b;
+                    background: Tokens.surface-control;
                     border-width: 1px;
-                    border-color: #3f3f46;
+                    border-color: Tokens.border-strong;
 
                     HorizontalLayout {
                         padding-left: 8px;
@@ -752,7 +753,7 @@ export component MainWindow inherits Window {
                                   root.active_tool_name == "Scissors" ? IconSet.Scissors :
                                   root.active_tool_name == "Zoom" ? IconSet.ZoomIn : IconSet.MousePointer2;
                             size: 13px;
-                            stroke: #60a5fa;
+                            stroke: Tokens.accent-bloom-hover;
                             y: (parent.height - self.height) / 2;
                         }
 
@@ -760,57 +761,57 @@ export component MainWindow inherits Window {
                             text: root.active_tool_name;
                             font-size: 11px;
                             font-weight: 700;
-                            color: #ffffff;
+                            color: Tokens.text-primary;
                             vertical-alignment: center;
                         }
                     }
                 }
 
-                Rectangle { width: 1px; height: 18px; background: #333338; y: 10px; }
+                Rectangle { width: 1px; height: 18px; background: Tokens.border-subtle; y: 10px; }
 
                 // Selection Transform HUD Numeric Readout (08.23, 10.1)
                 if root.has_selection : HorizontalLayout {
                     spacing: 6px;
                     alignment: center;
 
-                    Text { text: "X: " + Math.round(root.prop_x / 1px) + " pt"; font-size: 11px; color: #a1a1aa; vertical-alignment: center; }
-                    Text { text: "Y: " + Math.round(root.prop_y / 1px) + " pt"; font-size: 11px; color: #a1a1aa; vertical-alignment: center; }
-                    Text { text: "W: " + Math.round(root.prop_w / 1px) + " pt"; font-size: 11px; color: #a1a1aa; vertical-alignment: center; }
-                    Text { text: "H: " + Math.round(root.prop_h / 1px) + " pt"; font-size: 11px; color: #a1a1aa; vertical-alignment: center; }
-                    Text { text: "R: " + Math.round(root.prop_rot) + "°"; font-size: 11px; color: #a1a1aa; vertical-alignment: center; }
+                    Text { text: "X: " + Math.round(root.prop_x / 1px) + " pt"; font-size: 11px; color: Tokens.text-tertiary; vertical-alignment: center; }
+                    Text { text: "Y: " + Math.round(root.prop_y / 1px) + " pt"; font-size: 11px; color: Tokens.text-tertiary; vertical-alignment: center; }
+                    Text { text: "W: " + Math.round(root.prop_w / 1px) + " pt"; font-size: 11px; color: Tokens.text-tertiary; vertical-alignment: center; }
+                    Text { text: "H: " + Math.round(root.prop_h / 1px) + " pt"; font-size: 11px; color: Tokens.text-tertiary; vertical-alignment: center; }
+                    Text { text: "R: " + Math.round(root.prop_rot) + "°"; font-size: 11px; color: Tokens.text-tertiary; vertical-alignment: center; }
                 }
 
-                Rectangle { width: 1px; height: 18px; background: #333338; y: 10px; }
+                Rectangle { width: 1px; height: 18px; background: Tokens.border-subtle; y: 10px; }
 
                 // Quick Fill & Stroke Swatches
                 HorizontalLayout {
                     spacing: 6px;
                     alignment: center;
 
-                    Text { text: "Fill:"; font-size: 11px; color: #71717a; vertical-alignment: center; }
+                    Text { text: "Fill:"; font-size: 11px; color: Tokens.text-disabled; vertical-alignment: center; }
                     Rectangle {
                         width: 18px;
                         height: 18px;
                         border-radius: 3px;
-                        background: #3b82f6;
+                        background: Tokens.accent-bloom;
                         border-width: 1px;
-                        border-color: #60a5fa;
-                        TouchArea { clicked => { root.set_selected_color(#3b82f6); } }
+                        border-color: Tokens.accent-bloom-hover;
+                        TouchArea { clicked => { root.set_selected_color(Tokens.accent-bloom); } }
                     }
 
-                    Text { text: "Stroke:"; font-size: 11px; color: #71717a; vertical-alignment: center; }
+                    Text { text: "Stroke:"; font-size: 11px; color: Tokens.text-disabled; vertical-alignment: center; }
                     Rectangle {
                         width: 18px;
                         height: 18px;
                         border-radius: 3px;
-                        background: #2563eb;
+                        background: Tokens.accent-bloom-pressed;
                         border-width: 1px;
-                        border-color: #60a5fa;
-                        TouchArea { clicked => { root.set_selected_color(#2563eb); } }
+                        border-color: Tokens.accent-bloom-hover;
+                        TouchArea { clicked => { root.set_selected_color(Tokens.accent-bloom-pressed); } }
                     }
                 }
 
-                Rectangle { width: 1px; height: 18px; background: #333338; y: 10px; }
+                Rectangle { width: 1px; height: 18px; background: Tokens.border-subtle; y: 10px; }
 
                 // Curve operations
                 StudioIconButton {
@@ -824,7 +825,7 @@ export component MainWindow inherits Window {
                     clicked => { root.bake_corners_clicked(); }
                 }
 
-                Rectangle { width: 1px; height: 18px; background: #333338; y: 10px; }
+                Rectangle { width: 1px; height: 18px; background: Tokens.border-subtle; y: 10px; }
 
                 // Boolean Operations (10.3)
                 HorizontalLayout {
@@ -853,7 +854,7 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                Rectangle { width: 1px; height: 18px; background: #333338; y: 10px; }
+                Rectangle { width: 1px; height: 18px; background: Tokens.border-subtle; y: 10px; }
 
                 // Alignments (10.1)
                 HorizontalLayout {
@@ -886,7 +887,7 @@ export component MainWindow inherits Window {
             }
         }
 
-        Rectangle { height: 1px; background: #2b2b30; }
+        Rectangle { height: 1px; background: Tokens.border-subtle; }
 
         // -------------------------------------------------------------
         // SECTION 4: MAIN WORKSPACE (TOOL RAIL + CANVAS + DOCK)
@@ -897,7 +898,7 @@ export component MainWindow inherits Window {
             // 4.1 CANONICAL LEFT TOOL RAIL (48px) (08.7, 08.24)
             Rectangle {
                 width: 48px;
-                background: #1a1a1e;
+                background: Tokens.surface-chrome;
 
                 VerticalLayout {
                     padding-top: 6px;
@@ -934,7 +935,7 @@ export component MainWindow inherits Window {
                     }
 
                     // Divider
-                    Rectangle { height: 1px; background: #2e2e33; }
+                    Rectangle { height: 1px; background: Tokens.border-subtle; }
 
                     // Group 2: Vector Drawing
                     StudioToolButton {
@@ -975,7 +976,7 @@ export component MainWindow inherits Window {
                     }
 
                     // Divider
-                    Rectangle { height: 1px; background: #2e2e33; }
+                    Rectangle { height: 1px; background: Tokens.border-subtle; }
 
                     // Group 3: Typography & Content
                     StudioToolButton {
@@ -998,7 +999,7 @@ export component MainWindow inherits Window {
                     }
 
                     // Divider
-                    Rectangle { height: 1px; background: #2e2e33; }
+                    Rectangle { height: 1px; background: Tokens.border-subtle; }
 
                     // Group 4: Vector Editing
                     StudioToolButton {
@@ -1027,7 +1028,7 @@ export component MainWindow inherits Window {
                     }
 
                     // Divider
-                    Rectangle { height: 1px; background: #2e2e33; }
+                    Rectangle { height: 1px; background: Tokens.border-subtle; }
 
                     // Group 5: Viewport Navigation
                     StudioToolButton {
@@ -1045,16 +1046,16 @@ export component MainWindow inherits Window {
                 }
             }
 
-            Rectangle { width: 1px; background: #27272b; }
+            Rectangle { width: 1px; background: Tokens.surface-control; }
 
             // 4.1b RULER COLUMN (Affinity chrome, document coords)
             VerticalLayout {
                 spacing: 0px;
-                Rectangle { width: 22px; height: 18px; background: #141416; }
+                Rectangle { width: 22px; height: 18px; background: Tokens.surface-chrome-strong; }
                 Rectangle {
                     width: 22px;
                     vertical-stretch: 1;
-                    background: #141416;
+                    background: Tokens.surface-chrome-strong;
                     clip: true;
                     for i in 90 : Rectangle {
                         y: i * 10px;
@@ -1065,12 +1066,12 @@ export component MainWindow inherits Window {
                             x: 22px - (Math.mod(i, 10) == 0 ? 10px : (Math.mod(i, 5) == 0 ? 6px : 3px));
                             width: (Math.mod(i, 10) == 0 ? 10px : (Math.mod(i, 5) == 0 ? 6px : 3px));
                             height: 1px;
-                            background: #3f3f46;
+                            background: Tokens.border-strong;
                         }
                         if Math.mod(i * 10 - Math.round(root.artboard_y / 1px), 100) == 0 && i * 10 >= Math.round(root.artboard_y / 1px) : Text {
                             text: (i * 10 - Math.round(root.artboard_y / 1px)) + "";
                             font-size: 8px;
-                            color: #71717a;
+                            color: Tokens.text-disabled;
                             x: 1px;
                             y: i * 10px - 9px;
                         }
@@ -1085,7 +1086,7 @@ export component MainWindow inherits Window {
 
                 Rectangle {
                     height: 18px;
-                    background: #141416;
+                    background: Tokens.surface-chrome-strong;
                     clip: true;
                     for i in 130 : Rectangle {
                         x: i * 10px;
@@ -1096,12 +1097,12 @@ export component MainWindow inherits Window {
                             y: 18px - (Math.mod(i, 10) == 0 ? 10px : (Math.mod(i, 5) == 0 ? 6px : 3px));
                             width: 1px;
                             height: (Math.mod(i, 10) == 0 ? 10px : (Math.mod(i, 5) == 0 ? 6px : 3px));
-                            background: #3f3f46;
+                            background: Tokens.border-strong;
                         }
                         if Math.mod(i * 10 - Math.round(root.artboard_x / 1px), 100) == 0 && i * 10 >= Math.round(root.artboard_x / 1px) : Text {
                             text: (i * 10 - Math.round(root.artboard_x / 1px)) + "";
                             font-size: 8px;
-                            color: #71717a;
+                            color: Tokens.text-disabled;
                             x: i * 10px + 2px;
                             y: 1px;
                         }
@@ -1111,7 +1112,7 @@ export component MainWindow inherits Window {
             // 4.2 CENTRAL CANVAS VIEWPORT (08.6)
             canvas_viewport := Rectangle {
                 horizontal-stretch: 1;
-                background: #111113;
+                background: Tokens.surface-workspace;
                 clip: true;
 
                 // Document Artboard Drop Shadow
@@ -1120,7 +1121,7 @@ export component MainWindow inherits Window {
                     y: root.artboard_y + 6px;
                     width: root.artboard_w;
                     height: root.artboard_h;
-                    background: #00000088;
+                    background: Tokens.scrim;
                     border-radius: 4px;
                 }
 
@@ -1131,7 +1132,7 @@ export component MainWindow inherits Window {
                     width: root.artboard_w + (root.bleed_margin * 2);
                     height: root.artboard_h + (root.bleed_margin * 2);
                     border-width: 1px;
-                    border-color: #f43f5e88;
+                    border-color: Tokens.studio-photo;
                 }
 
                 // Main Paper Artboard (White)
@@ -1140,7 +1141,7 @@ export component MainWindow inherits Window {
                     y: root.artboard_y;
                     width: root.artboard_w;
                     height: root.artboard_h;
-                    background: #ffffff;
+                    background: Tokens.text-primary;
 
                     // Cyan Margins Inset Guideline (10.7)
                     Rectangle {
@@ -1149,7 +1150,7 @@ export component MainWindow inherits Window {
                         width: parent.width - (root.margin_inset * 2);
                         height: parent.height - (root.margin_inset * 2);
                         border-width: 1px;
-                        border-color: #06b6d466;
+                        border-color: Tokens.studio-design;
                     }
 
                     // Vertical Layout Guide
@@ -1158,7 +1159,7 @@ export component MainWindow inherits Window {
                         y: 0px;
                         width: 1px;
                         height: parent.height;
-                        background: #06b6d4aa;
+                        background: Tokens.studio-design;
                     }
 
                     // Dynamic Artwork Objects Rendered on Artboard
@@ -1221,21 +1222,21 @@ export component MainWindow inherits Window {
                             width: parent.width + 4px;
                             height: parent.height + 4px;
                             border-width: 1.5px;
-                            border-color: #3b82f6;
+                            border-color: Tokens.accent-bloom;
 
                             // 8 Resize Handles
-                            Rectangle { x: -4px; y: -4px; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
-                            Rectangle { x: (parent.width - 8px) / 2; y: -4px; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
-                            Rectangle { x: parent.width - 4px; y: -4px; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
-                            Rectangle { x: parent.width - 4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
-                            Rectangle { x: parent.width - 4px; y: parent.height - 4px; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
-                            Rectangle { x: (parent.width - 8px) / 2; y: parent.height - 4px; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
-                            Rectangle { x: -4px; y: parent.height - 4px; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
-                            Rectangle { x: -4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: #ffffff; border-width: 1px; border-color: #2563eb; }
+                            Rectangle { x: -4px; y: -4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: (parent.width - 8px) / 2; y: -4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: parent.width - 4px; y: -4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: parent.width - 4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: parent.width - 4px; y: parent.height - 4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: (parent.width - 8px) / 2; y: parent.height - 4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: -4px; y: parent.height - 4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: -4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
 
                             // Top Rotation Pin Stem & Handle
-                            Rectangle { x: (parent.width - 1px) / 2; y: -20px; width: 1px; height: 16px; background: #3b82f6; }
-                            Rectangle { x: (parent.width - 8px) / 2; y: -24px; width: 8px; height: 8px; border-radius: 4px; background: #3b82f6; border-width: 1px; border-color: #ffffff; }
+                            Rectangle { x: (parent.width - 1px) / 2; y: -20px; width: 1px; height: 16px; background: Tokens.accent-bloom; }
+                            Rectangle { x: (parent.width - 8px) / 2; y: -24px; width: 8px; height: 8px; border-radius: 4px; background: Tokens.accent-bloom; border-width: 1px; border-color: Tokens.text-primary; }
 
                             // Dimensions Readout HUD
                             Rectangle {
@@ -1244,14 +1245,14 @@ export component MainWindow inherits Window {
                                 width: 130px;
                                 height: 20px;
                                 border-radius: 4px;
-                                background: #1e1e24ee;
+                                background: Tokens.surface-panel;
                                 border-width: 1px;
-                                border-color: #3b82f666;
+                                border-color: Tokens.accent-bloom;
 
                                 Text {
                                     text: Math.round(obj.w / 1px) + " × " + Math.round(obj.h / 1px) + " pt";
                                     font-size: 10px;
-                                    color: #93c5fd;
+                                    color: Tokens.accent-bloom-hover;
                                     font-weight: 600;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
@@ -1266,9 +1267,9 @@ export component MainWindow inherits Window {
                         y: root.preview_y;
                         width: root.preview_w;
                         height: root.preview_h;
-                        background: #3b82f622;
+                        background: Tokens.accent-faint;
                         border-width: 1px;
-                        border-color: #3b82f6;
+                        border-color: Tokens.accent-bloom;
                     }
                 }
 
@@ -1301,12 +1302,12 @@ export component MainWindow inherits Window {
 
             } // end canvas column VerticalLayout
 
-            Rectangle { width: 1px; background: #27272b; }
+            Rectangle { width: 1px; background: Tokens.surface-control; }
 
             // 4.3 RIGHT STUDIO DOCK (320px) (08.3, 08.25)
             Rectangle {
                 width: 320px;
-                background: #1a1a1e;
+                background: Tokens.surface-chrome;
 
                 VerticalLayout {
                     padding: 0px;
@@ -1315,7 +1316,7 @@ export component MainWindow inherits Window {
                     // Studio Dock Tabs Header
                     Rectangle {
                         height: 36px;
-                        background: #1f1f23;
+                        background: Tokens.surface-chrome;
 
                         HorizontalLayout {
                             padding-left: 6px;
@@ -1326,11 +1327,11 @@ export component MainWindow inherits Window {
                             Rectangle {
                                 height: 28px;
                                 border-radius: 4px;
-                                background: root.active_tab_index == 0 ? #27272b : transparent;
+                                background: root.active_tab_index == 0 ? Tokens.surface-control : transparent;
                                 HorizontalLayout {
                                     padding-left: 10px; padding-right: 10px; spacing: 4px; alignment: center;
-                                    IconDisplay { icon: IconSet.Layers; size: 12px; stroke: root.active_tab_index == 0 ? #60a5fa : #71717a; y: 8px; }
-                                    Text { text: "Camadas"; font-size: 12px; color: root.active_tab_index == 0 ? #ffffff : #a1a1aa; font-weight: root.active_tab_index == 0 ? 600 : 400; vertical-alignment: center; }
+                                    IconDisplay { icon: IconSet.Layers; size: 12px; stroke: root.active_tab_index == 0 ? Tokens.accent-bloom-hover : Tokens.text-disabled; y: 8px; }
+                                    Text { text: "Camadas"; font-size: 12px; color: root.active_tab_index == 0 ? Tokens.text-primary : Tokens.text-tertiary; font-weight: root.active_tab_index == 0 ? 600 : 400; vertical-alignment: center; }
                                 }
                                 TouchArea { clicked => { root.active_tab_index = 0; root.tab_changed(0); } }
                             }
@@ -1338,11 +1339,11 @@ export component MainWindow inherits Window {
                             Rectangle {
                                 height: 28px;
                                 border-radius: 4px;
-                                background: root.active_tab_index == 1 ? #27272b : transparent;
+                                background: root.active_tab_index == 1 ? Tokens.surface-control : transparent;
                                 HorizontalLayout {
                                     padding-left: 10px; padding-right: 10px; spacing: 4px; alignment: center;
-                                    IconDisplay { icon: IconSet.Sliders; size: 12px; stroke: root.active_tab_index == 1 ? #60a5fa : #71717a; y: 8px; }
-                                    Text { text: "Propriedades"; font-size: 12px; color: root.active_tab_index == 1 ? #ffffff : #a1a1aa; font-weight: root.active_tab_index == 1 ? 600 : 400; vertical-alignment: center; }
+                                    IconDisplay { icon: IconSet.Sliders; size: 12px; stroke: root.active_tab_index == 1 ? Tokens.accent-bloom-hover : Tokens.text-disabled; y: 8px; }
+                                    Text { text: "Propriedades"; font-size: 12px; color: root.active_tab_index == 1 ? Tokens.text-primary : Tokens.text-tertiary; font-weight: root.active_tab_index == 1 ? 600 : 400; vertical-alignment: center; }
                                 }
                                 TouchArea { clicked => { root.active_tab_index = 1; root.tab_changed(1); } }
                             }
@@ -1350,18 +1351,18 @@ export component MainWindow inherits Window {
                             Rectangle {
                                 height: 28px;
                                 border-radius: 4px;
-                                background: root.active_tab_index == 2 ? #27272b : transparent;
+                                background: root.active_tab_index == 2 ? Tokens.surface-control : transparent;
                                 HorizontalLayout {
                                     padding-left: 10px; padding-right: 10px; spacing: 4px; alignment: center;
-                                    IconDisplay { icon: IconSet.Undo2; size: 12px; stroke: root.active_tab_index == 2 ? #60a5fa : #71717a; y: 8px; }
-                                    Text { text: "Histórico"; font-size: 12px; color: root.active_tab_index == 2 ? #ffffff : #a1a1aa; font-weight: root.active_tab_index == 2 ? 600 : 400; vertical-alignment: center; }
+                                    IconDisplay { icon: IconSet.Undo2; size: 12px; stroke: root.active_tab_index == 2 ? Tokens.accent-bloom-hover : Tokens.text-disabled; y: 8px; }
+                                    Text { text: "Histórico"; font-size: 12px; color: root.active_tab_index == 2 ? Tokens.text-primary : Tokens.text-tertiary; font-weight: root.active_tab_index == 2 ? 600 : 400; vertical-alignment: center; }
                                 }
                                 TouchArea { clicked => { root.active_tab_index = 2; root.tab_changed(2); } }
                             }
                         }
                     }
 
-                    Rectangle { height: 1px; background: #2e2e33; }
+                    Rectangle { height: 1px; background: Tokens.border-subtle; }
 
                     // TAB 0: LAYERS PANEL
                     if root.active_tab_index == 0 : VerticalLayout {
@@ -1374,13 +1375,13 @@ export component MainWindow inherits Window {
                                 text: "Hierarquia de Objetos";
                                 font-size: 13px;
                                 font-weight: 700;
-                                color: #ffffff;
+                                color: Tokens.text-primary;
                                 vertical-alignment: center;
                             }
                             Text {
                                 text: root.layer_rows.length + " itens";
                                 font-size: 11px;
-                                color: #71717a;
+                                color: Tokens.text-disabled;
                                 vertical-alignment: center;
                             }
                         }
@@ -1389,13 +1390,13 @@ export component MainWindow inherits Window {
                         Rectangle {
                             height: 28px;
                             border-radius: 4px;
-                            background: #242428;
+                            background: Tokens.surface-panel-raised;
                             HorizontalLayout {
                                 padding-left: 8px;
                                 padding-right: 8px;
                                 spacing: 6px;
-                                IconDisplay { icon: IconSet.FileCode; size: 13px; stroke: #60a5fa; y: 8px; }
-                                Text { text: "📄 Main Artboard [800 × 600]"; font-size: 12px; color: #93c5fd; font-weight: 600; vertical-alignment: center; }
+                                IconDisplay { icon: IconSet.FileCode; size: 13px; stroke: Tokens.accent-bloom-hover; y: 8px; }
+                                Text { text: "📄 Main Artboard [800 × 600]"; font-size: 12px; color: Tokens.accent-bloom-hover; font-weight: 600; vertical-alignment: center; }
                             }
                         }
 
@@ -1416,9 +1417,9 @@ export component MainWindow inherits Window {
                                 for item[idx] in root.layer_rows : Rectangle {
                                     height: 34px;
                                     border-radius: 4px;
-                                    background: item.selected ? #2563eb33 : #202024;
+                                    background: item.selected ? Tokens.accent-selection-soft : Tokens.surface-panel;
                                     border-width: item.selected ? 1px : 0px;
-                                    border-color: #3b82f6;
+                                    border-color: Tokens.accent-bloom;
 
                                     HorizontalLayout {
                                         padding-left: 8px;
@@ -1435,7 +1436,7 @@ export component MainWindow inherits Window {
                                         if item.is_clipped : Text {
                                             text: "⤷";
                                             font-size: 11px;
-                                            color: #a78bfa;
+                                            color: Tokens.accent-bloom;
                                             vertical-alignment: center;
                                         }
 
@@ -1447,9 +1448,9 @@ export component MainWindow inherits Window {
                                                   item.kind == "Text" ? IconSet.Type :
                                                   item.kind == "Star" ? IconSet.Star : IconSet.Square;
                                             size: 13px;
-                                            stroke: item.is_clip_mask ? #c084fc :
-                                                    item.is_container ? #38bdf8 :
-                                                    item.selected ? #60a5fa : #a1a1aa;
+                                            stroke: item.is_clip_mask ? Tokens.accent-bloom :
+                                                    item.is_container ? Tokens.studio-design :
+                                                    item.selected ? Tokens.accent-bloom-hover : Tokens.text-tertiary;
                                             y: (parent.height - self.height) / 2;
                                         }
 
@@ -1464,7 +1465,7 @@ export component MainWindow inherits Window {
                                                     text: item.name;
                                                     font-size: 12px;
                                                     font-weight: item.selected ? 600 : 400;
-                                                    color: item.selected ? #ffffff : #d4d4d8;
+                                                    color: item.selected ? Tokens.text-primary : Tokens.text-secondary;
                                                     vertical-alignment: center;
                                                     overflow: elide;
                                                     horizontal-stretch: 1;
@@ -1472,23 +1473,23 @@ export component MainWindow inherits Window {
                                                 if item.is_clip_mask : Rectangle {
                                                     height: 16px;
                                                     border-radius: 3px;
-                                                    background: #a855f722;
+                                                    background: Tokens.accent-faint;
                                                     border-width: 1px;
-                                                    border-color: #a855f766;
+                                                    border-color: Tokens.accent-bloom;
                                                     HorizontalLayout {
                                                         padding-left: 4px; padding-right: 4px;
-                                                        Text { text: "MÁSCARA"; font-size: 9px; font-weight: 700; color: #c084fc; vertical-alignment: center; }
+                                                        Text { text: "MÁSCARA"; font-size: 9px; font-weight: 700; color: Tokens.accent-bloom; vertical-alignment: center; }
                                                     }
                                                 }
                                                 if item.is_container : Rectangle {
                                                     height: 16px;
                                                     border-radius: 3px;
-                                                    background: #0284c722;
+                                                    background: Tokens.accent-faint;
                                                     border-width: 1px;
-                                                    border-color: #0284c766;
+                                                    border-color: Tokens.studio-design;
                                                     HorizontalLayout {
                                                         padding-left: 4px; padding-right: 4px;
-                                                        Text { text: "GRUPO"; font-size: 9px; font-weight: 700; color: #38bdf8; vertical-alignment: center; }
+                                                        Text { text: "GRUPO"; font-size: 9px; font-weight: 700; color: Tokens.studio-design; vertical-alignment: center; }
                                                     }
                                                 }
                                             }
@@ -1499,11 +1500,11 @@ export component MainWindow inherits Window {
                                             width: 22px;
                                             height: 22px;
                                             border-radius: 3px;
-                                            background: touch_vis.has-hover ? #ffffff15 : transparent;
+                                            background: touch_vis.has-hover ? Tokens.overlay-hover : transparent;
                                             IconDisplay {
                                                 icon: item.visible ? IconSet.Eye : IconSet.EyeOff;
                                                 size: 13px;
-                                                stroke: item.visible ? #a1a1aa : #52525b;
+                                                stroke: item.visible ? Tokens.text-tertiary : Tokens.text-disabled;
                                                 x: (parent.width - self.width) / 2;
                                                 y: (parent.height - self.height) / 2;
                                             }
@@ -1515,11 +1516,11 @@ export component MainWindow inherits Window {
                                             width: 22px;
                                             height: 22px;
                                             border-radius: 3px;
-                                            background: touch_lock.has-hover ? #ffffff15 : transparent;
+                                            background: touch_lock.has-hover ? Tokens.overlay-hover : transparent;
                                             IconDisplay {
                                                 icon: item.locked ? IconSet.Lock : IconSet.LockOpen;
                                                 size: 13px;
-                                                stroke: item.locked ? #eab308 : #52525b;
+                                                stroke: item.locked ? Tokens.status-warning : Tokens.text-disabled;
                                                 x: (parent.width - self.width) / 2;
                                                 y: (parent.height - self.height) / 2;
                                             }
@@ -1531,8 +1532,8 @@ export component MainWindow inherits Window {
                                             width: 18px;
                                             height: 22px;
                                             border-radius: 3px;
-                                            background: touch_up.has-hover ? #ffffff15 : transparent;
-                                            IconDisplay { icon: IconSet.ChevronFirst; size: 11px; stroke: #71717a; x: 4px; y: 6px; }
+                                            background: touch_up.has-hover ? Tokens.overlay-hover : transparent;
+                                            IconDisplay { icon: IconSet.ChevronFirst; size: 11px; stroke: Tokens.text-disabled; x: 4px; y: 6px; }
                                             touch_up := TouchArea { clicked => { root.reorder_layer_up(idx); } }
                                         }
 
@@ -1541,8 +1542,8 @@ export component MainWindow inherits Window {
                                             width: 18px;
                                             height: 22px;
                                             border-radius: 3px;
-                                            background: touch_dn.has-hover ? #ffffff15 : transparent;
-                                            IconDisplay { icon: IconSet.ChevronLast; size: 11px; stroke: #71717a; x: 4px; y: 6px; }
+                                            background: touch_dn.has-hover ? Tokens.overlay-hover : transparent;
+                                            IconDisplay { icon: IconSet.ChevronLast; size: 11px; stroke: Tokens.text-disabled; x: 4px; y: 6px; }
                                             touch_dn := TouchArea { clicked => { root.reorder_layer_down(idx); } }
                                         }
                                     }
@@ -1551,7 +1552,7 @@ export component MainWindow inherits Window {
                         }
 
                         // Layer Actions Footer
-                        Rectangle { height: 1px; background: #2b2b30; }
+                        Rectangle { height: 1px; background: Tokens.border-subtle; }
                         HorizontalLayout {
                             spacing: 6px;
                             Button { text: "+ Retângulo"; clicked => { root.add_rectangle_clicked(); } }
@@ -1568,22 +1569,22 @@ export component MainWindow inherits Window {
 
                             // Transform Group
                             Rectangle {
-                                background: #202024;
+                                background: Tokens.surface-panel;
                                 border-radius: 6px;
                                 border-width: 1px;
-                                border-color: #2d2d33;
+                                border-color: Tokens.border-subtle;
 
                                 VerticalLayout {
                                     padding: 10px;
                                     spacing: 8px;
 
-                                    Text { text: "TRANSFORMAÇÃO"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+                                    Text { text: "TRANSFORMAÇÃO"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
 
                                     HorizontalLayout {
                                         spacing: 8px;
                                         VerticalLayout {
                                             spacing: 2px;
-                                            Text { text: "X (pt)"; font-size: 10px; color: #71717a; }
+                                            Text { text: "X (pt)"; font-size: 10px; color: Tokens.text-disabled; }
                                             LineEdit {
                                                 height: 26px;
                                                 text: "" + Math.round(root.prop_x / 1px);
@@ -1592,7 +1593,7 @@ export component MainWindow inherits Window {
                                         }
                                         VerticalLayout {
                                             spacing: 2px;
-                                            Text { text: "Y (pt)"; font-size: 10px; color: #71717a; }
+                                            Text { text: "Y (pt)"; font-size: 10px; color: Tokens.text-disabled; }
                                             LineEdit {
                                                 height: 26px;
                                                 text: "" + Math.round(root.prop_y / 1px);
@@ -1605,7 +1606,7 @@ export component MainWindow inherits Window {
                                         spacing: 8px;
                                         VerticalLayout {
                                             spacing: 2px;
-                                            Text { text: "Largura (W)"; font-size: 10px; color: #71717a; }
+                                            Text { text: "Largura (W)"; font-size: 10px; color: Tokens.text-disabled; }
                                             LineEdit {
                                                 height: 26px;
                                                 text: "" + Math.round(root.prop_w / 1px);
@@ -1614,7 +1615,7 @@ export component MainWindow inherits Window {
                                         }
                                         VerticalLayout {
                                             spacing: 2px;
-                                            Text { text: "Altura (H)"; font-size: 10px; color: #71717a; }
+                                            Text { text: "Altura (H)"; font-size: 10px; color: Tokens.text-disabled; }
                                             LineEdit {
                                                 height: 26px;
                                                 text: "" + Math.round(root.prop_h / 1px);
@@ -1627,7 +1628,7 @@ export component MainWindow inherits Window {
                                         spacing: 8px;
                                         VerticalLayout {
                                             spacing: 2px;
-                                            Text { text: "Rotação (°)"; font-size: 10px; color: #71717a; }
+                                            Text { text: "Rotação (°)"; font-size: 10px; color: Tokens.text-disabled; }
                                             LineEdit {
                                                 height: 26px;
                                                 text: "" + Math.round(root.prop_rot);
@@ -1636,7 +1637,7 @@ export component MainWindow inherits Window {
                                         }
                                         VerticalLayout {
                                             spacing: 2px;
-                                            Text { text: "Traço (pt)"; font-size: 10px; color: #71717a; }
+                                            Text { text: "Traço (pt)"; font-size: 10px; color: Tokens.text-disabled; }
                                             LineEdit {
                                                 height: 26px;
                                                 text: "" + Math.round(root.prop_stroke_width * 10) / 10;
@@ -1652,31 +1653,31 @@ export component MainWindow inherits Window {
 
                             // Appearance & Colors Group (10.4)
                             Rectangle {
-                                background: #202024;
+                                background: Tokens.surface-panel;
                                 border-radius: 6px;
                                 border-width: 1px;
-                                border-color: #2d2d33;
+                                border-color: Tokens.border-subtle;
 
                                 VerticalLayout {
                                     padding: 10px;
                                     spacing: 10px;
 
                                     // 1. Swatches & Solid Colors
-                                    Text { text: "PREENCHIMENTO (SWATCHES)"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+                                    Text { text: "PREENCHIMENTO (SWATCHES)"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
 
                                     HorizontalLayout {
                                         spacing: 6px;
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #3b82f6; TouchArea { clicked => { root.set_selected_color(#3b82f6); } } }
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #eab308; TouchArea { clicked => { root.set_selected_color(#eab308); } } }
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #e11d48; TouchArea { clicked => { root.set_selected_color(#e11d48); } } }
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #10b981; TouchArea { clicked => { root.set_selected_color(#10b981); } } }
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #8b5cf6; TouchArea { clicked => { root.set_selected_color(#8b5cf6); } } }
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #ffffff; TouchArea { clicked => { root.set_selected_color(#ffffff); } } }
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #18181b; border-width: 1px; border-color: #3f3f46; TouchArea { clicked => { root.set_selected_color(#18181b); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.accent-bloom; TouchArea { clicked => { root.set_selected_color(Tokens.accent-bloom); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.status-warning; TouchArea { clicked => { root.set_selected_color(Tokens.status-warning); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.status-error; TouchArea { clicked => { root.set_selected_color(Tokens.status-error); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.status-success; TouchArea { clicked => { root.set_selected_color(Tokens.status-success); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.accent-bloom; TouchArea { clicked => { root.set_selected_color(Tokens.accent-bloom); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.text-primary; TouchArea { clicked => { root.set_selected_color(Tokens.text-primary); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.surface-chrome-strong; border-width: 1px; border-color: Tokens.border-strong; TouchArea { clicked => { root.set_selected_color(Tokens.surface-chrome-strong); } } }
                                     }
 
                                     // 2. Gradients & Paint Styles
-                                    Text { text: "ESTILO DE PINTURA & GRADIENTES"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+                                    Text { text: "ESTILO DE PINTURA & GRADIENTES"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
                                     HorizontalLayout {
                                         spacing: 6px;
                                         Button { text: "Sólido"; clicked => { root.set_gradient_clicked("solid"); } }
@@ -1687,16 +1688,16 @@ export component MainWindow inherits Window {
                                     // 3. Blend Modes (16 W3C Modes)
                                     HorizontalLayout {
                                         alignment: space-between;
-                                        Text { text: "MODO DE MESCLAGEM:"; font-size: 11px; font-weight: 700; color: #a1a1aa; vertical-alignment: center; }
+                                        Text { text: "MODO DE MESCLAGEM:"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; vertical-alignment: center; }
                                         Rectangle {
                                             height: 20px;
                                             border-radius: 4px;
-                                            background: #3b82f622;
+                                            background: Tokens.accent-faint;
                                             border-width: 1px;
-                                            border-color: #3b82f655;
+                                            border-color: Tokens.accent-bloom;
                                             HorizontalLayout {
                                                 padding-left: 6px; padding-right: 6px;
-                                                Text { text: root.prop_blend_mode; font-size: 11px; font-weight: 700; color: #93c5fd; vertical-alignment: center; }
+                                                Text { text: root.prop_blend_mode; font-size: 11px; font-weight: 700; color: Tokens.accent-bloom-hover; vertical-alignment: center; }
                                             }
                                         }
                                     }
@@ -1714,7 +1715,7 @@ export component MainWindow inherits Window {
                                     }
 
                                     // 4. Opacity Slider
-                                    Text { text: "OPACIDADE GERAL: " + Math.round(root.selected_opacity) + "%"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+                                    Text { text: "OPACIDADE GERAL: " + Math.round(root.selected_opacity) + "%"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
                                     Slider {
                                         value: root.selected_opacity;
                                         minimum: 0.0;
@@ -1725,57 +1726,57 @@ export component MainWindow inherits Window {
                                         }
                                     }
 
-                                    Rectangle { height: 1px; background: #2c2c31; }
+                                    Rectangle { height: 1px; background: Tokens.border-subtle; }
 
                                     // 5. Multiple Fills Stack
                                     HorizontalLayout {
                                         alignment: space-between;
-                                        Text { text: "PREENCHIMENTOS (" + root.prop_fills.length + ")"; font-size: 11px; font-weight: 700; color: #a1a1aa; vertical-alignment: center; }
+                                        Text { text: "PREENCHIMENTOS (" + root.prop_fills.length + ")"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; vertical-alignment: center; }
                                         Button { text: "+ Preenchimento"; clicked => { root.add_fill_clicked(); } }
                                     }
                                     for fill in root.prop_fills : Rectangle {
                                         height: 28px;
                                         border-radius: 4px;
-                                        background: #18181b;
+                                        background: Tokens.surface-chrome-strong;
                                         HorizontalLayout {
                                             padding-left: 8px;
                                             padding-right: 8px;
                                             spacing: 6px;
                                             alignment: center;
-                                            IconDisplay { icon: IconSet.Palette; size: 12px; stroke: #60a5fa; y: 8px; }
-                                            Text { text: "Fill #" + fill.id + " [" + fill.paint_type + "]"; font-size: 11px; color: #d4d4d8; vertical-alignment: center; horizontal-stretch: 1; }
-                                            Text { text: fill.opacity_pct + "%"; font-size: 10px; color: #71717a; vertical-alignment: center; }
+                                            IconDisplay { icon: IconSet.Palette; size: 12px; stroke: Tokens.accent-bloom-hover; y: 8px; }
+                                            Text { text: "Fill #" + fill.id + " [" + fill.paint_type + "]"; font-size: 11px; color: Tokens.text-secondary; vertical-alignment: center; horizontal-stretch: 1; }
+                                            Text { text: fill.opacity_pct + "%"; font-size: 10px; color: Tokens.text-disabled; vertical-alignment: center; }
                                             Rectangle {
-                                                width: 18px; height: 18px; border-radius: 3px; background: touch_rf.has-hover ? #ef444433 : transparent;
-                                                IconDisplay { icon: IconSet.Trash; size: 10px; stroke: #f87171; x: 4px; y: 4px; }
+                                                width: 18px; height: 18px; border-radius: 3px; background: touch_rf.has-hover ? Tokens.status-error : transparent;
+                                                IconDisplay { icon: IconSet.Trash; size: 10px; stroke: Tokens.status-error; x: 4px; y: 4px; }
                                                 touch_rf := TouchArea { clicked => { root.remove_fill_clicked(fill.id); } }
                                             }
                                         }
                                     }
 
-                                    Rectangle { height: 1px; background: #2c2c31; }
+                                    Rectangle { height: 1px; background: Tokens.border-subtle; }
 
                                     // 6. Multiple Strokes Stack
                                     HorizontalLayout {
                                         alignment: space-between;
-                                        Text { text: "TRAÇADOS (" + root.prop_strokes.length + ")"; font-size: 11px; font-weight: 700; color: #a1a1aa; vertical-alignment: center; }
+                                        Text { text: "TRAÇADOS (" + root.prop_strokes.length + ")"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; vertical-alignment: center; }
                                         Button { text: "+ Traçado"; clicked => { root.add_stroke_clicked(); } }
                                     }
                                     for stroke in root.prop_strokes : Rectangle {
                                         height: 28px;
                                         border-radius: 4px;
-                                        background: #18181b;
+                                        background: Tokens.surface-chrome-strong;
                                         HorizontalLayout {
                                             padding-left: 8px;
                                             padding-right: 8px;
                                             spacing: 6px;
                                             alignment: center;
-                                            IconDisplay { icon: IconSet.Pen; size: 12px; stroke: #a78bfa; y: 8px; }
-                                            Text { text: "Traço #" + stroke.id + " (" + Math.round(stroke.width_pt) + " pt)"; font-size: 11px; color: #d4d4d8; vertical-alignment: center; horizontal-stretch: 1; }
-                                            Text { text: stroke.opacity_pct + "%"; font-size: 10px; color: #71717a; vertical-alignment: center; }
+                                            IconDisplay { icon: IconSet.Pen; size: 12px; stroke: Tokens.accent-bloom; y: 8px; }
+                                            Text { text: "Traço #" + stroke.id + " (" + Math.round(stroke.width_pt) + " pt)"; font-size: 11px; color: Tokens.text-secondary; vertical-alignment: center; horizontal-stretch: 1; }
+                                            Text { text: stroke.opacity_pct + "%"; font-size: 10px; color: Tokens.text-disabled; vertical-alignment: center; }
                                             Rectangle {
-                                                width: 18px; height: 18px; border-radius: 3px; background: touch_rs.has-hover ? #ef444433 : transparent;
-                                                IconDisplay { icon: IconSet.Trash; size: 10px; stroke: #f87171; x: 4px; y: 4px; }
+                                                width: 18px; height: 18px; border-radius: 3px; background: touch_rs.has-hover ? Tokens.status-error : transparent;
+                                                IconDisplay { icon: IconSet.Trash; size: 10px; stroke: Tokens.status-error; x: 4px; y: 4px; }
                                                 touch_rs := TouchArea { clicked => { root.remove_stroke_clicked(stroke.id); } }
                                             }
                                         }
@@ -1785,16 +1786,16 @@ export component MainWindow inherits Window {
 
                             // Pathfinder & Booleans
                             Rectangle {
-                                background: #202024;
+                                background: Tokens.surface-panel;
                                 border-radius: 6px;
                                 border-width: 1px;
-                                border-color: #2d2d33;
+                                border-color: Tokens.border-subtle;
 
                                 VerticalLayout {
                                     padding: 10px;
                                     spacing: 8px;
 
-                                    Text { text: "BOOLEANOS & PATHFINDER (10.3)"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+                                    Text { text: "BOOLEANOS & PATHFINDER (10.3)"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
 
                                     HorizontalLayout {
                                         spacing: 6px;
@@ -1811,16 +1812,16 @@ export component MainWindow inherits Window {
 
                             // Alignment & Distribution
                             Rectangle {
-                                background: #202024;
+                                background: Tokens.surface-panel;
                                 border-radius: 6px;
                                 border-width: 1px;
-                                border-color: #2d2d33;
+                                border-color: Tokens.border-subtle;
 
                                 VerticalLayout {
                                     padding: 10px;
                                     spacing: 8px;
 
-                                    Text { text: "ALINHAMENTO & DISTRIBUIÇÃO (10.1)"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+                                    Text { text: "ALINHAMENTO & DISTRIBUIÇÃO (10.1)"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
 
                                     HorizontalLayout {
                                         spacing: 4px;
@@ -1849,7 +1850,7 @@ export component MainWindow inherits Window {
                         padding: 10px;
                         spacing: 8px;
 
-                        Text { text: "Histórico de Ações (Undo/Redo)"; font-size: 13px; font-weight: 700; color: #ffffff; }
+                        Text { text: "Histórico de Ações (Undo/Redo)"; font-size: 13px; font-weight: 700; color: Tokens.text-primary; }
 
                         ScrollView {
                             height: 420px;
@@ -1858,13 +1859,13 @@ export component MainWindow inherits Window {
                                 for item in root.history_rows : Rectangle {
                                     height: 28px;
                                     border-radius: 4px;
-                                    background: #202024;
+                                    background: Tokens.surface-panel;
                                     HorizontalLayout {
                                         padding-left: 8px;
                                         padding-right: 8px;
                                         spacing: 6px;
-                                        Text { text: "#" + item.index; font-size: 11px; color: #60a5fa; font-weight: 600; vertical-alignment: center; }
-                                        Text { text: item.description; font-size: 12px; color: #d4d4d8; vertical-alignment: center; overflow: elide; }
+                                        Text { text: "#" + item.index; font-size: 11px; color: Tokens.accent-bloom-hover; font-weight: 600; vertical-alignment: center; }
+                                        Text { text: item.description; font-size: 12px; color: Tokens.text-secondary; vertical-alignment: center; overflow: elide; }
                                     }
                                 }
                             }
@@ -1880,14 +1881,14 @@ export component MainWindow inherits Window {
             }
         }
 
-        Rectangle { height: 1px; background: #242428; }
+        Rectangle { height: 1px; background: Tokens.surface-panel-raised; }
 
         // -------------------------------------------------------------
         // SECTION 5: CANONICAL STATUS BAR (08.2, 08.23)
         // -------------------------------------------------------------
         Rectangle {
             height: 24px;
-            background: #141416;
+            background: Tokens.surface-chrome-strong;
 
             HorizontalLayout {
                 padding-left: 12px;
@@ -1896,11 +1897,11 @@ export component MainWindow inherits Window {
                 alignment: center;
 
                 // Tool Intent & Modifiers Guide
-                IconDisplay { icon: IconSet.Info; size: 12px; stroke: #60a5fa; y: (parent.height - self.height) / 2; }
+                IconDisplay { icon: IconSet.Info; size: 12px; stroke: Tokens.accent-bloom-hover; y: (parent.height - self.height) / 2; }
                 Text {
                     text: root.status_hint;
                     font-size: 11px;
-                    color: #a1a1aa;
+                    color: Tokens.text-tertiary;
                     vertical-alignment: center;
                 }
 
@@ -1910,18 +1911,18 @@ export component MainWindow inherits Window {
                 Text {
                     text: root.status_coords;
                     font-size: 11px;
-                    color: #93c5fd;
+                    color: Tokens.accent-bloom-hover;
                     font-weight: 500;
                     vertical-alignment: center;
                 }
 
-                Rectangle { width: 1px; height: 12px; background: #2e2e33; y: 6px; }
+                Rectangle { width: 1px; height: 12px; background: Tokens.border-subtle; y: 6px; }
 
                 // Selection status
                 Text {
                     text: (root.has_selection ? "1 objeto selecionado" : "Nenhum objeto selecionado") + "  |  Zoom: " + root.zoom_pct + "%  |  Snap: " + (root.snap_enabled ? "Ativo" : "Inativo");
                     font-size: 11px;
-                    color: #71717a;
+                    color: Tokens.text-disabled;
                     vertical-alignment: center;
                 }
             }
@@ -1936,7 +1937,7 @@ export component MainWindow inherits Window {
         y: 0px;
         width: 100%;
         height: 100%;
-        background: #000000bb;
+        background: Tokens.scrim;
 
         // Modal Card
         Rectangle {
@@ -1944,10 +1945,10 @@ export component MainWindow inherits Window {
             height: 380px;
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
-            background: #1e1e22;
+            background: Tokens.surface-panel;
             border-radius: 8px;
             border-width: 1px;
-            border-color: #3f3f46;
+            border-color: Tokens.border-strong;
 
             VerticalLayout {
                 padding: 20px;
@@ -1960,18 +1961,18 @@ export component MainWindow inherits Window {
                         text: "Exportar Documento / Prancheta";
                         font-size: 15px;
                         font-weight: 700;
-                        color: #f4f4f5;
+                        color: Tokens.text-primary;
                         vertical-alignment: center;
                     }
                     Rectangle {
                         width: 24px;
                         height: 24px;
                         border-radius: 4px;
-                        background: touch_close_exp.has-hover ? #ffffff20 : transparent;
+                        background: touch_close_exp.has-hover ? Tokens.overlay-pressed : transparent;
                         IconDisplay {
                             icon: IconSet.X;
                             size: 14px;
-                            stroke: #a1a1aa;
+                            stroke: Tokens.text-tertiary;
                             x: 5px; y: 5px;
                         }
                         touch_close_exp := TouchArea {
@@ -1980,22 +1981,22 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                Rectangle { height: 1px; background: #2c2c31; }
+                Rectangle { height: 1px; background: Tokens.border-subtle; }
 
                 // Format selection
-                Text { text: "FORMATO DE EXPORTAÇÃO:"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+                Text { text: "FORMATO DE EXPORTAÇÃO:"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
                 HorizontalLayout {
                     spacing: 8px;
                     Rectangle {
                         height: 36px;
                         horizontal-stretch: 1;
                         border-radius: 4px;
-                        background: root.export_format == "png" ? #3b82f6 : #27272b;
+                        background: root.export_format == "png" ? Tokens.accent-bloom : Tokens.surface-control;
                         Text {
                             text: "PNG (Raster)";
                             font-size: 12px;
                             font-weight: 600;
-                            color: root.export_format == "png" ? #ffffff : #d4d4d8;
+                            color: root.export_format == "png" ? Tokens.text-primary : Tokens.text-secondary;
                             vertical-alignment: center;
                             horizontal-alignment: center;
                         }
@@ -2005,12 +2006,12 @@ export component MainWindow inherits Window {
                         height: 36px;
                         horizontal-stretch: 1;
                         border-radius: 4px;
-                        background: root.export_format == "svg" ? #3b82f6 : #27272b;
+                        background: root.export_format == "svg" ? Tokens.accent-bloom : Tokens.surface-control;
                         Text {
                             text: "SVG (Vetorial)";
                             font-size: 12px;
                             font-weight: 600;
-                            color: root.export_format == "svg" ? #ffffff : #d4d4d8;
+                            color: root.export_format == "svg" ? Tokens.text-primary : Tokens.text-secondary;
                             vertical-alignment: center;
                             horizontal-alignment: center;
                         }
@@ -2020,12 +2021,12 @@ export component MainWindow inherits Window {
                         height: 36px;
                         horizontal-stretch: 1;
                         border-radius: 4px;
-                        background: root.export_format == "pdf" ? #3b82f6 : #27272b;
+                        background: root.export_format == "pdf" ? Tokens.accent-bloom : Tokens.surface-control;
                         Text {
                             text: "PDF (Krilla)";
                             font-size: 12px;
                             font-weight: 600;
-                            color: root.export_format == "pdf" ? #ffffff : #d4d4d8;
+                            color: root.export_format == "pdf" ? Tokens.text-primary : Tokens.text-secondary;
                             vertical-alignment: center;
                             horizontal-alignment: center;
                         }
@@ -2037,16 +2038,16 @@ export component MainWindow inherits Window {
                 Rectangle {
                     height: 64px;
                     border-radius: 4px;
-                    background: #141416;
+                    background: Tokens.surface-chrome-strong;
                     border-width: 1px;
-                    border-color: #27272b;
+                    border-color: Tokens.surface-control;
                     HorizontalLayout {
                         padding: 10px;
                         spacing: 10px;
                         IconDisplay {
                             icon: IconSet.Info;
                             size: 16px;
-                            stroke: #3b82f6;
+                            stroke: Tokens.accent-bloom;
                             y: 4px;
                         }
                         Text {
@@ -2054,7 +2055,7 @@ export component MainWindow inherits Window {
                                   root.export_format == "svg" ? "Gera código SVG W3C puro preservando caminhos vetoriais, estilos e geometria sem perda." :
                                   "Gera PDF vetorial multipágina com motor Krilla 0.8 de alta fidelidade com preflight.";
                             font-size: 11px;
-                            color: #a1a1aa;
+                            color: Tokens.text-tertiary;
                             vertical-alignment: center;
                             wrap: word-wrap;
                             horizontal-stretch: 1;
@@ -2067,7 +2068,7 @@ export component MainWindow inherits Window {
                     text: root.export_status_message;
                     font-size: 11px;
                     font-weight: 600;
-                    color: #10b981;
+                    color: Tokens.status-success;
                     horizontal-alignment: center;
                 }
 
@@ -2099,7 +2100,7 @@ export component MainWindow inherits Window {
         y: 0px;
         width: 100%;
         height: 100%;
-        background: #00000099;
+        background: Tokens.scrim;
 
         TouchArea {
             clicked => { root.close_palette(); }
@@ -2110,10 +2111,10 @@ export component MainWindow inherits Window {
             height: 380px;
             x: (parent.width - self.width) / 2;
             y: 90px;
-            background: #1e1e22;
+            background: Tokens.surface-panel;
             border-radius: 8px;
             border-width: 1px;
-            border-color: #3b82f655;
+            border-color: Tokens.accent-bloom;
 
             VerticalLayout {
                 padding: 12px;
@@ -2139,7 +2140,7 @@ export component MainWindow inherits Window {
                         for item in root.palette_items : Rectangle {
                             height: 30px;
                             border-radius: 4px;
-                            background: touch_pal.has-hover ? #3b82f622 : transparent;
+                            background: touch_pal.has-hover ? Tokens.accent-faint : transparent;
 
                             HorizontalLayout {
                                 padding-left: 10px;
@@ -2149,7 +2150,7 @@ export component MainWindow inherits Window {
                                 Text {
                                     text: item.label;
                                     font-size: 12px;
-                                    color: #f4f4f5;
+                                    color: Tokens.text-primary;
                                     vertical-alignment: center;
                                     horizontal-stretch: 1;
                                     overflow: elide;
@@ -2157,7 +2158,7 @@ export component MainWindow inherits Window {
                                 Text {
                                     text: item.hint;
                                     font-size: 10px;
-                                    color: #71717a;
+                                    color: Tokens.text-disabled;
                                     vertical-alignment: center;
                                 }
                             }

@@ -17,6 +17,7 @@ pub mod hierarchy_service;
 pub mod interaction;
 pub mod ports;
 pub mod session;
+pub mod surfaces;
 pub mod surface_service;
 pub mod tools;
 mod transaction;
