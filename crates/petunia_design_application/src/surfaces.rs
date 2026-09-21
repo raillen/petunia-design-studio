@@ -93,10 +93,10 @@ pub const SURFACES: &[SurfaceEntry] = &[
     // ── Shell ───────────────────────────────────────────────────────────────
     SurfaceEntry { id: "ptnd.surface.shell.brand", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.shell.brand", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.surface.shell.persona_persona", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.shell.persona", action: None, shortcut: None },
-    SurfaceEntry { id: "ptnd.surface.shell.undo", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.shell.undo", action: Some("ptnd.action.edit.undo"), shortcut: Some("Ctrl+Z") },
-    SurfaceEntry { id: "ptnd.surface.shell.redo", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.shell.redo", action: Some("ptnd.action.edit.redo"), shortcut: Some("Ctrl+Y") },
-    SurfaceEntry { id: "ptnd.surface.shell.command_palette", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.shell.palette", action: Some("ptnd.action.view.command_palette"), shortcut: Some("Ctrl+K") },
-    SurfaceEntry { id: "ptnd.surface.shell.export", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.shell.export", action: Some("ptnd.action.file.export"), shortcut: Some("Ctrl+E") },
+    SurfaceEntry { id: "ptnd.surface.shell.undo", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.shell.undo", action: None, shortcut: Some("Ctrl+Z") },
+    SurfaceEntry { id: "ptnd.surface.shell.redo", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.shell.redo", action: None, shortcut: Some("Ctrl+Y") },
+    SurfaceEntry { id: "ptnd.surface.shell.command_palette", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.shell.palette", action: None, shortcut: Some("Ctrl+K") },
+    SurfaceEntry { id: "ptnd.surface.shell.export", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.shell.export", action: None, shortcut: Some("Ctrl+E") },
     SurfaceEntry { id: "ptnd.surface.shell.overflow", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.shell.overflow", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.surface.tabs.document_strip", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tabs.strip", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.surface.tabs.document_close", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.tabs.close", action: Some("ptnd.action.file.close"), shortcut: None },
@@ -110,52 +110,52 @@ pub const SURFACES: &[SurfaceEntry] = &[
     SurfaceEntry { id: "ptnd.surface.canvas.viewport", kind: SurfaceKind::Shell, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.canvas.viewport", action: None, shortcut: None },
 
     // ── File actions ────────────────────────────────────────────────────────
-    SurfaceEntry { id: "ptnd.action.file.new", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.file.new", action: Some("ptnd.action.file.new"), shortcut: Some("Ctrl+N") },
-    SurfaceEntry { id: "ptnd.action.file.open", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.file.open", action: Some("ptnd.action.file.open"), shortcut: Some("Ctrl+O") },
+    SurfaceEntry { id: "ptnd.action.file.new", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.new", action: None, shortcut: Some("Ctrl+N") },
+    SurfaceEntry { id: "ptnd.action.file.open", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.open", action: None, shortcut: Some("Ctrl+O") },
     SurfaceEntry { id: "ptnd.action.file.open_recent", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.file.open_recent", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.action.file.close", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.close", action: None, shortcut: None },
-    SurfaceEntry { id: "ptnd.action.file.save", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.file.save", action: Some("ptnd.action.file.save"), shortcut: Some("Ctrl+S") },
-    SurfaceEntry { id: "ptnd.action.file.save_as", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.file.save_as", action: Some("ptnd.action.file.save_as"), shortcut: Some("Ctrl+Shift+S") },
-    SurfaceEntry { id: "ptnd.action.file.export", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.file.export", action: Some("ptnd.action.file.export"), shortcut: Some("Ctrl+E") },
+    SurfaceEntry { id: "ptnd.action.file.save", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.save", action: None, shortcut: Some("Ctrl+S") },
+    SurfaceEntry { id: "ptnd.action.file.save_as", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.save_as", action: None, shortcut: Some("Ctrl+Shift+S") },
+    SurfaceEntry { id: "ptnd.action.file.export", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.export", action: None, shortcut: Some("Ctrl+E") },
     SurfaceEntry { id: "ptnd.action.file.quit", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.quit", action: None, shortcut: None },
 
     // ── Edit actions ────────────────────────────────────────────────────────
-    SurfaceEntry { id: "ptnd.action.edit.undo", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.edit.undo", action: Some("ptnd.action.edit.undo"), shortcut: Some("Ctrl+Z") },
-    SurfaceEntry { id: "ptnd.action.edit.redo", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.edit.redo", action: Some("ptnd.action.edit.redo"), shortcut: Some("Ctrl+Y") },
+    SurfaceEntry { id: "ptnd.action.edit.undo", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.edit.undo", action: None, shortcut: Some("Ctrl+Z") },
+    SurfaceEntry { id: "ptnd.action.edit.redo", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.edit.redo", action: None, shortcut: Some("Ctrl+Y") },
     SurfaceEntry { id: "ptnd.action.edit.cut", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.edit.cut", action: None, shortcut: Some("Ctrl+X") },
     SurfaceEntry { id: "ptnd.action.edit.copy", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.edit.copy", action: None, shortcut: Some("Ctrl+C") },
     SurfaceEntry { id: "ptnd.action.edit.paste", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.edit.paste", action: None, shortcut: Some("Ctrl+V") },
-    SurfaceEntry { id: "ptnd.action.edit.duplicate", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.edit.duplicate", action: Some("ptnd.action.edit.duplicate"), shortcut: Some("Ctrl+D") },
-    SurfaceEntry { id: "ptnd.action.edit.delete", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.edit.delete", action: Some("ptnd.action.edit.delete"), shortcut: Some("Delete") },
+    SurfaceEntry { id: "ptnd.action.edit.duplicate", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.edit.duplicate", action: None, shortcut: Some("Ctrl+D") },
+    SurfaceEntry { id: "ptnd.edit.delete", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.edit.delete", action: None, shortcut: Some("Delete") },
     SurfaceEntry { id: "ptnd.action.edit.preferences", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.edit.preferences", action: None, shortcut: None },
 
     // ── Selection actions ───────────────────────────────────────────────────
-    SurfaceEntry { id: "ptnd.action.select.all", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.select.all", action: Some("ptnd.action.select.all"), shortcut: Some("Ctrl+A") },
-    SurfaceEntry { id: "ptnd.action.select.none", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.select.none", action: Some("ptnd.action.select.none"), shortcut: Some("Ctrl+Shift+A") },
+    SurfaceEntry { id: "ptnd.edit.select_all", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.select.all", action: None, shortcut: Some("Ctrl+A") },
+    SurfaceEntry { id: "ptnd.edit.deselect", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.select.none", action: None, shortcut: Some("Ctrl+Shift+A") },
     SurfaceEntry { id: "ptnd.action.select.invert", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.select.invert", action: None, shortcut: None },
 
     // ── Object actions ──────────────────────────────────────────────────────
-    SurfaceEntry { id: "ptnd.action.object.group", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.group", action: Some("ptnd.action.object.group"), shortcut: Some("Ctrl+G") },
-    SurfaceEntry { id: "ptnd.action.object.ungroup", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.ungroup", action: Some("ptnd.action.object.ungroup"), shortcut: Some("Ctrl+Shift+G") },
-    SurfaceEntry { id: "ptnd.action.object.arrange_front", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.arrange_front", action: Some("ptnd.action.object.arrange.front"), shortcut: None },
-    SurfaceEntry { id: "ptnd.action.object.arrange_back", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.arrange_back", action: Some("ptnd.action.object.arrange.back"), shortcut: None },
-    SurfaceEntry { id: "ptnd.action.object.align", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.align", action: Some("ptnd.action.object.align"), shortcut: None },
-    SurfaceEntry { id: "ptnd.action.object.distribute", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.distribute", action: Some("ptnd.action.object.distribute"), shortcut: None },
-    SurfaceEntry { id: "ptnd.action.object.boolean", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.boolean", action: Some("ptnd.action.object.boolean"), shortcut: None },
-    SurfaceEntry { id: "ptnd.action.object.convert_to_curves", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.convert_to_curves", action: Some("ptnd.action.object.convert_to_curves"), shortcut: None },
-    SurfaceEntry { id: "ptnd.action.object.bake_corners", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.bake_corners", action: Some("ptnd.action.object.bake_corners"), shortcut: None },
-    SurfaceEntry { id: "ptnd.action.object.offset_path", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.offset_path", action: Some("ptnd.action.object.offset_path"), shortcut: None },
-    SurfaceEntry { id: "ptnd.action.object.slice_path", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.slice_path", action: Some("ptnd.action.object.slice_path"), shortcut: None },
-    SurfaceEntry { id: "ptnd.action.object.lock", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.lock", action: Some("ptnd.action.object.lock"), shortcut: None },
-    SurfaceEntry { id: "ptnd.action.object.hide", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.hide", action: Some("ptnd.action.object.hide"), shortcut: None },
+    SurfaceEntry { id: "ptnd.action.object.group", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.object.group", action: None, shortcut: Some("Ctrl+G") },
+    SurfaceEntry { id: "ptnd.action.object.ungroup", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.object.ungroup", action: None, shortcut: Some("Ctrl+Shift+G") },
+    SurfaceEntry { id: "ptnd.action.object.arrange_front", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.object.arrange_front", action: None, shortcut: None },
+    SurfaceEntry { id: "ptnd.action.object.arrange_back", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.object.arrange_back", action: None, shortcut: None },
+    SurfaceEntry { id: "ptnd.object.align", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.align", action: None, shortcut: None },
+    SurfaceEntry { id: "ptnd.object.distribute", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.distribute", action: None, shortcut: None },
+    SurfaceEntry { id: "ptnd.object.boolean", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.boolean", action: None, shortcut: None },
+    SurfaceEntry { id: "ptnd.object.convert_to_curves", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.convert_to_curves", action: None, shortcut: None },
+    SurfaceEntry { id: "ptnd.object.bake_corners", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.bake_corners", action: None, shortcut: None },
+    SurfaceEntry { id: "ptnd.object.offset_path", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.offset_path", action: None, shortcut: None },
+    SurfaceEntry { id: "ptnd.object.slice_path", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.object.slice_path", action: None, shortcut: None },
+    SurfaceEntry { id: "ptnd.action.object.lock", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.object.lock", action: None, shortcut: None },
+    SurfaceEntry { id: "ptnd.action.object.hide", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.object.hide", action: None, shortcut: None },
 
     // ── View actions ────────────────────────────────────────────────────────
-    SurfaceEntry { id: "ptnd.action.view.zoom_in", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.view.zoom_in", action: Some("ptnd.action.view.zoom_in"), shortcut: Some("Ctrl++") },
-    SurfaceEntry { id: "ptnd.action.view.zoom_out", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.view.zoom_out", action: Some("ptnd.action.view.zoom_out"), shortcut: Some("Ctrl+-") },
-    SurfaceEntry { id: "ptnd.action.view.zoom_100", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.view.zoom_100", action: Some("ptnd.action.view.zoom_100"), shortcut: Some("Ctrl+1") },
-    SurfaceEntry { id: "ptnd.action.view.fit_surface", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.view.fit_surface", action: Some("ptnd.action.view.fit_surface"), shortcut: Some("Ctrl+0") },
-    SurfaceEntry { id: "ptnd.action.view.toggle_rulers", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.view.rulers", action: Some("ptnd.action.view.toggle_rulers"), shortcut: Some("Ctrl+R") },
-    SurfaceEntry { id: "ptnd.action.view.toggle_snapping", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.view.snapping", action: Some("ptnd.action.view.toggle_snapping"), shortcut: None },
+    SurfaceEntry { id: "ptnd.action.view.zoom_in", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.view.zoom_in", action: None, shortcut: Some("Ctrl++") },
+    SurfaceEntry { id: "ptnd.action.view.zoom_out", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.view.zoom_out", action: None, shortcut: Some("Ctrl+-") },
+    SurfaceEntry { id: "ptnd.action.view.zoom_100", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.view.zoom_100", action: None, shortcut: Some("Ctrl+1") },
+    SurfaceEntry { id: "ptnd.action.view.fit_surface", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.view.fit_surface", action: None, shortcut: Some("Ctrl+0") },
+    SurfaceEntry { id: "ptnd.action.view.toggle_rulers", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.view.rulers", action: None, shortcut: Some("Ctrl+R") },
+    SurfaceEntry { id: "ptnd.action.view.toggle_snapping", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.view.snapping", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.action.view.focus_canvas", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.view.focus_canvas", action: None, shortcut: None },
 
     // ── Design tools ────────────────────────────────────────────────────────
@@ -164,14 +164,14 @@ pub const SURFACES: &[SurfaceEntry] = &[
     SurfaceEntry { id: "ptnd.tool.design.surface", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.surface", action: Some("ptnd.tool.artboard"), shortcut: Some("H") },
     SurfaceEntry { id: "ptnd.tool.design.pen", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.pen", action: Some("ptnd.tool.pen"), shortcut: Some("P") },
     SurfaceEntry { id: "ptnd.tool.design.pencil", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.pencil", action: Some("ptnd.tool.pencil"), shortcut: Some("N") },
-    SurfaceEntry { id: "ptnd.tool.design.rectangle", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.rectangle", action: Some("ptnd.tool.rectangle"), shortcut: Some("M") },
-    SurfaceEntry { id: "ptnd.tool.design.ellipse", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.ellipse", action: Some("ptnd.tool.ellipse"), shortcut: Some("E") },
-    SurfaceEntry { id: "ptnd.tool.design.polygon", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.polygon", action: Some("ptnd.tool.polygon"), shortcut: Some("Y") },
-    SurfaceEntry { id: "ptnd.tool.design.star", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.star", action: Some("ptnd.tool.star"), shortcut: Some("S") },
+    SurfaceEntry { id: "ptnd.tool.design.rectangle", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.rectangle", action: Some("ptnd.tool.shape.rectangle"), shortcut: Some("M") },
+    SurfaceEntry { id: "ptnd.tool.design.ellipse", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.ellipse", action: Some("ptnd.tool.shape.ellipse"), shortcut: Some("E") },
+    SurfaceEntry { id: "ptnd.tool.design.polygon", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.polygon", action: Some("ptnd.tool.shape.polygon"), shortcut: Some("Y") },
+    SurfaceEntry { id: "ptnd.tool.design.star", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.star", action: Some("ptnd.tool.shape.star"), shortcut: Some("S") },
     SurfaceEntry { id: "ptnd.tool.design.line", kind: SurfaceKind::Tool, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.tool.line", action: None, shortcut: None },
-    SurfaceEntry { id: "ptnd.tool.design.artistic_text", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.artistic_text", action: Some("ptnd.tool.artistic_text"), shortcut: Some("T") },
-    SurfaceEntry { id: "ptnd.tool.design.frame_text", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.frame_text", action: Some("ptnd.tool.frame_text"), shortcut: None },
-    SurfaceEntry { id: "ptnd.tool.design.place_image", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.place_image", action: Some("ptnd.action.file.place"), shortcut: None },
+    SurfaceEntry { id: "ptnd.tool.design.artistic_text", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.artistic_text", action: Some("ptnd.tool.text.artistic"), shortcut: Some("T") },
+    SurfaceEntry { id: "ptnd.tool.design.frame_text", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.frame_text", action: Some("ptnd.tool.text.frame"), shortcut: None },
+    SurfaceEntry { id: "ptnd.tool.design.place_image", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.tool.place_image", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.tool.design.gradient", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.gradient", action: Some("ptnd.tool.gradient"), shortcut: Some("G") },
     SurfaceEntry { id: "ptnd.tool.design.transparency", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.transparency", action: Some("ptnd.tool.transparency"), shortcut: None },
     SurfaceEntry { id: "ptnd.tool.design.eyedropper", kind: SurfaceKind::Tool, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.tool.eyedropper", action: Some("ptnd.tool.color_picker"), shortcut: Some("I") },
@@ -210,13 +210,97 @@ pub const SURFACES: &[SurfaceEntry] = &[
 
     // ── Dialogs / windows ───────────────────────────────────────────────────
     SurfaceEntry { id: "ptnd.dialog.new_document", kind: SurfaceKind::Dialog, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.dialog.new_document", action: Some("ptnd.action.file.new"), shortcut: None },
-    SurfaceEntry { id: "ptnd.dialog.export", kind: SurfaceKind::Dialog, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.dialog.export", action: Some("ptnd.action.file.export"), shortcut: Some("Ctrl+E") },
+    SurfaceEntry { id: "ptnd.dialog.export", kind: SurfaceKind::Dialog, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.dialog.export", action: None, shortcut: Some("Ctrl+E") },
     SurfaceEntry { id: "ptnd.window.home", kind: SurfaceKind::Dialog, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.window.home", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.dialog.about", kind: SurfaceKind::Dialog, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.dialog.about", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.dialog.overwrite_conflict", kind: SurfaceKind::Dialog, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.dialog.overwrite", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.window.preferences", kind: SurfaceKind::Dialog, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.window.preferences", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.window.plugin_manager", kind: SurfaceKind::Dialog, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.window.plugins", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.panel.background_tasks", kind: SurfaceKind::Panel, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.panel.jobs", action: None, shortcut: None },
+];
+
+/// Every action identifier that currently resolves to real behavior.
+/// Sources, both machine-extracted from live code: the `ActionId` constants in
+/// `actions.rs`, and the `DocumentSession::dispatch_action` match arms in
+/// `session.rs`. A surface claiming `Wired` MUST bind one of these (15.C/15.G).
+pub const LIVE_ACTIONS: &[&str] = &[
+    "ptnd.edit.delete",
+    "ptnd.edit.deselect",
+    "ptnd.edit.select_all",
+    "ptnd.fill.set",
+    "ptnd.object.align",
+    "ptnd.object.bake_corners",
+    "ptnd.object.boolean",
+    "ptnd.object.convert_to_curves",
+    "ptnd.object.create",
+    "ptnd.object.delete",
+    "ptnd.object.distribute",
+    "ptnd.object.offset_path",
+    "ptnd.object.slice_path",
+    "ptnd.surface.create",
+    "ptnd.tool.artboard",
+    "ptnd.tool.color_picker",
+    "ptnd.tool.contour",
+    "ptnd.tool.corner",
+    "ptnd.tool.gradient",
+    "ptnd.tool.knife",
+    "ptnd.tool.measure",
+    "ptnd.tool.node",
+    "ptnd.tool.pan",
+    "ptnd.tool.pen",
+    "ptnd.tool.pencil",
+    "ptnd.tool.photo.brush",
+    "ptnd.tool.photo.crop",
+    "ptnd.tool.photo.eraser",
+    "ptnd.tool.photo.flood_select",
+    "ptnd.tool.photo.gradient",
+    "ptnd.tool.photo.lasso",
+    "ptnd.tool.photo.marquee_ellipse",
+    "ptnd.tool.photo.marquee_rect",
+    "ptnd.tool.photo.selection_brush",
+    "ptnd.tool.point_transform",
+    "ptnd.tool.scissors",
+    "ptnd.tool.select",
+    "ptnd.tool.shape.ellipse",
+    "ptnd.tool.shape.polygon",
+    "ptnd.tool.shape.rectangle",
+    "ptnd.tool.shape.star",
+    "ptnd.tool.shape_builder",
+    "ptnd.tool.style_picker",
+    "ptnd.tool.text.artistic",
+    "ptnd.tool.text.frame",
+    "ptnd.tool.transparency",
+    "ptnd.tool.vector_flood_fill",
+    "ptnd.tool.zoom",
+];
+
+/// Canonical action ids required by the 15.G grammar that do **not** resolve
+/// yet. They are tracked here so the gap is machine-visible instead of being
+/// hidden behind a registry claim. Moving an id from this list to
+/// [`LIVE_ACTIONS`] is the definition of wiring it.
+pub const DECLARED_NOT_LIVE: &[&str] = &[
+    "ptnd.action.file.new",
+    "ptnd.action.file.open",
+    "ptnd.action.file.save",
+    "ptnd.action.file.save_as",
+    "ptnd.action.file.export",
+    "ptnd.action.file.place",
+    "ptnd.action.edit.undo",
+    "ptnd.action.edit.redo",
+    "ptnd.action.edit.duplicate",
+    "ptnd.action.object.group",
+    "ptnd.action.object.ungroup",
+    "ptnd.action.object.arrange.front",
+    "ptnd.action.object.arrange.back",
+    "ptnd.action.object.lock",
+    "ptnd.action.object.hide",
+    "ptnd.action.view.zoom_in",
+    "ptnd.action.view.zoom_out",
+    "ptnd.action.view.zoom_100",
+    "ptnd.action.view.fit_surface",
+    "ptnd.action.view.toggle_rulers",
+    "ptnd.action.view.toggle_snapping",
+    "ptnd.action.view.command_palette",
 ];
 
 /// Looks up one surface by stable id.
@@ -267,8 +351,12 @@ mod tests {
             // 15.G allows dialogs and secondary windows to share one kind.
             let is_dialog_window = entry.kind == SurfaceKind::Dialog
                 && entry.id.starts_with("ptnd.window.");
+            // Action entries are the live action inventory itself, so their id
+            // is the action id (canonical `ptnd.action.*` once migrated).
+            let is_live_action = entry.kind == SurfaceKind::Action
+                && LIVE_ACTIONS.contains(&entry.id);
             assert!(
-                is_dialog_window || entry.id.starts_with(&expected),
+                is_dialog_window || is_live_action || entry.id.starts_with(&expected),
                 "surface `{}` must start with `{expected}` for its kind",
                 entry.id
             );
@@ -354,6 +442,35 @@ mod tests {
                     owner.insert(key, action);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn wired_surfaces_bind_a_live_action() {
+        // The registry cannot claim a control is wired unless the action it
+        // binds actually resolves today (15.F §2 "no fake UI").
+        let live: HashSet<&str> = LIVE_ACTIONS.iter().copied().collect();
+        for entry in SURFACES {
+            if entry.status != SurfaceStatus::Wired {
+                continue;
+            }
+            let Some(action) = entry.action else {
+                continue;
+            };
+            assert!(
+                live.contains(action),
+                "surface `{}` claims Wired but binds `{action}`, which is not a live action",
+                entry.id
+            );
+        }
+    }
+
+    #[test]
+    fn live_action_inventory_is_namespaced_and_unique() {
+        let mut seen = HashSet::new();
+        for action in LIVE_ACTIONS {
+            assert!(action.starts_with("ptnd."), "action `{action}` not namespaced");
+            assert!(seen.insert(*action), "duplicate live action `{action}`");
         }
     }
 
