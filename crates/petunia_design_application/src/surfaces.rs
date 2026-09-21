@@ -114,8 +114,8 @@ pub const SURFACES: &[SurfaceEntry] = &[
     SurfaceEntry { id: "ptnd.action.file.open", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.open", action: None, shortcut: Some("Ctrl+O") },
     SurfaceEntry { id: "ptnd.action.file.open_recent", kind: SurfaceKind::Action, scope: SurfaceScope::PostV1Candidate, status: SurfaceStatus::Absent, label: "ptnd.text.file.open_recent", action: None, shortcut: None },
     SurfaceEntry { id: "ptnd.action.file.close", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.close", action: None, shortcut: None },
-    SurfaceEntry { id: "ptnd.action.file.save", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.save", action: None, shortcut: Some("Ctrl+S") },
-    SurfaceEntry { id: "ptnd.action.file.save_as", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.save_as", action: None, shortcut: Some("Ctrl+Shift+S") },
+    SurfaceEntry { id: "ptnd.action.file.save", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.file.save", action: None, shortcut: Some("Ctrl+S") },
+    SurfaceEntry { id: "ptnd.action.file.save_as", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Wired, label: "ptnd.text.file.save_as", action: None, shortcut: Some("Ctrl+Shift+S") },
     SurfaceEntry { id: "ptnd.action.file.export", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.export", action: None, shortcut: Some("Ctrl+E") },
     SurfaceEntry { id: "ptnd.action.file.quit", kind: SurfaceKind::Action, scope: SurfaceScope::V1Required, status: SurfaceStatus::Absent, label: "ptnd.text.file.quit", action: None, shortcut: None },
 
@@ -229,6 +229,8 @@ pub const LIVE_ACTIONS: &[&str] = &[
     "ptnd.action.edit.delete",
     "ptnd.action.edit.deselect",
     "ptnd.action.edit.select_all",
+    "ptnd.action.file.save",
+    "ptnd.action.file.save_as",
     "ptnd.action.object.align",
     "ptnd.action.object.distribute",
     "ptnd.action.view.fit_surface",
@@ -284,8 +286,6 @@ pub const DECLARED_NOT_LIVE: &[&str] = &[
     "ptnd.action.file.new",
     "ptnd.action.file.open",
     "ptnd.action.file.place",
-    "ptnd.action.file.save",
-    "ptnd.action.file.save_as",
     "ptnd.action.object.arrange.back",
     "ptnd.action.object.arrange.front",
     "ptnd.action.object.group",
@@ -293,11 +293,6 @@ pub const DECLARED_NOT_LIVE: &[&str] = &[
     "ptnd.action.object.lock",
     "ptnd.action.object.ungroup",
     "ptnd.action.view.command_palette",
-    "ptnd.action.view.fit_surface",
-    "ptnd.action.view.toggle_rulers",
-    "ptnd.action.view.toggle_snapping",
-    "ptnd.action.view.zoom_in",
-    "ptnd.action.view.zoom_out",
 ];
 
 /// Looks up one surface by stable id.

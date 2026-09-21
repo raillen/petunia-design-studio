@@ -3735,6 +3735,7 @@ dependencies = [
  "petunia_design_document",
  "petunia_design_foundation",
  "petunia_design_geometry",
+ "petunia_design_io",
  "serde",
  "serde_json",
  "thiserror 2.0.20",

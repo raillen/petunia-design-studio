@@ -20,6 +20,10 @@ pub const NATIVE_SUFFIX: &str = "ptnd";
 /// Human-facing extension used in titles, pickers and messages.
 pub const NATIVE_EXTENSION_DISPLAY: &str = ".PTND";
 
+/// The suffix without its leading dot, for `Path::with_extension`. Kept as its
+/// own constant so the display form and the on-disk form cannot drift.
+pub const NATIVE_EXTENSION: &str = "PTND";
+
 /// Diagnostics/filenames namespace.
 const NATIVE_FILE_LABEL: &str = "name.PTND";
 
@@ -90,8 +94,14 @@ pub fn with_native_extension(path: &Path) -> PathBuf {
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if lower == NATIVE_SUFFIX || LEGACY_SUFFIXES.contains(&lower.as_str()) {
+    if lower == NATIVE_SUFFIX {
         return path.to_path_buf();
+    }
+    if LEGACY_SUFFIXES.contains(&lower.as_str()) {
+        // Save As upgrades the suffix in place (`old.aubrieta` -> `old.PTND`)
+        // instead of passing the legacy path through, which the writable-suffix
+        // policy would refuse.
+        return path.with_extension(NATIVE_EXTENSION);
     }
     let mut name = path
         .file_name()
@@ -256,6 +266,13 @@ fn temp_sibling(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_display_and_on_disk_extensions_agree() {
+        use super::{NATIVE_EXTENSION, NATIVE_EXTENSION_DISPLAY};
+        assert_eq!(format!(".{NATIVE_EXTENSION}"), NATIVE_EXTENSION_DISPLAY);
+        assert_eq!(NATIVE_EXTENSION.to_ascii_lowercase(), super::NATIVE_SUFFIX);
+    }
+
     use super::*;
     use petunia_design_document::{DocumentMutator, DocumentObject};
     use petunia_design_foundation::IdGenerator;
@@ -342,11 +359,19 @@ mod tests {
             with_native_extension(Path::new("art/Untitled.ptnd")).to_string_lossy(),
             "art/Untitled.ptnd"
         );
-        // Legacy names are preserved so the migration path can add the
-        // native suffix deliberately at the call site.
+        // A legacy suffix is *upgraded*: Save As writes `Old.PTND` and leaves
+        // the original `Old.aubrieta` untouched on disk.
         assert_eq!(
             with_native_extension(Path::new("art/Old.aubrieta")).to_string_lossy(),
-            "art/Old.aubrieta"
+            "art/Old.PTND"
+        );
+        assert_eq!(
+            with_native_extension(Path::new("art/Old.aubri")).to_string_lossy(),
+            "art/Old.PTND"
+        );
+        assert_eq!(
+            with_native_extension(Path::new("art/Old.AUBRIETA")).to_string_lossy(),
+            "art/Old.PTND"
         );
         assert!(has_native_extension(Path::new("a.PTND")));
         assert!(has_native_extension(Path::new("a.ptnd")));

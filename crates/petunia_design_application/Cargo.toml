@@ -8,6 +8,7 @@ license.workspace = true
 petunia_design_foundation = { path = "../petunia_design_foundation" }
 petunia_design_geometry = { path = "../petunia_design_geometry" }
 petunia_design_document = { path = "../petunia_design_document" }
+petunia_design_io = { path = "../petunia_design_io" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
