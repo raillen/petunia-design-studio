@@ -140,6 +140,41 @@ pub fn pivot_angle_delta(p0: GPoint, p1: GPoint, pivot: GPoint) -> Option<f64> {
     Some(a1 - a0)
 }
 
+/// Computes the radial scale factor from `p0` to `p1` around `pivot`
+/// (Table B): `|p1 - pivot| / |p0 - pivot|`. Returns `None` when either
+/// radius is degenerate, so callers never divide by zero.
+#[must_use]
+pub fn scale_factor_around(p0: GPoint, p1: GPoint, pivot: GPoint) -> Option<f64> {
+    let r0 = ((p0.x - pivot.x).powi(2) + (p0.y - pivot.y).powi(2)).sqrt();
+    let r1 = ((p1.x - pivot.x).powi(2) + (p1.y - pivot.y).powi(2)).sqrt();
+    if !r0.is_finite() || !r1.is_finite() || r0 < 1e-9 {
+        return None;
+    }
+    Some(r1 / r0)
+}
+
+/// Scales `[x, y, w, h]` bounds by `k` about `pivot` (Table B).
+#[must_use]
+pub fn scale_bounds_about(
+    bounds: [f64; 4],
+    pivot: GPoint,
+    k: f64,
+) -> Option<[f64; 4]> {
+    if !k.is_finite() || k <= 1e-9 {
+        return None;
+    }
+    let (x, y, w, h) = (bounds[0], bounds[1], bounds[2], bounds[3]);
+    if w <= 0.0 || h <= 0.0 {
+        return None;
+    }
+    Some([
+        pivot.x + (x - pivot.x) * k,
+        pivot.y + (y - pivot.y) * k,
+        (w * k).max(1.0),
+        (h * k).max(1.0),
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

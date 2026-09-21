@@ -1,6 +1,6 @@
 //! Vector gradient and transparency tools (08.24, 10.4).
 
-use aubrieta_application::{Command, CommandRequest};
+use aubrieta_application::Command;
 use aubrieta_document::ChangeSet;
 use aubrieta_foundation::AubrietaError;
 use aubrieta_geometry::GPoint;
@@ -71,30 +71,43 @@ impl GradientTool {
                 let start = self.start_doc.take();
                 let current = self.current_doc.take();
 
-                if let (Some(_p0), Some(_p1)) = (start, current) {
+                if let (Some(p0), Some(p1)) = (start, current) {
                     let selected = bridge.selection().selected_ids;
-                    let mut combined = ChangeSet::empty();
-
-                    for id in selected {
-                        match self.mode {
-                            GradientToolMode::Fill => {
-                                let c = bridge.submit_command(CommandRequest::new(
-                                    Command::SetFill {
+                    match self.mode {
+                        GradientToolMode::Fill => {
+                            // The drag vector edits gradient *geometry* (10.4):
+                            // existing linear gradients are repositioned,
+                            // otherwise one is created from the current solid
+                            // color on both stops (no color is invented).
+                            let mut cmds = Vec::new();
+                            for id in selected {
+                                if let Some(stack) =
+                                    apply_fill_vector(bridge, id, [p0.x, p0.y], [p1.x, p1.y])
+                                {
+                                    cmds.push(Command::SetAppearance {
                                         id,
-                                        fill: Some("aubrieta.gradient/linear".to_string()),
-                                    },
-                                ))?;
-                                combined.extend(c);
+                                        appearance: Some(stack),
+                                    });
+                                }
                             }
-                            GradientToolMode::Transparency => {
-                                let c = bridge.submit_command(CommandRequest::new(
-                                    Command::SetOpacity { id, opacity: 0.8 },
-                                ))?;
-                                combined.extend(c);
+                            return bridge.submit_all("Edit gradient", cmds);
+                        }
+                        GradientToolMode::Transparency => {
+                            // No mask infrastructure exists yet (10.5/10.10):
+                            // vertical drag adjusts whole-stack opacity
+                            // relative to the drag-start value, explicitly
+                            // and undoably (documented gesture).
+                            let mut cmds = Vec::new();
+                            for id in selected {
+                                if let Some(cmd) =
+                                    apply_transparency_drag(bridge, id, p0.y - p1.y)
+                                {
+                                    cmds.push(cmd);
+                                }
                             }
+                            return bridge.submit_all("Adjust transparency", cmds);
                         }
                     }
-                    return Ok(combined);
                 }
                 Ok(ChangeSet::empty())
             }
@@ -105,6 +118,7 @@ impl GradientTool {
         }
     }
 
+
     /// Resolves overlays showing the gradient vector line.
     #[must_use]
     pub fn overlays(&self) -> CanvasOverlays {
@@ -114,4 +128,68 @@ impl GradientTool {
         }
         overlays
     }
+}
+
+/// Repositions (or creates) the primary linear gradient of one object.
+/// Returns the new stack, or `None` when the object is missing.
+fn apply_fill_vector(
+    bridge: &AubrietaGuiBridge,
+    id: aubrieta_foundation::ObjectId,
+    start: [f64; 2],
+    end: [f64; 2],
+) -> Option<aubrieta_document::AppearanceStack> {
+    use aubrieta_document::{GradientStop, LinearGradient, Paint};
+    let stack = bridge
+        .session()?
+        .find_object(id)?
+        .effective_appearance();
+    let paint = match stack.primary_fill().map(|f| f.paint.clone()) {
+        Some(Paint::LinearGradient(mut g)) => {
+            g.start = start;
+            g.end = end;
+            g.sort_and_reindex();
+            Paint::LinearGradient(g)
+        }
+        Some(Paint::Solid(token)) => Paint::LinearGradient(LinearGradient::new(
+            start,
+            end,
+            vec![
+                GradientStop::new(0.0, token.clone()),
+                GradientStop::new(1.0, token),
+            ],
+        )),
+        _ => Paint::LinearGradient(LinearGradient::new(
+            start,
+            end,
+            vec![
+                GradientStop::new(0.0, "aubrieta.blue/500"),
+                GradientStop::new(1.0, "aubrieta.blue/500"),
+            ],
+        )),
+    };
+    Some(aubrieta_application::appearance_service::with_primary_gradient(
+        stack, paint,
+    ))
+}
+
+/// Adjusts whole-stack opacity by vertical drag distance (200pt = full
+/// range), relative to the drag-start value. Returns `None` when the
+/// object is missing.
+fn apply_transparency_drag(
+    bridge: &AubrietaGuiBridge,
+    id: aubrieta_foundation::ObjectId,
+    dy: f64,
+) -> Option<Command> {
+    let stack = bridge
+        .session()?
+        .find_object(id)?
+        .effective_appearance();
+    let next = (stack.opacity + dy / 200.0).clamp(0.0, 1.0);
+    if (next - stack.opacity).abs() <= f64::EPSILON {
+        return None;
+    }
+    Some(Command::SetStackOpacity {
+        id,
+        opacity: next,
+    })
 }

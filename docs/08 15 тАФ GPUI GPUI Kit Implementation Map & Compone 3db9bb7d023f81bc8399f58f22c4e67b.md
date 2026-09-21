@@ -1,9 +1,9 @@
-# 08.15 — GUI Implementation Map & Component Ownership (Slint & Egui)
+# 08.15 — GUI Implementation Map & Component Ownership (Slint)
 
 <aside>
 🎯
 
-**Regra de Governança:** O **Slint** é a implementação primária da interface gráfica (`apps/aubrieta-slint`). O **egui** atua como interface secundária leve (pós-V1, low-end) e workbench de depuração técnica (`apps/aubrieta-egui`). O **Iced foi aposentado** (`apps/aubrieta-iced` removido). O **GPUI foi descontinuado**. A biblioteca interna `aubrieta_shell` (ex-`aubrieta_ui_gpui`) atua como a infraestrutura neutra de desacoplamento (`AubrietaGuiBridge` e `AubrietaShell`); sessão, portas e view-models vivem em `aubrieta_application`.
+**Regra de Governança:** O **Slint** é a implementação primária e única da interface gráfica (`apps/aubrieta-slint`). O **egui foi aposentado** (`apps/aubrieta-egui` removido). O **Iced foi aposentado** (`apps/aubrieta-iced` removido). O **GPUI foi descontinuado**. A biblioteca interna `aubrieta_shell` (ex-`aubrieta_ui_gpui`) atua como a infraestrutura neutra de desacoplamento (`AubrietaGuiBridge` e `AubrietaShell`); sessão, portas e view-models vivem em `aubrieta_application`. (A tabela comparativa abaixo é mantida como pesquisa histórica.)
 
 </aside>
 

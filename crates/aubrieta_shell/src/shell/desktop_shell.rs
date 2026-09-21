@@ -67,12 +67,22 @@ impl AubrietaShell {
     }
 
     /// Dispatches a normalized pointer event through active tool and snapping engine.
+    /// View-tool navigation is applied to the owned camera afterwards.
     pub fn handle_pointer_event(
         &mut self,
         event: &NormalizedPointerEvent,
     ) -> Result<ChangeSet, AubrietaError> {
-        self.tools
-            .on_pointer_event(event, &mut self.bridge, &self.camera, &mut self.snap)
+        let changes =
+            self.tools
+                .on_pointer_event(event, &mut self.bridge, &self.camera, &mut self.snap)?;
+        if let Some(action) = self.tools.take_camera_action() {
+            use crate::tools::CameraAction;
+            match action {
+                CameraAction::Pan { dx, dy } => self.camera.pan(dx, dy),
+                CameraAction::Zoom { focus, factor } => self.camera.zoom_at(focus, factor),
+            }
+        }
+        Ok(changes)
     }
 
     /// Switches the active editing tool.

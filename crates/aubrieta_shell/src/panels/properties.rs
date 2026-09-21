@@ -1,7 +1,8 @@
 //! Properties inspector panel controller (09.25, 10.1, 10.4).
 
+use aubrieta_application::Command;
 use aubrieta_document::ChangeSet;
-use aubrieta_foundation::AubrietaError;
+use aubrieta_foundation::{AubrietaError, ObjectId};
 
 use crate::bridge::{AubrietaGuiBridge, PropertiesPresentationModel};
 
@@ -23,20 +24,21 @@ impl PropertiesPanelController {
     }
 
     /// Updates fill token on all currently selected objects.
+    /// One panel gesture commits exactly one undo entry (F-01).
     pub fn set_fill(
         &self,
         bridge: &mut AubrietaGuiBridge,
         fill_token: Option<String>,
     ) -> Result<ChangeSet, AubrietaError> {
         let sel_ids = bridge.selection().selected_ids;
-        let mut combined = ChangeSet::empty();
-        for id in sel_ids {
-            let changes = bridge.set_fill(id, fill_token.clone())?;
-            for c in changes.changes {
-                combined.push(c);
-            }
-        }
-        Ok(combined)
+        let cmds = sel_ids
+            .into_iter()
+            .map(|id| Command::SetFill {
+                id,
+                fill: fill_token.clone(),
+            })
+            .collect();
+        bridge.submit_all("Set fill", cmds)
     }
 
     /// Updates stroke token and width on all currently selected objects.
@@ -47,14 +49,15 @@ impl PropertiesPanelController {
         width: f64,
     ) -> Result<ChangeSet, AubrietaError> {
         let sel_ids = bridge.selection().selected_ids;
-        let mut combined = ChangeSet::empty();
-        for id in sel_ids {
-            let changes = bridge.set_stroke(id, stroke_token.clone(), width)?;
-            for c in changes.changes {
-                combined.push(c);
-            }
-        }
-        Ok(combined)
+        let cmds = sel_ids
+            .into_iter()
+            .map(|id| Command::SetStroke {
+                id,
+                stroke: stroke_token.clone(),
+                width,
+            })
+            .collect();
+        bridge.submit_all("Set stroke", cmds)
     }
 
     /// Updates opacity factor on all currently selected objects.
@@ -64,17 +67,19 @@ impl PropertiesPanelController {
         opacity: f64,
     ) -> Result<ChangeSet, AubrietaError> {
         let sel_ids = bridge.selection().selected_ids;
-        let mut combined = ChangeSet::empty();
-        for id in sel_ids {
-            let changes = bridge.set_opacity(id, opacity)?;
-            for c in changes.changes {
-                combined.push(c);
-            }
-        }
-        Ok(combined)
+        let cmds = sel_ids
+            .into_iter()
+            .map(|id| Command::SetOpacity { id, opacity })
+            .collect();
+        bridge.submit_all("Set opacity", cmds)
     }
 
-    /// Updates bounds coordinate on all currently selected objects.
+    /// Updates bounds on the selection (10.1).
+    /// Single selection: exact bounds + rotation. Multi-selection: the
+    /// incoming rect is treated as the new position of the selection's
+    /// top-left — each object translates by that delta, preserving its own
+    /// size (never collapses distinct objects into one rect). Rotation is
+    /// applied per object as explicitly requested.
     pub fn set_bounds(
         &self,
         bridge: &mut AubrietaGuiBridge,
@@ -82,14 +87,33 @@ impl PropertiesPanelController {
         rotation: f64,
     ) -> Result<ChangeSet, AubrietaError> {
         let sel_ids = bridge.selection().selected_ids;
-        let mut combined = ChangeSet::empty();
-        for id in sel_ids {
-            let changes = bridge.set_bounds(id, Some(bounds), rotation)?;
-            for c in changes.changes {
-                combined.push(c);
-            }
+        if sel_ids.len() <= 1 {
+            let cmds = sel_ids
+                .into_iter()
+                .map(|id| Command::SetBounds {
+                    id,
+                    bounds: Some(bounds),
+                    rotation,
+                })
+                .collect();
+            return bridge.submit_all("Set bounds", cmds);
         }
-        Ok(combined)
+        let current = combined_selection_bounds(bridge, &sel_ids);
+        let (dx, dy) = match current {
+            Some([cx, cy, _, _]) => (bounds[0] - cx, bounds[1] - cy),
+            None => (0.0, 0.0),
+        };
+        let cmds = sel_ids
+            .into_iter()
+            .filter_map(|id| {
+                moved_bounds(bridge, id, dx, dy).map(|next| Command::SetBounds {
+                    id,
+                    bounds: Some(next),
+                    rotation,
+                })
+            })
+            .collect();
+        bridge.submit_all("Move selection", cmds)
     }
 
     /// Updates appearance stack on all currently selected objects.
@@ -99,14 +123,14 @@ impl PropertiesPanelController {
         appearance: Option<aubrieta_document::AppearanceStack>,
     ) -> Result<ChangeSet, AubrietaError> {
         let sel_ids = bridge.selection().selected_ids;
-        let mut combined = ChangeSet::empty();
-        for id in sel_ids {
-            let changes = bridge.set_appearance(id, appearance.clone())?;
-            for c in changes.changes {
-                combined.push(c);
-            }
-        }
-        Ok(combined)
+        let cmds = sel_ids
+            .into_iter()
+            .map(|id| Command::SetAppearance {
+                id,
+                appearance: appearance.clone(),
+            })
+            .collect();
+        bridge.submit_all("Set appearance", cmds)
     }
 
     /// Updates active surface dimensions and origin (10.7).
@@ -157,4 +181,36 @@ impl PropertiesPanelController {
             .ok_or_else(|| AubrietaError::invalid_input("no active surface"))?;
         bridge.set_surface_background(surface, background)
     }
+}
+
+/// Combined `[x, y, w, h]` of the given objects, ignoring unbounded ones.
+fn combined_selection_bounds(
+    bridge: &AubrietaGuiBridge,
+    ids: &[ObjectId],
+) -> Option<[f64; 4]> {
+    let session = bridge.session()?;
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    let mut any = false;
+    for id in ids {
+        if let Some(b) = session.find_object(*id).and_then(|o| o.bounds) {
+            any = true;
+            min_x = min_x.min(b[0]);
+            min_y = min_y.min(b[1]);
+            max_x = max_x.max(b[0] + b[2]);
+            max_y = max_y.max(b[1] + b[3]);
+        }
+    }
+    any.then_some([min_x, min_y, max_x - min_x, max_y - min_y])
+}
+
+/// Current bounds of one object translated by `(dx, dy)`.
+fn moved_bounds(bridge: &AubrietaGuiBridge, id: ObjectId, dx: f64, dy: f64) -> Option<[f64; 4]> {
+    bridge
+        .session()?
+        .find_object(id)
+        .and_then(|o| o.bounds)
+        .map(|b| [b[0] + dx, b[1] + dy, b[2], b[3]])
 }

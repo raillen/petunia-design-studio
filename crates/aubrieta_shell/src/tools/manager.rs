@@ -278,6 +278,16 @@ impl ToolManager {
         }
     }
 
+    /// Takes a pending camera action from the active view tool, if any.
+    /// The shell drains this after dispatch and applies it to the camera.
+    pub fn take_camera_action(&mut self) -> Option<super::view::CameraAction> {
+        match self.active_kind {
+            ToolKind::Zoom => self.zoom_tool.take_camera_action(),
+            ToolKind::Hand => self.hand_tool.take_camera_action(),
+            _ => None,
+        }
+    }
+
     /// Resolves overlays produced by the active tool.
     #[must_use]
     pub fn overlays(&self, camera: &ViewportCamera, bridge: &AubrietaGuiBridge) -> CanvasOverlays {

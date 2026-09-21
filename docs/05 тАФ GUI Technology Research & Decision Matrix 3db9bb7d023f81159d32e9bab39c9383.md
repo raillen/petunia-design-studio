@@ -27,8 +27,9 @@ Prioridade máxima:
 - **Vantagem Competitiva**: **Live Preview em tempo real** via extensão de editor, permitindo desenhar inspectors, barras de ferramentas e componentes do Design System sem necessidade de recompilar o código Rust a cada ajuste cosmético.
 - **Hardware**: Validado com 100% de estabilidade e fluidez imediata na GPU Intel HD 4000.
 
-### 2. Shell Secundária / Experimental: Egui (`apps/aubrieta-egui`)
-- **Papel**: Workbench de diagnóstico técnico, depuração profunda e ferramentas para desenvolvedores/agentes.
+### 2. Shell Secundária / Experimental: Egui (`apps/aubrieta-egui`) — APOSENTADA
+- **Status**: app removido do workspace; Slint é a interface primária e única.
+- **Papel anterior**: Workbench de diagnóstico técnico, depuração profunda e ferramentas para desenvolvedores/agentes.
 - **Tecnologia**: Immediate-mode via `eframe` configurado com backend `glow` (OpenGL).
 - **Recursos**: Painéis de telemetria em tempo real, visualizador de dirty rects, árvore de inspeção semântica do grafo de nós, métricas de memória de rasterização e injeção de comandos MCP.
 - **Hardware**: Validado a 60 FPS contínuos no driver `crocus` OpenGL 4.2.

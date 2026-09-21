@@ -1,6 +1,5 @@
 //! Point Transform tool rotating and scaling around custom pivot origins (08.24, 10.1).
 
-use aubrieta_application::{Command, CommandRequest};
 use aubrieta_document::ChangeSet;
 use aubrieta_foundation::AubrietaError;
 use aubrieta_geometry::GPoint;
@@ -29,8 +28,9 @@ impl PointTransformTool {
         }
     }
 
-    /// Resets active transform.
+    /// Resets active transform, releasing the sticky pivot (Table B).
     pub fn cancel(&mut self) {
+        self.pivot = None;
         self.start_doc = None;
         self.current_doc = None;
     }
@@ -67,16 +67,14 @@ impl PointTransformTool {
 
                 if let (Some(p0), Some(p1)) = (start, current) {
                     let pivot = self.pivot.unwrap_or(p0);
-                    // Shared primitive rejects degenerate vectors instead of
-                    // applying an atan2(0,0) phantom rotation (Table B).
-                    let Some(delta_angle) =
-                        aubrieta_geometry::pivot_angle_delta(p0, p1, pivot)
-                    else {
-                        return Ok(ChangeSet::empty());
-                    };
+                    // Shared primitives reject degenerate vectors instead of
+                    // applying atan2(0,0) phantom rotations or 0/0 scales.
+                    let delta_angle =
+                        aubrieta_geometry::pivot_angle_delta(p0, p1, pivot).unwrap_or(0.0);
+                    let scale = aubrieta_geometry::scale_factor_around(p0, p1, pivot);
 
                     let selected = bridge.selection().selected_ids;
-                    let mut combined = ChangeSet::empty();
+                    let mut cmds = Vec::new();
 
                     for id in selected {
                         let obj = bridge
@@ -85,17 +83,23 @@ impl PointTransformTool {
                             .cloned();
 
                         if let Some(o) = obj {
-                            let new_rot = o.rotation + delta_angle;
-                            let cmd = CommandRequest::new(Command::SetBounds {
+                            let next_bounds = match (o.bounds, scale) {
+                                (Some(b), Some(k))
+                                    if (k - 1.0).abs() > f64::EPSILON =>
+                                {
+                                    aubrieta_geometry::scale_bounds_about(b, pivot, k)
+                                }
+                                _ => o.bounds,
+                            };
+                            cmds.push(aubrieta_application::Command::SetBounds {
                                 id,
-                                bounds: o.bounds,
-                                rotation: new_rot,
+                                bounds: next_bounds,
+                                rotation: o.rotation + delta_angle,
                             });
-                            let c = bridge.submit_command(cmd)?;
-                            combined.extend(c);
                         }
                     }
-                    return Ok(combined);
+                    // One gesture, one undo entry (F-01).
+                    return bridge.submit_all("Transform around pivot", cmds);
                 }
                 Ok(ChangeSet::empty())
             }

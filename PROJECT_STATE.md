@@ -42,8 +42,8 @@ O núcleo completo, o subsistema de renderização/I/O e a camada de interface d
     - Smoke test headless/CI via `MockGuiAdapter` permanece.
 18. Pipeline de validação `cargo xtask gauntlet` aprovando **179 testes** (unitários, integração e proptests), clippy sem advertências e sem arestas proibidas de arquitetura.
 19. Arquitetura de GUIs Desktop (Decisão Homologada Setembro 2026, revista):
-    - `apps/aubrieta-slint`: Shell primária canônica com DSL declarativa, Live Preview instantâneo e aceleração FemtoVG/OpenGL 4.2+.
-    - `apps/aubrieta-egui`: Interface secundária leve (pós-V1, low-end) e workbench técnico de diagnóstico e telemetria profunda (60 FPS Glow/OpenGL).
+    - `apps/aubrieta-slint`: Shell primária e única, canônica, com DSL declarativa, Live Preview instantâneo e aceleração FemtoVG/OpenGL 4.2+.
+    - `apps/aubrieta-egui`: **aposentado e removido do workspace**.
     - `apps/aubrieta-iced`: **aposentado e removido do workspace** (era contingência estratégica).
     - `apps/aubrieta-desktop` (minifb): **aposentado e removido do workspace**.
     - Descontinuação formal de GPUI, Floem e Xilem do workspace.

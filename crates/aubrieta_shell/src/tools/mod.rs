@@ -38,4 +38,4 @@ pub use select::{SelectTool, SelectToolState};
 pub use shape::{ShapeKind, ShapeTool};
 pub use shape_builder::{BuilderMode, ShapeBuilderTool};
 pub use text::{TextTool, TextToolMode};
-pub use view::{ViewTool, ViewToolMode};
+pub use view::{CameraAction, ViewTool, ViewToolMode};

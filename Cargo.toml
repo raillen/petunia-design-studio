@@ -18,7 +18,6 @@ members = [
     "crates/aubrieta_mcp",
     "crates/aubrieta_shell",
     "apps/aubrieta-cli",
-    "apps/aubrieta-egui",
     "apps/aubrieta-slint",
     "xtask",
 ]

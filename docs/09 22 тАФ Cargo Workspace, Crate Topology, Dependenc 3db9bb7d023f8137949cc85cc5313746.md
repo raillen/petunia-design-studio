@@ -15,8 +15,8 @@ Recommended logical layers:
 5. `io`: native format, SVG/PDF/raster import/export;
 6. `extension`: plugin host, MCP, resource packs;
 7. `platform`: OS services;
-8. `ui`: GUI adapters (`aubrieta-slint` primary, `aubrieta-egui` secondary lightweight post-V1), toolkit-neutral shell (`aubrieta_shell`: bridge, viewport, tools, panels), design system;
-9. `apps`: GUI apps (`aubrieta-slint`, `aubrieta-egui`), CLI/headless (`aubrieta-cli`). `aubrieta-desktop` (minifb) and `aubrieta-iced` were retired; the legacy `aubrieta_ui_gpui` crate was renamed to `aubrieta_shell`.
+8. `ui`: GUI adapter (`aubrieta-slint`, única interface), toolkit-neutral shell (`aubrieta_shell`: bridge, viewport, tools, panels), design system;
+9. `apps`: GUI app (`aubrieta-slint`), CLI/headless (`aubrieta-cli`). `aubrieta-desktop` (minifb), `aubrieta-iced` e `aubrieta-egui` foram aposentados; a interface primária e única é o Slint; o legado `aubrieta_ui_gpui` foi renomeado para `aubrieta_shell`.
 
 # Dependency rule
 

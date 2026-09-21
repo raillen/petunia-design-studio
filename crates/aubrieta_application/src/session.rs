@@ -6,7 +6,8 @@
 //! `execute_command` / `dispatch_action` / `undo` / `redo` (A2).
 
 use aubrieta_document::{
-    ChangeSet, DataBinding, DataSourceDefinition, Document, DocumentObject, Surface,
+    AlignmentMode, ChangeSet, DataBinding, DataSourceDefinition, DistributionAxis, Document,
+    DocumentObject, Surface,
 };
 use aubrieta_foundation::{AubrietaError, IdGenerator, ObjectId, SurfaceId};
 
@@ -312,6 +313,16 @@ impl DocumentSession {
             "aubrieta.edit.deselect" => {
                 self.selection.clear();
                 Ok(ChangeSet::empty())
+            }
+            "aubrieta.object.align" => {
+                let (surface, ids, mode) = align_payload(&request.payload)?;
+                let cmd = CommandRequest::new(Command::AlignObjects { surface, ids, mode });
+                self.execute_command(cmd)
+            }
+            "aubrieta.object.distribute" => {
+                let (surface, ids, axis) = distribute_payload(&request.payload)?;
+                let cmd = CommandRequest::new(Command::DistributeObjects { surface, ids, axis });
+                self.execute_command(cmd)
             }
             _ => Err(AubrietaError::invalid_input(format!(
                 "unsupported action in session: `{}`",
@@ -708,4 +719,90 @@ impl DocumentSession {
             total_records,
         }
     }
+}
+
+/// Parses an align payload: `{surface: u64, ids: [u64], mode: left|center|right|top|middle|bottom}`.
+fn align_payload(
+    payload: &serde_json::Value,
+) -> Result<
+    (
+        SurfaceId,
+        Vec<ObjectId>,
+        AlignmentMode,
+    ),
+    AubrietaError,
+> {
+    let surface = payload
+        .get("surface")
+        .and_then(serde_json::Value::as_u64)
+        .map(SurfaceId::new)
+        .ok_or_else(|| AubrietaError::invalid_input("align payload requires `surface` id"))?;
+    let ids = payload
+        .get("ids")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_u64().map(ObjectId::new))
+                .collect::<Vec<_>>()
+        })
+        .filter(|ids| ids.len() >= 2)
+        .ok_or_else(|| {
+            AubrietaError::invalid_input("align payload requires at least 2 `ids`")
+        })?;
+    let mode = match payload.get("mode").and_then(serde_json::Value::as_str) {
+        Some("left") => AlignmentMode::Left,
+        Some("center") => AlignmentMode::Center,
+        Some("right") => AlignmentMode::Right,
+        Some("top") => AlignmentMode::Top,
+        Some("middle") => AlignmentMode::Middle,
+        Some("bottom") => AlignmentMode::Bottom,
+        other => {
+            return Err(AubrietaError::invalid_input(format!(
+                "align payload requires mode left|center|right|top|middle|bottom, got {other:?}"
+            )));
+        }
+    };
+    Ok((surface, ids, mode))
+}
+
+/// Parses a distribute payload: `{surface: u64, ids: [u64], axis: horizontal|vertical}`.
+fn distribute_payload(
+    payload: &serde_json::Value,
+) -> Result<
+    (
+        SurfaceId,
+        Vec<ObjectId>,
+        DistributionAxis,
+    ),
+    AubrietaError,
+> {
+    let surface = payload
+        .get("surface")
+        .and_then(serde_json::Value::as_u64)
+        .map(SurfaceId::new)
+        .ok_or_else(|| {
+            AubrietaError::invalid_input("distribute payload requires `surface` id")
+        })?;
+    let ids = payload
+        .get("ids")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_u64().map(ObjectId::new))
+                .collect::<Vec<_>>()
+        })
+        .filter(|ids| ids.len() >= 3)
+        .ok_or_else(|| {
+            AubrietaError::invalid_input("distribute payload requires at least 3 `ids`")
+        })?;
+    let axis = match payload.get("axis").and_then(serde_json::Value::as_str) {
+        Some("horizontal") => DistributionAxis::Horizontal,
+        Some("vertical") => DistributionAxis::Vertical,
+        other => {
+            return Err(AubrietaError::invalid_input(format!(
+                "distribute payload requires axis horizontal|vertical, got {other:?}"
+            )));
+        }
+    };
+    Ok((surface, ids, axis))
 }

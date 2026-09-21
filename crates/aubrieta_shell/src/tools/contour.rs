@@ -71,18 +71,21 @@ impl ContourTool {
                 let current = self.current_doc.take();
 
                 if let (Some(p0), Some(p1)) = (start, current) {
-                    let delta_x = p1.x - p0.x;
-                    let delta_y = p1.y - p0.y;
-                    let dist = (delta_x * delta_x + delta_y * delta_y).sqrt();
-                    let sign = if delta_x + delta_y >= 0.0 { 1.0 } else { -1.0 };
-                    let delta = dist * sign;
-
                     let selected = bridge.selection().selected_ids;
                     let mut combined = ChangeSet::empty();
 
+                    // Corner drags use raw distance with right/down-positive
+                    // sign (no radial convention applies to radii).
+                    let (ddx, ddy) = (p1.x - p0.x, p1.y - p0.y);
+                    let drag_dist = (ddx * ddx + ddy * ddy).sqrt()
+                        * if ddx + ddy >= 0.0 { 1.0 } else { -1.0 };
                     match self.mode {
                         ContourMode::Contour => {
+                            // Outward-from-center convention per object:
+                            // dragging away from the bounds center expands
+                            // (positive delta), dragging toward it insets.
                             for id in selected {
+                                let delta = contour_delta(bridge, id, p0, p1);
                                 let c = bridge.offset_path(id, delta)?;
                                 combined.extend(c);
                             }
@@ -99,7 +102,7 @@ impl ContourTool {
                                             let new_r =
                                                 aubrieta_geometry::step_corner_radius(
                                                     corner_radii[0],
-                                                    delta,
+                                                    drag_dist,
                                                     obj.bounds,
                                                 );
                                             let c = bridge.set_shape(
@@ -129,9 +132,41 @@ impl ContourTool {
         }
     }
 
+
+
     /// Resolves overlays (none or preview).
     #[must_use]
     pub fn overlays(&self) -> CanvasOverlays {
         CanvasOverlays::default()
+    }
+}
+
+/// Signed offset distance for one object: radial distance from the bounds
+/// center to the release point minus the distance to the grab point.
+/// Positive means outward (expand), negative means inward (inset).
+/// Objects without bounds fall back to drag length with the legacy
+/// right/down-positive sign.
+fn contour_delta(
+    bridge: &AubrietaGuiBridge,
+    id: aubrieta_foundation::ObjectId,
+    p0: aubrieta_geometry::GPoint,
+    p1: aubrieta_geometry::GPoint,
+) -> f64 {
+    let center = bridge
+        .session()
+        .and_then(|s| s.find_object(id))
+        .and_then(|o| o.bounds)
+        .map(|b| (b[0] + b[2] / 2.0, b[1] + b[3] / 2.0));
+    match center {
+        Some((cx, cy)) => {
+            let d0 = ((p0.x - cx).powi(2) + (p0.y - cy).powi(2)).sqrt();
+            let d1 = ((p1.x - cx).powi(2) + (p1.y - cy).powi(2)).sqrt();
+            d1 - d0
+        }
+        None => {
+            let dx = p1.x - p0.x;
+            let dy = p1.y - p0.y;
+            (dx * dx + dy * dy).sqrt() * if dx + dy >= 0.0 { 1.0 } else { -1.0 }
+        }
     }
 }

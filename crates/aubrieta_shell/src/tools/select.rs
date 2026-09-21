@@ -1,6 +1,6 @@
 //! Selection and transform tool state machine (10.1).
 
-use aubrieta_application::{Command, CommandRequest};
+use aubrieta_application::Command;
 use aubrieta_document::ChangeSet;
 use aubrieta_foundation::{AubrietaError, ObjectId};
 use aubrieta_geometry::{GPoint, GRect};
@@ -36,6 +36,7 @@ pub enum SelectToolState {
         start_doc: GPoint,
         current_doc: GPoint,
         initial_bounds: [f64; 4],
+        initial_objects: Vec<(ObjectId, [f64; 4], f64)>,
     },
 }
 
@@ -113,11 +114,23 @@ impl SelectTool {
                 self.handle_size_px,
                 8.0,
             ) {
+                let mut initial_objects = Vec::new();
+                if let Some(session) = bridge.session() {
+                    for &sel_id in &session.selection.selected_ids {
+                        if let Some(obj) = session.find_object(sel_id) {
+                            if !obj.locked {
+                                let b = obj.bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
+                                initial_objects.push((sel_id, b, obj.rotation));
+                            }
+                        }
+                    }
+                }
                 self.state = SelectToolState::TransformingHandle {
                     handle: handle_kind,
                     start_doc: event.doc_pos,
                     current_doc: event.doc_pos,
                     initial_bounds: [bx, by, bw, bh],
+                    initial_objects,
                 };
                 return Ok(ChangeSet::empty());
             }
@@ -171,7 +184,7 @@ impl SelectTool {
     fn on_move(
         &mut self,
         event: &NormalizedPointerEvent,
-        bridge: &mut AubrietaGuiBridge,
+        _bridge: &mut AubrietaGuiBridge,
         camera: &ViewportCamera,
         snap: &mut SnapEngine,
     ) -> Result<ChangeSet, AubrietaError> {
@@ -179,45 +192,24 @@ impl SelectTool {
             SelectToolState::Marquee { current_screen, .. } => {
                 *current_screen = event.screen_pos;
             }
-            SelectToolState::DraggingObjects {
-                start_doc,
-                current_doc,
-                initial_positions,
-                ..
-            } => {
+            SelectToolState::DraggingObjects { current_doc, .. } => {
                 let mut target_pt = event.doc_pos;
                 if !event.modifiers.disable_snap {
                     let snap_res = snap.snap_point(target_pt, camera, &[]);
                     target_pt = snap_res.point;
                 }
                 *current_doc = target_pt;
-
-                let dx = target_pt.x - start_doc.x;
-                let dy = target_pt.y - start_doc.y;
-                for (id, [x, y, w, h], rot) in initial_positions {
-                    let _ = bridge.set_bounds(*id, Some([*x + dx, *y + dy, *w, *h]), *rot);
-                }
+                // Preview-only: the commit happens once on pointer-up,
+                // so dragging never floods undo (F-01).
             }
-            SelectToolState::TransformingHandle {
-                handle,
-                start_doc,
-                current_doc,
-                initial_bounds,
-            } => {
+            SelectToolState::TransformingHandle { current_doc, .. } => {
                 let mut target_pt = event.doc_pos;
                 if !event.modifiers.disable_snap {
                     let snap_res = snap.snap_point(target_pt, camera, &[]);
                     target_pt = snap_res.point;
                 }
                 *current_doc = target_pt;
-
-                let dx = target_pt.x - start_doc.x;
-                let dy = target_pt.y - start_doc.y;
-                let (nx, ny, nw, nh) = calculate_resized_bounds(*handle, *initial_bounds, dx, dy);
-                let sel_ids = bridge.selection().selected_ids;
-                for id in sel_ids {
-                    let _ = bridge.set_bounds(id, Some([nx, ny, nw, nh]), 0.0);
-                }
+                // Preview-only (F-01): see on_up commit.
             }
             SelectToolState::Idle => {}
         }
@@ -253,6 +245,11 @@ impl SelectTool {
                     let doc_br =
                         camera.screen_to_doc(GPoint::new(marquee_rect.x1, marquee_rect.y1));
                     let doc_marquee = GRect::new(doc_tl.x, doc_tl.y, doc_br.x, doc_br.y);
+                    // Directional policy (10.1): left-to-right selects
+                    // intersecting objects, right-to-left only fully
+                    // contained ones. GRect normalizes flips, so compare
+                    // the raw drag direction instead.
+                    let require_contained = current_screen.x < start_screen.x;
 
                     let mut matched = Vec::new();
                     if let Some(session) = bridge.session() {
@@ -261,8 +258,19 @@ impl SelectTool {
                                 for obj in surface.objects() {
                                     if obj.visible && !obj.locked {
                                         if let Some([ox, oy, ow, oh]) = obj.bounds {
-                                            let obj_rect = GRect::new(ox, oy, ox + ow, oy + oh);
-                                            if doc_marquee.intersection(obj_rect).is_some() {
+                                            let hit = if require_contained {
+                                                ox >= doc_marquee.x0
+                                                    && oy >= doc_marquee.y0
+                                                    && ox + ow <= doc_marquee.x1
+                                                    && oy + oh <= doc_marquee.y1
+                                            } else {
+                                                doc_marquee
+                                                    .intersection(GRect::new(
+                                                        ox, oy, ox + ow, oy + oh,
+                                                    ))
+                                                    .is_some()
+                                            };
+                                            if hit {
                                                 matched.push(obj.id);
                                             }
                                         }
@@ -290,87 +298,168 @@ impl SelectTool {
                     return Ok(ChangeSet::empty());
                 }
 
-                let mut combined = ChangeSet::empty();
-
+                // One commit for the whole gesture (F-01).
                 if is_duplicate {
-                    // Duplicate selected objects at the new offset (10.1 duplicate-drag)
-                    let mut new_ids = Vec::new();
+                    // Duplicate selected objects at the new offset, cloning
+                    // full appearance (shape, fill, stroke, opacity, stack).
                     let active_surface = bridge.session().and_then(|s| s.active_surface());
-
                     if let Some(surface_id) = active_surface {
+                        let mut cmds = Vec::new();
+                        let mut new_ids = Vec::new();
                         for (orig_id, [x, y, w, h], rot) in initial_positions {
                             let new_id = bridge.next_object_id()?;
-                            let name = bridge
+                            let source = bridge
                                 .session()
                                 .and_then(|s| s.find_object(orig_id))
-                                .map(|o| format!("{} Copy", o.name))
-                                .unwrap_or_else(|| "Object Copy".to_string());
-
-                            let create_cmd = CommandRequest::new(Command::CreateObject {
+                                .cloned();
+                            let (name, shape, fill, stroke, stroke_width, opacity, appearance) =
+                                match source {
+                                    Some(o) => (
+                                        format!("{} Copy", o.name),
+                                        o.shape.clone(),
+                                        o.fill.clone(),
+                                        o.stroke.clone(),
+                                        o.stroke_width,
+                                        o.opacity,
+                                        o.appearance.clone(),
+                                    ),
+                                    None => (
+                                        "Object Copy".to_string(),
+                                        None,
+                                        None,
+                                        None,
+                                        1.0,
+                                        1.0,
+                                        None,
+                                    ),
+                                };
+                            cmds.push(Command::CreateShapeObject {
                                 surface: surface_id,
                                 id: new_id,
                                 name,
-                            });
-                            let c1 = bridge.submit_command(create_cmd)?;
-                            for c in c1.changes {
-                                combined.push(c);
-                            }
-
-                            let bounds_cmd = CommandRequest::new(Command::SetBounds {
-                                id: new_id,
+                                shape: shape
+                                    .unwrap_or(aubrieta_document::ShapeKind::Rectangle {
+                                        corner_radii: [0.0; 4],
+                                    }),
                                 bounds: Some([x + dx, y + dy, w, h]),
-                                rotation: rot,
+                                fill,
+                                stroke,
+                                stroke_width,
                             });
-                            let c2 = bridge.submit_command(bounds_cmd)?;
-                            for c in c2.changes {
-                                combined.push(c);
+                            if appearance.is_some() {
+                                cmds.push(Command::SetAppearance {
+                                    id: new_id,
+                                    appearance,
+                                });
                             }
-
+                            if (opacity - 1.0).abs() > f64::EPSILON {
+                                cmds.push(Command::SetOpacity {
+                                    id: new_id,
+                                    opacity,
+                                });
+                            }
+                            // Preserve the source rotation omitted from the
+                            // shape-creation command.
+                            if rot.abs() > f64::EPSILON {
+                                cmds.push(Command::SetBounds {
+                                    id: new_id,
+                                    bounds: Some([x + dx, y + dy, w, h]),
+                                    rotation: rot,
+                                });
+                            }
                             new_ids.push(new_id);
                         }
+                        let changes = bridge.submit_all("Duplicate objects", cmds)?;
                         bridge.set_selection(new_ids);
+                        return Ok(changes);
                     }
-                } else {
-                    // Normal translation: update bounds for each moved object
-                    for (id, [x, y, w, h], rot) in initial_positions {
-                        let cmd = CommandRequest::new(Command::SetBounds {
-                            id,
-                            bounds: Some([x + dx, y + dy, w, h]),
-                            rotation: rot,
-                        });
-                        let c = bridge.submit_command(cmd)?;
-                        for change in c.changes {
-                            combined.push(change);
-                        }
-                    }
+                    return Ok(ChangeSet::empty());
                 }
-
-                Ok(combined)
+                // Normal translation: update bounds for each moved object.
+                let cmds = initial_positions
+                    .into_iter()
+                    .map(|(id, [x, y, w, h], rot)| Command::SetBounds {
+                        id,
+                        bounds: Some([x + dx, y + dy, w, h]),
+                        rotation: rot,
+                    })
+                    .collect();
+                bridge.submit_all("Move objects", cmds)
             }
             SelectToolState::TransformingHandle {
                 handle,
                 start_doc,
                 current_doc,
                 initial_bounds,
+                initial_objects,
             } => {
+                if handle == SelectionHandleKind::Rotation {
+                    // Rotation drag: angle delta around the combined center,
+                    // added to each object's own rotation (never zeroed).
+                    let [bx, by, bw, bh] = initial_bounds;
+                    let center =
+                        aubrieta_geometry::GPoint::new(bx + bw / 2.0, by + bh / 2.0);
+                    let delta = aubrieta_geometry::pivot_angle_delta(
+                        start_doc,
+                        current_doc,
+                        center,
+                    )
+                    .unwrap_or(0.0);
+                    let cmds = initial_objects
+                        .into_iter()
+                        .filter_map(|(id, bounds, rot)| {
+                            let session = bridge.session()?;
+                            let current = session.find_object(id)?;
+                            if current.locked {
+                                return None;
+                            }
+                            Some(Command::SetBounds {
+                                id,
+                                bounds: Some(bounds),
+                                rotation: rot + delta,
+                            })
+                        })
+                        .collect();
+                    return bridge.submit_all("Rotate objects", cmds);
+                }
+                // Resize drag: map the combined-bounds transform onto each
+                // object proportionally, preserving sizes and rotations.
                 let dx = current_doc.x - start_doc.x;
                 let dy = current_doc.y - start_doc.y;
-                let (nx, ny, nw, nh) = calculate_resized_bounds(handle, initial_bounds, dx, dy);
-
-                let mut combined = ChangeSet::empty();
-                let sel_ids = bridge.selection().selected_ids;
-                for id in sel_ids {
-                    let cmd = CommandRequest::new(Command::SetBounds {
-                        id,
-                        bounds: Some([nx, ny, nw, nh]),
-                        rotation: 0.0,
-                    });
-                    let c = bridge.submit_command(cmd)?;
-                    for change in c.changes {
-                        combined.push(change);
-                    }
-                }
-                Ok(combined)
+                let (nx, ny, nw, nh) =
+                    calculate_resized_bounds(handle, initial_bounds, dx, dy);
+                let [ibx, iby, ibw, ibh] = initial_bounds;
+                let sx = if ibw.abs() > f64::EPSILON {
+                    nw / ibw
+                } else {
+                    1.0
+                };
+                let sy = if ibh.abs() > f64::EPSILON {
+                    nh / ibh
+                } else {
+                    1.0
+                };
+                let cmds = initial_objects
+                    .into_iter()
+                    .filter_map(|(id, [x, y, w, h], rot)| {
+                        let session = bridge.session()?;
+                        let current = session.find_object(id)?;
+                        if current.locked {
+                            return None;
+                        }
+                        Some(Command::SetBounds {
+                            id,
+                            bounds: Some([
+                                nx + (x - ibx) * sx,
+                                ny + (y - iby) * sy,
+                                (w * sx).max(1.0),
+                                (h * sy).max(1.0),
+                            ]),
+                            rotation: rot,
+                        })
+                    })
+                    .collect();
+                bridge.submit_all("Transform objects", cmds)
             }
             SelectToolState::Idle => Ok(ChangeSet::empty()),
         }
@@ -389,7 +478,8 @@ impl SelectTool {
 
         let tolerance = 4.0 / camera.zoom;
 
-        // Search in reverse z-order (topmost first)
+        // Search in reverse z-order (topmost first): bbox pre-check
+        // with tolerance, then exact shape hit-test (10.1).
         for obj in surface.objects().iter().rev() {
             if obj.visible && !obj.locked {
                 if let Some([x, y, w, h]) = obj.bounds {
@@ -399,7 +489,7 @@ impl SelectTool {
                         x + w + tolerance,
                         y + h + tolerance,
                     );
-                    if rect.contains(doc_pos) {
+                    if rect.contains(doc_pos) && obj.hit_test(doc_pos) {
                         return Some(obj.id);
                     }
                 }
