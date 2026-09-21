@@ -486,241 +486,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aubrieta-cli"
-version = "0.1.0"
-dependencies = [
- "aubrieta_application",
- "aubrieta_color",
- "aubrieta_document",
- "aubrieta_evaluation",
- "aubrieta_extension",
- "aubrieta_foundation",
- "aubrieta_geometry",
- "aubrieta_io",
- "aubrieta_mcp",
- "aubrieta_platform",
- "aubrieta_raster",
- "aubrieta_render",
- "aubrieta_resources",
- "aubrieta_text",
- "serde_json",
-]
-
-[[package]]
-name = "aubrieta-slint"
-version = "0.1.0"
-dependencies = [
- "aubrieta_application",
- "aubrieta_color",
- "aubrieta_document",
- "aubrieta_foundation",
- "aubrieta_geometry",
- "aubrieta_io",
- "aubrieta_shell",
- "lucide-slint",
- "rfd",
- "slint",
- "slint-build",
-]
-
-[[package]]
-name = "aubrieta_application"
-version = "0.1.0"
-dependencies = [
- "aubrieta_document",
- "aubrieta_foundation",
- "aubrieta_geometry",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "aubrieta_color"
-version = "0.1.0"
-dependencies = [
- "aubrieta_foundation",
- "moxcms 0.9.1",
- "proptest",
- "serde",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "aubrieta_document"
-version = "0.1.0"
-dependencies = [
- "aubrieta_foundation",
- "aubrieta_geometry",
- "proptest",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "aubrieta_evaluation"
-version = "0.1.0"
-dependencies = [
- "aubrieta_document",
- "aubrieta_foundation",
- "serde",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "aubrieta_extension"
-version = "0.1.0"
-dependencies = [
- "aubrieta_application",
- "aubrieta_document",
- "aubrieta_foundation",
- "aubrieta_platform",
- "aubrieta_resources",
- "mlua",
- "proptest",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "aubrieta_foundation"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "serde",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "aubrieta_geometry"
-version = "0.1.0"
-dependencies = [
- "aubrieta_foundation",
- "i_overlay",
- "kurbo",
- "serde",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "aubrieta_io"
-version = "0.1.0"
-dependencies = [
- "aubrieta_color",
- "aubrieta_document",
- "aubrieta_foundation",
- "aubrieta_geometry",
- "aubrieta_raster",
- "image",
- "krilla",
- "proptest",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "zip",
-]
-
-[[package]]
-name = "aubrieta_jobs"
-version = "0.1.0"
-dependencies = [
- "aubrieta_foundation",
- "serde",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "aubrieta_mcp"
-version = "0.1.0"
-dependencies = [
- "aubrieta_application",
- "aubrieta_document",
- "aubrieta_evaluation",
- "aubrieta_foundation",
- "aubrieta_io",
- "aubrieta_resources",
- "proptest",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "aubrieta_platform"
-version = "0.1.0"
-dependencies = [
- "aubrieta_foundation",
- "proptest",
- "serde",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "aubrieta_raster"
-version = "0.1.0"
-dependencies = [
- "aubrieta_foundation",
- "aubrieta_geometry",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "aubrieta_render"
-version = "0.1.0"
-dependencies = [
- "aubrieta_color",
- "aubrieta_document",
- "aubrieta_foundation",
- "aubrieta_geometry",
- "proptest",
- "serde",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "aubrieta_resources"
-version = "0.1.0"
-dependencies = [
- "aubrieta_foundation",
- "proptest",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "aubrieta_shell"
-version = "0.1.0"
-dependencies = [
- "aubrieta_application",
- "aubrieta_color",
- "aubrieta_document",
- "aubrieta_foundation",
- "aubrieta_geometry",
- "aubrieta_platform",
- "aubrieta_raster",
- "aubrieta_resources",
- "proptest",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "aubrieta_text"
-version = "0.1.0"
-dependencies = [
- "aubrieta_color",
- "aubrieta_foundation",
- "aubrieta_geometry",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3923,6 +3688,241 @@ dependencies = [
  "fixedbitset",
  "hashbrown 0.15.5",
  "indexmap",
+]
+
+[[package]]
+name = "petunia-design"
+version = "0.1.0"
+dependencies = [
+ "lucide-slint",
+ "petunia_design_application",
+ "petunia_design_color",
+ "petunia_design_document",
+ "petunia_design_foundation",
+ "petunia_design_geometry",
+ "petunia_design_io",
+ "petunia_design_shell",
+ "rfd",
+ "slint",
+ "slint-build",
+]
+
+[[package]]
+name = "petunia-design-cli"
+version = "0.1.0"
+dependencies = [
+ "petunia_design_application",
+ "petunia_design_color",
+ "petunia_design_document",
+ "petunia_design_evaluation",
+ "petunia_design_extension",
+ "petunia_design_foundation",
+ "petunia_design_geometry",
+ "petunia_design_io",
+ "petunia_design_mcp",
+ "petunia_design_platform",
+ "petunia_design_raster",
+ "petunia_design_render",
+ "petunia_design_resources",
+ "petunia_design_text",
+ "serde_json",
+]
+
+[[package]]
+name = "petunia_design_application"
+version = "0.1.0"
+dependencies = [
+ "petunia_design_document",
+ "petunia_design_foundation",
+ "petunia_design_geometry",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_color"
+version = "0.1.0"
+dependencies = [
+ "moxcms 0.9.1",
+ "petunia_design_foundation",
+ "proptest",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_document"
+version = "0.1.0"
+dependencies = [
+ "petunia_design_foundation",
+ "petunia_design_geometry",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_evaluation"
+version = "0.1.0"
+dependencies = [
+ "petunia_design_document",
+ "petunia_design_foundation",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_extension"
+version = "0.1.0"
+dependencies = [
+ "mlua",
+ "petunia_design_application",
+ "petunia_design_document",
+ "petunia_design_foundation",
+ "petunia_design_platform",
+ "petunia_design_resources",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_foundation"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_geometry"
+version = "0.1.0"
+dependencies = [
+ "i_overlay",
+ "kurbo",
+ "petunia_design_foundation",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_io"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "krilla",
+ "petunia_design_color",
+ "petunia_design_document",
+ "petunia_design_foundation",
+ "petunia_design_geometry",
+ "petunia_design_raster",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "zip",
+]
+
+[[package]]
+name = "petunia_design_jobs"
+version = "0.1.0"
+dependencies = [
+ "petunia_design_foundation",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_mcp"
+version = "0.1.0"
+dependencies = [
+ "petunia_design_application",
+ "petunia_design_document",
+ "petunia_design_evaluation",
+ "petunia_design_foundation",
+ "petunia_design_io",
+ "petunia_design_resources",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_platform"
+version = "0.1.0"
+dependencies = [
+ "petunia_design_foundation",
+ "proptest",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_raster"
+version = "0.1.0"
+dependencies = [
+ "petunia_design_foundation",
+ "petunia_design_geometry",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "petunia_design_render"
+version = "0.1.0"
+dependencies = [
+ "petunia_design_color",
+ "petunia_design_document",
+ "petunia_design_foundation",
+ "petunia_design_geometry",
+ "proptest",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_resources"
+version = "0.1.0"
+dependencies = [
+ "petunia_design_foundation",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_shell"
+version = "0.1.0"
+dependencies = [
+ "petunia_design_application",
+ "petunia_design_color",
+ "petunia_design_document",
+ "petunia_design_foundation",
+ "petunia_design_geometry",
+ "petunia_design_platform",
+ "petunia_design_raster",
+ "petunia_design_resources",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_text"
+version = "0.1.0"
+dependencies = [
+ "petunia_design_color",
+ "petunia_design_foundation",
+ "petunia_design_geometry",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

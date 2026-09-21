@@ -1,0 +1,21 @@
+[package]
+name = "petunia_design_io"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+petunia_design_foundation = { path = "../petunia_design_foundation" }
+petunia_design_document = { path = "../petunia_design_document" }
+petunia_design_geometry = { path = "../petunia_design_geometry" }
+petunia_design_color = { path = "../petunia_design_color" }
+petunia_design_raster = { path = "../petunia_design_raster" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+zip = "8.6.0"
+krilla = "0.8.2"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "tiff"] }
+
+[dev-dependencies]
+proptest = "1"

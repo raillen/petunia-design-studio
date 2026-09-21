@@ -1,0 +1,11 @@
+[package]
+name = "petunia_design_evaluation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+petunia_design_foundation = { path = "../petunia_design_foundation" }
+petunia_design_document = { path = "../petunia_design_document" }
+serde.workspace = true
+thiserror.workspace = true
