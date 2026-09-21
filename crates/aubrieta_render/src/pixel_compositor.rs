@@ -256,7 +256,13 @@ impl PixelBufferRgba16 {
 pub struct SoftwarePixelCompositor;
 
 impl SoftwarePixelCompositor {
-    /// Renders a surface's objects into an 8-bit RGBA pixel buffer.
+    /// Renders a surface's objects into an 8-bit RGBA pixel buffer (F-03/F-04).
+    /// Consumes the canonical document state: `visible`, `bounds`,
+    /// `effective_appearance()` (fills, opacity, blend), `is_clip_mask` /
+    /// `clip_mask_id` clipping, and effect `bounds_inflation`.
+    /// Mask boundary objects (`is_clip_mask`) are not painted themselves;
+    /// content referencing them via `clip_mask_id` is clipped to the mask
+    /// bounds. Objects without bounds are skipped.
     #[must_use]
     pub fn render_surface_rgba8(
         surface: &Surface,
@@ -266,46 +272,161 @@ impl SoftwarePixelCompositor {
     ) -> PixelBufferRgba8 {
         let mut buffer = PixelBufferRgba8::with_fill(width, height, background);
 
-        for (i, obj) in surface.objects.iter().enumerate() {
-            let fill_color = obj
-                .fill
-                .as_deref()
-                .map(parse_color_token)
-                .unwrap_or([180, 180, 180, 255]);
+        for obj in surface.objects.iter() {
+            if !obj.visible {
+                continue;
+            }
+            // Mask boundaries define clips; they are not painted (10.5).
+            if obj.is_clip_mask {
+                continue;
+            }
+            let bounds = match obj.bounds {
+                Some(b) => b,
+                None => continue,
+            };
+            // Resolve clip from the referenced mask object, if any.
+            let mut clip: Option<GRect> = None;
+            if let Some(mask_id) = obj.clip_mask_id {
+                match surface.objects.iter().find(|o| o.id == mask_id) {
+                    Some(mask) => match mask.bounds {
+                        Some(mb) => {
+                            clip = Some(GRect::new(mb[0], mb[1], mb[0] + mb[2], mb[1] + mb[3]));
+                        }
+                        None => continue,
+                    },
+                    None => continue,
+                }
+            }
+            let eff = obj.effective_appearance();
+            // Opacity: stack opacity x primary entry opacity (10.4 order).
+            let entry_opacity = eff
+                .primary_fill()
+                .map(|f| f.opacity)
+                .or_else(|| eff.primary_stroke().map(|s| s.opacity))
+                .unwrap_or(1.0);
+            let opacity = (eff.opacity * entry_opacity).clamp(0.0, 1.0) as f32;
+            if opacity <= 0.0 {
+                continue;
+            }
+            // Blend: primary entry blend, falling back to stack blend.
+            let doc_blend = eff
+                .primary_fill()
+                .map(|f| f.blend_mode)
+                .or_else(|| eff.primary_stroke().map(|s| s.blend_mode))
+                .unwrap_or(eff.blend_mode);
+            let blend_mode = BlendMode::from(doc_blend);
+            // Fill color: primary fill paint sampled at center; when there is
+            // no fill but a stroke exists, preview with the stroke color.
+            let fill_color: Option<[u8; 4]> = eff
+                .primary_fill()
+                .and_then(|f| {
+                    paint_to_rgba8(&f.paint, 0.5, f.opacity as f32 * eff.opacity as f32)
+                })
+                .or_else(|| {
+                    eff.primary_stroke().and_then(|s| {
+                        paint_to_rgba8(&s.paint, 0.5, s.opacity as f32 * eff.opacity as f32)
+                    })
+                })
+                .or_else(|| {
+                    obj.fill
+                        .as_deref()
+                        .map(|t| token_to_rgba8(t, obj.opacity as f32))
+                });
+            let fill_color = match fill_color {
+                Some(c) => c,
+                None => continue,
+            };
+            // Effect inflation expands the painted rect (F-12).
+            let inflation = eff.bounds_inflation();
+            let rect = GRect::new(
+                bounds[0] - inflation,
+                bounds[1] - inflation,
+                bounds[0] + bounds[2] + inflation,
+                bounds[1] + bounds[3] + inflation,
+            );
 
-            // For headless demonstration: place objects along an incremental grid
-            let offset_x = (i as f64 * 32.0).min(width as f64 - 32.0);
-            let offset_y = (i as f64 * 32.0).min(height as f64 - 32.0);
-            let rect = GRect::new(offset_x, offset_y, offset_x + 64.0, offset_y + 64.0);
+            // Drop shadows paint first (behind the object) as offset fills
+            // (F-12). Blur radius is approximated by the inflated footprint:
+            // the headless CPU compositor has no kernel-blur pass, so soft
+            // edges degrade to solid-offset silhouettes. GaussianBlur and
+            // InnerShadow consume `bounds_inflation` for planning but have no
+            // pixel pass here by contract (documented approximation).
+            for effect in eff.effects.iter().filter(|e| e.visible) {
+                if let aubrieta_document::EffectKind::DropShadow {
+                    offset,
+                    color,
+                    opacity: shadow_opacity,
+                    ..
+                } = &effect.kind
+                {
+                    let shadow_rect = GRect::new(
+                        bounds[0] + offset[0],
+                        bounds[1] + offset[1],
+                        bounds[0] + bounds[2] + offset[0],
+                        bounds[1] + bounds[3] + offset[1],
+                    );
+                    let shadow_color = token_to_rgba8(
+                        color,
+                        (*shadow_opacity as f32).clamp(0.0, 1.0) * eff.opacity as f32,
+                    );
+                    buffer.fill_rect(shadow_rect, shadow_color, blend_mode, opacity, clip);
+                }
+            }
 
-            buffer.fill_rect(rect, fill_color, BlendMode::Normal, 1.0, None);
+            buffer.fill_rect(rect, fill_color, blend_mode, opacity, clip);
         }
 
         buffer
     }
 }
 
-/// Basic color parser mapping semantic token names or hex colors to RGBA8.
-fn parse_color_token(token: &str) -> [u8; 4] {
-    if token.starts_with('#') {
-        let hex = token.trim_start_matches('#');
-        if hex.len() == 6 {
-            if let (Ok(r), Ok(g), Ok(b)) = (
-                u8::from_str_radix(&hex[0..2], 16),
-                u8::from_str_radix(&hex[2..4], 16),
-                u8::from_str_radix(&hex[4..6], 16),
-            ) {
-                return [r, g, b, 255];
-            }
+/// Converts a `Paint` to premultiplied-by-opacity RGBA8 via center sampling.
+fn paint_to_rgba8(
+    paint: &aubrieta_document::Paint,
+    t: f64,
+    opacity: f32,
+) -> Option<[u8; 4]> {
+    match paint {
+        aubrieta_document::Paint::None => None,
+        aubrieta_document::Paint::Solid(token) => Some(token_to_rgba8(token, opacity)),
+        aubrieta_document::Paint::LinearGradient(g) => {
+            let (rgb, a) = g.sample_rgba(t)?;
+            Some([
+                (rgb[0].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (rgb[1].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (rgb[2].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (a.clamp(0.0, 1.0) * opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
+            ])
+        }
+        aubrieta_document::Paint::RadialGradient(g) => {
+            let (rgb, a) = g.sample_rgba(t)?;
+            Some([
+                (rgb[0].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (rgb[1].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (rgb[2].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (a.clamp(0.0, 1.0) * opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
+            ])
         }
     }
-    match token {
-        "aubrieta.red/500" => [239, 68, 68, 255],
-        "aubrieta.blue/500" => [59, 130, 246, 255],
-        "aubrieta.green/500" => [34, 197, 94, 255],
-        "aubrieta.yellow/500" => [234, 179, 8, 255],
-        _ => [128, 128, 128, 255],
-    }
+}
+
+/// Basic color parser mapping semantic token names or hex colors to RGBA8.
+/// Now resolves via `aubrieta_document::resolve_color_to_rgb` (F-05) so all
+/// documented literals work; unknown tokens fall back to mid-gray.
+fn parse_color_token(token: &str) -> [u8; 4] {
+    token_to_rgba8(token, 1.0)
+}
+
+/// Token/literal to RGBA8 with explicit opacity factor.
+fn token_to_rgba8(token: &str, opacity: f32) -> [u8; 4] {
+    let rgb = aubrieta_document::resolve_color_to_rgb(token);
+    let a = (opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
+    [
+        (rgb[0].clamp(0.0, 1.0) * 255.0).round() as u8,
+        (rgb[1].clamp(0.0, 1.0) * 255.0).round() as u8,
+        (rgb[2].clamp(0.0, 1.0) * 255.0).round() as u8,
+        a,
+    ]
 }
 
 #[cfg(test)]
@@ -350,6 +471,7 @@ mod tests {
         let mut surface = Surface::new(gen.next_surface(), "TestPage");
         let mut obj = DocumentObject::new(gen.next_object(), "Box");
         obj.fill = Some("aubrieta.red/500".to_string());
+        obj.bounds = Some([0.0, 0.0, 64.0, 64.0]);
         surface.objects.push(obj);
 
         let buf =
@@ -357,6 +479,62 @@ mod tests {
         assert_eq!(buf.width, 100);
         assert_eq!(buf.height, 100);
         let px = buf.get_pixel(10, 10).unwrap();
-        assert_eq!(px, [239, 68, 68, 255]);
+        let expected = token_to_rgba8("aubrieta.red/500", 1.0);
+        assert_eq!(px, expected);
+    }
+
+    #[test]
+    fn compositor_respects_bounds_visibility_opacity_and_clip() {
+        let mut gen = IdGenerator::new();
+        let mut surface = Surface::new(gen.next_surface(), "Clip");
+        // Visible box at (10,10,20x20).
+        let mut box_obj = DocumentObject::new(gen.next_object(), "Box");
+        box_obj.fill = Some("aubrieta.blue/500".to_string());
+        box_obj.bounds = Some([10.0, 10.0, 20.0, 20.0]);
+        surface.objects.push(box_obj);
+        // Hidden box must not paint.
+        let mut hidden = DocumentObject::new(gen.next_object(), "Hidden");
+        hidden.fill = Some("aubrieta.red/500".to_string());
+        hidden.bounds = Some([10.0, 10.0, 20.0, 20.0]);
+        hidden.visible = false;
+        surface.objects.push(hidden);
+        // Fully transparent box elsewhere must not paint.
+        let mut ghost = DocumentObject::new(gen.next_object(), "Ghost");
+        ghost.fill = Some("aubrieta.red/500".to_string());
+        ghost.bounds = Some([60.0, 60.0, 20.0, 20.0]);
+        ghost.opacity = 0.0;
+        surface.objects.push(ghost);
+
+        let buf =
+            SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255]);
+        let expected_blue = token_to_rgba8("aubrieta.blue/500", 1.0);
+        assert_eq!(buf.get_pixel(15, 15).unwrap(), expected_blue);
+        // Ghost area stays background.
+        assert_eq!(buf.get_pixel(65, 65).unwrap(), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn compositor_skips_mask_boundary_and_clips_content() {
+        let mut gen = IdGenerator::new();
+        let mut surface = Surface::new(gen.next_surface(), "Mask");
+        let mask_id = gen.next_object();
+        let mut mask = DocumentObject::new(mask_id, "Mask");
+        mask.fill = Some("aubrieta.red/500".to_string());
+        mask.bounds = Some([10.0, 10.0, 20.0, 20.0]);
+        mask.is_clip_mask = true;
+        surface.objects.push(mask);
+        let mut content = DocumentObject::new(gen.next_object(), "Content");
+        content.fill = Some("aubrieta.blue/500".to_string());
+        content.bounds = Some([0.0, 0.0, 100.0, 100.0]);
+        content.clip_mask_id = Some(mask_id);
+        surface.objects.push(content);
+
+        let buf =
+            SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255]);
+        let expected_blue = token_to_rgba8("aubrieta.blue/500", 1.0);
+        // Inside mask bounds: content paints.
+        assert_eq!(buf.get_pixel(15, 15).unwrap(), expected_blue);
+        // Outside mask bounds: background (content clipped, mask not painted).
+        assert_eq!(buf.get_pixel(5, 5).unwrap(), [255, 255, 255, 255]);
     }
 }

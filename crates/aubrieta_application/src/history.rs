@@ -27,19 +27,48 @@ impl History {
         }
     }
 
-    /// Executes a command, records its change set, clears redo.
+    /// Executes a command, records its change set, clears redo (F-22).
+    /// Empty change sets are a `NoOp`: they are returned but never pushed
+    /// and never clear the redo stack, so alignment with zero bounds or
+    /// redundant sets do not pollute undo.
     pub fn execute(
         &mut self,
         document: &mut Document,
         request: &CommandRequest,
     ) -> Result<ChangeSet, AubrietaError> {
         let changes = commands::execute(document, request)?;
+        if changes.is_empty() {
+            return Ok(changes);
+        }
+        self.record(changes.clone());
+        Ok(changes)
+    }
+
+    /// Records an externally built change set (e.g. `Transaction::commit`).
+    /// NoOps are ignored; redo is cleared only for real commits.
+    pub fn record(&mut self, changes: ChangeSet) {
+        if changes.is_empty() {
+            return;
+        }
         if self.limit > 0 && self.undo.len() >= self.limit {
             self.undo.remove(0);
         }
-        self.undo.push(changes.clone());
+        self.undo.push(changes);
         self.redo.clear();
-        Ok(changes)
+    }
+
+    /// Executes a command and reports whether it committed (F-22).
+    pub fn execute_result(
+        &mut self,
+        document: &mut Document,
+        request: &CommandRequest,
+    ) -> Result<crate::commands::CommandResult, AubrietaError> {
+        let changes = self.execute(document, request)?;
+        if changes.is_empty() {
+            Ok(crate::commands::CommandResult::NoOp)
+        } else {
+            Ok(crate::commands::CommandResult::Committed(changes))
+        }
     }
 
     /// Undoes the most recent entry. Returns false when history is empty.
@@ -113,7 +142,7 @@ impl Replayer {
                 Change::SurfaceAdded { id, name } => {
                     mutator.add_surface(id, name)?;
                 }
-                Change::ObjectAdded { surface, object } => {
+                Change::ObjectAdded { surface, object, .. } => {
                     mutator.add_object(surface, object)?;
                 }
                 Change::ObjectRemoved { object, .. } => {
@@ -164,21 +193,15 @@ impl Replayer {
                 Change::Reparented {
                     id, next_parent, ..
                 } => {
-                    if let Some(obj) = mutator.document_mut().find_object_mut(id) {
-                        obj.parent = next_parent;
-                    }
+                    mutator.force_parent(id, next_parent)?;
                 }
                 Change::ChildrenChanged {
                     id, next_children, ..
                 } => {
-                    if let Some(obj) = mutator.document_mut().find_object_mut(id) {
-                        obj.children = next_children;
-                    }
+                    mutator.force_children(id, next_children)?;
                 }
                 Change::ContainerRoleChanged { id, next, .. } => {
-                    if let Some(obj) = mutator.document_mut().find_object_mut(id) {
-                        obj.role = next;
-                    }
+                    mutator.force_role(id, next)?;
                 }
                 Change::ClipMaskChanged {
                     id,
@@ -186,10 +209,7 @@ impl Replayer {
                     next_is_mask,
                     ..
                 } => {
-                    if let Some(obj) = mutator.document_mut().find_object_mut(id) {
-                        obj.clip_mask_id = next_mask;
-                        obj.is_clip_mask = next_is_mask;
-                    }
+                    mutator.force_clip_mask(id, next_mask, next_is_mask)?;
                 }
                 Change::SurfaceGeometryChanged {
                     id,

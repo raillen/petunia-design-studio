@@ -276,7 +276,6 @@ impl PluginHost {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aubrieta_document::Surface;
     use aubrieta_foundation::SurfaceId;
 
     #[test]
@@ -348,10 +347,11 @@ mod tests {
         .with_permission(PluginPermission::DocumentRead)
         .with_permission(PluginPermission::DocumentWrite);
 
-        // Pre-seed document with a surface
+        // Pre-seed document with a surface through the mutator lane (A6).
         let mut doc = Document::new();
-        doc.surfaces
-            .push(Surface::new(SurfaceId::new(10), "Page A"));
+        aubrieta_document::DocumentMutator::new(&mut doc)
+            .add_surface(SurfaceId::new(10), "Page A")
+            .expect("seed surface");
         host.set_document(doc);
 
         let script = r#"

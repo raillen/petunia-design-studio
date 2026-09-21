@@ -28,45 +28,132 @@ pub fn export_path_d(path: &GPath) -> String {
     d
 }
 
-/// Parses an SVG path `d` string containing `M`, `L` and `Z` commands into a `GPath`.
+/// Parses an SVG path `d` string with `M/m L/l Q/q C/c H/h V/v Z/z`
+/// commands into a `GPath` (F-13). Relative commands offset from the current
+/// point; numbers are whitespace-separated (matching [`export_path_d`]).
 pub fn parse_path_d(d: &str) -> Result<GPath, AubrietaError> {
     let mut path = GPath::new();
     let tokens: Vec<&str> = d.split_whitespace().collect();
     let mut i = 0;
+    let mut current = GPoint::ORIGIN;
+
+    macro_rules! take_num {
+        ($label:expr) => {{
+            if i >= tokens.len() {
+                return Err(AubrietaError::invalid_input(concat!(
+                    "incomplete ",
+                    $label,
+                    " command in SVG path"
+                )));
+            }
+            let v: f64 = tokens[i].parse().map_err(|_| {
+                AubrietaError::invalid_input(format!("invalid number in {0} command", $label))
+            })?;
+            i += 1;
+            v
+        }};
+    }
 
     while i < tokens.len() {
         match tokens[i] {
             "M" | "m" => {
-                if i + 2 >= tokens.len() {
-                    return Err(AubrietaError::invalid_input(
-                        "incomplete M command in SVG path",
-                    ));
-                }
-                let x: f64 = tokens[i + 1].parse().map_err(|_| {
-                    AubrietaError::invalid_input("invalid x coordinate in M command")
-                })?;
-                let y: f64 = tokens[i + 2].parse().map_err(|_| {
-                    AubrietaError::invalid_input("invalid y coordinate in M command")
-                })?;
-                path.push(PathVerb::MoveTo(GPoint::new(x, y)))
+                let relative = tokens[i] == "m";
+                i += 1;
+                let x = take_num!("M");
+                let y = take_num!("M");
+                let pt = if relative {
+                    GPoint::new(current.x + x, current.y + y)
+                } else {
+                    GPoint::new(x, y)
+                };
+                path.push(PathVerb::MoveTo(pt))
                     .map_err(AubrietaError::invalid_input)?;
-                i += 3;
+                current = pt;
             }
             "L" | "l" => {
-                if i + 2 >= tokens.len() {
-                    return Err(AubrietaError::invalid_input(
-                        "incomplete L command in SVG path",
-                    ));
-                }
-                let x: f64 = tokens[i + 1].parse().map_err(|_| {
-                    AubrietaError::invalid_input("invalid x coordinate in L command")
-                })?;
-                let y: f64 = tokens[i + 2].parse().map_err(|_| {
-                    AubrietaError::invalid_input("invalid y coordinate in L command")
-                })?;
-                path.push(PathVerb::LineTo(GPoint::new(x, y)))
+                let relative = tokens[i] == "l";
+                i += 1;
+                let x = take_num!("L");
+                let y = take_num!("L");
+                let pt = if relative {
+                    GPoint::new(current.x + x, current.y + y)
+                } else {
+                    GPoint::new(x, y)
+                };
+                path.push(PathVerb::LineTo(pt))
                     .map_err(AubrietaError::invalid_input)?;
-                i += 3;
+                current = pt;
+            }
+            "Q" | "q" => {
+                let relative = tokens[i] == "q";
+                i += 1;
+                let x1 = take_num!("Q");
+                let y1 = take_num!("Q");
+                let x = take_num!("Q");
+                let y = take_num!("Q");
+                let (c, pt) = if relative {
+                    (
+                        GPoint::new(current.x + x1, current.y + y1),
+                        GPoint::new(current.x + x, current.y + y),
+                    )
+                } else {
+                    (GPoint::new(x1, y1), GPoint::new(x, y))
+                };
+                path.push(PathVerb::QuadTo(c, pt))
+                    .map_err(AubrietaError::invalid_input)?;
+                current = pt;
+            }
+            "C" | "c" => {
+                let relative = tokens[i] == "c";
+                i += 1;
+                let x1 = take_num!("C");
+                let y1 = take_num!("C");
+                let x2 = take_num!("C");
+                let y2 = take_num!("C");
+                let x = take_num!("C");
+                let y = take_num!("C");
+                let (c1, c2, pt) = if relative {
+                    (
+                        GPoint::new(current.x + x1, current.y + y1),
+                        GPoint::new(current.x + x2, current.y + y2),
+                        GPoint::new(current.x + x, current.y + y),
+                    )
+                } else {
+                    (
+                        GPoint::new(x1, y1),
+                        GPoint::new(x2, y2),
+                        GPoint::new(x, y),
+                    )
+                };
+                path.push(PathVerb::CubicTo(c1, c2, pt))
+                    .map_err(AubrietaError::invalid_input)?;
+                current = pt;
+            }
+            "H" | "h" => {
+                let relative = tokens[i] == "h";
+                i += 1;
+                let x = take_num!("H");
+                let pt = if relative {
+                    GPoint::new(current.x + x, current.y)
+                } else {
+                    GPoint::new(x, current.y)
+                };
+                path.push(PathVerb::LineTo(pt))
+                    .map_err(AubrietaError::invalid_input)?;
+                current = pt;
+            }
+            "V" | "v" => {
+                let relative = tokens[i] == "v";
+                i += 1;
+                let y = take_num!("V");
+                let pt = if relative {
+                    GPoint::new(current.x, current.y + y)
+                } else {
+                    GPoint::new(current.x, y)
+                };
+                path.push(PathVerb::LineTo(pt))
+                    .map_err(AubrietaError::invalid_input)?;
+                current = pt;
             }
             "Z" | "z" => {
                 path.push(PathVerb::Close)
@@ -84,7 +171,12 @@ pub fn parse_path_d(d: &str) -> Result<GPath, AubrietaError> {
     Ok(path)
 }
 
-/// Exports a document's surfaces and objects into a standalone SVG document string.
+/// Exports a document's surfaces and objects into a standalone SVG document string (F-13).
+/// Each object becomes a `<path>` with its canonical outline, resolved fill,
+/// stroke, opacity and rotation. Invisible objects and mask boundaries are
+/// skipped; masks are emitted as `<clipPath>` defs referenced by clipped
+/// content. Non-vector state (gradients sampled at center, effects, blend
+/// modes) is approximated with an explicit `<!-- -->` note.
 #[must_use]
 pub fn export_document_svg(document: &Document) -> String {
     let mut svg = String::new();
@@ -94,16 +186,33 @@ pub fn export_document_svg(document: &Document) -> String {
     for surface in &document.surfaces {
         svg.push_str(&format!(
             r#"  <g id="{}" data-name="{}">"#,
-            surface.id, surface.name
+            surface.id,
+            escape_xml(&surface.name)
         ));
         svg.push('\n');
 
-        for obj in &surface.objects {
-            let fill_val = obj.fill.as_deref().unwrap_or("none");
+        // Clip path definitions for mask boundaries on this surface.
+        for mask in surface
+            .objects
+            .iter()
+            .filter(|o| o.is_clip_mask && o.visible)
+        {
+            let d = export_path_d(&mask.to_path());
+            if d.is_empty() {
+                continue;
+            }
             svg.push_str(&format!(
-                r#"    <rect id="{}" data-name="{}" fill="{}" width="100" height="100"/>"#,
-                obj.id, obj.name, fill_val
+                r#"    <defs><clipPath id="clip-{}"><path d="{}"/></clipPath></defs>"#,
+                mask.id, d
             ));
+            svg.push('\n');
+        }
+
+        for obj in &surface.objects {
+            if !obj.visible || obj.is_clip_mask {
+                continue;
+            }
+            svg.push_str(&export_object_svg(surface, obj));
             svg.push('\n');
         }
 
@@ -112,6 +221,170 @@ pub fn export_document_svg(document: &Document) -> String {
 
     svg.push_str("</svg>\n");
     svg
+}
+
+/// Exports one object as an SVG `<path>` element string.
+fn export_object_svg(
+    surface: &aubrieta_document::Surface,
+    obj: &aubrieta_document::DocumentObject,
+) -> String {
+    let eff = obj.effective_appearance();
+    let entry_opacity = eff
+        .primary_fill()
+        .map(|f| f.opacity)
+        .or_else(|| eff.primary_stroke().map(|s| s.opacity))
+        .unwrap_or(1.0);
+    let total_opacity = (eff.opacity * entry_opacity).clamp(0.0, 1.0);
+
+    // Outline; un-outlinable shapes (text) fall back to their bounds rect.
+    let mut outline = obj.to_path();
+    let mut notes: Vec<String> = Vec::new();
+    if outline.verbs.is_empty() {
+        if let Some(b) = obj.bounds {
+            outline = GPath::rect(
+                aubrieta_geometry::GRect::new(b[0], b[1], b[0] + b[2], b[1] + b[3]),
+                0.0,
+                0.0,
+            );
+            notes.push("text exported as bounds rect (glyph outlining requires font shaping)".to_string());
+        } else {
+            return format!(
+                r#"    <!-- {} skipped: no outline and no bounds -->"#,
+                escape_xml(&obj.name)
+            );
+        }
+    }
+    let d = export_path_d(&outline);
+
+    // Fill: solid tokens resolve to hex; gradients sample center.
+    let mut fill_attr = "none".to_string();
+    if let Some(entry) = eff.primary_fill() {
+        match &entry.paint {
+            aubrieta_document::Paint::None => {}
+            aubrieta_document::Paint::Solid(token) => {
+                fill_attr = svg_color(token);
+            }
+            aubrieta_document::Paint::LinearGradient(g) => {
+                fill_attr = g
+                    .sample_rgba(0.5)
+                    .map(|(rgb, _)| rgb_to_hex(rgb))
+                    .unwrap_or_else(|| "none".to_string());
+                notes.push("linear gradient sampled at center".to_string());
+            }
+            aubrieta_document::Paint::RadialGradient(g) => {
+                fill_attr = g
+                    .sample_rgba(0.5)
+                    .map(|(rgb, _)| rgb_to_hex(rgb))
+                    .unwrap_or_else(|| "none".to_string());
+                notes.push("radial gradient sampled at center".to_string());
+            }
+        }
+    } else if let Some(token) = obj.fill.as_deref() {
+        fill_attr = svg_color(token);
+    }
+    if eff.fills.iter().filter(|f| f.visible).count() > 1 {
+        notes.push("only primary fill exported".to_string());
+    }
+
+    // Stroke from the primary stroke entry.
+    let mut stroke_attr = "stroke=\"none\"".to_string();
+    if let Some(entry) = eff.primary_stroke() {
+        match &entry.paint {
+            aubrieta_document::Paint::Solid(token) => {
+                stroke_attr = format!(
+                    r#"stroke="{}" stroke-width="{:.2}""#,
+                    svg_color(token),
+                    entry.width.max(0.0)
+                );
+            }
+            _ => {
+                notes.push("non-solid stroke omitted".to_string());
+            }
+        }
+        if entry.alignment != aubrieta_document::StrokeAlignment::Center {
+            notes.push("stroke alignment exported as centered".to_string());
+        }
+        if !entry.dash_array.is_empty() {
+            let dashes: Vec<String> =
+                entry.dash_array.iter().map(|v| format!("{v:.2}")).collect();
+            stroke_attr.push_str(&format!(r#" stroke-dasharray="{}""#, dashes.join(" ")));
+        }
+    }
+    if eff.strokes.iter().filter(|s| s.visible).count() > 1 {
+        notes.push("only primary stroke exported".to_string());
+    }
+    for effect in eff.effects.iter().filter(|e| e.visible) {
+        let kind = match &effect.kind {
+            aubrieta_document::EffectKind::DropShadow { .. } => "drop shadow",
+            aubrieta_document::EffectKind::InnerShadow { .. } => "inner shadow",
+            aubrieta_document::EffectKind::GaussianBlur { .. } => "gaussian blur",
+        };
+        notes.push(format!("{kind} effect omitted"));
+    }
+    if eff.blend_mode != aubrieta_document::BlendMode::Normal {
+        notes.push(format!("blend mode {:?} exported as normal", eff.blend_mode));
+    }
+
+    let mut attrs = format!(
+        r#"id="{}" data-name="{}" d="{}" fill="{}" {}"#,
+        obj.id,
+        escape_xml(&obj.name),
+        d,
+        fill_attr,
+        stroke_attr
+    );
+    if total_opacity < 1.0 {
+        attrs.push_str(&format!(r#" opacity="{:.3}""#, total_opacity));
+    }
+    if obj.rotation.abs() > f64::EPSILON {
+        if let Some(b) = obj.bounds {
+            let cx = b[0] + b[2] / 2.0;
+            let cy = b[1] + b[3] / 2.0;
+            attrs.push_str(&format!(
+                r#" transform="rotate({:.2} {:.2} {:.2})""#,
+                obj.rotation.to_degrees(),
+                cx,
+                cy
+            ));
+        }
+    }
+    if let Some(mask_id) = obj.clip_mask_id {
+        if surface.objects.iter().any(|o| o.id == mask_id) {
+            attrs.push_str(&format!(r#" clip-path="url(#clip-{mask_id})""#));
+        } else {
+            notes.push("unknown clip mask: drawn unclipped".to_string());
+        }
+    }
+
+    let mut out = format!("    <path {attrs}/>");
+    if !notes.is_empty() {
+        out.push_str(&format!("<!-- {}: {} -->", escape_xml(&obj.name), notes.join("; ")));
+    }
+    out
+}
+
+/// Resolves a color token/literal to an SVG `#rrggbb` paint string.
+fn svg_color(token: &str) -> String {
+    let rgb = aubrieta_document::resolve_color_to_rgb(token);
+    rgb_to_hex(rgb)
+}
+
+/// Formats a 0..=1 sRGB triple as `#rrggbb`.
+fn rgb_to_hex(rgb: [f32; 3]) -> String {
+    format!(
+        "#{:02x}{:02x}{:02x}",
+        (rgb[0].clamp(0.0, 1.0) * 255.0).round() as u8,
+        (rgb[1].clamp(0.0, 1.0) * 255.0).round() as u8,
+        (rgb[2].clamp(0.0, 1.0) * 255.0).round() as u8
+    )
+}
+
+/// Escapes XML special characters in names and notes.
+fn escape_xml(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 #[cfg(test)]

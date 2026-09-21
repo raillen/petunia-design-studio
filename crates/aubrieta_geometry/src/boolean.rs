@@ -44,10 +44,64 @@ impl BooleanInput {
     }
 }
 
+/// Flattening tolerance policy for polygon booleans (F-21, 09.5).
+/// Curve-exact booleans are `POST_V1`: callers flatten via
+/// [`crate::GPath::to_polygons`] first. The tolerance used is part of the
+/// caller's evidence and must travel explicitly via this type — never a
+/// hardcoded literal at the call site.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GeometryTolerance {
+    /// Maximum deviation in document points when flattening curves.
+    pub flatten: f64,
+}
+
+impl GeometryTolerance {
+    /// Default document-scale tolerance (0.5pt). Matches the historical
+    /// call-site behavior; prefer threading an explicit value instead.
+    #[must_use]
+    pub const fn default_tolerance() -> Self {
+        Self { flatten: 0.5 }
+    }
+
+    /// Validated tolerance, clamped to a sane finite range.
+    #[must_use]
+    pub fn clamped(self) -> Self {
+        Self {
+            flatten: self.flatten.clamp(0.001, 10.0),
+        }
+    }
+}
+
+impl Default for GeometryTolerance {
+    fn default() -> Self {
+        Self::default_tolerance()
+    }
+}
+
 /// Applies `op` to `subject` and `clip`, returning result contours.
 /// Empty inputs follow set-theory identity (union keeps the other side,
 /// intersection/difference with an empty side is empty, xor keeps the other).
 pub fn boolean_op(subject: &BooleanInput, clip: &BooleanInput, op: BooleanOp) -> Vec<Vec<GPoint>> {
+    boolean_op_with_fill(subject, clip, op, FillRule::NonZero)
+}
+
+/// Fill-rule selector for boolean operations (10.3).
+/// `EvenOdd` treats holes by parity; `NonZero` by winding direction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FillRule {
+    /// Even-odd parity rule.
+    EvenOdd,
+    /// Non-zero winding rule (document default).
+    NonZero,
+}
+
+/// Applies `op` with an explicit fill rule for hole handling (F-21, 10.3).
+pub fn boolean_op_with_fill(
+    subject: &BooleanInput,
+    clip: &BooleanInput,
+    op: BooleanOp,
+    fill_rule: FillRule,
+) -> Vec<Vec<GPoint>> {
     match op {
         BooleanOp::Union => {
             if subject.contours.is_empty() {
@@ -71,16 +125,15 @@ pub fn boolean_op(subject: &BooleanInput, clip: &BooleanInput, op: BooleanOp) ->
             }
         }
     }
-    overlay_adapter::apply(subject, clip, op)
+    overlay_adapter::apply(subject, clip, op, fill_rule)
 }
 
 /// i_overlay adapter. The only module allowed to name `i_overlay` types.
 mod overlay_adapter {
-    use i_overlay::core::fill_rule::FillRule;
     use i_overlay::core::overlay_rule::OverlayRule;
     use i_overlay::float::single::SingleFloatOverlay as _;
 
-    use super::{BooleanInput, BooleanOp};
+    use super::{BooleanInput, BooleanOp, FillRule};
     use crate::GPoint;
 
     type Contour = Vec<[f64; 2]>;
@@ -98,6 +151,7 @@ mod overlay_adapter {
         subject: &BooleanInput,
         clip: &BooleanInput,
         op: BooleanOp,
+        fill_rule: FillRule,
     ) -> Vec<Vec<GPoint>> {
         let subj = to_contours(subject);
         let clip = to_contours(clip);
@@ -110,8 +164,12 @@ mod overlay_adapter {
             BooleanOp::Difference => OverlayRule::Difference,
             BooleanOp::Xor => OverlayRule::Xor,
         };
+        let io_fill = match fill_rule {
+            FillRule::EvenOdd => i_overlay::core::fill_rule::FillRule::EvenOdd,
+            FillRule::NonZero => i_overlay::core::fill_rule::FillRule::NonZero,
+        };
         // Default i32 engine: deterministic for document-scale coordinates.
-        let shapes = subj.overlay(&clip, rule, FillRule::NonZero);
+        let shapes = subj.overlay(&clip, rule, io_fill);
         shapes
             .iter()
             .flat_map(|shape| shape.iter())

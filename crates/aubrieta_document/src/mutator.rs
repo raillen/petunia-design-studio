@@ -65,20 +65,75 @@ impl<'doc> DocumentMutator<'doc> {
         }
         let target = self.document.surface_mut(surface)?;
         target.objects.push(object.clone());
+        let index = target.objects.len() - 1;
         let mut changes = ChangeSet::empty();
-        changes.push(Change::ObjectAdded { surface, object });
+        changes.push(Change::ObjectAdded {
+            surface,
+            object,
+            index,
+        });
         Ok(changes)
     }
 
-    /// Removes an object by stable ID, keeping it for undo.
+    /// Removes an object by stable ID, keeping it for undo (F-09/F-10).
+    /// Cleans `parent.children` references and `clip_mask_id` pointers so no
+    /// dangling IDs remain. Records the original z-index for order-preserving
+    /// undo plus `ChildrenChanged`/`ClipMaskChanged` for full revert.
     pub fn remove_object(&mut self, id: ObjectId) -> Result<ChangeSet, AubrietaError> {
         for surface in &mut self.document.surfaces {
             if let Some(pos) = surface.objects.iter().position(|o| o.id == id) {
                 let object = surface.objects.remove(pos);
                 let mut changes = ChangeSet::empty();
+                // Detach from parent container.
+                if let Some(parent_id) = object.parent {
+                    if let Some(parent) = surface.objects.iter_mut().find(|o| o.id == parent_id)
+                    {
+                        if let Some(p) = parent.children.iter().position(|c| *c == id) {
+                            let prev = parent.children.clone();
+                            parent.children.remove(p);
+                            changes.push(Change::ChildrenChanged {
+                                id: parent_id,
+                                previous_children: prev,
+                                next_children: parent.children.clone(),
+                            });
+                        }
+                    }
+                }
+                // Clear clip pointers referencing the removed object.
+                for other in surface.objects.iter_mut() {
+                    if other.clip_mask_id == Some(id) {
+                        let prev_mask = other.clip_mask_id;
+                        let prev_is = other.is_clip_mask;
+                        other.clip_mask_id = None;
+                        changes.push(Change::ClipMaskChanged {
+                            id: other.id,
+                            previous_mask: prev_mask,
+                            next_mask: None,
+                            previous_is_mask: prev_is,
+                            next_is_mask: prev_is,
+                        });
+                    }
+                }
+                // Children of a removed container become root-level (parent=None).
+                for child_id in object.children.clone() {
+                    if let Some(child) =
+                        surface.objects.iter_mut().find(|o| o.id == child_id)
+                    {
+                        let prev_parent = child.parent;
+                        child.parent = None;
+                        changes.push(Change::Reparented {
+                            id: child_id,
+                            previous_parent: prev_parent,
+                            next_parent: None,
+                            previous_index: 0,
+                            next_index: 0,
+                        });
+                    }
+                }
                 changes.push(Change::ObjectRemoved {
                     surface: surface.id,
                     object,
+                    index: pos,
                 });
                 return Ok(changes);
             }
@@ -259,11 +314,137 @@ impl<'doc> DocumentMutator<'doc> {
         )))
     }
 
+    /// Divides two objects into non-overlapping pieces (10.3, F-21).
+    /// Computes subject-only (`Difference`), clip-only (`Difference`
+    /// reversed) and intersection pieces with the explicit default
+    /// tolerance, then replaces the inputs atomically. Empty pieces are
+    /// skipped. Result objects inherit each input's appearance provenance.
+    pub fn divide_objects(
+        &mut self,
+        surface: SurfaceId,
+        subject_id: ObjectId,
+        clip_id: ObjectId,
+        subject_only_id: ObjectId,
+        clip_only_id: ObjectId,
+        intersection_id: ObjectId,
+    ) -> Result<ChangeSet, AubrietaError> {
+        if subject_id == clip_id {
+            return Err(AubrietaError::invalid_input(
+                "cannot divide an object by itself",
+            ));
+        }
+        for id in [subject_only_id, clip_only_id, intersection_id] {
+            if self.document.find_object(id).is_some() {
+                return Err(AubrietaError::invalid_input(format!(
+                    "result object `{id}` already exists"
+                )));
+            }
+        }
+        let subject = self
+            .document
+            .find_object(subject_id)
+            .ok_or_else(|| AubrietaError::not_found(format!("subject `{subject_id}` not found")))?
+            .clone();
+        let clip = self
+            .document
+            .find_object(clip_id)
+            .ok_or_else(|| AubrietaError::not_found(format!("clip `{clip_id}` not found")))?
+            .clone();
+
+        let tolerance = aubrieta_geometry::GeometryTolerance::default_tolerance().clamped();
+        let subj_input = aubrieta_geometry::BooleanInput::new(
+            subject.to_path().to_polygons(tolerance.flatten),
+        );
+        let clip_input =
+            aubrieta_geometry::BooleanInput::new(clip.to_path().to_polygons(tolerance.flatten));
+
+        let pieces = [
+            (
+                subject_only_id,
+                "Divided Subject",
+                aubrieta_geometry::boolean_op(
+                    &subj_input,
+                    &clip_input,
+                    aubrieta_geometry::BooleanOp::Difference,
+                ),
+                &subject,
+            ),
+            (
+                clip_only_id,
+                "Divided Clip",
+                aubrieta_geometry::boolean_op(
+                    &clip_input,
+                    &subj_input,
+                    aubrieta_geometry::BooleanOp::Difference,
+                ),
+                &clip,
+            ),
+            (
+                intersection_id,
+                "Divided Intersection",
+                aubrieta_geometry::boolean_op(
+                    &subj_input,
+                    &clip_input,
+                    aubrieta_geometry::BooleanOp::Intersection,
+                ),
+                &subject,
+            ),
+        ];
+
+        // Build all results before mutating: failure leaves inputs intact.
+        let mut results = Vec::new();
+        for (id, name, contours, donor) in pieces {
+            if contours.iter().any(|c| c.len() >= 3) {
+                let path = aubrieta_geometry::GPath::from_polygons(&contours);
+                let bounds = path
+                    .bounding_box()
+                    .map(|r| [r.x0, r.y0, r.width(), r.height()]);
+                let mut obj = DocumentObject::new(id, name);
+                obj.shape = Some(crate::ShapeKind::Path(path));
+                obj.bounds = bounds;
+                obj.appearance = donor.appearance.clone();
+                obj.fill = donor.fill.clone();
+                obj.stroke = donor.stroke.clone();
+                obj.stroke_width = donor.stroke_width;
+                obj.opacity = donor.opacity;
+                results.push(obj);
+            }
+        }
+        if results.is_empty() {
+            return Err(AubrietaError::invalid_input(
+                "divide produced no non-empty pieces",
+            ));
+        }
+
+        let mut changes = ChangeSet::empty();
+        let c1 = self.remove_object(subject_id)?;
+        changes.extend(c1);
+        let c2 = self.remove_object(clip_id)?;
+        changes.extend(c2);
+        for obj in results {
+            let c = self.add_object(surface, obj)?;
+            changes.extend(c);
+        }
+        Ok(changes)
+    }
+
     /// Converts a parametric shape or text object to an editable vector path (10.3, 10.6).
+    /// Text has no vector outline without font shaping: rejects explicitly
+    /// (F-20) instead of silently substituting a rectangle.
     pub fn convert_to_curves(&mut self, id: ObjectId) -> Result<ChangeSet, AubrietaError> {
         for surface in &mut self.document.surfaces {
             if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
+                if matches!(object.shape, Some(crate::ShapeKind::Text { .. })) {
+                    return Err(AubrietaError::invalid_input(format!(
+                        "object `{id}` is text: glyph outlining requires font shaping (10.6)"
+                    )));
+                }
                 let path = object.to_path();
+                if path.is_empty() {
+                    return Err(AubrietaError::invalid_input(format!(
+                        "object `{id}` has no convertible outline"
+                    )));
+                }
                 let previous = object.shape.clone();
                 let next = Some(crate::ShapeKind::Path(path));
                 object.shape = next.clone();
@@ -277,35 +458,108 @@ impl<'doc> DocumentMutator<'doc> {
         )))
     }
 
-    /// Bakes corner geometry into an explicit vector path (10.2, 10.3).
+    /// Bakes corner geometry into an explicit vector path (10.2, 10.3) (F-08).
+    /// Rectangles with non-zero radii, polygons and stars become explicit
+    /// paths. Objects already holding a `Path` are a NoOp (empty changeset)
+    /// so callers do not pollute undo.
     pub fn bake_corners(&mut self, id: ObjectId) -> Result<ChangeSet, AubrietaError> {
+        let is_path = self
+            .document
+            .find_object(id)
+            .map(|o| matches!(o.shape, Some(crate::ShapeKind::Path(_))))
+            .unwrap_or(false);
+        if is_path {
+            return Ok(ChangeSet::empty());
+        }
         self.convert_to_curves(id)
     }
 
-    /// Offsets a path or object bounds outward (positive) or inward (negative) (10.3).
+    /// Offsets a path or object bounds outward (positive) or inward (negative) (10.3) (F-08).
+    /// Bounds always inflate/deflate. When the shape holds a `Path`, its
+    /// control vertices are scaled about the bounds center by the same
+    /// width/height ratio so curves follow the offset instead of being left
+    /// behind. Degenerate results (w/h < 1.0) are rejected.
     pub fn offset_path(&mut self, id: ObjectId, delta: f64) -> Result<ChangeSet, AubrietaError> {
+        if !delta.is_finite() {
+            return Err(AubrietaError::invalid_input("offset delta must be finite"));
+        }
         for surface in &mut self.document.surfaces {
             if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
-                if let Some(b) = object.bounds {
-                    let previous_bounds = object.bounds;
-                    let previous_rotation = object.rotation;
-                    let new_b = [
-                        b[0] - delta,
-                        b[1] - delta,
-                        (b[2] + delta * 2.0).max(1.0),
-                        (b[3] + delta * 2.0).max(1.0),
-                    ];
-                    object.bounds = Some(new_b);
-                    let mut changes = ChangeSet::empty();
-                    changes.push(Change::BoundsChanged {
-                        id,
-                        previous_bounds,
-                        next_bounds: Some(new_b),
-                        previous_rotation,
-                        next_rotation: previous_rotation,
-                    });
-                    return Ok(changes);
+                let b = object.bounds.ok_or_else(|| {
+                    AubrietaError::invalid_input(format!("object `{id}` has no bounds"))
+                })?;
+                if b[2] <= 0.0 || b[3] <= 0.0 {
+                    return Err(AubrietaError::invalid_input(format!(
+                        "object `{id}` has degenerate bounds"
+                    )));
                 }
+                let new_w = b[2] + delta * 2.0;
+                let new_h = b[3] + delta * 2.0;
+                if new_w < 1.0 || new_h < 1.0 {
+                    return Err(AubrietaError::invalid_input(format!(
+                        "offset {delta} collapses object `{id}`"
+                    )));
+                }
+                let previous_bounds = object.bounds;
+                let previous_rotation = object.rotation;
+                let previous_shape = object.shape.clone();
+                let new_b = [b[0] - delta, b[1] - delta, new_w, new_h];
+                // Scale path vertices about the bounds center so geometry tracks bounds.
+                if let Some(crate::ShapeKind::Path(path)) = object.shape.clone() {
+                    let cx = b[0] + b[2] / 2.0;
+                    let cy = b[1] + b[3] / 2.0;
+                    let sx = new_w / b[2];
+                    let sy = new_h / b[3];
+                    let map = |p: aubrieta_geometry::GPoint| {
+                        aubrieta_geometry::GPoint::new(
+                            cx + (p.x - cx) * sx,
+                            cy + (p.y - cy) * sy,
+                        )
+                    };
+                    let verbs = path
+                        .verbs
+                        .iter()
+                        .map(|v| match *v {
+                            aubrieta_geometry::PathVerb::MoveTo(p) => {
+                                aubrieta_geometry::PathVerb::MoveTo(map(p))
+                            }
+                            aubrieta_geometry::PathVerb::LineTo(p) => {
+                                aubrieta_geometry::PathVerb::LineTo(map(p))
+                            }
+                            aubrieta_geometry::PathVerb::QuadTo(c, p) => {
+                                aubrieta_geometry::PathVerb::QuadTo(map(c), map(p))
+                            }
+                            aubrieta_geometry::PathVerb::CubicTo(c1, c2, p) => {
+                                aubrieta_geometry::PathVerb::CubicTo(map(c1), map(c2), map(p))
+                            }
+                            aubrieta_geometry::PathVerb::Close => {
+                                aubrieta_geometry::PathVerb::Close
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    let mut new_path = aubrieta_geometry::GPath::new();
+                    for v in verbs {
+                        new_path.push(v).map_err(AubrietaError::invalid_input)?;
+                    }
+                    object.shape = Some(crate::ShapeKind::Path(new_path));
+                }
+                object.bounds = Some(new_b);
+                let mut changes = ChangeSet::empty();
+                if previous_shape != object.shape {
+                    changes.push(Change::ShapeChanged {
+                        id,
+                        previous: previous_shape,
+                        next: object.shape.clone(),
+                    });
+                }
+                changes.push(Change::BoundsChanged {
+                    id,
+                    previous_bounds,
+                    next_bounds: Some(new_b),
+                    previous_rotation,
+                    next_rotation: previous_rotation,
+                });
+                return Ok(changes);
             }
         }
         Err(AubrietaError::not_found(format!(
@@ -313,13 +567,116 @@ impl<'doc> DocumentMutator<'doc> {
         )))
     }
 
-    /// Slices or splits a path object at a specific point or coordinate (10.2).
+    /// Slices a path object at a specific point (10.2) (F-08: Break Path).
+    /// Splits the nearest contour into two contours at the projection of
+    /// `point`, preserving Bézier verbs by re-emitting the flattened split as
+    /// line segments plus the original verbs' structure via `from_polygons`.
+    /// Returns the shape change; bounds are recomputed from the result.
     pub fn slice_path(
         &mut self,
         id: ObjectId,
-        _point: [f64; 2],
+        point: [f64; 2],
     ) -> Result<ChangeSet, AubrietaError> {
-        self.convert_to_curves(id)
+        if !point[0].is_finite() || !point[1].is_finite() {
+            return Err(AubrietaError::invalid_input("slice point must be finite"));
+        }
+        // Snapshot shape+bounds without holding a borrow across mutation.
+        let (prev_shape, prev_bounds, prev_rot) = {
+            let obj = self.document.find_object(id).ok_or_else(|| {
+                AubrietaError::not_found(format!("object `{id}` does not exist"))
+            })?;
+            (obj.shape.clone(), obj.bounds, obj.rotation)
+        };
+        let path = match prev_shape.clone() {
+            Some(crate::ShapeKind::Path(p)) => p,
+            _ => {
+                return Err(AubrietaError::invalid_input(format!(
+                    "object `{id}` is not an editable path: convert to curves first"
+                )))
+            }
+        };
+        let target = aubrieta_geometry::GPoint::new(point[0], point[1]);
+        let contours = path.to_polygons(0.5);
+        if contours.is_empty() {
+            return Err(AubrietaError::invalid_input(format!(
+                "object `{id}` path is empty"
+            )));
+        }
+        // Find nearest segment across all contours.
+        let mut best: Option<(usize, usize, f64)> = None;
+        for (ci, contour) in contours.iter().enumerate() {
+            if contour.len() < 2 {
+                continue;
+            }
+            for si in 0..contour.len() {
+                let a = contour[si];
+                let b_pt = contour[(si + 1) % contour.len()];
+                let abx = b_pt.x - a.x;
+                let aby = b_pt.y - a.y;
+                let len2 = abx * abx + aby * aby;
+                if len2 < 1e-12 {
+                    continue;
+                }
+                let t = ((target.x - a.x) * abx + (target.y - a.y) * aby) / len2;
+                let t = t.clamp(0.0, 1.0);
+                let proj = aubrieta_geometry::GPoint::new(a.x + abx * t, a.y + aby * t);
+                let d = proj.distance_to(target);
+                if best.map_or(true, |(_, _, bd)| d < bd) {
+                    best = Some((ci, si, d));
+                }
+            }
+        }
+        let (ci, si, _) = best.ok_or_else(|| {
+            AubrietaError::invalid_input(format!("object `{id}` has no splittable segment"))
+        })?;
+        // Break contour `ci` after segment `si` into an open contour starting
+        // at the projection point: [proj, si+1, ..., si] (two ends at proj).
+        let contour = &contours[ci];
+        let n = contour.len();
+        let a = contour[si];
+        let b_pt = contour[(si + 1) % n];
+        let abx = b_pt.x - a.x;
+        let aby = b_pt.y - a.y;
+        let len2 = (abx * abx + aby * aby).max(1e-12);
+        let t = (((target.x - a.x) * abx + (target.y - a.y) * aby) / len2).clamp(0.0, 1.0);
+        let proj = aubrieta_geometry::GPoint::new(a.x + abx * t, a.y + aby * t);
+        let mut broken: Vec<aubrieta_geometry::GPoint> = Vec::with_capacity(n + 2);
+        broken.push(proj);
+        for k in 1..=n {
+            broken.push(contour[(si + k) % n]);
+        }
+        broken.push(proj);
+        let mut new_contours = contours.clone();
+        new_contours[ci] = broken;
+        let new_path = aubrieta_geometry::GPath::from_polygons(&new_contours);
+        let new_bounds = new_path
+            .bounding_box()
+            .map(|r| [r.x0, r.y0, r.width(), r.height()]);
+        if let Some(obj) = self.document.find_object_mut(id) {
+            obj.shape = Some(crate::ShapeKind::Path(new_path.clone()));
+            if new_bounds.is_some() {
+                obj.bounds = new_bounds;
+            }
+            let mut changes = ChangeSet::empty();
+            changes.push(Change::ShapeChanged {
+                id,
+                previous: prev_shape,
+                next: Some(crate::ShapeKind::Path(new_path)),
+            });
+            if new_bounds != prev_bounds {
+                changes.push(Change::BoundsChanged {
+                    id,
+                    previous_bounds: prev_bounds,
+                    next_bounds: new_bounds,
+                    previous_rotation: prev_rot,
+                    next_rotation: prev_rot,
+                });
+            }
+            return Ok(changes);
+        }
+        Err(AubrietaError::not_found(format!(
+            "object `{id}` does not exist"
+        )))
     }
 
     /// Aligns multiple objects relative to their collective bounding box (10.1).
@@ -399,7 +756,10 @@ impl<'doc> DocumentMutator<'doc> {
         Ok(None)
     }
 
-    /// Distributes objects evenly along an axis (10.1).
+    /// Distributes objects with equal gaps along an axis (10.1) (F-16).
+    /// First and last (by leading edge) stay fixed; middle objects are placed
+    /// so gaps between consecutive bounds are equal. Rotation is preserved
+    /// (F-07): previous code forced `rotation: 0.0`.
     pub fn distribute_objects(
         &mut self,
         surface: SurfaceId,
@@ -410,11 +770,12 @@ impl<'doc> DocumentMutator<'doc> {
             return Ok(ChangeSet::empty());
         }
         let surf = self.document.surface(surface)?;
-        let mut items: Vec<(ObjectId, [f64; 4])> = Vec::new();
+        // Snapshot bounds+rotation without holding borrows across set_bounds.
+        let mut items: Vec<(ObjectId, [f64; 4], f64)> = Vec::new();
         for id in ids {
             if let Some(obj) = surf.objects.iter().find(|o| o.id == *id) {
                 if let Some(b) = obj.bounds {
-                    items.push((*id, b));
+                    items.push((*id, b, obj.rotation));
                 }
             }
         }
@@ -429,15 +790,20 @@ impl<'doc> DocumentMutator<'doc> {
                         .partial_cmp(&b.1[0])
                         .unwrap_or(std::cmp::Ordering::Equal)
                 });
-                let first_x = items.first().unwrap().1[0];
-                let last_x = items.last().unwrap().1[0];
-                let span = last_x - first_x;
-                let step = span / ((items.len() - 1) as f64);
+                let first_lead = items.first().unwrap().1[0];
+                let last_trail = items.last().unwrap().1[0] + items.last().unwrap().1[2];
+                let total_width: f64 = items.iter().map(|(_, b, _)| b[2]).sum();
+                let span = last_trail - first_lead;
+                let gap = (span - total_width) / ((items.len() - 1) as f64);
+                if !gap.is_finite() {
+                    return Ok(ChangeSet::empty());
+                }
                 let mut changes = ChangeSet::empty();
-                for (i, (id, b)) in items.iter().enumerate() {
-                    let target_x = first_x + (i as f64) * step;
-                    let c = self.set_bounds(*id, Some([target_x, b[1], b[2], b[3]]), 0.0)?;
+                let mut cursor = first_lead;
+                for (id, b, rot) in items {
+                    let c = self.set_bounds(id, Some([cursor, b[1], b[2], b[3]]), rot)?;
                     changes.extend(c);
+                    cursor += b[2] + gap;
                 }
                 Ok(changes)
             }
@@ -447,22 +813,73 @@ impl<'doc> DocumentMutator<'doc> {
                         .partial_cmp(&b.1[1])
                         .unwrap_or(std::cmp::Ordering::Equal)
                 });
-                let first_y = items.first().unwrap().1[1];
-                let last_y = items.last().unwrap().1[1];
-                let span = last_y - first_y;
-                let step = span / ((items.len() - 1) as f64);
+                let first_lead = items.first().unwrap().1[1];
+                let last_trail = items.last().unwrap().1[1] + items.last().unwrap().1[3];
+                let total_height: f64 = items.iter().map(|(_, b, _)| b[3]).sum();
+                let span = last_trail - first_lead;
+                let gap = (span - total_height) / ((items.len() - 1) as f64);
+                if !gap.is_finite() {
+                    return Ok(ChangeSet::empty());
+                }
                 let mut changes = ChangeSet::empty();
-                for (i, (id, b)) in items.iter().enumerate() {
-                    let target_y = first_y + (i as f64) * step;
-                    let c = self.set_bounds(*id, Some([b[0], target_y, b[2], b[3]]), 0.0)?;
+                let mut cursor = first_lead;
+                for (id, b, rot) in items {
+                    let c = self.set_bounds(id, Some([b[0], cursor, b[2], b[3]]), rot)?;
                     changes.extend(c);
+                    cursor += b[3] + gap;
                 }
                 Ok(changes)
             }
         }
     }
 
-    /// Sets an object's appearance stack.
+    /// Syncs legacy `fill/stroke/stroke_width/opacity` mirrors from a stack.
+    /// Solid primaries mirror their token; non-solid primaries clear the stale
+    /// legacy token so PDF/SVG/pixel paths (which read the stack first) never
+    /// show a stale color (F-06).
+    fn sync_legacy_from_stack(
+        object: &mut DocumentObject,
+        stack: Option<&crate::appearance::AppearanceStack>,
+    ) {
+        match stack {
+            None => {}
+            Some(app) => {
+                match app.primary_fill() {
+                    Some(pf) => match &pf.paint {
+                        crate::appearance::Paint::Solid(col) => {
+                            object.fill = Some(col.clone());
+                        }
+                        _ => {
+                            object.fill = None;
+                        }
+                    },
+                    None => {
+                        object.fill = None;
+                    }
+                }
+                match app.primary_stroke() {
+                    Some(ps) => match &ps.paint {
+                        crate::appearance::Paint::Solid(col) => {
+                            object.stroke = Some(col.clone());
+                            object.stroke_width = ps.width;
+                        }
+                        _ => {
+                            object.stroke = None;
+                        }
+                    },
+                    None => {
+                        object.stroke = None;
+                    }
+                }
+                object.opacity = app.opacity.clamp(0.0, 1.0);
+            }
+        }
+    }
+
+    /// Sets an object's appearance stack (F-06).
+    /// Emits `AppearanceChanged` plus mirrored `FillChanged`/`StrokeChanged`/
+    /// `OpacityChanged` so undo reverts both the stack and the legacy mirrors
+    /// in one atomic `ChangeSet`.
     pub fn set_appearance(
         &mut self,
         id: ObjectId,
@@ -471,21 +888,39 @@ impl<'doc> DocumentMutator<'doc> {
         for surface in &mut self.document.surfaces {
             if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
                 let previous = object.appearance.clone();
-                if let Some(app) = &appearance {
-                    if let Some(pf) = app.primary_fill() {
-                        if let crate::appearance::Paint::Solid(col) = &pf.paint {
-                            object.fill = Some(col.clone());
-                        }
-                    }
-                    if let Some(ps) = app.primary_stroke() {
-                        if let crate::appearance::Paint::Solid(col) = &ps.paint {
-                            object.stroke = Some(col.clone());
-                            object.stroke_width = ps.width;
-                        }
-                    }
+                let prev_fill = object.fill.clone();
+                let prev_stroke = object.stroke.clone();
+                let prev_width = object.stroke_width;
+                let prev_opacity = object.opacity;
+                if previous == appearance {
+                    return Ok(ChangeSet::empty());
                 }
+                Self::sync_legacy_from_stack(object, appearance.as_ref());
                 object.appearance = appearance.clone();
                 let mut changes = ChangeSet::empty();
+                if prev_fill != object.fill {
+                    changes.push(Change::FillChanged {
+                        id,
+                        previous: prev_fill,
+                        next: object.fill.clone(),
+                    });
+                }
+                if prev_stroke != object.stroke || prev_width != object.stroke_width {
+                    changes.push(Change::StrokeChanged {
+                        id,
+                        previous_stroke: prev_stroke,
+                        next_stroke: object.stroke.clone(),
+                        previous_width: prev_width,
+                        next_width: object.stroke_width,
+                    });
+                }
+                if (prev_opacity - object.opacity).abs() > f64::EPSILON {
+                    changes.push(Change::OpacityChanged {
+                        id,
+                        previous: prev_opacity,
+                        next: object.opacity,
+                    });
+                }
                 changes.push(Change::AppearanceChanged {
                     id,
                     previous,
@@ -497,6 +932,319 @@ impl<'doc> DocumentMutator<'doc> {
         Err(AubrietaError::not_found(format!(
             "object `{id}` does not exist"
         )))
+    }
+
+    /// Loads the editable appearance stack for granular commands (F-18).
+    /// Returns `(object_id, stack)`: the effective stack when no explicit
+    /// stack exists, so simple UI targets the primary entry without ever
+    /// silently deleting secondary entries (10.4).
+    fn editable_stack(&self, id: ObjectId) -> Result<crate::appearance::AppearanceStack, AubrietaError> {
+        self.document
+            .find_object(id)
+            .map(|o| o.effective_appearance())
+            .ok_or_else(|| AubrietaError::not_found(format!("object `{id}` does not exist")))
+    }
+
+    /// Appends a fill entry, reassigning `id` on collision (F-18).
+    pub fn add_fill(
+        &mut self,
+        id: ObjectId,
+        mut fill: crate::appearance::FillItem,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        if stack.fills.iter().any(|f| f.id == fill.id) {
+            fill.id = stack.fills.iter().map(|f| f.id).max().unwrap_or(0) + 1;
+        }
+        stack.add_fill(fill);
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Removes a fill entry by local id (F-18). Missing ids are an error;
+    /// removing the last entry is allowed (object keeps stack opacity/blend).
+    pub fn remove_fill(&mut self, id: ObjectId, fill_id: u32) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        if !stack.remove_fill(fill_id) {
+            return Err(AubrietaError::not_found(format!(
+                "fill `{fill_id}` not found on object `{id}`"
+            )));
+        }
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Sets one fill entry's opacity (F-18). NoOp when unchanged.
+    pub fn set_fill_item_opacity(
+        &mut self,
+        id: ObjectId,
+        fill_id: u32,
+        opacity: f64,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        let entry = stack.fills.iter_mut().find(|f| f.id == fill_id).ok_or_else(|| {
+            AubrietaError::not_found(format!("fill `{fill_id}` not found on object `{id}`"))
+        })?;
+        let clamped = opacity.clamp(0.0, 1.0);
+        if (entry.opacity - clamped).abs() <= f64::EPSILON {
+            return Ok(ChangeSet::empty());
+        }
+        entry.opacity = clamped;
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Sets one fill entry's blend mode (F-18). NoOp when unchanged.
+    pub fn set_fill_item_blend(
+        &mut self,
+        id: ObjectId,
+        fill_id: u32,
+        blend_mode: crate::appearance::BlendMode,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        let entry = stack.fills.iter_mut().find(|f| f.id == fill_id).ok_or_else(|| {
+            AubrietaError::not_found(format!("fill `{fill_id}` not found on object `{id}`"))
+        })?;
+        if entry.blend_mode == blend_mode {
+            return Ok(ChangeSet::empty());
+        }
+        entry.blend_mode = blend_mode;
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Moves a fill entry to a new position in stack order (F-18).
+    pub fn reorder_fill(
+        &mut self,
+        id: ObjectId,
+        fill_id: u32,
+        new_index: usize,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        let pos = stack
+            .fills
+            .iter()
+            .position(|f| f.id == fill_id)
+            .ok_or_else(|| {
+                AubrietaError::not_found(format!("fill `{fill_id}` not found on object `{id}`"))
+            })?;
+        let dest = new_index.min(stack.fills.len().saturating_sub(1));
+        if pos == dest {
+            return Ok(ChangeSet::empty());
+        }
+        let item = stack.fills.remove(pos);
+        stack.fills.insert(dest, item);
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Appends a stroke entry, reassigning `id` on collision (F-18).
+    pub fn add_stroke(
+        &mut self,
+        id: ObjectId,
+        mut stroke: crate::appearance::StrokeItem,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        if stack.strokes.iter().any(|s| s.id == stroke.id) {
+            stroke.id = stack.strokes.iter().map(|s| s.id).max().unwrap_or(0) + 1;
+        }
+        stack.add_stroke(stroke);
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Removes a stroke entry by local id (F-18).
+    pub fn remove_stroke(
+        &mut self,
+        id: ObjectId,
+        stroke_id: u32,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        if !stack.remove_stroke(stroke_id) {
+            return Err(AubrietaError::not_found(format!(
+                "stroke `{stroke_id}` not found on object `{id}`"
+            )));
+        }
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Sets one stroke entry's width (F-18). Negative widths are rejected.
+    pub fn set_stroke_item_width(
+        &mut self,
+        id: ObjectId,
+        stroke_id: u32,
+        width: f64,
+    ) -> Result<ChangeSet, AubrietaError> {
+        if !width.is_finite() || width < 0.0 {
+            return Err(AubrietaError::invalid_input("stroke width must be finite and >= 0"));
+        }
+        let mut stack = self.editable_stack(id)?;
+        let entry = stack
+            .strokes
+            .iter_mut()
+            .find(|s| s.id == stroke_id)
+            .ok_or_else(|| {
+                AubrietaError::not_found(format!("stroke `{stroke_id}` not found on object `{id}`"))
+            })?;
+        if (entry.width - width).abs() <= f64::EPSILON {
+            return Ok(ChangeSet::empty());
+        }
+        entry.width = width;
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Moves a stroke entry to a new position in stack order (F-18).
+    pub fn reorder_stroke(
+        &mut self,
+        id: ObjectId,
+        stroke_id: u32,
+        new_index: usize,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        let pos = stack
+            .strokes
+            .iter()
+            .position(|s| s.id == stroke_id)
+            .ok_or_else(|| {
+                AubrietaError::not_found(format!("stroke `{stroke_id}` not found on object `{id}`"))
+            })?;
+        let dest = new_index.min(stack.strokes.len().saturating_sub(1));
+        if pos == dest {
+            return Ok(ChangeSet::empty());
+        }
+        let item = stack.strokes.remove(pos);
+        stack.strokes.insert(dest, item);
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Appends an effect entry, reassigning `id` on collision (F-18).
+    pub fn add_effect(
+        &mut self,
+        id: ObjectId,
+        mut effect: crate::appearance::EffectItem,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        if stack.effects.iter().any(|e| e.id == effect.id) {
+            effect.id = stack.effects.iter().map(|e| e.id).max().unwrap_or(0) + 1;
+        }
+        stack.add_effect(effect);
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Removes an effect entry by local id (F-18).
+    pub fn remove_effect(
+        &mut self,
+        id: ObjectId,
+        effect_id: u32,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        if !stack.remove_effect(effect_id) {
+            return Err(AubrietaError::not_found(format!(
+                "effect `{effect_id}` not found on object `{id}`"
+            )));
+        }
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Enables/disables an effect entry without deleting it (F-18, 10.4).
+    /// NoOp when the flag already matches.
+    pub fn toggle_effect(
+        &mut self,
+        id: ObjectId,
+        effect_id: u32,
+        visible: bool,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        let entry = stack
+            .effects
+            .iter_mut()
+            .find(|e| e.id == effect_id)
+            .ok_or_else(|| {
+                AubrietaError::not_found(format!("effect `{effect_id}` not found on object `{id}`"))
+            })?;
+        if entry.visible == visible {
+            return Ok(ChangeSet::empty());
+        }
+        entry.visible = visible;
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Sets the whole-stack opacity (F-18). Mirrors to legacy opacity.
+    pub fn set_stack_opacity(
+        &mut self,
+        id: ObjectId,
+        opacity: f64,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        let clamped = opacity.clamp(0.0, 1.0);
+        if (stack.opacity - clamped).abs() <= f64::EPSILON {
+            return Ok(ChangeSet::empty());
+        }
+        stack.opacity = clamped;
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Sets the whole-stack blend mode (F-18). NoOp when unchanged.
+    pub fn set_stack_blend(
+        &mut self,
+        id: ObjectId,
+        blend_mode: crate::appearance::BlendMode,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        if stack.blend_mode == blend_mode {
+            return Ok(ChangeSet::empty());
+        }
+        stack.blend_mode = blend_mode;
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Copies an appearance stack from one object to another (F-18, 10.4
+    /// Copy/Paste Style). Destination legacy mirrors are synced by
+    /// `set_appearance`.
+    pub fn paste_appearance(
+        &mut self,
+        source_id: ObjectId,
+        dest_id: ObjectId,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let stack = self
+            .document
+            .find_object(source_id)
+            .ok_or_else(|| {
+                AubrietaError::not_found(format!("source object `{source_id}` not found"))
+            })?
+            .effective_appearance();
+        self.set_appearance(dest_id, Some(stack))
+    }
+
+    /// Clears all effects, keeping fills/strokes (F-18). NoOp when empty.
+    pub fn clear_effects(&mut self, id: ObjectId) -> Result<ChangeSet, AubrietaError> {
+        let mut stack = self.editable_stack(id)?;
+        if stack.effects.is_empty() {
+            return Ok(ChangeSet::empty());
+        }
+        stack.effects.clear();
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Moves an object one step or to an edge of surface z-order (10.1, F-16).
+    /// Implemented via [`Self::reorder_object`] so undo restores the exact
+    /// previous index. Edge positions are a NoOp (empty set, no history).
+    pub fn arrange_object(
+        &mut self,
+        surface: SurfaceId,
+        id: ObjectId,
+        position: crate::ArrangePosition,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let target = self.document.surface(surface)?;
+        let len = target.objects.len();
+        let current = target
+            .objects
+            .iter()
+            .position(|o| o.id == id)
+            .ok_or_else(|| AubrietaError::not_found(format!("object `{id}` does not exist")))?;
+        let dest = match position {
+            crate::ArrangePosition::Front => len.saturating_sub(1),
+            crate::ArrangePosition::Back => 0,
+            crate::ArrangePosition::Forward => (current + 1).min(len.saturating_sub(1)),
+            crate::ArrangePosition::Backward => current.saturating_sub(1),
+        };
+        if dest == current {
+            return Ok(ChangeSet::empty());
+        }
+        self.reorder_object(surface, id, dest)
     }
 
     /// Reorders an object within its surface.
@@ -528,7 +1276,10 @@ impl<'doc> DocumentMutator<'doc> {
         Ok(changes)
     }
 
-    /// Groups multiple objects under a new container object (10.5 One-Tree).
+    /// Groups multiple objects under a new container object (10.5 One-Tree) (F-09).
+    /// Validates same-surface membership, rejects locked children, detaches
+    /// each child from its previous parent (recording `ChildrenChanged` so
+    /// undo restores the old tree), and records the real previous index.
     pub fn group_objects(
         &mut self,
         surface: SurfaceId,
@@ -547,10 +1298,18 @@ impl<'doc> DocumentMutator<'doc> {
 
         let surf = self.document.surface(surface)?;
         for id in &child_ids {
-            if !surf.objects.iter().any(|o| o.id == *id) {
-                return Err(AubrietaError::invalid_input(format!(
+            let obj = surf.objects.iter().find(|o| o.id == *id).ok_or_else(|| {
+                AubrietaError::invalid_input(format!(
                     "child `{id}` not found on surface `{surface}`"
+                ))
+            })?;
+            if obj.locked {
+                return Err(AubrietaError::invalid_input(format!(
+                    "child `{id}` is locked"
                 )));
+            }
+            if *id == group_id {
+                return Err(AubrietaError::invalid_input("cannot group object into itself"));
             }
         }
 
@@ -596,15 +1355,50 @@ impl<'doc> DocumentMutator<'doc> {
 
         let target = self.document.surface_mut(surface)?;
         target.objects.push(group_obj.clone());
+        let group_index = target.objects.len() - 1;
         changes.push(Change::ObjectAdded {
             surface,
             object: group_obj,
+            index: group_index,
         });
 
         let (gx, gy) = group_bounds.map_or((0.0, 0.0), |b| (b[0], b[1]));
-        for (idx, child_id) in child_ids.into_iter().enumerate() {
+        for child_id in child_ids {
+            // Snapshot previous parent + its children index before mutating.
+            let (prev_parent, prev_index) = {
+                let child = self.document.find_object(child_id).ok_or_else(|| {
+                    AubrietaError::not_found(format!("child `{child_id}` not found"))
+                })?;
+                let idx = match child.parent {
+                    Some(pid) => self
+                        .document
+                        .find_object(pid)
+                        .and_then(|p| p.children.iter().position(|c| *c == child_id))
+                        .unwrap_or(0),
+                    None => self
+                        .document
+                        .surface(surface)
+                        .ok()
+                        .and_then(|s| s.objects.iter().position(|o| o.id == child_id))
+                        .unwrap_or(0),
+                };
+                (child.parent, idx)
+            };
+            // Detach from previous parent container.
+            if let Some(old_pid) = prev_parent {
+                if let Some(old_parent) = self.document.find_object_mut(old_pid) {
+                    let prev_ch = old_parent.children.clone();
+                    if let Some(p) = old_parent.children.iter().position(|c| *c == child_id) {
+                        old_parent.children.remove(p);
+                        changes.push(Change::ChildrenChanged {
+                            id: old_pid,
+                            previous_children: prev_ch,
+                            next_children: old_parent.children.clone(),
+                        });
+                    }
+                }
+            }
             if let Some(child) = self.document.find_object_mut(child_id) {
-                let prev_parent = child.parent;
                 let prev_bounds = child.bounds;
                 let prev_rot = child.rotation;
 
@@ -623,8 +1417,8 @@ impl<'doc> DocumentMutator<'doc> {
                     id: child_id,
                     previous_parent: prev_parent,
                     next_parent: Some(group_id),
-                    previous_index: idx,
-                    next_index: idx,
+                    previous_index: prev_index,
+                    next_index: 0,
                 });
             }
         }
@@ -700,13 +1494,18 @@ impl<'doc> DocumentMutator<'doc> {
             changes.push(Change::ObjectRemoved {
                 surface: surface_id,
                 object: removed_group,
+                index: pos,
             });
         }
 
         Ok(changes)
     }
 
-    /// Reparents an object to a new container (or root) with cycle validation and transform preservation.
+    /// Reparents an object to a new container (or root) with cycle validation and transform preservation (F-09).
+    /// Records the real previous index. Reordering inside the same parent is
+    /// supported via `target_index` instead of returning an empty set.
+    /// When `preserve_world_transform` is set, both translation and rotation
+    /// are recomposed from the world affine (previous code dropped rotation).
     pub fn reparent_object(
         &mut self,
         id: ObjectId,
@@ -748,7 +1547,69 @@ impl<'doc> DocumentMutator<'doc> {
             .ok_or_else(|| AubrietaError::not_found(format!("object `{id}` not found")))?
             .parent;
 
+        // Real previous index: position inside old parent's children, or
+        // z-order position on the surface when parent is None.
+        let previous_index = match current_parent {
+            Some(cp_id) => self
+                .document
+                .find_object(cp_id)
+                .and_then(|p| p.children.iter().position(|c| *c == id))
+                .unwrap_or(0),
+            None => {
+                let surf_id = self.document.find_object_surface(id).ok_or_else(|| {
+                    AubrietaError::not_found(format!("surface for `{id}` not found"))
+                })?;
+                self.document
+                    .surface(surf_id)
+                    .ok()
+                    .and_then(|s| s.objects.iter().position(|o| o.id == id))
+                    .unwrap_or(0)
+            }
+        };
+
+        // Same-parent reorder: move within children (or NoOp when equal).
         if current_parent == new_parent {
+            if let Some(cp_id) = current_parent {
+                let (prev_ch, next_ch, moved) = {
+                    let parent = self.document.find_object_mut(cp_id).ok_or_else(|| {
+                        AubrietaError::not_found(format!("parent `{cp_id}` not found"))
+                    })?;
+                    let prev_ch = parent.children.clone();
+                    let old_pos = parent.children.iter().position(|c| *c == id);
+                    match old_pos {
+                        None => (prev_ch, parent.children.clone(), false),
+                        Some(old) => {
+                            let mut next = parent.children.clone();
+                            next.remove(old);
+                            let dest = target_index.min(next.len());
+                            if old == dest {
+                                (prev_ch, parent.children.clone(), false)
+                            } else {
+                                next.insert(dest, id);
+                                parent.children = next.clone();
+                                (prev_ch, next, true)
+                            }
+                        }
+                    }
+                };
+                if !moved {
+                    return Ok(ChangeSet::empty());
+                }
+                let mut changes = ChangeSet::empty();
+                changes.push(Change::ChildrenChanged {
+                    id: cp_id,
+                    previous_children: prev_ch,
+                    next_children: next_ch,
+                });
+                changes.push(Change::Reparented {
+                    id,
+                    previous_parent: current_parent,
+                    next_parent: new_parent,
+                    previous_index,
+                    next_index: target_index,
+                });
+                return Ok(changes);
+            }
             return Ok(ChangeSet::empty());
         }
 
@@ -788,7 +1649,7 @@ impl<'doc> DocumentMutator<'doc> {
                 id,
                 previous_parent: prev_parent,
                 next_parent: new_parent,
-                previous_index: 0,
+                previous_index,
                 next_index: target_index,
             });
 
@@ -800,12 +1661,18 @@ impl<'doc> DocumentMutator<'doc> {
                     let new_local = inv_np.after(w);
                     let new_origin = new_local.apply(aubrieta_geometry::GPoint::ORIGIN);
                     obj.set_local_origin(new_origin.x, new_origin.y);
+                    // Recompose rotation from the local affine (F-07/F-09).
+                    let new_rot =
+                        crate::document_object::DocumentObject::rotation_from_affine(new_local);
+                    if new_rot.is_finite() {
+                        obj.rotation = new_rot;
+                    }
                     changes.push(Change::BoundsChanged {
                         id,
                         previous_bounds: prev_bounds,
                         next_bounds: obj.bounds,
                         previous_rotation: prev_rot,
-                        next_rotation: prev_rot,
+                        next_rotation: obj.rotation,
                     });
                 }
             }
@@ -1038,6 +1905,7 @@ impl<'doc> DocumentMutator<'doc> {
         changes.push(Change::ObjectRemoved {
             surface: current_surface_id,
             object: obj.clone(),
+            index: pos,
         });
 
         if preserve_world_transform {
@@ -1050,9 +1918,11 @@ impl<'doc> DocumentMutator<'doc> {
 
         let tgt_surf = self.document.surface_mut(target_surface)?;
         tgt_surf.objects.push(obj.clone());
+        let added_index = tgt_surf.objects.len() - 1;
         changes.push(Change::ObjectAdded {
             surface: target_surface,
             object: obj,
+            index: added_index,
         });
 
         Ok(changes)
@@ -1167,6 +2037,78 @@ impl<'doc> DocumentMutator<'doc> {
         Ok(changes)
     }
 
+    /// Force-sets an object's parent without validation or change records (A5).
+    /// Reserved for history redo (`Replayer`), which re-applies an already
+    /// validated `ChangeSet`; all other writers use `reparent_object`.
+    pub fn force_parent(
+        &mut self,
+        id: ObjectId,
+        parent: Option<ObjectId>,
+    ) -> Result<(), AubrietaError> {
+        let found = self
+            .document
+            .surfaces
+            .iter_mut()
+            .flat_map(|s| s.objects.iter_mut())
+            .find(|o| o.id == id)
+            .ok_or_else(|| AubrietaError::not_found(format!("object `{id}` does not exist")))?;
+        found.parent = parent;
+        Ok(())
+    }
+
+    /// Force-sets a container's children list (A5). See [`Self::force_parent`].
+    pub fn force_children(
+        &mut self,
+        id: ObjectId,
+        children: Vec<ObjectId>,
+    ) -> Result<(), AubrietaError> {
+        let found = self
+            .document
+            .surfaces
+            .iter_mut()
+            .flat_map(|s| s.objects.iter_mut())
+            .find(|o| o.id == id)
+            .ok_or_else(|| AubrietaError::not_found(format!("object `{id}` does not exist")))?;
+        found.children = children;
+        Ok(())
+    }
+
+    /// Force-sets a container's structural role (A5). See [`Self::force_parent`].
+    pub fn force_role(
+        &mut self,
+        id: ObjectId,
+        role: Option<crate::hierarchy::ContainerRole>,
+    ) -> Result<(), AubrietaError> {
+        let found = self
+            .document
+            .surfaces
+            .iter_mut()
+            .flat_map(|s| s.objects.iter_mut())
+            .find(|o| o.id == id)
+            .ok_or_else(|| AubrietaError::not_found(format!("object `{id}` does not exist")))?;
+        found.role = role;
+        Ok(())
+    }
+
+    /// Force-sets an object's clip-mask relationship (A5). See [`Self::force_parent`].
+    pub fn force_clip_mask(
+        &mut self,
+        id: ObjectId,
+        mask: Option<ObjectId>,
+        is_mask: bool,
+    ) -> Result<(), AubrietaError> {
+        let found = self
+            .document
+            .surfaces
+            .iter_mut()
+            .flat_map(|s| s.objects.iter_mut())
+            .find(|o| o.id == id)
+            .ok_or_else(|| AubrietaError::not_found(format!("object `{id}` does not exist")))?;
+        found.clip_mask_id = mask;
+        found.is_clip_mask = is_mask;
+        Ok(())
+    }
+
     /// Materializes merged records into separate surfaces (artboards) on the canvas pasteboard (10.11).
     pub fn materialize_data_merge(
         &mut self,
@@ -1262,7 +2204,7 @@ impl<'doc> DocumentMutator<'doc> {
                         })?;
                     self.document.surfaces.remove(pos);
                 }
-                Change::ObjectAdded { surface, object } => {
+                Change::ObjectAdded { surface, object, .. } => {
                     let target = self.document.surface_mut(surface)?;
                     let pos = target
                         .objects
@@ -1276,9 +2218,20 @@ impl<'doc> DocumentMutator<'doc> {
                         })?;
                     target.objects.remove(pos);
                 }
-                Change::ObjectRemoved { surface, object } => {
+                Change::ObjectRemoved {
+                    surface,
+                    object,
+                    index,
+                } => {
                     let target = self.document.surface_mut(surface)?;
-                    target.objects.push(object);
+                    // Restore at the original z-index (F-09); clamp for safety
+                    // when the surface shrank since removal.
+                    let dest = index.min(target.objects.len());
+                    // Avoid duplicating when redo/undo interleave unexpectedly.
+                    if target.objects.iter().any(|o| o.id == object.id) {
+                        continue;
+                    }
+                    target.objects.insert(dest, object);
                 }
                 Change::FillChanged { id, previous, .. } => {
                     let found = self
@@ -1405,7 +2358,14 @@ impl<'doc> DocumentMutator<'doc> {
                         .ok_or_else(|| {
                             AubrietaError::not_found(format!("object `{id}` does not exist"))
                         })?;
-                    found.appearance = previous;
+                    found.appearance = previous.clone();
+                    // Re-mirror legacy tokens so post-undo state matches
+                    // pre-change state even for old changesets that lack the
+                    // explicit Fill/Stroke/Opacity entries (F-06).
+                    Self::sync_legacy_from_stack(found, previous.as_ref());
+                    // When previous is None (no stack), legacy mirrors keep
+                    // whatever Fill/Stroke/Opacity reverts already restored
+                    // via their own Change entries (reverse order).
                 }
                 Change::Reparented {
                     id,

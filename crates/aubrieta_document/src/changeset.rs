@@ -11,14 +11,20 @@ pub enum Change {
     /// A surface was added.
     SurfaceAdded { id: SurfaceId, name: String },
     /// An object was added to a surface.
+    /// `index` records the z-order insertion position (F-09).
     ObjectAdded {
         surface: SurfaceId,
         object: DocumentObject,
+        #[serde(default)]
+        index: usize,
     },
     /// An object was removed; the full object is kept for undo.
+    /// `index` is the original z-order position so undo restores order (F-09).
     ObjectRemoved {
         surface: SurfaceId,
         object: DocumentObject,
+        #[serde(default)]
+        index: usize,
     },
     /// An object's fill token changed; previous value kept for undo.
     FillChanged {

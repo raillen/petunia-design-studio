@@ -14,7 +14,8 @@ aubrieta_geometry = { path = "../../crates/aubrieta_geometry" }
 aubrieta_color = { path = "../../crates/aubrieta_color" }
 aubrieta_document = { path = "../../crates/aubrieta_document" }
 aubrieta_application = { path = "../../crates/aubrieta_application" }
-aubrieta_ui_gpui = { path = "../../crates/aubrieta_ui_gpui" }
+aubrieta_shell = { path = "../../crates/aubrieta_shell" }
+aubrieta_io = { path = "../../crates/aubrieta_io" }
 slint = { version = "1.18", default-features = true }
 rfd = "0.15"
 

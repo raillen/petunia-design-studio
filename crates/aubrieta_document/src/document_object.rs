@@ -118,6 +118,10 @@ impl DocumentObject {
     }
 
     /// Returns the canonical outline `GPath` for this object based on its shape and bounds.
+    /// Polygon/Star use `min(w,h)/2` as radius with center at bounds center so
+    /// non-square bounds do not distort (F-20). Text has no outline: returns an
+    /// empty path so `ConvertToCurves` must reject it explicitly instead of
+    /// silently substituting a rectangle.
     #[must_use]
     pub fn to_path(&self) -> aubrieta_geometry::GPath {
         let b = self.bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
@@ -134,19 +138,20 @@ impl DocumentObject {
             }
             Some(ShapeKind::Path(path)) => path.clone(),
             Some(ShapeKind::Polygon { sides }) => {
-                let rx = b[2] / 2.0;
-                let center = aubrieta_geometry::GPoint::new(b[0] + rx, b[1] + b[3] / 2.0);
-                aubrieta_geometry::GPath::regular_polygon(center, rx, *sides as usize)
+                let radius = b[2].min(b[3]) / 2.0;
+                let center = aubrieta_geometry::GPoint::new(b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
+                aubrieta_geometry::GPath::regular_polygon(center, radius, *sides as usize)
             }
             Some(ShapeKind::Star {
                 points,
                 inner_ratio,
             }) => {
-                let outer_r = b[2] / 2.0;
+                let outer_r = b[2].min(b[3]) / 2.0;
                 let inner_r = outer_r * inner_ratio.clamp(0.1, 0.9);
-                let center = aubrieta_geometry::GPoint::new(b[0] + outer_r, b[1] + b[3] / 2.0);
+                let center = aubrieta_geometry::GPoint::new(b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
                 aubrieta_geometry::GPath::star(center, outer_r, inner_r, *points as usize)
             }
+            Some(ShapeKind::Text { .. }) => aubrieta_geometry::GPath::new(),
             _ => aubrieta_geometry::GPath::rect(rect, 0.0, 0.0),
         }
     }
@@ -209,12 +214,28 @@ impl DocumentObject {
         !self.children.is_empty() || self.role.is_some()
     }
 
-    /// Computes the local affine transformation for this object based on bounds origin and rotation.
+    /// Computes the local affine transformation for this object.
+    /// Rotation is about the bounds center (F-07): `T(center) * R * T(-center)`.
+    /// When there are no bounds, falls back to rotation about the origin.
     #[must_use]
     pub fn local_transform(&self) -> aubrieta_geometry::GAffine {
-        let (tx, ty) = self.bounds.map_or((0.0, 0.0), |b| (b[0], b[1]));
-        aubrieta_geometry::GAffine::translate(tx, ty)
-            .after(aubrieta_geometry::GAffine::rotate(self.rotation))
+        let rot = aubrieta_geometry::GAffine::rotate(self.rotation);
+        if let Some(b) = self.bounds {
+            let cx = b[0] + b[2] / 2.0;
+            let cy = b[1] + b[3] / 2.0;
+            aubrieta_geometry::GAffine::translate(cx, cy)
+                .after(rot)
+                .after(aubrieta_geometry::GAffine::translate(-cx, -cy))
+        } else {
+            rot
+        }
+    }
+
+    /// Extracts the pure rotation angle (radians) from an affine whose linear
+    /// part is rotation-only. Used when preserving world transform on reparent.
+    #[must_use]
+    pub fn rotation_from_affine(affine: aubrieta_geometry::GAffine) -> f64 {
+        affine.coeffs[1].atan2(affine.coeffs[0])
     }
 
     /// Updates the local translation origin (x, y) while preserving dimensions.
@@ -244,4 +265,18 @@ pub enum AlignmentMode {
 pub enum DistributionAxis {
     Horizontal,
     Vertical,
+}
+
+/// Z-order arrange positions within a surface (10.1, F-16).
+/// Front is the end of the back-to-front `Surface.objects` order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ArrangePosition {
+    /// Move to the front (top of paint order).
+    Front,
+    /// Move to the back (bottom of paint order).
+    Back,
+    /// Move one step toward the front. NoOp when already frontmost.
+    Forward,
+    /// Move one step toward the back. NoOp when already backmost.
+    Backward,
 }

@@ -10,18 +10,23 @@ use std::env;
 use std::rc::Rc;
 
 use aubrieta_application::{Command, CommandRequest};
-use aubrieta_document::{Bleed, Guide, GuideOrientation, Margins};
+use aubrieta_document::{Bleed, ContainerRole, Guide, GuideOrientation, Margins};
 use aubrieta_foundation::{AubrietaError, IdGenerator, ObjectId};
+use aubrieta_io::{
+    export_document_pdf, export_document_svg, export_raster, PdfExportOptions,
+    RasterExportOptions, RasterFormat, RawRasterImage,
+};
 use aubrieta_geometry::{GAffine, GPoint, GRect};
-use aubrieta_ui_gpui::bridge::{
+use aubrieta_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers,
+};
+use aubrieta_application::tools::ToolKind;
+use aubrieta_shell::bridge::{
     DataMergePresentationModel, HistoryPresentationModel, LayersPresentationModel,
     PropertiesPresentationModel,
 };
-use aubrieta_ui_gpui::canvas::overlay::{hit_test_handle_or_border, SelectionHandleKind};
-use aubrieta_ui_gpui::shell::AubrietaShell;
-use aubrieta_ui_gpui::tools::{
-    NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers, ToolKind,
-};
+use aubrieta_shell::canvas::overlay::{hit_test_handle_or_border, SelectionHandleKind};
+use aubrieta_shell::shell::AubrietaShell;
 use slint::{ComponentHandle, VecModel};
 
 pub struct AubrietaSlintState {
@@ -69,13 +74,114 @@ impl AubrietaSlintState {
         }
         self.shell.undo().map_err(|e| format!("undo: {e}"))?;
         self.shell.redo().map_err(|e| format!("redo: {e}"))?;
-        let _ = self.shell.query_layers();
+
+        // 1. Validate Layers Hierarchy Presentation Model
+        let layers = self.shell.query_layers();
+        if layers.rows.is_empty() {
+            return Err("Layers model has no rows".to_string());
+        }
+
+        // 2. Validate Grouping & Hierarchy (Step 2)
+        let surface_id = snap.active_surface.ok_or("No active surface in snapshot")?;
+        let rect_id = layers.rows[0].id;
+        let circle_id = layers.rows[1].id;
+        let group_id = self.shell.bridge.next_object_id().map_err(|e| e.to_string())?;
+
+        self.shell
+            .bridge
+            .group_objects(
+                surface_id,
+                group_id,
+                vec![rect_id, circle_id],
+                ContainerRole::Group,
+            )
+            .map_err(|e| format!("group_objects: {e}"))?;
+
+        let post_group_layers = self.shell.query_layers();
+        let group_row = post_group_layers
+            .rows
+            .iter()
+            .find(|r| r.id == group_id)
+            .ok_or("Group row not found in layers after grouping")?;
+        if !group_row.is_container {
+            return Err("Group row is not flagged as container".to_string());
+        }
+
+        // 3. Validate Clipping Mask Creation & Release (Step 2)
+        let mask_id = self.shell.bridge.next_object_id().map_err(|e| e.to_string())?;
+        let clip_group_id = self.shell.bridge.next_object_id().map_err(|e| e.to_string())?;
+        self.shell
+            .bridge
+            .create_shape_object(
+                surface_id,
+                mask_id,
+                "Mask Shape".to_string(),
+                aubrieta_document::ShapeKind::Ellipse,
+                Some([150.0, 150.0, 100.0, 100.0]),
+                Some("aubrieta.purple/500".to_string()),
+                None,
+                0.0,
+            )
+            .map_err(|e| format!("create mask shape: {e}"))?;
+
+        self.shell
+            .bridge
+            .create_clip_group(surface_id, clip_group_id, mask_id, vec![group_id])
+            .map_err(|e| format!("create_clip_group: {e}"))?;
+
+        let post_clip_layers = self.shell.query_layers();
+        let mask_row = post_clip_layers
+            .rows
+            .iter()
+            .find(|r| r.id == mask_id)
+            .ok_or("Mask row not found in layers")?;
+        if !mask_row.is_clip_mask {
+            return Err("Mask row is not flagged as clip mask".to_string());
+        }
+
+        self.shell
+            .bridge
+            .release_clip_group(clip_group_id)
+            .map_err(|e| format!("release_clip_group: {e}"))?;
+
+        // 4. Validate Vector & Raster Export Pipelines (Step 4)
+        let session = self.shell.bridge.session().ok_or("No session found")?;
+        let svg = export_document_svg(&session.document());
+        if !svg.starts_with("<svg") && !svg.contains("<svg") {
+            return Err("SVG export produced invalid XML envelope".to_string());
+        }
+
+        let (pdf_bytes, report) =
+            export_document_pdf(&session.document(), &PdfExportOptions::default())
+                .map_err(|e| format!("PDF export failed: {e}"))?;
+        if !pdf_bytes.starts_with(b"%PDF") {
+            return Err("PDF export produced invalid PDF header".to_string());
+        }
+        if !report.passed {
+            return Err("PDF preflight report marked as failed".to_string());
+        }
+
+        let raw = RawRasterImage::from_rgba8(32, 32, vec![200u8; 32 * 32 * 4])
+            .map_err(|e| format!("RawRasterImage creation failed: {e}"))?;
+        let (png_bytes, _) = export_raster(
+            &raw,
+            &RasterExportOptions {
+                format: RasterFormat::Png,
+                jpeg_quality: 90,
+                allow_degradations: true,
+            },
+        )
+        .map_err(|e| format!("PNG export failed: {e}"))?;
+        if !png_bytes.starts_with(b"\x89PNG") {
+            return Err("PNG export produced invalid magic header".to_string());
+        }
+
         let _ = self.shell.query_properties();
         let _ = self.shell.bridge.query_history();
         let _ = self.shell.query_data_merge();
         println!(
-            "OK aubrieta-slint smoke test: surfaces={} title=\"{}\"",
-            snap.surface_count, snap.title
+            "OK aubrieta-slint smoke test: surfaces={} title=\"{}\" svg_len={} pdf_len={} png_len={}",
+            snap.surface_count, snap.title, svg.len(), pdf_bytes.len(), png_bytes.len()
         );
         Ok(())
     }
@@ -199,7 +305,13 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
                         Some(aubrieta_document::ShapeKind::Polygon { .. }) => "Star",
                         Some(aubrieta_document::ShapeKind::Text { .. }) => "Text",
                         Some(aubrieta_document::ShapeKind::Path(_)) => "Path",
-                        None => "Rectangle",
+                        None => {
+                            if o.is_container() {
+                                "Group"
+                            } else {
+                                "Rectangle"
+                            }
+                        }
                     })
                     .unwrap_or("Rectangle")
             } else {
@@ -212,6 +324,10 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
                 locked: r.locked,
                 selected: r.is_selected,
                 kind: kind.into(),
+                depth: (r.depth as f32 * 16.0),
+                is_container: r.is_container,
+                is_clip_mask: r.is_clip_mask,
+                is_clipped: r.clip_mask_id.is_some(),
             }
         })
         .collect();
@@ -221,7 +337,7 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
     let mut canvas_items = Vec::new();
     if let Some(session) = state.shell.bridge.session() {
         let selection = state.shell.bridge.selection();
-        for surface in &session.document.surfaces {
+        for surface in &session.document().surfaces {
             let sb = surface.bounds();
             for obj in &surface.objects {
                 if let Some(b) = obj.bounds {
@@ -328,6 +444,15 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
                     let rel_y = (b[1] - sb[1]).max(0.0) as f32;
                     let w = b[2].max(10.0) as f32;
                     let h = b[3].max(10.0) as f32;
+                    let is_gradient = obj.appearance.as_ref().is_some_and(|app| {
+                        app.fills.iter().any(|f| {
+                            matches!(
+                                f.paint,
+                                aubrieta_document::Paint::LinearGradient(_)
+                                    | aubrieta_document::Paint::RadialGradient(_)
+                            )
+                        })
+                    });
 
                     canvas_items.push(CanvasObjectItem {
                         id: obj.id.to_string().into(),
@@ -346,6 +471,7 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
                         is_text,
                         text_content: text_content.into(),
                         svg_path: svg_path.into(),
+                        is_gradient,
                     });
                 }
             }
@@ -375,6 +501,65 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
             window.set_selected_fill(f.into());
         }
         window.set_selected_opacity((props.opacity * 100.0) as f32);
+
+        // Sync Appearance Stack (10.4)
+        let (blend_mode_str, fill_items, stroke_items) = if let Some(app) = &props.appearance {
+            let bm = format!("{:?}", app.blend_mode);
+            let fills: Vec<AppearanceFillItem> = app
+                .fills
+                .iter()
+                .map(|f| {
+                    let (ptype, col) = match &f.paint {
+                        aubrieta_document::Paint::Solid(c) => ("Solid", c.clone()),
+                        aubrieta_document::Paint::LinearGradient(_) => {
+                            ("Linear", "Linear Gradient".to_string())
+                        }
+                        aubrieta_document::Paint::RadialGradient(_) => {
+                            ("Radial", "Radial Gradient".to_string())
+                        }
+                        aubrieta_document::Paint::None => ("None", "None".to_string()),
+                    };
+                    AppearanceFillItem {
+                        id: f.id as i32,
+                        paint_type: ptype.into(),
+                        color_label: col.into(),
+                        opacity_pct: (f.opacity * 100.0).round() as i32,
+                        visible: f.visible,
+                    }
+                })
+                .collect();
+            let strokes: Vec<AppearanceStrokeItem> = app
+                .strokes
+                .iter()
+                .map(|s| {
+                    let (ptype, col) = match &s.paint {
+                        aubrieta_document::Paint::Solid(c) => ("Solid", c.clone()),
+                        aubrieta_document::Paint::LinearGradient(_) => {
+                            ("Linear", "Linear Gradient".to_string())
+                        }
+                        aubrieta_document::Paint::RadialGradient(_) => {
+                            ("Radial", "Radial Gradient".to_string())
+                        }
+                        aubrieta_document::Paint::None => ("None", "None".to_string()),
+                    };
+                    AppearanceStrokeItem {
+                        id: s.id as i32,
+                        paint_type: ptype.into(),
+                        color_label: col.into(),
+                        width_pt: s.width as f32,
+                        opacity_pct: (s.opacity * 100.0).round() as i32,
+                        visible: s.visible,
+                    }
+                })
+                .collect();
+            (bm, fills, strokes)
+        } else {
+            ("Normal".to_string(), Vec::new(), Vec::new())
+        };
+
+        window.set_prop_blend_mode(blend_mode_str.into());
+        window.set_prop_fills(Rc::new(VecModel::from(fill_items)).into());
+        window.set_prop_strokes(Rc::new(VecModel::from(stroke_items)).into());
     } else {
         window.set_has_selection(false);
         window.set_selected_name("(Nenhuma seleção)".into());
@@ -385,6 +570,9 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
         window.set_prop_y(0.0);
         window.set_prop_w(0.0);
         window.set_prop_h(0.0);
+        window.set_prop_blend_mode("Normal".into());
+        window.set_prop_fills(Rc::new(VecModel::from(Vec::new())).into());
+        window.set_prop_strokes(Rc::new(VecModel::from(Vec::new())).into());
     }
 
     // Sync History
@@ -711,13 +899,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let win_weak = main_window.as_weak();
         main_window.on_select_layer_by_index(move |idx| {
             let mut st = state_clone.borrow_mut();
-            if let Some(session) = st.shell.bridge.session() {
-                if let Some(surface) = session.document.surfaces.first() {
-                    if let Some(obj) = surface.objects.get(idx as usize) {
-                        let obj_id = obj.id;
-                        st.shell.bridge.set_selection(vec![obj_id]);
-                    }
-                }
+            let layers = st.shell.query_layers();
+            if let Some(r) = layers.rows.get(idx as usize) {
+                let obj_id = r.id;
+                st.shell.bridge.set_selection(vec![obj_id]);
             }
             if let Some(win) = win_weak.upgrade() {
                 sync_ui_from_shell(&win, &st);
@@ -893,7 +1078,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
             if sel_ids.len() < 2 {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document.surfaces.first() {
+                    if let Some(surface) = session.document().surfaces.first() {
                         if surface.objects.len() >= 2 {
                             sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
                         }
@@ -936,7 +1121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
             if sel_ids.len() < 2 {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document.surfaces.first() {
+                    if let Some(surface) = session.document().surfaces.first() {
                         if surface.objects.len() >= 2 {
                             sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
                         }
@@ -979,7 +1164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
             if sel_ids.len() < 2 {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document.surfaces.first() {
+                    if let Some(surface) = session.document().surfaces.first() {
                         if surface.objects.len() >= 2 {
                             sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
                         }
@@ -1022,7 +1207,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
             if sel_ids.len() < 2 {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document.surfaces.first() {
+                    if let Some(surface) = session.document().surfaces.first() {
                         if surface.objects.len() >= 2 {
                             sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
                         }
@@ -1323,6 +1508,148 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // Blend mode clicked
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_set_blend_mode_clicked(move |mode_str| {
+            let mut st = state_clone.borrow_mut();
+            let mode = match mode_str.as_str() {
+                "Multiply" => aubrieta_document::BlendMode::Multiply,
+                "Screen" => aubrieta_document::BlendMode::Screen,
+                "Overlay" => aubrieta_document::BlendMode::Overlay,
+                "Darken" => aubrieta_document::BlendMode::Darken,
+                "Lighten" => aubrieta_document::BlendMode::Lighten,
+                "Difference" => aubrieta_document::BlendMode::Difference,
+                "Exclusion" => aubrieta_document::BlendMode::Exclusion,
+                "ColorDodge" => aubrieta_document::BlendMode::ColorDodge,
+                "ColorBurn" => aubrieta_document::BlendMode::ColorBurn,
+                "HardLight" => aubrieta_document::BlendMode::HardLight,
+                "SoftLight" => aubrieta_document::BlendMode::SoftLight,
+                "Hue" => aubrieta_document::BlendMode::Hue,
+                "Saturation" => aubrieta_document::BlendMode::Saturation,
+                "Color" => aubrieta_document::BlendMode::Color,
+                "Luminosity" => aubrieta_document::BlendMode::Luminosity,
+                _ => aubrieta_document::BlendMode::Normal,
+            };
+            let sel_ids = st.shell.bridge.selection().selected_ids;
+            for id in sel_ids {
+                let _ = st.shell.bridge.set_blend_mode(id, mode);
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Add fill clicked
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_add_fill_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let sel_ids = st.shell.bridge.selection().selected_ids;
+            for id in sel_ids {
+                let _ = st.shell.bridge.add_fill(
+                    id,
+                    aubrieta_document::Paint::Solid("aubrieta.rose/500".to_string()),
+                );
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Remove fill clicked
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_remove_fill_clicked(move |fill_id| {
+            let mut st = state_clone.borrow_mut();
+            let sel_ids = st.shell.bridge.selection().selected_ids;
+            for id in sel_ids {
+                let _ = st.shell.bridge.remove_fill(id, fill_id as u32);
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Add stroke clicked
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_add_stroke_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let sel_ids = st.shell.bridge.selection().selected_ids;
+            for id in sel_ids {
+                let _ = st.shell.bridge.add_stroke(
+                    id,
+                    aubrieta_document::Paint::Solid("aubrieta.blue/500".to_string()),
+                    2.0,
+                );
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Remove stroke clicked
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_remove_stroke_clicked(move |stroke_id| {
+            let mut st = state_clone.borrow_mut();
+            let sel_ids = st.shell.bridge.selection().selected_ids;
+            for id in sel_ids {
+                let _ = st.shell.bridge.remove_stroke(id, stroke_id as u32);
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Gradient style clicked
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_set_gradient_clicked(move |kind| {
+            let mut st = state_clone.borrow_mut();
+            let sel_ids = st.shell.bridge.selection().selected_ids;
+            for id in sel_ids {
+                match kind.as_str() {
+                    "linear" => {
+                        let _ = st.shell.bridge.set_linear_gradient_fill(
+                            id,
+                            "aubrieta.blue/500",
+                            "aubrieta.purple/500",
+                        );
+                    }
+                    "radial" => {
+                        let _ = st.shell.bridge.set_radial_gradient_fill(
+                            id,
+                            "aubrieta.yellow/500",
+                            "aubrieta.rose/500",
+                        );
+                    }
+                    _ => {
+                        let _ = st
+                            .shell
+                            .bridge
+                            .set_fill(id, Some("aubrieta.blue/500".to_string()));
+                    }
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
     {
         let state_clone = state.clone();
         let win_weak = main_window.as_weak();
@@ -1332,7 +1659,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let clone_info =
                 if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
                     if let Some(session) = st.shell.bridge.session() {
-                        if let Some(surface) = session.document.surfaces.first() {
+                        if let Some(surface) = session.document().surfaces.first() {
                             if let Some(obj) = surface.objects.iter().find(|o| o.id == sel_id) {
                                 let b = obj.bounds.unwrap_or([100.0, 100.0, 100.0, 100.0]);
                                 let clone_bounds = [b[0] + 20.0, b[1] + 20.0, b[2], b[3]];
@@ -1382,24 +1709,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // Layer visibility toggle
     {
         let state_clone = state.clone();
         let win_weak = main_window.as_weak();
         main_window.on_toggle_layer_visibility(move |idx| {
             let mut st = state_clone.borrow_mut();
-            let toggle = if let Some(session) = st.shell.bridge.session() {
-                if let Some(surface) = session.document.surfaces.first() {
-                    surface
-                        .objects
-                        .get(idx as usize)
-                        .map(|obj| (obj.id, !obj.visible))
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            if let Some((id, visible)) = toggle {
+            let layers = st.shell.query_layers();
+            if let Some(r) = layers.rows.get(idx as usize) {
+                let id = r.id;
+                let visible = !r.visible;
                 let _ = st
                     .shell
                     .bridge
@@ -1411,24 +1730,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // Layer lock toggle
     {
         let state_clone = state.clone();
         let win_weak = main_window.as_weak();
         main_window.on_toggle_layer_lock(move |idx| {
             let mut st = state_clone.borrow_mut();
-            let toggle = if let Some(session) = st.shell.bridge.session() {
-                if let Some(surface) = session.document.surfaces.first() {
-                    surface
-                        .objects
-                        .get(idx as usize)
-                        .map(|obj| (obj.id, !obj.locked))
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            if let Some((id, locked)) = toggle {
+            let layers = st.shell.query_layers();
+            if let Some(r) = layers.rows.get(idx as usize) {
+                let id = r.id;
+                let locked = !r.locked;
                 let _ = st
                     .shell
                     .bridge
@@ -1440,36 +1751,85 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // Reorder layer up
     {
         let state_clone = state.clone();
         let win_weak = main_window.as_weak();
         main_window.on_reorder_layer_up(move |idx| {
             let mut st = state_clone.borrow_mut();
-            let reorder = if idx > 0 {
-                if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document.surfaces.first() {
-                        surface
-                            .objects
-                            .get(idx as usize)
-                            .map(|obj| (surface.id, obj.id, (idx - 1) as usize))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            if let Some((surf_id, id, new_index)) = reorder {
-                let _ =
-                    st.shell
+            if idx > 0 {
+                let layers = st.shell.query_layers();
+                if let Some(r) = layers.rows.get(idx as usize) {
+                    let surf_id = r.surface_id;
+                    let id = r.id;
+                    let new_index = (idx - 1) as usize;
+                    let _ = st
+                        .shell
                         .bridge
                         .submit_command(CommandRequest::new(Command::ReorderObject {
                             surface: surf_id,
                             id,
                             new_index,
                         }));
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Reorder layer down
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_reorder_layer_down(move |idx| {
+            let mut st = state_clone.borrow_mut();
+            let layers = st.shell.query_layers();
+            if (idx as usize) + 1 < layers.rows.len() {
+                if let Some(r) = layers.rows.get(idx as usize) {
+                    let surf_id = r.surface_id;
+                    let id = r.id;
+                    let new_index = (idx + 1) as usize;
+                    let _ = st
+                        .shell
+                        .bridge
+                        .submit_command(CommandRequest::new(Command::ReorderObject {
+                            surface: surf_id,
+                            id,
+                            new_index,
+                        }));
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Hierarchy & Grouping Callbacks (10.5 - Step 2)
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_group_selected_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let surface_opt = st.shell.bridge.active_surface().or_else(|| {
+                st.shell
+                    .bridge
+                    .session()
+                    .and_then(|s| s.document.surfaces.first().map(|surf| surf.id))
+            });
+            let selected_ids = st.shell.bridge.selection().selected_ids;
+            if let (Some(surface), false) = (surface_opt, selected_ids.is_empty()) {
+                if let Ok(group_id) = st.shell.bridge.next_object_id() {
+                    let _ = st.shell.bridge.group_objects(
+                        surface,
+                        group_id,
+                        selected_ids,
+                        ContainerRole::Group,
+                    );
+                    st.shell.bridge.set_selection(vec![group_id]);
+                }
             }
             if let Some(win) = win_weak.upgrade() {
                 sync_ui_from_shell(&win, &st);
@@ -1480,36 +1840,400 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let state_clone = state.clone();
         let win_weak = main_window.as_weak();
-        main_window.on_reorder_layer_down(move |idx| {
+        main_window.on_ungroup_selected_clicked(move || {
             let mut st = state_clone.borrow_mut();
-            let reorder = if let Some(session) = st.shell.bridge.session() {
-                if let Some(surface) = session.document.surfaces.first() {
-                    if (idx as usize) + 1 < surface.objects.len() {
-                        surface
-                            .objects
-                            .get(idx as usize)
-                            .map(|obj| (surface.id, obj.id, (idx + 1) as usize))
-                    } else {
-                        None
-                    }
+            let selected_ids = st.shell.bridge.selection().selected_ids;
+            for id in selected_ids {
+                let is_group = st
+                    .shell
+                    .bridge
+                    .session()
+                    .and_then(|s| {
+                        s.document
+                            .find_object(id)
+                            .map(|o| o.is_container() || o.role.is_some())
+                    })
+                    .unwrap_or(false);
+
+                if is_group {
+                    let _ = st.shell.bridge.ungroup(id);
                 } else {
-                    None
-                }
-            } else {
-                None
-            };
-            if let Some((surf_id, id, new_index)) = reorder {
-                let _ =
-                    st.shell
+                    let parent_opt = st
+                        .shell
                         .bridge
-                        .submit_command(CommandRequest::new(Command::ReorderObject {
-                            surface: surf_id,
-                            id,
-                            new_index,
-                        }));
+                        .session()
+                        .and_then(|s| s.document.find_object(id).and_then(|o| o.parent));
+                    if let Some(parent_id) = parent_opt {
+                        let _ = st.shell.bridge.ungroup(parent_id);
+                    }
+                }
             }
             if let Some(win) = win_weak.upgrade() {
                 sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_create_clip_mask_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let surface_opt = st.shell.bridge.active_surface().or_else(|| {
+                st.shell
+                    .bridge
+                    .session()
+                    .and_then(|s| s.document.surfaces.first().map(|surf| surf.id))
+            });
+            let selected_ids = st.shell.bridge.selection().selected_ids;
+            if let (Some(surface), true) = (surface_opt, selected_ids.len() >= 2) {
+                if let Ok(group_id) = st.shell.bridge.next_object_id() {
+                    let mask_id = selected_ids[0];
+                    let content_ids = selected_ids[1..].to_vec();
+                    let _ =
+                        st.shell
+                            .bridge
+                            .create_clip_group(surface, group_id, mask_id, content_ids);
+                    st.shell.bridge.set_selection(vec![group_id]);
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_release_clip_mask_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let selected_ids = st.shell.bridge.selection().selected_ids;
+            for id in selected_ids {
+                let clip_group = st.shell.bridge.session().and_then(|s| {
+                    let obj = s.document.find_object(id)?;
+                    if obj.role == Some(ContainerRole::ClipGroup) {
+                        Some(obj.id)
+                    } else if let Some(pid) = obj.parent {
+                        let parent = s.document.find_object(pid)?;
+                        if parent.role == Some(ContainerRole::ClipGroup) {
+                            Some(pid)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                });
+                if let Some(cg_id) = clip_group {
+                    let _ = st.shell.bridge.release_clip_group(cg_id);
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Keyboard Shortcuts & Selection Navigation (Step 3)
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_nudge_selected(move |dx, dy| {
+            let mut st = state_clone.borrow_mut();
+            let sel_ids = st.shell.bridge.selection().selected_ids;
+            for id in sel_ids {
+                let current = st.shell.bridge.session().and_then(|s| {
+                    s.document.find_object(id).map(|o| (o.bounds, o.rotation))
+                });
+                if let Some((Some(b), rot)) = current {
+                    let new_b = [b[0] + dx as f64, b[1] + dy as f64, b[2], b[3]];
+                    let _ = st.shell.bridge.set_bounds(id, Some(new_b), rot);
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_select_all_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let all_ids: Vec<ObjectId> = if let Some(session) = st.shell.bridge.session() {
+                let surf = st
+                    .shell
+                    .bridge
+                    .active_surface()
+                    .and_then(|sid| session.document().surfaces.iter().find(|s| s.id == sid))
+                    .or_else(|| session.document().surfaces.first());
+                surf.map(|s| s.objects.iter().map(|o| o.id).collect())
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            if !all_ids.is_empty() {
+                st.shell.bridge.set_selection(all_ids);
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_cycle_selection_clicked(move |forward| {
+            let mut st = state_clone.borrow_mut();
+            if let Some(session) = st.shell.bridge.session() {
+                let surf = st
+                    .shell
+                    .bridge
+                    .active_surface()
+                    .and_then(|sid| session.document().surfaces.iter().find(|s| s.id == sid))
+                    .or_else(|| session.document().surfaces.first());
+                if let Some(surface) = surf {
+                    let objects: Vec<ObjectId> = surface.objects.iter().map(|o| o.id).collect();
+                    if !objects.is_empty() {
+                        let current_sel = st.shell.bridge.selection().selected_ids.first().copied();
+                        let current_idx =
+                            current_sel.and_then(|id| objects.iter().position(|&o| o == id));
+                        let next_idx = match current_idx {
+                            None => 0,
+                            Some(idx) => {
+                                if forward {
+                                    (idx + 1) % objects.len()
+                                } else {
+                                    (idx + objects.len() - 1) % objects.len()
+                                }
+                            }
+                        };
+                        st.shell.bridge.set_selection(vec![objects[next_idx]]);
+                    }
+                }
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Direct Export Flow in UI (Step 4)
+    {
+        let win_weak = main_window.as_weak();
+        main_window.on_open_export_dialog_clicked(move || {
+            if let Some(win) = win_weak.upgrade() {
+                win.set_export_status_message("".into());
+                win.set_export_dialog_open(true);
+            }
+        });
+    }
+
+    {
+        let win_weak = main_window.as_weak();
+        main_window.on_close_export_dialog_clicked(move || {
+            if let Some(win) = win_weak.upgrade() {
+                win.set_export_dialog_open(false);
+            }
+        });
+    }
+
+    {
+        let win_weak = main_window.as_weak();
+        main_window.on_set_export_format(move |fmt| {
+            if let Some(win) = win_weak.upgrade() {
+                win.set_export_format(fmt);
+            }
+        });
+    }
+
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_do_export_clicked(move || {
+            let st = state_clone.borrow();
+            let fmt = if let Some(win) = win_weak.upgrade() {
+                win.get_export_format().to_string()
+            } else {
+                "png".to_string()
+            };
+
+            let session = match st.shell.bridge.session() {
+                Some(s) => s,
+                None => return,
+            };
+
+            match fmt.as_str() {
+                "svg" => {
+                    let dialog = rfd::FileDialog::new()
+                        .add_filter("SVG Vector (*.svg)", &["svg"])
+                        .set_file_name("export.svg");
+                    if let Some(path) = dialog.save_file() {
+                        let svg_content = export_document_svg(&session.document());
+                        match std::fs::write(&path, svg_content.as_bytes()) {
+                            Ok(()) => {
+                                if let Some(win) = win_weak.upgrade() {
+                                    win.set_export_status_message(
+                                        format!("SVG exportado: {}", path.display()).into(),
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                if let Some(win) = win_weak.upgrade() {
+                                    win.set_export_status_message(
+                                        format!("Erro SVG: {e}").into(),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                "pdf" => {
+                    let dialog = rfd::FileDialog::new()
+                        .add_filter("PDF Document (*.pdf)", &["pdf"])
+                        .set_file_name("export.pdf");
+                    if let Some(path) = dialog.save_file() {
+                        let options = PdfExportOptions::default();
+                        match export_document_pdf(&session.document(), &options) {
+                            Ok((pdf_bytes, _)) => {
+                                match std::fs::write(&path, &pdf_bytes) {
+                                    Ok(()) => {
+                                        if let Some(win) = win_weak.upgrade() {
+                                            win.set_export_status_message(
+                                                format!("PDF exportado: {}", path.display()).into(),
+                                            );
+                                        }
+                                    }
+                                    Err(e) => {
+                                        if let Some(win) = win_weak.upgrade() {
+                                            win.set_export_status_message(
+                                                format!("Erro ao gravar PDF: {e}").into(),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                if let Some(win) = win_weak.upgrade() {
+                                    win.set_export_status_message(
+                                        format!("Erro PDF: {e}").into(),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    // PNG (Raster)
+                    let dialog = rfd::FileDialog::new()
+                        .add_filter("PNG Image (*.png)", &["png"])
+                        .set_file_name("export.png");
+                    if let Some(path) = dialog.save_file() {
+                        if let Some(surface) = session.document().surfaces.first() {
+                            let w = (surface.dimensions[0].round() as usize).max(10);
+                            let h = (surface.dimensions[1].round() as usize).max(10);
+                            let mut buffer = vec![255u8; w * h * 4];
+                            for obj in &surface.objects {
+                                if !obj.visible {
+                                    continue;
+                                }
+                                if let Some(b) = obj.bounds {
+                                    let ox = (b[0] - surface.origin[0]).max(0.0) as usize;
+                                    let oy = (b[1] - surface.origin[1]).max(0.0) as usize;
+                                    let ow = (b[2] as usize).min(w.saturating_sub(ox));
+                                    let oh = (b[3] as usize).min(h.saturating_sub(oy));
+                                    let (cr, cg, cb, ca) = if let Some(fill) = &obj.fill {
+                                        if fill.contains("blue") {
+                                            (59u8, 130u8, 246u8, 255u8)
+                                        } else if fill.contains("yellow") {
+                                            (234, 179, 8, 255)
+                                        } else if fill.contains("green") {
+                                            (16, 185, 129, 255)
+                                        } else if fill.contains("purple") {
+                                            (139, 92, 246, 255)
+                                        } else if fill.contains("rose") || fill.contains("red") {
+                                            (244, 63, 94, 255)
+                                        } else {
+                                            (100, 116, 139, 255)
+                                        }
+                                    } else {
+                                        (59, 130, 246, 255)
+                                    };
+                                    let is_circle = matches!(
+                                        obj.shape,
+                                        Some(aubrieta_document::ShapeKind::Ellipse)
+                                    );
+                                    for py in 0..oh {
+                                        for px in 0..ow {
+                                            if is_circle {
+                                                let rx = ow as f64 / 2.0;
+                                                let ry = oh as f64 / 2.0;
+                                                let dx = (px as f64 - rx) / rx.max(1.0);
+                                                let dy = (py as f64 - ry) / ry.max(1.0);
+                                                if dx * dx + dy * dy > 1.0 {
+                                                    continue;
+                                                }
+                                            }
+                                            let idx = ((oy + py) * w + (ox + px)) * 4;
+                                            if idx + 3 < buffer.len() {
+                                                let alpha = ca as f32 / 255.0;
+                                                buffer[idx] = (cr as f32 * alpha
+                                                    + buffer[idx] as f32 * (1.0 - alpha))
+                                                    as u8;
+                                                buffer[idx + 1] = (cg as f32 * alpha
+                                                    + buffer[idx + 1] as f32 * (1.0 - alpha))
+                                                    as u8;
+                                                buffer[idx + 2] = (cb as f32 * alpha
+                                                    + buffer[idx + 2] as f32 * (1.0 - alpha))
+                                                    as u8;
+                                                buffer[idx + 3] = 255;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if let Ok(raw) =
+                                RawRasterImage::from_rgba8(w as u32, h as u32, buffer)
+                            {
+                                let opts = RasterExportOptions {
+                                    format: RasterFormat::Png,
+                                    jpeg_quality: 90,
+                                    allow_degradations: true,
+                                };
+                                match export_raster(&raw, &opts) {
+                                    Ok((png_bytes, _)) => match std::fs::write(&path, &png_bytes)
+                                    {
+                                        Ok(()) => {
+                                            if let Some(win) = win_weak.upgrade() {
+                                                win.set_export_status_message(
+                                                    format!("PNG exportado: {}", path.display())
+                                                        .into(),
+                                                );
+                                            }
+                                        }
+                                        Err(e) => {
+                                            if let Some(win) = win_weak.upgrade() {
+                                                win.set_export_status_message(
+                                                    format!("Erro ao gravar PNG: {e}").into(),
+                                                );
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        if let Some(win) = win_weak.upgrade() {
+                                            win.set_export_status_message(
+                                                format!("Erro PNG: {e}").into(),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         });
     }

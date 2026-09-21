@@ -11,9 +11,11 @@ mod boolean;
 mod path;
 mod point;
 mod rect;
+mod smooth;
 
 pub use affine::GAffine;
-pub use boolean::{boolean_op, BooleanInput, BooleanOp};
+pub use boolean::{boolean_op, boolean_op_with_fill, BooleanInput, BooleanOp, FillRule, GeometryTolerance};
 pub use path::{GPath, PathVerb};
 pub use point::GPoint;
 pub use rect::GRect;
+pub use smooth::{anchors_to_path, chaikin_smooth, fit_midpoint_quads, midpoint, simplify_rdp, smooth_samples};

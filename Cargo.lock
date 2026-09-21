@@ -519,25 +519,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aubrieta-desktop"
-version = "0.1.0"
-dependencies = [
- "aubrieta_application",
- "aubrieta_color",
- "aubrieta_document",
- "aubrieta_foundation",
- "aubrieta_geometry",
- "aubrieta_io",
- "aubrieta_platform",
- "aubrieta_render",
- "aubrieta_resources",
- "aubrieta_ui_gpui",
- "minifb",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "aubrieta-egui"
 version = "0.1.0"
 dependencies = [
@@ -545,26 +526,12 @@ dependencies = [
  "aubrieta_color",
  "aubrieta_document",
  "aubrieta_foundation",
- "aubrieta_geometry",
- "aubrieta_ui_gpui",
- "eframe",
+  "aubrieta_geometry",
+  "aubrieta_shell",
+  "eframe",
  "egui",
  "rfd",
  "serde",
-]
-
-[[package]]
-name = "aubrieta-iced"
-version = "0.1.0"
-dependencies = [
- "aubrieta_application",
- "aubrieta_color",
- "aubrieta_document",
- "aubrieta_foundation",
- "aubrieta_geometry",
- "aubrieta_ui_gpui",
- "iced",
- "rfd",
 ]
 
 [[package]]
@@ -576,8 +543,9 @@ dependencies = [
  "aubrieta_document",
  "aubrieta_foundation",
  "aubrieta_geometry",
- "aubrieta_ui_gpui",
- "lucide-slint",
+  "aubrieta_io",
+  "aubrieta_shell",
+  "lucide-slint",
  "rfd",
  "slint",
  "slint-build",
@@ -763,7 +731,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "aubrieta_ui_gpui"
+name = "aubrieta_shell"
 version = "0.1.0"
 dependencies = [
  "aubrieta_application",

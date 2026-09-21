@@ -6,10 +6,10 @@
 use aubrieta_document::{Document, DocumentObject, Surface};
 use aubrieta_foundation::AubrietaError;
 use krilla::color::{cmyk, rgb};
-use krilla::geom::{PathBuilder, Rect as KrillaRect};
+use krilla::geom::{PathBuilder, Rect as KrillaRect, Transform};
 use krilla::num::NormalizedF32;
 use krilla::page::PageSettings;
-use krilla::paint::{Fill, FillRule, Paint};
+use krilla::paint::{Fill, FillRule, LineCap, LineJoin, Paint, Stroke, StrokeDash};
 use krilla::Document as KrillaDocument;
 use serde::{Deserialize, Serialize};
 
@@ -149,7 +149,7 @@ fn export_surface_page(
 
     for (i, obj) in surface.objects.iter().enumerate() {
         report.objects += 1;
-        export_object(&mut krilla_surface, obj, i, width, height, report);
+        export_object(&mut krilla_surface, surface, obj, i, width, height, report);
     }
 
     krilla_surface.finish();
@@ -159,33 +159,307 @@ fn export_surface_page(
 
 fn export_object(
     krilla_surface: &mut krilla::surface::Surface,
+    surface: &Surface,
     obj: &DocumentObject,
     index: usize,
     page_w: f32,
     page_h: f32,
     report: &mut PreflightReport,
 ) {
-    let (paint, opacity) = resolve_fill_paint(obj.fill.as_deref(), report);
-
-    krilla_surface.set_fill(Some(Fill {
-        paint,
-        opacity,
-        rule: FillRule::NonZero,
-    }));
-
-    // Grid placement for objects in headless surfaces
-    let x = (index as f32 * 40.0).min(page_w - 80.0);
-    let y = (index as f32 * 40.0).min(page_h - 80.0);
-
-    let mut pb = PathBuilder::new();
-    pb.push_rect(
-        KrillaRect::from_xywh(x + 20.0, y + 20.0, 60.0, 60.0)
-            .unwrap_or_else(|| KrillaRect::from_xywh(0.0, 0.0, 10.0, 10.0).unwrap()),
-    );
-
-    if let Some(path) = pb.finish() {
-        krilla_surface.draw_path(&path);
+    if !obj.visible {
+        return;
     }
+    // Mask boundaries are clip sources, never painted content (10.5).
+    if obj.is_clip_mask {
+        return;
+    }
+    let label = if obj.name.is_empty() {
+        format!("object `{}`", obj.id)
+    } else {
+        format!("'{}'", obj.name)
+    };
+
+    let eff = obj.effective_appearance();
+    let entry_opacity = eff
+        .primary_fill()
+        .map(|f| f.opacity)
+        .or_else(|| eff.primary_stroke().map(|s| s.opacity))
+        .unwrap_or(1.0);
+    let total_opacity = (eff.opacity * entry_opacity).clamp(0.0, 1.0);
+    if total_opacity <= 0.0 {
+        return;
+    }
+
+    // Geometry: canonical outline; legacy grid fallback when unbounded so
+    // old headless fixtures keep exporting (F-13).
+    let outline = obj.to_path();
+    let mut pb = PathBuilder::new();
+    let mut has_geometry = false;
+    for verb in &outline.verbs {
+        has_geometry = true;
+        match verb {
+            aubrieta_geometry::PathVerb::MoveTo(p) => pb.move_to(p.x as f32, p.y as f32),
+            aubrieta_geometry::PathVerb::LineTo(p) => pb.line_to(p.x as f32, p.y as f32),
+            aubrieta_geometry::PathVerb::QuadTo(c, p) => {
+                pb.quad_to(c.x as f32, c.y as f32, p.x as f32, p.y as f32);
+            }
+            aubrieta_geometry::PathVerb::CubicTo(c1, c2, p) => pb.cubic_to(
+                c1.x as f32,
+                c1.y as f32,
+                c2.x as f32,
+                c2.y as f32,
+                p.x as f32,
+                p.y as f32,
+            ),
+            aubrieta_geometry::PathVerb::Close => pb.close(),
+        }
+    }
+    if !has_geometry {
+        report.degradations.push(DegradationItem {
+            code: "GEOMETRY_FALLBACK_RECT".to_string(),
+            description: format!(
+                "{label} has no vector outline (e.g. un-outlined text): exported as bounds rect"
+            ),
+            grade: FidelityGrade::Approximate,
+        });
+        // Legacy index-grid fallback rect.
+        let x = (index as f32 * 40.0).min(page_w - 80.0);
+        let y = (index as f32 * 40.0).min(page_h - 80.0);
+        pb.push_rect(
+            KrillaRect::from_xywh(x + 20.0, y + 20.0, 60.0, 60.0)
+                .unwrap_or_else(|| KrillaRect::from_xywh(0.0, 0.0, 10.0, 10.0).unwrap()),
+        );
+    }
+    let krilla_path = match pb.finish() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Fill from the appearance stack: primary entry; gradients are sampled
+    // at center with an explicit degradation (vector gradients POST_V1).
+    let (fill_paint, _fill_entry_alpha) = match eff.primary_fill() {
+        Some(entry) => match &entry.paint {
+            aubrieta_document::Paint::None => (None, 1.0),
+            aubrieta_document::Paint::Solid(token) => {
+                let (paint, _) = resolve_fill_paint(Some(token.as_str()), report);
+                (Some(paint), entry.opacity as f32)
+            }
+            aubrieta_document::Paint::LinearGradient(g) => {
+                report.degradations.push(DegradationItem {
+                    code: "GRADIENT_FLATTENED".to_string(),
+                    description: format!("{label} linear gradient sampled at center stop"),
+                    grade: FidelityGrade::Approximate,
+                });
+                (sample_gradient_paint(g.sample_rgba(0.5)), entry.opacity as f32)
+            }
+            aubrieta_document::Paint::RadialGradient(g) => {
+                report.degradations.push(DegradationItem {
+                    code: "GRADIENT_FLATTENED".to_string(),
+                    description: format!("{label} radial gradient sampled at center stop"),
+                    grade: FidelityGrade::Approximate,
+                });
+                (sample_gradient_paint(g.sample_rgba(0.5)), entry.opacity as f32)
+            }
+        },
+        None => match obj.fill.as_deref() {
+            Some(token) => {
+                let (paint, _) = resolve_fill_paint(Some(token.as_str()), report);
+                (Some(paint), 1.0)
+            }
+            None => (None, 1.0),
+        },
+    };
+    if eff.fills.iter().filter(|f| f.visible).count() > 1 {
+        report.degradations.push(DegradationItem {
+            code: "MULTI_FILL_FLATTENED".to_string(),
+            description: format!("{label} exports only its primary fill; secondary fills omitted"),
+            grade: FidelityGrade::Approximate,
+        });
+    }
+
+    // Stroke from the primary stroke entry (centered; alignment approximated).
+    let krilla_stroke = eff.primary_stroke().and_then(|entry| match &entry.paint {
+        aubrieta_document::Paint::None => None,
+        aubrieta_document::Paint::Solid(token) => {
+            let (paint, _) = resolve_fill_paint(Some(token.as_str()), report);
+            if entry.alignment != aubrieta_document::StrokeAlignment::Center {
+                report.degradations.push(DegradationItem {
+                    code: "STROKE_ALIGNMENT_APPROXIMATED".to_string(),
+                    description: format!("{label} stroke alignment exported as centered"),
+                    grade: FidelityGrade::EquivalentAppearance,
+                });
+            }
+            let dash = if entry.dash_array.is_empty() {
+                None
+            } else {
+                Some(StrokeDash {
+                    array: entry.dash_array.iter().map(|d| *d as f32).collect(),
+                    offset: entry.dash_offset as f32,
+                })
+            };
+            Some(Stroke {
+                paint,
+                width: entry.width.max(0.0) as f32,
+                miter_limit: entry.miter_limit as f32,
+                line_cap: match entry.cap {
+                    aubrieta_document::StrokeCap::Butt => LineCap::Butt,
+                    aubrieta_document::StrokeCap::Round => LineCap::Round,
+                    aubrieta_document::StrokeCap::Square => LineCap::Square,
+                },
+                line_join: match entry.join {
+                    aubrieta_document::StrokeJoin::Miter => LineJoin::Miter,
+                    aubrieta_document::StrokeJoin::Round => LineJoin::Round,
+                    aubrieta_document::StrokeJoin::Bevel => LineJoin::Bevel,
+                },
+                opacity: NormalizedF32::new(entry.opacity as f32).unwrap_or(NormalizedF32::ONE),
+                dash,
+            })
+        }
+        _ => {
+            report.degradations.push(DegradationItem {
+                code: "GRADIENT_STROKE_FLATTENED".to_string(),
+                description: format!("{label} gradient stroke omitted"),
+                grade: FidelityGrade::Approximate,
+            });
+            None
+        }
+    });
+    if eff.strokes.iter().filter(|s| s.visible).count() > 1 {
+        report.degradations.push(DegradationItem {
+            code: "MULTI_STROKE_FLATTENED".to_string(),
+            description: format!(
+                "{label} exports only its primary stroke; secondary strokes omitted"
+            ),
+            grade: FidelityGrade::Approximate,
+        });
+    }
+
+    // Effects are not vector-exportable: explicit degradation per entry.
+    for effect in eff.effects.iter().filter(|e| e.visible) {
+        let kind = match &effect.kind {
+            aubrieta_document::EffectKind::DropShadow { .. } => "drop shadow",
+            aubrieta_document::EffectKind::InnerShadow { .. } => "inner shadow",
+            aubrieta_document::EffectKind::GaussianBlur { .. } => "gaussian blur",
+        };
+        report.degradations.push(DegradationItem {
+            code: "EFFECT_NOT_EXPORTED".to_string(),
+            description: format!("{label} {kind} effect omitted from vector PDF"),
+            grade: FidelityGrade::Approximate,
+        });
+    }
+
+    // Non-normal blend modes on export: PDF supports them, pass through is
+    // out of scope for the headless exporter — record and export as Normal.
+    let stack_blend = eff.blend_mode;
+    if stack_blend != aubrieta_document::BlendMode::Normal {
+        report.degradations.push(DegradationItem {
+            code: "BLEND_MODE_FLATTENED".to_string(),
+            description: format!("{label} blend mode {stack_blend:?} exported as Normal"),
+            grade: FidelityGrade::Approximate,
+        });
+    }
+
+    let opacity_f32 = NormalizedF32::new(total_opacity as f32).unwrap_or(NormalizedF32::ONE);
+
+    // Rotation about the bounds center (F-07). krilla angles are degrees.
+    let rotation_guard = match obj.bounds {
+        Some(b) if obj.rotation.abs() > f64::EPSILON => {
+            let cx = (b[0] + b[2] / 2.0) as f32;
+            let cy = (b[1] + b[3] / 2.0) as f32;
+            krilla_surface.push_transform(&Transform::from_rotate_at(
+                obj.rotation.to_degrees() as f32,
+                cx,
+                cy,
+            ));
+            1
+        }
+        _ => 0,
+    };
+
+    // Clip content to its mask outline via a real PDF clip path (10.5).
+    // Mask boundaries carry vector shapes through `to_path`; un-outlinable
+    // masks (e.g. text) degrade explicitly instead of clipping wrongly.
+    let mut clip_guard = false;
+    if let Some(mask_id) = obj.clip_mask_id {
+        if let Some(mask) = surface.objects.iter().find(|o| o.id == mask_id) {
+            let mask_verbs = mask.to_path().verbs;
+            if mask_verbs.is_empty() {
+                report.degradations.push(DegradationItem {
+                    code: "CLIP_MASK_UNOUTLINABLE".to_string(),
+                    description: format!("{label} mask has no vector outline: drawn unclipped"),
+                    grade: FidelityGrade::Approximate,
+                });
+            } else {
+                let mut clip_pb = PathBuilder::new();
+                for verb in &mask_verbs {
+                    match verb {
+                        aubrieta_geometry::PathVerb::MoveTo(p) => {
+                            clip_pb.move_to(p.x as f32, p.y as f32);
+                        }
+                        aubrieta_geometry::PathVerb::LineTo(p) => {
+                            clip_pb.line_to(p.x as f32, p.y as f32);
+                        }
+                        aubrieta_geometry::PathVerb::QuadTo(c, p) => {
+                            clip_pb.quad_to(c.x as f32, c.y as f32, p.x as f32, p.y as f32);
+                        }
+                        aubrieta_geometry::PathVerb::CubicTo(c1, c2, p) => clip_pb.cubic_to(
+                            c1.x as f32,
+                            c1.y as f32,
+                            c2.x as f32,
+                            c2.y as f32,
+                            p.x as f32,
+                            p.y as f32,
+                        ),
+                        aubrieta_geometry::PathVerb::Close => clip_pb.close(),
+                    }
+                }
+                if let Some(clip_path) = clip_pb.finish() {
+                    krilla_surface.push_clip_path(&clip_path, &FillRule::NonZero);
+                    clip_guard = true;
+                }
+            }
+        } else {
+            report.degradations.push(DegradationItem {
+                code: "CLIP_MASK_MISSING".to_string(),
+                description: format!("{label} references unknown mask: drawn unclipped"),
+                grade: FidelityGrade::Approximate,
+            });
+        }
+    }
+
+    if let Some(paint) = fill_paint {
+        krilla_surface.set_fill(Some(Fill {
+            paint,
+            opacity: opacity_f32,
+            rule: FillRule::NonZero,
+        }));
+    } else {
+        krilla_surface.set_fill(None);
+    }
+    krilla_surface.set_stroke(krilla_stroke);
+    krilla_surface.draw_path(&krilla_path);
+
+    krilla_surface.set_fill(None);
+    krilla_surface.set_stroke(None);
+    for _ in 0..rotation_guard {
+        krilla_surface.pop();
+    }
+    if clip_guard {
+        krilla_surface.pop();
+    }
+}
+
+/// Samples a gradient center color into an sRGB paint for export flattening.
+fn sample_gradient_paint(sample: Option<([f32; 3], f32)>) -> Option<Paint> {
+    let (rgb, _) = sample?;
+    Some(
+        rgb::Color::new(
+            (rgb[0].clamp(0.0, 1.0) * 255.0).round() as u8,
+            (rgb[1].clamp(0.0, 1.0) * 255.0).round() as u8,
+            (rgb[2].clamp(0.0, 1.0) * 255.0).round() as u8,
+        )
+        .into(),
+    )
 }
 
 fn resolve_fill_paint(fill: Option<&str>, report: &mut PreflightReport) -> (Paint, NormalizedF32) {

@@ -42,11 +42,88 @@ pub enum Command {
         id: ObjectId,
         new_index: usize,
     },
+    /// Arrange an object one step or to a z-order edge (10.1, F-16).
+    ArrangeObject {
+        surface: SurfaceId,
+        id: ObjectId,
+        position: aubrieta_document::ArrangePosition,
+    },
     /// Set an object's complete appearance stack (10.4).
     SetAppearance {
         id: ObjectId,
         appearance: Option<aubrieta_document::AppearanceStack>,
     },
+    /// Append one fill entry (F-18, 10.4). Id collisions are reassigned.
+    AddFill {
+        id: ObjectId,
+        fill: aubrieta_document::FillItem,
+    },
+    /// Remove one fill entry by local id (F-18).
+    RemoveFill { id: ObjectId, fill_id: u32 },
+    /// Set one fill entry's opacity (F-18).
+    SetFillItemOpacity {
+        id: ObjectId,
+        fill_id: u32,
+        opacity: f64,
+    },
+    /// Set one fill entry's blend mode (F-18).
+    SetFillItemBlend {
+        id: ObjectId,
+        fill_id: u32,
+        blend_mode: aubrieta_document::BlendMode,
+    },
+    /// Reorder one fill entry within stack order (F-18).
+    ReorderFill {
+        id: ObjectId,
+        fill_id: u32,
+        new_index: usize,
+    },
+    /// Append one stroke entry (F-18). Id collisions are reassigned.
+    AddStroke {
+        id: ObjectId,
+        stroke: aubrieta_document::StrokeItem,
+    },
+    /// Remove one stroke entry by local id (F-18).
+    RemoveStroke { id: ObjectId, stroke_id: u32 },
+    /// Set one stroke entry's width (F-18).
+    SetStrokeItemWidth {
+        id: ObjectId,
+        stroke_id: u32,
+        width: f64,
+    },
+    /// Reorder one stroke entry within stack order (F-18).
+    ReorderStroke {
+        id: ObjectId,
+        stroke_id: u32,
+        new_index: usize,
+    },
+    /// Append one effect entry (F-18). Id collisions are reassigned.
+    AddEffect {
+        id: ObjectId,
+        effect: aubrieta_document::EffectItem,
+    },
+    /// Remove one effect entry by local id (F-18).
+    RemoveEffect { id: ObjectId, effect_id: u32 },
+    /// Enable/disable one effect entry without deleting it (F-18).
+    ToggleEffect {
+        id: ObjectId,
+        effect_id: u32,
+        visible: bool,
+    },
+    /// Set whole-stack opacity (F-18).
+    SetStackOpacity { id: ObjectId, opacity: f64 },
+    /// Set whole-stack blend mode (F-18).
+    SetStackBlend {
+        id: ObjectId,
+        blend_mode: aubrieta_document::BlendMode,
+    },
+    /// Copy an appearance stack between objects (F-18, Copy/Paste Style).
+    PasteAppearance {
+        source_id: ObjectId,
+        dest_id: ObjectId,
+    },
+    /// Clear all effects, keeping fills/strokes (F-18).
+    ClearEffects { id: ObjectId },
     /// Groups objects into a container under the One-Tree invariant (10.5).
     GroupObjects {
         surface: SurfaceId,
@@ -147,6 +224,18 @@ pub enum Command {
         clip_id: ObjectId,
         op: aubrieta_geometry::BooleanOp,
     },
+    /// Divides two overlapping objects into non-overlapping pieces (10.3, F-21).
+    /// Produces up to three results: subject-only, clip-only, intersection.
+    /// Empty pieces are skipped; caller must supply three distinct fresh IDs
+    /// and read back which results exist via the returned `ChangeSet`.
+    DivideObjects {
+        surface: SurfaceId,
+        subject_id: ObjectId,
+        clip_id: ObjectId,
+        subject_only_id: ObjectId,
+        clip_only_id: ObjectId,
+        intersection_id: ObjectId,
+    },
     /// Converts a parametric shape or text object to an editable vector path (10.3, 10.6).
     ConvertToCurves { id: ObjectId },
     /// Bakes corner geometry into an explicit vector path (10.2, 10.3).
@@ -184,6 +273,34 @@ impl CommandRequest {
     }
 }
 
+/// Outcome of executing a command (F-22, 09.3).
+/// `Committed` carries the produced `ChangeSet`; `NoOp` means the command
+/// was valid but changed nothing (empty set) and must not touch history.
+#[derive(Clone, Debug)]
+pub enum CommandResult {
+    /// Mutation produced observable changes.
+    Committed(ChangeSet),
+    /// Valid command with no observable change.
+    NoOp,
+}
+
+impl CommandResult {
+    /// True when a commit happened.
+    #[must_use]
+    pub fn committed(&self) -> bool {
+        matches!(self, Self::Committed(_))
+    }
+
+    /// Returns the change set for committed results.
+    #[must_use]
+    pub fn changeset(self) -> ChangeSet {
+        match self {
+            Self::Committed(cs) => cs,
+            Self::NoOp => ChangeSet::empty(),
+        }
+    }
+}
+
 /// Executes one command, returning the produced [`ChangeSet`].
 pub fn execute(
     document: &mut Document,
@@ -211,9 +328,56 @@ pub fn execute(
             id,
             new_index,
         } => mutator.reorder_object(*surface, *id, *new_index),
+        Command::ArrangeObject {
+            surface,
+            id,
+            position,
+        } => mutator.arrange_object(*surface, *id, *position),
         Command::SetAppearance { id, appearance } => {
             mutator.set_appearance(*id, appearance.clone())
         }
+        Command::AddFill { id, fill } => mutator.add_fill(*id, fill.clone()),
+        Command::RemoveFill { id, fill_id } => mutator.remove_fill(*id, *fill_id),
+        Command::SetFillItemOpacity {
+            id,
+            fill_id,
+            opacity,
+        } => mutator.set_fill_item_opacity(*id, *fill_id, *opacity),
+        Command::SetFillItemBlend {
+            id,
+            fill_id,
+            blend_mode,
+        } => mutator.set_fill_item_blend(*id, *fill_id, *blend_mode),
+        Command::ReorderFill {
+            id,
+            fill_id,
+            new_index,
+        } => mutator.reorder_fill(*id, *fill_id, *new_index),
+        Command::AddStroke { id, stroke } => mutator.add_stroke(*id, stroke.clone()),
+        Command::RemoveStroke { id, stroke_id } => mutator.remove_stroke(*id, *stroke_id),
+        Command::SetStrokeItemWidth {
+            id,
+            stroke_id,
+            width,
+        } => mutator.set_stroke_item_width(*id, *stroke_id, *width),
+        Command::ReorderStroke {
+            id,
+            stroke_id,
+            new_index,
+        } => mutator.reorder_stroke(*id, *stroke_id, *new_index),
+        Command::AddEffect { id, effect } => mutator.add_effect(*id, effect.clone()),
+        Command::RemoveEffect { id, effect_id } => mutator.remove_effect(*id, *effect_id),
+        Command::ToggleEffect {
+            id,
+            effect_id,
+            visible,
+        } => mutator.toggle_effect(*id, *effect_id, *visible),
+        Command::SetStackOpacity { id, opacity } => mutator.set_stack_opacity(*id, *opacity),
+        Command::SetStackBlend { id, blend_mode } => mutator.set_stack_blend(*id, *blend_mode),
+        Command::PasteAppearance { source_id, dest_id } => {
+            mutator.paste_appearance(*source_id, *dest_id)
+        }
+        Command::ClearEffects { id } => mutator.clear_effects(*id),
         Command::GroupObjects {
             surface,
             group_id,
@@ -321,11 +485,16 @@ pub fn execute(
                 .ok_or_else(|| AubrietaError::not_found(format!("clip `{clip_id}` not found")))?
                 .clone();
 
+            // Explicit flatten tolerance (F-21): part of the operation's
+            // evidence, no longer a magic literal.
+            let tolerance = aubrieta_geometry::GeometryTolerance::default_tolerance().clamped();
             let subj_path = subject.to_path();
             let clip_path = clip.to_path();
 
-            let subj_input = aubrieta_geometry::BooleanInput::new(subj_path.to_polygons(0.5));
-            let clip_input = aubrieta_geometry::BooleanInput::new(clip_path.to_polygons(0.5));
+            let subj_input =
+                aubrieta_geometry::BooleanInput::new(subj_path.to_polygons(tolerance.flatten));
+            let clip_input =
+                aubrieta_geometry::BooleanInput::new(clip_path.to_polygons(tolerance.flatten));
 
             let result_contours = aubrieta_geometry::boolean_op(&subj_input, &clip_input, *op);
             let result_path = aubrieta_geometry::GPath::from_polygons(&result_contours);
@@ -336,20 +505,43 @@ pub fn execute(
             let mut result_obj = DocumentObject::new(*target_id, format!("{op:?} Result"));
             result_obj.shape = Some(aubrieta_document::ShapeKind::Path(result_path));
             result_obj.bounds = bounds;
+            // Style provenance (10.3): inherit the subject's full appearance
+            // stack instead of only legacy fill/stroke.
+            result_obj.appearance = subject.appearance.clone();
             result_obj.fill = subject.fill.clone();
             result_obj.stroke = subject.stroke.clone();
             result_obj.stroke_width = subject.stroke_width;
+            result_obj.opacity = subject.opacity;
 
+            // All fallible work is done: mutate in one atomic sequence.
             let mut changes = ChangeSet::empty();
             let c1 = mutator.remove_object(*subject_id)?;
             changes.extend(c1);
-            let c2 = mutator.remove_object(*clip_id)?;
-            changes.extend(c2);
+            // Subject and clip may be the same object (self-operation).
+            if *clip_id != *subject_id {
+                let c2 = mutator.remove_object(*clip_id)?;
+                changes.extend(c2);
+            }
             let c3 = mutator.add_object(*surface, result_obj)?;
             changes.extend(c3);
 
             Ok(changes)
         }
+        Command::DivideObjects {
+            surface,
+            subject_id,
+            clip_id,
+            subject_only_id,
+            clip_only_id,
+            intersection_id,
+        } => mutator.divide_objects(
+            *surface,
+            *subject_id,
+            *clip_id,
+            *subject_only_id,
+            *clip_only_id,
+            *intersection_id,
+        ),
         Command::ConvertToCurves { id } => mutator.convert_to_curves(*id),
         Command::BakeCorners { id } => mutator.bake_corners(*id),
         Command::OffsetPath { id, delta } => mutator.offset_path(*id, *delta),

@@ -92,12 +92,12 @@ fn cmd_architecture(root: &Path) -> i32 {
                 "krilla",
                 "mlua",
                 "aubrieta_io",
-                "aubrieta_ui_gpui",
+                "aubrieta_shell",
             ],
         ),
         (
             "aubrieta_application",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
+            &["gpui", "vello", "wgpu", "krilla", "aubrieta_shell"],
         ),
         ("aubrieta_jobs", &["gpui", "vello", "wgpu"]),
         (
@@ -108,19 +108,19 @@ fn cmd_architecture(root: &Path) -> i32 {
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_ui_gpui",
+                "aubrieta_shell",
             ],
         ),
         (
             "aubrieta_color",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
+            &["gpui", "vello", "wgpu", "krilla", "aubrieta_shell"],
         ),
         (
             "aubrieta_evaluation",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
+            &["gpui", "vello", "wgpu", "krilla", "aubrieta_shell"],
         ),
-        ("aubrieta_render", &["gpui", "aubrieta_ui_gpui"]),
-        ("aubrieta_io", &["gpui", "aubrieta_ui_gpui"]),
+        ("aubrieta_render", &["gpui", "aubrieta_shell"]),
+        ("aubrieta_io", &["gpui", "aubrieta_shell"]),
         (
             "aubrieta_text",
             &[
@@ -129,7 +129,7 @@ fn cmd_architecture(root: &Path) -> i32 {
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_ui_gpui",
+                "aubrieta_shell",
             ],
         ),
         (
@@ -140,7 +140,7 @@ fn cmd_architecture(root: &Path) -> i32 {
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_ui_gpui",
+                "aubrieta_shell",
             ],
         ),
         (
@@ -151,20 +151,20 @@ fn cmd_architecture(root: &Path) -> i32 {
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_ui_gpui",
+                "aubrieta_shell",
             ],
         ),
         (
             "aubrieta_platform",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
+            &["gpui", "vello", "wgpu", "krilla", "aubrieta_shell"],
         ),
         (
             "aubrieta_extension",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
+            &["gpui", "vello", "wgpu", "krilla", "aubrieta_shell"],
         ),
         (
             "aubrieta_mcp",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
+            &["gpui", "vello", "wgpu", "krilla", "aubrieta_shell"],
         ),
     ];
     let mut failures = 0;

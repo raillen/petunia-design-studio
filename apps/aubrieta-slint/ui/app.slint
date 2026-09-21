@@ -8,11 +8,32 @@ export struct LayerRowItem {
     locked: bool,
     selected: bool,
     kind: string,
+    depth: length,
+    is_container: bool,
+    is_clip_mask: bool,
+    is_clipped: bool,
 }
 
 export struct HistoryRowItem {
     index: int,
     description: string,
+}
+
+export struct AppearanceFillItem {
+    id: int,
+    paint_type: string,
+    color_label: string,
+    opacity_pct: int,
+    visible: bool,
+}
+
+export struct AppearanceStrokeItem {
+    id: int,
+    paint_type: string,
+    color_label: string,
+    width_pt: float,
+    opacity_pct: int,
+    visible: bool,
 }
 
 export struct CanvasObjectItem {
@@ -32,6 +53,7 @@ export struct CanvasObjectItem {
     is_text: bool,
     text_content: string,
     svg_path: string,
+    is_gradient: bool,
 }
 
 component StudioIconButton inherits Rectangle {
@@ -213,6 +235,86 @@ export component MainWindow inherits Window {
     preferred-height: 900px;
     background: #161618;
 
+    forward-focus: root_fs;
+    root_fs := FocusScope {
+        width: 0px;
+        height: 0px;
+        key-pressed(event) => {
+            // Arrow Keys Nudge
+            if (event.text == Key.UpArrow) {
+                root.nudge_selected(0.0, event.modifiers.shift ? -10.0 : (event.modifiers.alt ? -0.1 : -1.0));
+                return accept;
+            }
+            if (event.text == Key.DownArrow) {
+                root.nudge_selected(0.0, event.modifiers.shift ? 10.0 : (event.modifiers.alt ? 0.1 : 1.0));
+                return accept;
+            }
+            if (event.text == Key.LeftArrow) {
+                root.nudge_selected(event.modifiers.shift ? -10.0 : (event.modifiers.alt ? -0.1 : -1.0), 0.0);
+                return accept;
+            }
+            if (event.text == Key.RightArrow) {
+                root.nudge_selected(event.modifiers.shift ? 10.0 : (event.modifiers.alt ? 0.1 : 1.0), 0.0);
+                return accept;
+            }
+
+            // Delete / Backspace
+            if (event.text == Key.Delete || event.text == Key.Backspace) {
+                root.delete_selected_clicked();
+                return accept;
+            }
+
+            // Tab / Shift+Tab Cycling
+            if (event.text == Key.Tab) {
+                root.cycle_selection_clicked(!event.modifiers.shift);
+                return accept;
+            }
+
+            // Ctrl / Meta Shortcuts
+            if (event.modifiers.control || event.modifiers.meta) {
+                // Select All: Ctrl+A
+                if (event.text == "a" || event.text == "A") {
+                    root.select_all_clicked();
+                    return accept;
+                }
+                // Duplicate: Ctrl+D
+                if (event.text == "d" || event.text == "D") {
+                    root.duplicate_selected_clicked();
+                    return accept;
+                }
+                // Group: Ctrl+G / Ungroup: Ctrl+Shift+G
+                if (event.text == "g" || event.text == "G") {
+                    if (event.modifiers.shift) {
+                        root.ungroup_selected_clicked();
+                    } else {
+                        root.group_selected_clicked();
+                    }
+                    return accept;
+                }
+                // Undo: Ctrl+Z / Redo: Ctrl+Shift+Z or Ctrl+Y
+                if (event.text == "z" || event.text == "Z") {
+                    if (event.modifiers.shift) {
+                        root.redo_clicked();
+                    } else {
+                        root.undo_clicked();
+                    }
+                    return accept;
+                }
+                if (event.text == "y" || event.text == "Y") {
+                    root.redo_clicked();
+                    return accept;
+                }
+                // Export Dialog: Ctrl+E
+                if (event.text == "e" || event.text == "E") {
+                    root.open_export_dialog_clicked();
+                    return accept;
+                }
+            }
+
+            return reject;
+        }
+    }
+
     // View state
     in-out property <string> active_tool_name: "Select";
     in-out property <int> active_persona: 0; // 0: Design, 1: Photo
@@ -241,11 +343,10 @@ export component MainWindow inherits Window {
     in-out property <int> merge_records: 120;
     in-out property <int> merge_bindings: 4;
 
-    // Models
     in-out property <[LayerRowItem]> layer_rows: [
-        { name: "Hero Card", visible: true, locked: false, selected: true, kind: "Rectangle" },
-        { name: "Accent Circle", visible: true, locked: false, selected: false, kind: "Ellipse" },
-        { name: "Vector Headline", visible: true, locked: false, selected: false, kind: "Text" },
+        { name: "Hero Card", visible: true, locked: false, selected: true, kind: "Rectangle", depth: 0px, is_container: false, is_clip_mask: false, is_clipped: false },
+        { name: "Accent Circle", visible: true, locked: false, selected: false, kind: "Ellipse", depth: 0px, is_container: false, is_clip_mask: false, is_clipped: false },
+        { name: "Vector Headline", visible: true, locked: false, selected: false, kind: "Text", depth: 0px, is_container: false, is_clip_mask: false, is_clipped: false },
     ];
     in-out property <[HistoryRowItem]> history_rows: [
         { index: 1, description: "Criar Prancheta Principal" },
@@ -275,10 +376,15 @@ export component MainWindow inherits Window {
 
     // Dynamic Objects
     in-out property <[CanvasObjectItem]> canvas_objects: [
-        { id: "1", name: "Hero Card", x: 100px, y: 100px, w: 300px, h: 180px, bg_color: #3b82f6, stroke_color: #2563eb, stroke_width: 1.5px, corner_radius: 8px, selected: true, is_circle: false, is_path: false, is_text: false, text_content: "", svg_path: "" },
-        { id: "2", name: "Accent Circle", x: 450px, y: 140px, w: 140px, h: 140px, bg_color: #eab308, stroke_color: #ca8a04, stroke_width: 1.5px, corner_radius: 0px, selected: false, is_circle: true, is_path: false, is_text: false, text_content: "", svg_path: "" },
-        { id: "3", name: "Vector Headline", x: 100px, y: 320px, w: 300px, h: 50px, bg_color: #a855f7, stroke_color: transparent, stroke_width: 0px, corner_radius: 0px, selected: false, is_circle: false, is_path: false, is_text: true, text_content: "Aubrieta Vector Studio", svg_path: "" },
+        { id: "1", name: "Hero Card", x: 100px, y: 100px, w: 300px, h: 180px, bg_color: #3b82f6, stroke_color: #2563eb, stroke_width: 1.5px, corner_radius: 8px, selected: true, is_circle: false, is_path: false, is_text: false, text_content: "", svg_path: "", is_gradient: false },
+        { id: "2", name: "Accent Circle", x: 450px, y: 140px, w: 140px, h: 140px, bg_color: #eab308, stroke_color: #ca8a04, stroke_width: 1.5px, corner_radius: 0px, selected: false, is_circle: true, is_path: false, is_text: false, text_content: "", svg_path: "", is_gradient: false },
+        { id: "3", name: "Vector Headline", x: 100px, y: 320px, w: 300px, h: 50px, bg_color: #a855f7, stroke_color: transparent, stroke_width: 0px, corner_radius: 0px, selected: false, is_circle: false, is_path: false, is_text: true, text_content: "Aubrieta Vector Studio", svg_path: "", is_gradient: false },
     ];
+
+    // Appearance Properties (10.4)
+    in-out property <string> prop_blend_mode: "Normal";
+    in-out property <[AppearanceFillItem]> prop_fills: [];
+    in-out property <[AppearanceStrokeItem]> prop_strokes: [];
 
     // Callbacks
     callback select_tool(string);
@@ -322,6 +428,32 @@ export component MainWindow inherits Window {
     callback toggle_layer_lock(int);
     callback reorder_layer_up(int);
     callback reorder_layer_down(int);
+    callback set_blend_mode_clicked(string);
+    callback add_fill_clicked();
+    callback remove_fill_clicked(int);
+    callback add_stroke_clicked();
+    callback remove_stroke_clicked(int);
+    callback set_gradient_clicked(string);
+
+    // Hierarchy & Grouping Callbacks (10.5)
+    callback group_selected_clicked();
+    callback ungroup_selected_clicked();
+    callback create_clip_mask_clicked();
+    callback release_clip_mask_clicked();
+
+    // Shortcuts & Selection Navigation
+    callback nudge_selected(float, float);
+    callback select_all_clicked();
+    callback cycle_selection_clicked(bool);
+
+    // Export Flow Callbacks & Properties
+    in-out property <bool> export_dialog_open: false;
+    in-out property <string> export_format: "png";
+    in-out property <string> export_status_message: "";
+    callback open_export_dialog_clicked();
+    callback close_export_dialog_clicked();
+    callback set_export_format(string);
+    callback do_export_clicked();
 
     VerticalLayout {
         padding: 0px;
@@ -369,6 +501,7 @@ export component MainWindow inherits Window {
 
                 // Studio Menus
                 StudioMenuButton { label: "Arquivo"; clicked => { root.new_doc_clicked(); } }
+                StudioMenuButton { label: "Exportar"; clicked => { root.open_export_dialog_clicked(); } }
                 StudioMenuButton { label: "Editar"; clicked => { root.duplicate_selected_clicked(); } }
                 StudioMenuButton { label: "Camada"; clicked => { root.convert_to_curves_clicked(); } }
                 StudioMenuButton { label: "Selecionar"; clicked => { root.tab_changed(0); } }
@@ -706,6 +839,13 @@ export component MainWindow inherits Window {
 
                 Rectangle { horizontal-stretch: 1; }
 
+                // Export quick action
+                StudioIconButton {
+                    icon: IconSet.FileCode;
+                    tooltip: "Exportar Documento (Ctrl+E)";
+                    clicked => { root.open_export_dialog_clicked(); }
+                }
+
                 // Delete quick action
                 StudioIconButton {
                     icon: IconSet.Trash;
@@ -955,7 +1095,7 @@ export component MainWindow inherits Window {
                         if obj.is_circle : Rectangle {
                             width: parent.width;
                             height: parent.height;
-                            background: obj.bg_color;
+                            background: obj.is_gradient ? @linear-gradient(90deg, #eab308 0%, #e11d48 100%) : obj.bg_color;
                             border-radius: Math.min(parent.width, parent.height) / 2;
                             border-color: obj.stroke_color;
                             border-width: obj.stroke_width;
@@ -965,7 +1105,7 @@ export component MainWindow inherits Window {
                         if !obj.is_path && !obj.is_circle && !obj.is_text : Rectangle {
                             width: parent.width;
                             height: parent.height;
-                            background: obj.bg_color;
+                            background: obj.is_gradient ? @linear-gradient(90deg, #3b82f6 0%, #a855f7 100%) : obj.bg_color;
                             border-radius: obj.corner_radius;
                             border-color: obj.stroke_color;
                             border-width: obj.stroke_width;
@@ -1051,6 +1191,7 @@ export component MainWindow inherits Window {
                                   MouseCursor.default;
 
                     pointer-event(ev) => {
+                        root_fs.focus();
                         if (ev.kind == PointerEventKind.down) {
                             root.canvas_pointer_down(self.mouse-x, self.mouse-y);
                         }
@@ -1163,6 +1304,15 @@ export component MainWindow inherits Window {
                             }
                         }
 
+                        // Hierarchy Actions Toolbar (10.5)
+                        HorizontalLayout {
+                            spacing: 4px;
+                            Button { text: "Agrupar"; clicked => { root.group_selected_clicked(); } }
+                            Button { text: "Desagrupar"; clicked => { root.ungroup_selected_clicked(); } }
+                            Button { text: "Máscara"; clicked => { root.create_clip_mask_clicked(); } }
+                            Button { text: "Soltar"; clicked => { root.release_clip_mask_clicked(); } }
+                        }
+
                         // Layers list
                         ScrollView {
                             height: 380px;
@@ -1181,27 +1331,71 @@ export component MainWindow inherits Window {
                                         spacing: 6px;
                                         alignment: center;
 
+                                        // Hierarchy nesting indentation
+                                        if item.depth > 0px : Rectangle {
+                                            width: item.depth;
+                                        }
+
+                                        // Mask clipping indicator
+                                        if item.is_clipped : Text {
+                                            text: "⤷";
+                                            font-size: 11px;
+                                            color: #a78bfa;
+                                            vertical-alignment: center;
+                                        }
+
                                         // Layer kind icon
                                         IconDisplay {
-                                            icon: item.kind == "Ellipse" ? IconSet.Circle :
+                                            icon: item.is_clip_mask ? IconSet.Scissors :
+                                                  item.is_container ? IconSet.Layers :
+                                                  item.kind == "Ellipse" ? IconSet.Circle :
                                                   item.kind == "Text" ? IconSet.Type :
                                                   item.kind == "Star" ? IconSet.Star : IconSet.Square;
                                             size: 13px;
-                                            stroke: item.selected ? #60a5fa : #a1a1aa;
+                                            stroke: item.is_clip_mask ? #c084fc :
+                                                    item.is_container ? #38bdf8 :
+                                                    item.selected ? #60a5fa : #a1a1aa;
                                             y: (parent.height - self.height) / 2;
                                         }
 
-                                        // Layer name
+                                        // Layer name & container badge
                                         TouchArea {
                                             horizontal-stretch: 1;
                                             clicked => { root.select_layer_by_index(idx); }
-                                            Text {
-                                                text: item.name;
-                                                font-size: 12px;
-                                                font-weight: item.selected ? 600 : 400;
-                                                color: item.selected ? #ffffff : #d4d4d8;
-                                                vertical-alignment: center;
-                                                overflow: elide;
+                                            HorizontalLayout {
+                                                spacing: 4px;
+                                                alignment: start;
+                                                Text {
+                                                    text: item.name;
+                                                    font-size: 12px;
+                                                    font-weight: item.selected ? 600 : 400;
+                                                    color: item.selected ? #ffffff : #d4d4d8;
+                                                    vertical-alignment: center;
+                                                    overflow: elide;
+                                                    horizontal-stretch: 1;
+                                                }
+                                                if item.is_clip_mask : Rectangle {
+                                                    height: 16px;
+                                                    border-radius: 3px;
+                                                    background: #a855f722;
+                                                    border-width: 1px;
+                                                    border-color: #a855f766;
+                                                    HorizontalLayout {
+                                                        padding-left: 4px; padding-right: 4px;
+                                                        Text { text: "MÁSCARA"; font-size: 9px; font-weight: 700; color: #c084fc; vertical-alignment: center; }
+                                                    }
+                                                }
+                                                if item.is_container : Rectangle {
+                                                    height: 16px;
+                                                    border-radius: 3px;
+                                                    background: #0284c722;
+                                                    border-width: 1px;
+                                                    border-color: #0284c766;
+                                                    HorizontalLayout {
+                                                        padding-left: 4px; padding-right: 4px;
+                                                        Text { text: "GRUPO"; font-size: 9px; font-weight: 700; color: #38bdf8; vertical-alignment: center; }
+                                                    }
+                                                }
                                             }
                                         }
 
@@ -1328,7 +1522,7 @@ export component MainWindow inherits Window {
                                 }
                             }
 
-                            // Appearance & Colors Group
+                            // Appearance & Colors Group (10.4)
                             Rectangle {
                                 background: #202024;
                                 border-radius: 6px;
@@ -1337,9 +1531,10 @@ export component MainWindow inherits Window {
 
                                 VerticalLayout {
                                     padding: 10px;
-                                    spacing: 8px;
+                                    spacing: 10px;
 
-                                    Text { text: "PREENCHIMENTO (FILL)"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+                                    // 1. Swatches & Solid Colors
+                                    Text { text: "PREENCHIMENTO (SWATCHES)"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
 
                                     HorizontalLayout {
                                         spacing: 6px;
@@ -1352,7 +1547,46 @@ export component MainWindow inherits Window {
                                         Rectangle { width: 24px; height: 24px; border-radius: 4px; background: #18181b; border-width: 1px; border-color: #3f3f46; TouchArea { clicked => { root.set_selected_color(#18181b); } } }
                                     }
 
-                                    Text { text: "OPACIDADE: " + Math.round(root.selected_opacity) + "%"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+                                    // 2. Gradients & Paint Styles
+                                    Text { text: "ESTILO DE PINTURA & GRADIENTES"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Button { text: "Sólido"; clicked => { root.set_gradient_clicked("solid"); } }
+                                        Button { text: "Grad Linear"; clicked => { root.set_gradient_clicked("linear"); } }
+                                        Button { text: "Grad Radial"; clicked => { root.set_gradient_clicked("radial"); } }
+                                    }
+
+                                    // 3. Blend Modes (16 W3C Modes)
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        Text { text: "MODO DE MESCLAGEM:"; font-size: 11px; font-weight: 700; color: #a1a1aa; vertical-alignment: center; }
+                                        Rectangle {
+                                            height: 20px;
+                                            border-radius: 4px;
+                                            background: #3b82f622;
+                                            border-width: 1px;
+                                            border-color: #3b82f655;
+                                            HorizontalLayout {
+                                                padding-left: 6px; padding-right: 6px;
+                                                Text { text: root.prop_blend_mode; font-size: 11px; font-weight: 700; color: #93c5fd; vertical-alignment: center; }
+                                            }
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 4px;
+                                        Button { text: "Normal"; clicked => { root.set_blend_mode_clicked("Normal"); } }
+                                        Button { text: "Multiplicar"; clicked => { root.set_blend_mode_clicked("Multiply"); } }
+                                        Button { text: "Tela"; clicked => { root.set_blend_mode_clicked("Screen"); } }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 4px;
+                                        Button { text: "Sobrepor"; clicked => { root.set_blend_mode_clicked("Overlay"); } }
+                                        Button { text: "Diferença"; clicked => { root.set_blend_mode_clicked("Difference"); } }
+                                        Button { text: "Escurecer"; clicked => { root.set_blend_mode_clicked("Darken"); } }
+                                    }
+
+                                    // 4. Opacity Slider
+                                    Text { text: "OPACIDADE GERAL: " + Math.round(root.selected_opacity) + "%"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
                                     Slider {
                                         value: root.selected_opacity;
                                         minimum: 0.0;
@@ -1360,6 +1594,62 @@ export component MainWindow inherits Window {
                                         changed(val) => {
                                             root.selected_opacity = val;
                                             root.set_opacity_value(val);
+                                        }
+                                    }
+
+                                    Rectangle { height: 1px; background: #2c2c31; }
+
+                                    // 5. Multiple Fills Stack
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        Text { text: "PREENCHIMENTOS (" + root.prop_fills.length + ")"; font-size: 11px; font-weight: 700; color: #a1a1aa; vertical-alignment: center; }
+                                        Button { text: "+ Preenchimento"; clicked => { root.add_fill_clicked(); } }
+                                    }
+                                    for fill in root.prop_fills : Rectangle {
+                                        height: 28px;
+                                        border-radius: 4px;
+                                        background: #18181b;
+                                        HorizontalLayout {
+                                            padding-left: 8px;
+                                            padding-right: 8px;
+                                            spacing: 6px;
+                                            alignment: center;
+                                            IconDisplay { icon: IconSet.Palette; size: 12px; stroke: #60a5fa; y: 8px; }
+                                            Text { text: "Fill #" + fill.id + " [" + fill.paint_type + "]"; font-size: 11px; color: #d4d4d8; vertical-alignment: center; horizontal-stretch: 1; }
+                                            Text { text: fill.opacity_pct + "%"; font-size: 10px; color: #71717a; vertical-alignment: center; }
+                                            Rectangle {
+                                                width: 18px; height: 18px; border-radius: 3px; background: touch_rf.has-hover ? #ef444433 : transparent;
+                                                IconDisplay { icon: IconSet.Trash; size: 10px; stroke: #f87171; x: 4px; y: 4px; }
+                                                touch_rf := TouchArea { clicked => { root.remove_fill_clicked(fill.id); } }
+                                            }
+                                        }
+                                    }
+
+                                    Rectangle { height: 1px; background: #2c2c31; }
+
+                                    // 6. Multiple Strokes Stack
+                                    HorizontalLayout {
+                                        alignment: space-between;
+                                        Text { text: "TRAÇADOS (" + root.prop_strokes.length + ")"; font-size: 11px; font-weight: 700; color: #a1a1aa; vertical-alignment: center; }
+                                        Button { text: "+ Traçado"; clicked => { root.add_stroke_clicked(); } }
+                                    }
+                                    for stroke in root.prop_strokes : Rectangle {
+                                        height: 28px;
+                                        border-radius: 4px;
+                                        background: #18181b;
+                                        HorizontalLayout {
+                                            padding-left: 8px;
+                                            padding-right: 8px;
+                                            spacing: 6px;
+                                            alignment: center;
+                                            IconDisplay { icon: IconSet.Pen; size: 12px; stroke: #a78bfa; y: 8px; }
+                                            Text { text: "Traço #" + stroke.id + " (" + Math.round(stroke.width_pt) + " pt)"; font-size: 11px; color: #d4d4d8; vertical-alignment: center; horizontal-stretch: 1; }
+                                            Text { text: stroke.opacity_pct + "%"; font-size: 10px; color: #71717a; vertical-alignment: center; }
+                                            Rectangle {
+                                                width: 18px; height: 18px; border-radius: 3px; background: touch_rs.has-hover ? #ef444433 : transparent;
+                                                IconDisplay { icon: IconSet.Trash; size: 10px; stroke: #f87171; x: 4px; y: 4px; }
+                                                touch_rs := TouchArea { clicked => { root.remove_stroke_clicked(stroke.id); } }
+                                            }
                                         }
                                     }
                                 }
@@ -1505,6 +1795,169 @@ export component MainWindow inherits Window {
                     font-size: 11px;
                     color: #71717a;
                     vertical-alignment: center;
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // SECTION 5: MODAL OVERLAYS (EXPORT FLOW)
+    // -------------------------------------------------------------
+    if root.export_dialog_open : Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        background: #000000bb;
+
+        // Modal Card
+        Rectangle {
+            width: 500px;
+            height: 380px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: #1e1e22;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #3f3f46;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+
+                // Header
+                HorizontalLayout {
+                    alignment: space-between;
+                    Text {
+                        text: "Exportar Documento / Prancheta";
+                        font-size: 15px;
+                        font-weight: 700;
+                        color: #f4f4f5;
+                        vertical-alignment: center;
+                    }
+                    Rectangle {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 4px;
+                        background: touch_close_exp.has-hover ? #ffffff20 : transparent;
+                        IconDisplay {
+                            icon: IconSet.X;
+                            size: 14px;
+                            stroke: #a1a1aa;
+                            x: 5px; y: 5px;
+                        }
+                        touch_close_exp := TouchArea {
+                            clicked => { root.close_export_dialog_clicked(); }
+                        }
+                    }
+                }
+
+                Rectangle { height: 1px; background: #2c2c31; }
+
+                // Format selection
+                Text { text: "FORMATO DE EXPORTAÇÃO:"; font-size: 11px; font-weight: 700; color: #a1a1aa; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Rectangle {
+                        height: 36px;
+                        horizontal-stretch: 1;
+                        border-radius: 4px;
+                        background: root.export_format == "png" ? #3b82f6 : #27272b;
+                        Text {
+                            text: "PNG (Raster)";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: root.export_format == "png" ? #ffffff : #d4d4d8;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                        TouchArea { clicked => { root.set_export_format("png"); } }
+                    }
+                    Rectangle {
+                        height: 36px;
+                        horizontal-stretch: 1;
+                        border-radius: 4px;
+                        background: root.export_format == "svg" ? #3b82f6 : #27272b;
+                        Text {
+                            text: "SVG (Vetorial)";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: root.export_format == "svg" ? #ffffff : #d4d4d8;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                        TouchArea { clicked => { root.set_export_format("svg"); } }
+                    }
+                    Rectangle {
+                        height: 36px;
+                        horizontal-stretch: 1;
+                        border-radius: 4px;
+                        background: root.export_format == "pdf" ? #3b82f6 : #27272b;
+                        Text {
+                            text: "PDF (Krilla)";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: root.export_format == "pdf" ? #ffffff : #d4d4d8;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                        TouchArea { clicked => { root.set_export_format("pdf"); } }
+                    }
+                }
+
+                // Format Details box
+                Rectangle {
+                    height: 64px;
+                    border-radius: 4px;
+                    background: #141416;
+                    border-width: 1px;
+                    border-color: #27272b;
+                    HorizontalLayout {
+                        padding: 10px;
+                        spacing: 10px;
+                        IconDisplay {
+                            icon: IconSet.Info;
+                            size: 16px;
+                            stroke: #3b82f6;
+                            y: 4px;
+                        }
+                        Text {
+                            text: root.export_format == "png" ? "Renderiza todos os objetos da prancheta para imagem raster em 72 DPI (PNG-24 com canal Alfa)." :
+                                  root.export_format == "svg" ? "Gera código SVG W3C puro preservando caminhos vetoriais, estilos e geometria sem perda." :
+                                  "Gera PDF vetorial multipágina com motor Krilla 0.8 de alta fidelidade com preflight.";
+                            font-size: 11px;
+                            color: #a1a1aa;
+                            vertical-alignment: center;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                // Status feedback
+                if root.export_status_message != "" : Text {
+                    text: root.export_status_message;
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: #10b981;
+                    horizontal-alignment: center;
+                }
+
+                Rectangle { vertical-stretch: 1; }
+
+                // Footer Buttons
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+
+                    Button {
+                        text: "Cancelar";
+                        clicked => { root.close_export_dialog_clicked(); }
+                    }
+                    Button {
+                        text: "Salvar Arquivo com RFD...";
+                        clicked => { root.do_export_clicked(); }
+                    }
                 }
             }
         }

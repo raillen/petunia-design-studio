@@ -12,14 +12,15 @@ use aubrieta_document::{
 };
 use aubrieta_foundation::{AubrietaError, IdGenerator, ObjectId};
 use aubrieta_geometry::{BooleanOp, GPoint, GRect};
-use aubrieta_ui_gpui::bridge::{
+use aubrieta_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers,
+};
+use aubrieta_application::tools::ToolKind;
+use aubrieta_shell::bridge::{
     DataMergePresentationModel, HistoryPresentationModel, LayersPresentationModel,
     PropertiesPresentationModel,
 };
-use aubrieta_ui_gpui::shell::AubrietaShell;
-use aubrieta_ui_gpui::tools::{
-    NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers, ToolKind,
-};
+use aubrieta_shell::shell::AubrietaShell;
 use eframe::egui;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -105,7 +106,7 @@ impl AubrietaEguiApp {
         let mut sel_ids = self.shell.bridge.selection().selected_ids.clone();
         if sel_ids.len() < 2 {
             if let Some(session) = self.shell.bridge.session() {
-                if let Some(surface) = session.document.surfaces.first() {
+                if let Some(surface) = session.document().surfaces.first() {
                     if surface.objects.len() >= 2 {
                         sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
                     }
@@ -640,7 +641,7 @@ impl eframe::App for AubrietaEguiApp {
                         let mut items = Vec::new();
                         let mut surf_id = None;
                         if let Some(session) = self.shell.bridge.session() {
-                            if let Some(surface) = session.document.surfaces.first() {
+                            if let Some(surface) = session.document().surfaces.first() {
                                 surf_id = Some(surface.id);
                                 let sel = self.shell.bridge.selection();
                                 for (idx, obj) in surface.objects.iter().enumerate() {
@@ -1128,7 +1129,7 @@ impl eframe::App for AubrietaEguiApp {
             if let Some(session) = self.shell.bridge.session() {
                 let sel = self.shell.bridge.selection();
 
-                for surface in &session.document.surfaces {
+                for surface in &session.document().surfaces {
                     let b = surface.bounds();
                     let p0 = to_screen(GPoint::new(b[0], b[1]));
                     let p1 = to_screen(GPoint::new(b[0] + b[2], b[1] + b[3]));
@@ -1388,7 +1389,7 @@ impl eframe::App for AubrietaEguiApp {
                         // Hit test objects
                         let mut hit = None;
                         if let Some(session) = self.shell.bridge.session() {
-                            if let Some(surface) = session.document.surfaces.first() {
+                            if let Some(surface) = session.document().surfaces.first() {
                                 for obj in surface.objects.iter().rev() {
                                     if let Some(b) = obj.bounds {
                                         if doc_pt.x >= b[0]
@@ -1423,7 +1424,7 @@ impl eframe::App for AubrietaEguiApp {
                         let mut hit = None;
                         let mut hit_b = None;
                         if let Some(session) = self.shell.bridge.session() {
-                            if let Some(surface) = session.document.surfaces.first() {
+                            if let Some(surface) = session.document().surfaces.first() {
                                 for obj in surface.objects.iter().rev() {
                                     if let Some(b) = obj.bounds {
                                         if doc_pt.x >= b[0]

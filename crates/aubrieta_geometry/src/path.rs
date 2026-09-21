@@ -3,6 +3,12 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{GAffine, GPoint, GRect};
+use crate::boolean::FillRule;
+
+/// Cross-product sign of edge `a->b` relative to `p`: >0 when `p` is left.
+fn is_left(a: GPoint, b: GPoint, p: GPoint) -> f64 {
+    (b.x - a.x) * (p.y - a.y) - (p.x - a.x) * (b.y - a.y)
+}
 
 /// Single path verb with explicit coordinates.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -323,25 +329,64 @@ impl GPath {
     /// Hit-tests whether `point` is contained inside the path using even-odd rule.
     #[must_use]
     pub fn contains_point(&self, point: GPoint, tolerance: f64) -> bool {
+        self.contains_point_with_fill(point, tolerance, FillRule::EvenOdd)
+    }
+
+    /// Hit-tests with an explicit fill rule (F-17, F-21).
+    /// `EvenOdd` flips on every crossing; `NonZero` counts winding direction.
+    #[must_use]
+    pub fn contains_point_with_fill(
+        &self,
+        point: GPoint,
+        tolerance: f64,
+        fill_rule: FillRule,
+    ) -> bool {
         let polygons = self.to_polygons(tolerance);
-        let mut inside = false;
-        for contour in polygons {
-            if contour.len() < 3 {
-                continue;
-            }
-            let n = contour.len();
-            for i in 0..n {
-                let j = (i + 1) % n;
-                let pi = contour[i];
-                let pj = contour[j];
-                if ((pi.y > point.y) != (pj.y > point.y))
-                    && (point.x < (pj.x - pi.x) * (point.y - pi.y) / (pj.y - pi.y) + pi.x)
-                {
-                    inside = !inside;
+        match fill_rule {
+            FillRule::EvenOdd => {
+                let mut inside = false;
+                for contour in polygons {
+                    if contour.len() < 3 {
+                        continue;
+                    }
+                    let n = contour.len();
+                    for i in 0..n {
+                        let j = (i + 1) % n;
+                        let pi = contour[i];
+                        let pj = contour[j];
+                        if ((pi.y > point.y) != (pj.y > point.y))
+                            && (point.x < (pj.x - pi.x) * (point.y - pi.y) / (pj.y - pi.y) + pi.x)
+                        {
+                            inside = !inside;
+                        }
+                    }
                 }
+                inside
+            }
+            FillRule::NonZero => {
+                let mut winding = 0i32;
+                for contour in polygons {
+                    if contour.len() < 3 {
+                        continue;
+                    }
+                    let n = contour.len();
+                    for i in 0..n {
+                        let pi = contour[i];
+                        let pj = contour[(i + 1) % n];
+                        if pi.y <= point.y {
+                            if pj.y > point.y
+                                && is_left(pi, pj, point) > 0.0
+                            {
+                                winding += 1;
+                            }
+                        } else if pj.y <= point.y && is_left(pi, pj, point) < 0.0 {
+                            winding -= 1;
+                        }
+                    }
+                }
+                winding != 0
             }
         }
-        inside
     }
 }
 
