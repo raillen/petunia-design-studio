@@ -29,11 +29,11 @@ impl Scene {
     #[must_use]
     pub fn extract(document: &Document) -> Self {
         let fragments = document
-            .surfaces
+            .surfaces()
             .iter()
             .map(|surface| {
                 let mut fills: Vec<String> = surface
-                    .objects
+                    .objects()
                     .iter()
                     .flat_map(|o| {
                         let eff = o.effective_appearance();
@@ -64,7 +64,7 @@ impl Scene {
                 SceneFragment {
                     surface: surface.id,
                     surface_name: surface.name.clone(),
-                    object_count: surface.objects.len(),
+                    object_count: surface.objects().len(),
                     fills,
                 }
             })

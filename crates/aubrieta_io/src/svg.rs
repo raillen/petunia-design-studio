@@ -183,7 +183,7 @@ pub fn export_document_svg(document: &Document) -> String {
     svg.push_str(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">"#);
     svg.push('\n');
 
-    for surface in &document.surfaces {
+    for surface in document.surfaces() {
         svg.push_str(&format!(
             r#"  <g id="{}" data-name="{}">"#,
             surface.id,
@@ -193,7 +193,7 @@ pub fn export_document_svg(document: &Document) -> String {
 
         // Clip path definitions for mask boundaries on this surface.
         for mask in surface
-            .objects
+            .objects()
             .iter()
             .filter(|o| o.is_clip_mask && o.visible)
         {
@@ -208,7 +208,7 @@ pub fn export_document_svg(document: &Document) -> String {
             svg.push('\n');
         }
 
-        for obj in &surface.objects {
+        for obj in surface.objects() {
             if !obj.visible || obj.is_clip_mask {
                 continue;
             }
@@ -338,18 +338,17 @@ fn export_object_svg(
     }
     if obj.rotation.abs() > f64::EPSILON {
         if let Some(b) = obj.bounds {
-            let cx = b[0] + b[2] / 2.0;
-            let cy = b[1] + b[3] / 2.0;
+            // Top-left pivot matches the document model (`T(origin) * R`).
             attrs.push_str(&format!(
                 r#" transform="rotate({:.2} {:.2} {:.2})""#,
                 obj.rotation.to_degrees(),
-                cx,
-                cy
+                b[0],
+                b[1]
             ));
         }
     }
     if let Some(mask_id) = obj.clip_mask_id {
-        if surface.objects.iter().any(|o| o.id == mask_id) {
+        if surface.objects().iter().any(|o| o.id == mask_id) {
             attrs.push_str(&format!(r#" clip-path="url(#clip-{mask_id})""#));
         } else {
             notes.push("unknown clip mask: drawn unclipped".to_string());

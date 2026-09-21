@@ -97,6 +97,107 @@ impl GRect {
     }
 }
 
+/// Toolkit-neutral resize handle (Table B).
+/// The shell maps `SelectionHandleKind` onto this; rotation and node
+/// affordances are not resize handles and map to nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResizeHandle {
+    TopLeft,
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+}
+
+/// Minimum width/height in document points after a resize drag.
+pub const MIN_RESIZE_SIZE: f64 = 5.0;
+
+/// Legacy corner-radius clamp upper bound used when no bounds are known.
+pub const MAX_CORNER_RADIUS_FALLBACK: f64 = 100.0;
+
+/// Steps a corner radius by `delta`, clamped to the physical limit
+/// `min(w,h)/2` when bounds are known (Table B). Non-finite inputs pass
+/// `current` through; without bounds the legacy `0..100` clamp applies.
+#[must_use]
+pub fn step_corner_radius(current: f64, delta: f64, bounds: Option<[f64; 4]>) -> f64 {
+    if !current.is_finite() || !delta.is_finite() {
+        return current;
+    }
+    let limit = match bounds {
+        Some([_, _, w, h]) if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 => {
+            w.min(h) / 2.0
+        }
+        _ => MAX_CORNER_RADIUS_FALLBACK,
+    };
+    (current + delta).clamp(0.0, limit)
+}
+
+/// Resizes `[x, y, w, h]` bounds by a `(dx, dy)` drag on `handle` (Table B).
+/// Dimensions clamp to [`MIN_RESIZE_SIZE`]; pass-through for callers that
+/// need from-center/constrain policies (handled at the tool layer).
+#[must_use]
+pub fn resize_rect_from_handle(
+    handle: ResizeHandle,
+    initial: [f64; 4],
+    dx: f64,
+    dy: f64,
+) -> (f64, f64, f64, f64) {
+    let [ix, iy, iw, ih] = initial;
+    let mut nx = ix;
+    let mut ny = iy;
+    let mut nw = iw;
+    let mut nh = ih;
+
+    match handle {
+        ResizeHandle::TopLeft => {
+            nx += dx;
+            ny += dy;
+            nw -= dx;
+            nh -= dy;
+        }
+        ResizeHandle::Top => {
+            ny += dy;
+            nh -= dy;
+        }
+        ResizeHandle::TopRight => {
+            ny += dy;
+            nw += dx;
+            nh -= dy;
+        }
+        ResizeHandle::Right => {
+            nw += dx;
+        }
+        ResizeHandle::BottomRight => {
+            nw += dx;
+            nh += dy;
+        }
+        ResizeHandle::Bottom => {
+            nh += dy;
+        }
+        ResizeHandle::BottomLeft => {
+            nx += dx;
+            nw -= dx;
+            nh += dy;
+        }
+        ResizeHandle::Left => {
+            nx += dx;
+            nw -= dx;
+        }
+    }
+
+    if nw < MIN_RESIZE_SIZE {
+        nw = MIN_RESIZE_SIZE;
+    }
+    if nh < MIN_RESIZE_SIZE {
+        nh = MIN_RESIZE_SIZE;
+    }
+
+    (nx, ny, nw, nh)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

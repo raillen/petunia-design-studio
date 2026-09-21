@@ -74,6 +74,45 @@ pub struct BrushDab {
     pub blend_mode: BlendMode,
 }
 
+/// Default dab radius in document points (Table B).
+pub const DEFAULT_DAB_RADIUS: f64 = 12.0;
+/// Default dab hardness in `[0.0, 1.0]` (Table B).
+pub const DEFAULT_DAB_HARDNESS: f32 = 0.8;
+/// Default paint color (near-black, opaque).
+pub const DEFAULT_PAINT_COLOR: [f32; 4] = [0.1, 0.1, 0.1, 1.0];
+/// Eraser color (fully transparent).
+pub const ERASER_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
+
+impl BrushDab {
+    /// Default paint dab at a center point (Table B).
+    #[must_use]
+    pub fn paint_dab(center_x: f64, center_y: f64) -> Self {
+        Self {
+            center_x,
+            center_y,
+            radius: DEFAULT_DAB_RADIUS,
+            hardness: DEFAULT_DAB_HARDNESS,
+            opacity: 1.0,
+            color: DEFAULT_PAINT_COLOR,
+            blend_mode: BlendMode::Normal,
+        }
+    }
+
+    /// Default eraser dab at a center point (Table B).
+    #[must_use]
+    pub fn eraser_dab(center_x: f64, center_y: f64) -> Self {
+        Self {
+            center_x,
+            center_y,
+            radius: DEFAULT_DAB_RADIUS,
+            hardness: DEFAULT_DAB_HARDNESS,
+            opacity: 1.0,
+            color: ERASER_COLOR,
+            blend_mode: BlendMode::Normal,
+        }
+    }
+}
+
 impl BrushDab {
     /// Stamping kernel: rasterizes dab coverage directly onto the tile map.
     pub fn stamp_onto(&self, tile_map: &mut TileMap) {

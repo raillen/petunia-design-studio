@@ -10,7 +10,7 @@ use aubrieta_application::{Command, CommandRequest};
 use aubrieta_document::{
     AlignmentMode, Bleed, DistributionAxis, Guide, GuideOrientation, Margins, ShapeKind,
 };
-use aubrieta_foundation::{AubrietaError, IdGenerator, ObjectId};
+use aubrieta_foundation::{AubrietaError, ObjectId};
 use aubrieta_geometry::{BooleanOp, GPoint, GRect};
 use aubrieta_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers,
@@ -106,9 +106,9 @@ impl AubrietaEguiApp {
         let mut sel_ids = self.shell.bridge.selection().selected_ids.clone();
         if sel_ids.len() < 2 {
             if let Some(session) = self.shell.bridge.session() {
-                if let Some(surface) = session.document().surfaces.first() {
-                    if surface.objects.len() >= 2 {
-                        sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
+                if let Some(surface) = session.document().surfaces().first() {
+                    if surface.objects().len() >= 2 {
+                        sel_ids = vec![surface.objects()[0].id, surface.objects()[1].id];
                     }
                 }
             }
@@ -116,13 +116,12 @@ impl AubrietaEguiApp {
         if sel_ids.len() >= 2 {
             let id_a = sel_ids[0];
             let id_b = sel_ids[1];
-            let mut id_gen = IdGenerator::new();
-            let target_id = id_gen.next_object();
+            let Ok(target_id) = self.shell.bridge.next_object_id() else { return };
             if let Some(surface) = self
                 .shell
                 .bridge
                 .session()
-                .and_then(|s| s.document.surfaces.first().cloned())
+                .and_then(|s| s.document().surfaces().first().cloned())
             {
                 let _ = self
                     .shell
@@ -213,7 +212,7 @@ impl eframe::App for AubrietaEguiApp {
                             .shell
                             .bridge
                             .session()
-                            .map(|s| format!("{}.aub", s.title))
+                            .map(|s| format!("{}.aub", s.title()))
                             .unwrap_or_else(|| "projeto.aub".to_string());
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("Aubrieta Design (*.aub)", &["aub"])
@@ -279,7 +278,7 @@ impl eframe::App for AubrietaEguiApp {
                             .shell
                             .bridge
                             .session()
-                            .and_then(|s| s.document.surfaces.first())
+                            .and_then(|s| s.document().surfaces().first())
                         {
                             let b = surface.bounds();
                             self.shell.fit_surface(GRect::new(
@@ -394,7 +393,7 @@ impl eframe::App for AubrietaEguiApp {
                         self.shell
                             .bridge
                             .session()
-                            .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                            .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
                     }) {
                         let _ = self
                             .shell
@@ -408,7 +407,7 @@ impl eframe::App for AubrietaEguiApp {
                         self.shell
                             .bridge
                             .session()
-                            .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                            .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
                     }) {
                         let _ =
                             self.shell
@@ -422,7 +421,7 @@ impl eframe::App for AubrietaEguiApp {
                         self.shell
                             .bridge
                             .session()
-                            .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                            .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
                     }) {
                         let _ = self
                             .shell
@@ -437,7 +436,7 @@ impl eframe::App for AubrietaEguiApp {
                         self.shell
                             .bridge
                             .session()
-                            .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                            .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
                     }) {
                         let _ = self
                             .shell
@@ -451,7 +450,7 @@ impl eframe::App for AubrietaEguiApp {
                         self.shell
                             .bridge
                             .session()
-                            .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                            .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
                     }) {
                         let _ =
                             self.shell
@@ -465,7 +464,7 @@ impl eframe::App for AubrietaEguiApp {
                         self.shell
                             .bridge
                             .session()
-                            .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                            .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
                     }) {
                         let _ =
                             self.shell
@@ -482,7 +481,7 @@ impl eframe::App for AubrietaEguiApp {
                         self.shell
                             .bridge
                             .session()
-                            .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                            .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
                     }) {
                         let _ = self.shell.bridge.distribute_objects(
                             surf_id,
@@ -497,7 +496,7 @@ impl eframe::App for AubrietaEguiApp {
                         self.shell
                             .bridge
                             .session()
-                            .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                            .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
                     }) {
                         let _ = self.shell.bridge.distribute_objects(
                             surf_id,
@@ -641,10 +640,10 @@ impl eframe::App for AubrietaEguiApp {
                         let mut items = Vec::new();
                         let mut surf_id = None;
                         if let Some(session) = self.shell.bridge.session() {
-                            if let Some(surface) = session.document().surfaces.first() {
+                            if let Some(surface) = session.document().surfaces().first() {
                                 surf_id = Some(surface.id);
                                 let sel = self.shell.bridge.selection();
-                                for (idx, obj) in surface.objects.iter().enumerate() {
+                                for (idx, obj) in surface.objects().iter().enumerate() {
                                     items.push((
                                         idx,
                                         obj.id,
@@ -732,15 +731,14 @@ impl eframe::App for AubrietaEguiApp {
                         ui.separator();
                         ui.horizontal(|ui| {
                             if ui.button("+ Retângulo").clicked() {
-                                let mut id_gen = IdGenerator::new();
                                 if let Some(surface) = self
                                     .shell
                                     .bridge
                                     .session()
-                                    .and_then(|s| s.document.surfaces.first().cloned())
+                                    .and_then(|s| s.document().surfaces().first().cloned())
                                 {
-                                    let new_id = id_gen.next_object();
-                                    let count = surface.objects.len() + 1;
+                                    let Ok(new_id) = self.shell.bridge.next_object_id() else { return };
+                                    let count = surface.objects().len() + 1;
                                     let offset = (count as f64 * 35.0) % 250.0;
                                     let _ = self.shell.bridge.create_shape_object(
                                         surface.id,
@@ -758,15 +756,14 @@ impl eframe::App for AubrietaEguiApp {
                                 }
                             }
                             if ui.button("+ Elipse").clicked() {
-                                let mut id_gen = IdGenerator::new();
                                 if let Some(surface) = self
                                     .shell
                                     .bridge
                                     .session()
-                                    .and_then(|s| s.document.surfaces.first().cloned())
+                                    .and_then(|s| s.document().surfaces().first().cloned())
                                 {
-                                    let new_id = id_gen.next_object();
-                                    let count = surface.objects.len() + 1;
+                                    let Ok(new_id) = self.shell.bridge.next_object_id() else { return };
+                                    let count = surface.objects().len() + 1;
                                     let offset = (count as f64 * 35.0) % 250.0;
                                     let _ = self.shell.bridge.create_shape_object(
                                         surface.id,
@@ -782,15 +779,14 @@ impl eframe::App for AubrietaEguiApp {
                                 }
                             }
                             if ui.button("+ Estrela").clicked() {
-                                let mut id_gen = IdGenerator::new();
                                 if let Some(surface) = self
                                     .shell
                                     .bridge
                                     .session()
-                                    .and_then(|s| s.document.surfaces.first().cloned())
+                                    .and_then(|s| s.document().surfaces().first().cloned())
                                 {
-                                    let new_id = id_gen.next_object();
-                                    let count = surface.objects.len() + 1;
+                                    let Ok(new_id) = self.shell.bridge.next_object_id() else { return };
+                                    let count = surface.objects().len() + 1;
                                     let offset = (count as f64 * 35.0) % 250.0;
                                     let _ = self.shell.bridge.create_shape_object(
                                         surface.id,
@@ -809,15 +805,14 @@ impl eframe::App for AubrietaEguiApp {
                                 }
                             }
                             if ui.button("+ Texto").clicked() {
-                                let mut id_gen = IdGenerator::new();
                                 if let Some(surface) = self
                                     .shell
                                     .bridge
                                     .session()
-                                    .and_then(|s| s.document.surfaces.first().cloned())
+                                    .and_then(|s| s.document().surfaces().first().cloned())
                                 {
-                                    let new_id = id_gen.next_object();
-                                    let count = surface.objects.len() + 1;
+                                    let Ok(new_id) = self.shell.bridge.next_object_id() else { return };
+                                    let count = surface.objects().len() + 1;
                                     let offset = (count as f64 * 25.0) % 200.0;
                                     let _ = self.shell.bridge.create_shape_object(
                                         surface.id,
@@ -845,11 +840,10 @@ impl eframe::App for AubrietaEguiApp {
                         let sel = self.shell.bridge.selection();
                         let selected_obj = if let Some(session) = self.shell.bridge.session() {
                             if let Some(first_id) = sel.selected_ids.first() {
-                                session
-                                    .document
-                                    .surfaces
+                                session.document()
+                                    .surfaces()
                                     .iter()
-                                    .flat_map(|s| &s.objects)
+                                    .flat_map(|s| s.objects())
                                     .find(|o| o.id == *first_id)
                                     .cloned()
                             } else {
@@ -1129,7 +1123,7 @@ impl eframe::App for AubrietaEguiApp {
             if let Some(session) = self.shell.bridge.session() {
                 let sel = self.shell.bridge.selection();
 
-                for surface in &session.document().surfaces {
+                for surface in session.document().surfaces() {
                     let b = surface.bounds();
                     let p0 = to_screen(GPoint::new(b[0], b[1]));
                     let p1 = to_screen(GPoint::new(b[0] + b[2], b[1] + b[3]));
@@ -1202,7 +1196,7 @@ impl eframe::App for AubrietaEguiApp {
                     );
 
                     // Render objects
-                    for obj in &surface.objects {
+                    for obj in surface.objects() {
                         if !obj.visible {
                             continue;
                         }
@@ -1389,8 +1383,8 @@ impl eframe::App for AubrietaEguiApp {
                         // Hit test objects
                         let mut hit = None;
                         if let Some(session) = self.shell.bridge.session() {
-                            if let Some(surface) = session.document().surfaces.first() {
-                                for obj in surface.objects.iter().rev() {
+                            if let Some(surface) = session.document().surfaces().first() {
+                                for obj in surface.objects().iter().rev() {
                                     if let Some(b) = obj.bounds {
                                         if doc_pt.x >= b[0]
                                             && doc_pt.x <= b[0] + b[2]
@@ -1424,8 +1418,8 @@ impl eframe::App for AubrietaEguiApp {
                         let mut hit = None;
                         let mut hit_b = None;
                         if let Some(session) = self.shell.bridge.session() {
-                            if let Some(surface) = session.document().surfaces.first() {
-                                for obj in surface.objects.iter().rev() {
+                            if let Some(surface) = session.document().surfaces().first() {
+                                for obj in surface.objects().iter().rev() {
                                     if let Some(b) = obj.bounds {
                                         if doc_pt.x >= b[0]
                                             && doc_pt.x <= b[0] + b[2]
@@ -1550,12 +1544,11 @@ fn make_star_points(
 
 fn populate_showcase_document(shell: &mut AubrietaShell) -> Result<(), AubrietaError> {
     shell.new_document("Aubrieta Showcase Project [egui]")?;
-    let mut id_gen = IdGenerator::new();
-    let surface_1 = id_gen.next_surface();
-    let rect_id = id_gen.next_object();
-    let circle_id = id_gen.next_object();
-    let star_id = id_gen.next_object();
-    let text_id = id_gen.next_object();
+    let surface_1 = shell.bridge.next_surface_id()?;
+    let rect_id = shell.bridge.next_object_id()?;
+    let circle_id = shell.bridge.next_object_id()?;
+    let star_id = shell.bridge.next_object_id()?;
+    let text_id = shell.bridge.next_object_id()?;
 
     shell
         .bridge
@@ -1636,6 +1629,8 @@ fn populate_showcase_document(shell: &mut AubrietaShell) -> Result<(), AubrietaE
     )?;
 
     shell.bridge.set_selection(vec![rect_id]);
+    // Showcase editing happens on the Main Artboard, not the initial canvas.
+    shell.bridge.set_active_surface(surface_1)?;
     Ok(())
 }
 

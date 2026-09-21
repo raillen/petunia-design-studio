@@ -178,7 +178,7 @@ impl PluginHost {
                     .check_permission(&pid_doc, PluginPermission::DocumentRead)
                     .map_err(|e| mlua::Error::runtime(e.to_string()))?;
                 let doc = doc_state.lock().unwrap();
-                Ok(doc.surfaces.len())
+                Ok(doc.surfaces().len())
             })
             .map_err(|e| PluginSecurityError::ScriptError(e.to_string()))?;
         doc_table

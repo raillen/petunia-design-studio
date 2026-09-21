@@ -131,7 +131,7 @@ mod tests {
             name: "Box".to_string(),
         }))
         .unwrap();
-        let mut history = History::new(100);
+        let history = History::new(100);
         tx.cancel();
         assert!(doc.find_object(obj).is_none());
         assert_eq!(history.undo_len(), 0);

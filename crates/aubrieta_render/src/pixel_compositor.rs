@@ -272,7 +272,7 @@ impl SoftwarePixelCompositor {
     ) -> PixelBufferRgba8 {
         let mut buffer = PixelBufferRgba8::with_fill(width, height, background);
 
-        for obj in surface.objects.iter() {
+        for obj in surface.objects().iter() {
             if !obj.visible {
                 continue;
             }
@@ -287,7 +287,7 @@ impl SoftwarePixelCompositor {
             // Resolve clip from the referenced mask object, if any.
             let mut clip: Option<GRect> = None;
             if let Some(mask_id) = obj.clip_mask_id {
-                match surface.objects.iter().find(|o| o.id == mask_id) {
+                match surface.objects().iter().find(|o| o.id == mask_id) {
                     Some(mask) => match mask.bounds {
                         Some(mb) => {
                             clip = Some(GRect::new(mb[0], mb[1], mb[0] + mb[2], mb[1] + mb[3]));
@@ -410,14 +410,9 @@ fn paint_to_rgba8(
     }
 }
 
-/// Basic color parser mapping semantic token names or hex colors to RGBA8.
-/// Now resolves via `aubrieta_document::resolve_color_to_rgb` (F-05) so all
-/// documented literals work; unknown tokens fall back to mid-gray.
-fn parse_color_token(token: &str) -> [u8; 4] {
-    token_to_rgba8(token, 1.0)
-}
-
 /// Token/literal to RGBA8 with explicit opacity factor.
+/// Resolves via `aubrieta_document::resolve_color_to_rgb` (F-05) so all
+/// documented literals work; unknown tokens fall back to mid-gray.
 fn token_to_rgba8(token: &str, opacity: f32) -> [u8; 4] {
     let rgb = aubrieta_document::resolve_color_to_rgb(token);
     let a = (opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
@@ -468,11 +463,11 @@ mod tests {
     #[test]
     fn software_compositor_renders_surface() {
         let mut gen = IdGenerator::new();
-        let mut surface = Surface::new(gen.next_surface(), "TestPage");
+        let surface_id = gen.next_surface();
         let mut obj = DocumentObject::new(gen.next_object(), "Box");
         obj.fill = Some("aubrieta.red/500".to_string());
         obj.bounds = Some([0.0, 0.0, 64.0, 64.0]);
-        surface.objects.push(obj);
+        let surface = Surface::with_objects(surface_id, "TestPage", vec![obj]);
 
         let buf =
             SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255]);
@@ -486,24 +481,22 @@ mod tests {
     #[test]
     fn compositor_respects_bounds_visibility_opacity_and_clip() {
         let mut gen = IdGenerator::new();
-        let mut surface = Surface::new(gen.next_surface(), "Clip");
+        let surface_id = gen.next_surface();
         // Visible box at (10,10,20x20).
         let mut box_obj = DocumentObject::new(gen.next_object(), "Box");
         box_obj.fill = Some("aubrieta.blue/500".to_string());
         box_obj.bounds = Some([10.0, 10.0, 20.0, 20.0]);
-        surface.objects.push(box_obj);
         // Hidden box must not paint.
         let mut hidden = DocumentObject::new(gen.next_object(), "Hidden");
         hidden.fill = Some("aubrieta.red/500".to_string());
         hidden.bounds = Some([10.0, 10.0, 20.0, 20.0]);
         hidden.visible = false;
-        surface.objects.push(hidden);
         // Fully transparent box elsewhere must not paint.
         let mut ghost = DocumentObject::new(gen.next_object(), "Ghost");
         ghost.fill = Some("aubrieta.red/500".to_string());
         ghost.bounds = Some([60.0, 60.0, 20.0, 20.0]);
         ghost.opacity = 0.0;
-        surface.objects.push(ghost);
+        let surface = Surface::with_objects(surface_id, "Clip", vec![box_obj, hidden, ghost]);
 
         let buf =
             SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255]);
@@ -516,18 +509,17 @@ mod tests {
     #[test]
     fn compositor_skips_mask_boundary_and_clips_content() {
         let mut gen = IdGenerator::new();
-        let mut surface = Surface::new(gen.next_surface(), "Mask");
+        let surface_id = gen.next_surface();
         let mask_id = gen.next_object();
         let mut mask = DocumentObject::new(mask_id, "Mask");
         mask.fill = Some("aubrieta.red/500".to_string());
         mask.bounds = Some([10.0, 10.0, 20.0, 20.0]);
         mask.is_clip_mask = true;
-        surface.objects.push(mask);
         let mut content = DocumentObject::new(gen.next_object(), "Content");
         content.fill = Some("aubrieta.blue/500".to_string());
         content.bounds = Some([0.0, 0.0, 100.0, 100.0]);
         content.clip_mask_id = Some(mask_id);
-        surface.objects.push(content);
+        let surface = Surface::with_objects(surface_id, "Mask", vec![mask, content]);
 
         let buf =
             SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255]);

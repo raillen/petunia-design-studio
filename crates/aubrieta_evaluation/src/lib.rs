@@ -67,8 +67,8 @@ impl Evaluator {
         self.dirty = false;
         self.cached_fingerprint = fingerprint;
         self.cached_summary = DocSummary {
-            surfaces: document.surfaces.len(),
-            objects: document.surfaces.iter().map(|s| s.objects.len()).sum(),
+            surfaces: document.surfaces().len(),
+            objects: document.surfaces().iter().map(|s| s.objects().len()).sum(),
             generation: self.generation,
         };
         self.cached_summary.clone()
@@ -122,7 +122,7 @@ mod tests {
         let (mut doc, mut gen) = one_object_doc();
         let mut evaluator = Evaluator::new();
         evaluator.evaluate(&doc);
-        let surface = doc.surfaces[0].id;
+        let surface = doc.surfaces()[0].id;
         let changes = DocumentMutator::new(&mut doc)
             .add_object(surface, DocumentObject::new(gen.next_object(), "Circle"))
             .unwrap();

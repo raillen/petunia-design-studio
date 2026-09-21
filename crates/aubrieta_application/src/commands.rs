@@ -430,16 +430,16 @@ pub fn execute(
         } => {
             let max_surf_id = mutator
                 .document()
-                .surfaces
+                .surfaces()
                 .iter()
                 .map(|s| s.id.raw())
                 .max()
                 .unwrap_or(0);
             let max_obj_id = mutator
                 .document()
-                .surfaces
+                .surfaces()
                 .iter()
-                .flat_map(|s| s.objects.iter().map(|o| o.id.raw()))
+                .flat_map(|s| s.objects().iter().map(|o| o.id.raw()))
                 .max()
                 .unwrap_or(0);
             let start = max_surf_id.max(max_obj_id) + 1;

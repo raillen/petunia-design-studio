@@ -102,15 +102,17 @@ impl LayersPanelController {
         bridge: &mut AubrietaGuiBridge,
         role: aubrieta_document::ContainerRole,
     ) -> Result<ChangeSet, AubrietaError> {
+        use aubrieta_application::hierarchy_service;
         let sel_ids = bridge.selection().selected_ids;
-        if sel_ids.is_empty() {
-            return Err(AubrietaError::invalid_input("no objects selected to group"));
-        }
         let surface = bridge
             .active_surface()
             .ok_or_else(|| AubrietaError::invalid_input("no active surface"))?;
         let group_id = bridge.next_object_id()?;
-        let changes = bridge.group_objects(surface, group_id, sel_ids, role)?;
+        let plan = hierarchy_service::plan_group(surface, group_id, sel_ids, role)?;
+        let changes = bridge.submit_all(
+            "Group objects",
+            hierarchy_service::group_commands(plan),
+        )?;
         bridge.set_selection(vec![group_id]);
         Ok(changes)
     }
@@ -153,19 +155,17 @@ impl LayersPanelController {
         &self,
         bridge: &mut AubrietaGuiBridge,
     ) -> Result<ChangeSet, AubrietaError> {
+        use aubrieta_application::hierarchy_service;
         let sel_ids = bridge.selection().selected_ids;
-        if sel_ids.len() < 2 {
-            return Err(AubrietaError::invalid_input(
-                "clipping mask requires at least two selected objects (mask + content)",
-            ));
-        }
         let surface = bridge
             .active_surface()
             .ok_or_else(|| AubrietaError::invalid_input("no active surface"))?;
-        let mask_id = sel_ids[0];
-        let content_ids = sel_ids[1..].to_vec();
         let group_id = bridge.next_object_id()?;
-        let changes = bridge.create_clip_group(surface, group_id, mask_id, content_ids)?;
+        let plan = hierarchy_service::plan_clip_group(surface, group_id, &sel_ids)?;
+        let changes = bridge.submit_all(
+            "Create clip group",
+            hierarchy_service::clip_group_commands(plan),
+        )?;
         bridge.set_selection(vec![group_id]);
         Ok(changes)
     }

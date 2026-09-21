@@ -123,24 +123,26 @@ fn history_panel_undo_redo_inspection() {
 
     let controller = HistoryPanelController::new();
 
+    // A1: new_document commits the initial canvas, so the stack holds
+    // two entries (canvas + object).
     let m1 = controller.query_model(&bridge);
-    assert_eq!(m1.undo_stack.len(), 1);
+    assert_eq!(m1.undo_stack.len(), 2);
     assert_eq!(m1.redo_stack.len(), 0);
     assert!(m1.can_undo);
     assert!(!m1.can_redo);
 
-    // Undo via controller
+    // Undo via controller (removes the object; canvas entry remains).
     controller.undo(&mut bridge).unwrap();
     let m2 = controller.query_model(&bridge);
-    assert_eq!(m2.undo_stack.len(), 0);
+    assert_eq!(m2.undo_stack.len(), 1);
     assert_eq!(m2.redo_stack.len(), 1);
-    assert!(!m2.can_undo);
+    assert!(m2.can_undo);
     assert!(m2.can_redo);
 
     // Redo via controller
     controller.redo(&mut bridge).unwrap();
     let m3 = controller.query_model(&bridge);
-    assert_eq!(m3.undo_stack.len(), 1);
+    assert_eq!(m3.undo_stack.len(), 2);
     assert_eq!(m3.redo_stack.len(), 0);
     assert!(m3.can_undo);
     assert!(!m3.can_redo);

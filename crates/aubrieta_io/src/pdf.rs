@@ -90,13 +90,13 @@ pub fn export_document_pdf(
 ) -> Result<(Vec<u8>, PreflightReport), AubrietaError> {
     let mut krilla_doc = KrillaDocument::new();
     let mut report = PreflightReport {
-        surfaces: document.surfaces.len(),
+        surfaces: document.surfaces().len(),
         objects: 0,
         degradations: Vec::new(),
         passed: true,
     };
 
-    if document.surfaces.is_empty() {
+    if document.surfaces().is_empty() {
         // PDF requires at least one page
         let page_settings =
             PageSettings::from_wh(options.default_page_width, options.default_page_height)
@@ -109,7 +109,7 @@ pub fn export_document_pdf(
         return Ok((bytes, report));
     }
 
-    for surface in &document.surfaces {
+    for surface in document.surfaces() {
         export_surface_page(&mut krilla_doc, surface, options, &mut report)?;
     }
 
@@ -147,7 +147,7 @@ fn export_surface_page(
     let mut page = krilla_doc.start_page_with(page_settings);
     let mut krilla_surface = page.surface();
 
-    for (i, obj) in surface.objects.iter().enumerate() {
+    for (i, obj) in surface.objects().iter().enumerate() {
         report.objects += 1;
         export_object(&mut krilla_surface, surface, obj, i, width, height, report);
     }
@@ -241,7 +241,7 @@ fn export_object(
         Some(entry) => match &entry.paint {
             aubrieta_document::Paint::None => (None, 1.0),
             aubrieta_document::Paint::Solid(token) => {
-                let (paint, _) = resolve_fill_paint(Some(token.as_str()), report);
+                let (paint, _) = resolve_fill_paint(Some(token.as_ref()), report);
                 (Some(paint), entry.opacity as f32)
             }
             aubrieta_document::Paint::LinearGradient(g) => {
@@ -263,7 +263,7 @@ fn export_object(
         },
         None => match obj.fill.as_deref() {
             Some(token) => {
-                let (paint, _) = resolve_fill_paint(Some(token.as_str()), report);
+                let (paint, _) = resolve_fill_paint(Some(token), report);
                 (Some(paint), 1.0)
             }
             None => (None, 1.0),
@@ -281,7 +281,7 @@ fn export_object(
     let krilla_stroke = eff.primary_stroke().and_then(|entry| match &entry.paint {
         aubrieta_document::Paint::None => None,
         aubrieta_document::Paint::Solid(token) => {
-            let (paint, _) = resolve_fill_paint(Some(token.as_str()), report);
+            let (paint, _) = resolve_fill_paint(Some(token.as_ref()), report);
             if entry.alignment != aubrieta_document::StrokeAlignment::Center {
                 report.degradations.push(DegradationItem {
                     code: "STROKE_ALIGNMENT_APPROXIMATED".to_string(),
@@ -361,15 +361,14 @@ fn export_object(
 
     let opacity_f32 = NormalizedF32::new(total_opacity as f32).unwrap_or(NormalizedF32::ONE);
 
-    // Rotation about the bounds center (F-07). krilla angles are degrees.
+    // Rotation about the bounds top-left, matching the document model
+    // (`local_transform = T(origin) * R`). krilla angles are degrees.
     let rotation_guard = match obj.bounds {
         Some(b) if obj.rotation.abs() > f64::EPSILON => {
-            let cx = (b[0] + b[2] / 2.0) as f32;
-            let cy = (b[1] + b[3] / 2.0) as f32;
             krilla_surface.push_transform(&Transform::from_rotate_at(
                 obj.rotation.to_degrees() as f32,
-                cx,
-                cy,
+                b[0] as f32,
+                b[1] as f32,
             ));
             1
         }
@@ -381,7 +380,7 @@ fn export_object(
     // masks (e.g. text) degrade explicitly instead of clipping wrongly.
     let mut clip_guard = false;
     if let Some(mask_id) = obj.clip_mask_id {
-        if let Some(mask) = surface.objects.iter().find(|o| o.id == mask_id) {
+        if let Some(mask) = surface.objects().iter().find(|o| o.id == mask_id) {
             let mask_verbs = mask.to_path().verbs;
             if mask_verbs.is_empty() {
                 report.degradations.push(DegradationItem {

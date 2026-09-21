@@ -41,13 +41,13 @@ impl McpServer {
     /// Sets an initial document snapshot and synchronizes ID generation.
     pub fn with_document(mut self, doc: Document) -> Self {
         let max_id = doc
-            .surfaces
+            .surfaces()
             .iter()
             .map(|s| s.id.raw())
             .chain(
-                doc.surfaces
+                doc.surfaces()
                     .iter()
-                    .flat_map(|s| s.objects.iter().map(|o| o.id.raw())),
+                    .flat_map(|s| s.objects().iter().map(|o| o.id.raw())),
             )
             .max()
             .unwrap_or(0);

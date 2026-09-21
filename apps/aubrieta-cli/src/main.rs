@@ -333,7 +333,7 @@ fn run() -> Result<(), String> {
         .map_err(|e| format!("surface planning: {e}"))?;
     assert!(planned_surface.memory_bytes > 0);
     let pixel_buf = SoftwarePixelCompositor::render_surface_rgba8(
-        &document.surfaces[0],
+        &document.surfaces()[0],
         128,
         128,
         [255, 255, 255, 255],

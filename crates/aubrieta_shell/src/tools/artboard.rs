@@ -1,6 +1,5 @@
 //! Artboard / Surface creation tool (08.24, 10.7).
 
-use aubrieta_application::{Command, CommandRequest};
 use aubrieta_document::ChangeSet;
 use aubrieta_foundation::AubrietaError;
 use aubrieta_geometry::{GPoint, GRect};
@@ -98,23 +97,15 @@ impl ArtboardTool {
         dimensions: [f64; 2],
     ) -> Result<ChangeSet, AubrietaError> {
         let surface_id = bridge.next_surface_id()?;
-        let mut combined = ChangeSet::empty();
 
-        let c1 = bridge.submit_command(CommandRequest::new(Command::CreateSurface {
-            id: surface_id,
-            name: format!("Artboard {}", surface_id.raw()),
-        }))?;
-        combined.extend(c1);
-
-        let c2 = bridge.submit_command(CommandRequest::new(Command::SetSurfaceGeometry {
-            surface: surface_id,
-            origin,
-            dimensions,
-        }))?;
-        combined.extend(c2);
+        // One gesture, one undo entry (F-01).
+        let changes = bridge.submit_all(
+            "Create artboard",
+            aubrieta_application::create_artboard_commands(surface_id, origin, dimensions),
+        )?;
 
         let _ = bridge.set_active_surface(surface_id);
-        Ok(combined)
+        Ok(changes)
     }
 
     /// Resolves overlays displaying the dragging artboard boundaries.

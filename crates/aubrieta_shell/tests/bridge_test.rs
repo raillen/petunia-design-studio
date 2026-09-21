@@ -17,8 +17,11 @@ fn bridge_new_document_and_snapshot_lifecycle() {
     assert_eq!(snap.surface_count, 1);
     assert_eq!(snap.total_objects, 0);
     assert_eq!(snap.selected_count, 0);
-    assert!(!snap.is_dirty);
-    assert!(!snap.can_undo);
+    // A1: the initial canvas is a real committed command, so a fresh
+    // document is dirty with one undoable entry (exact revision lane).
+    assert_eq!(snap.revision, 1);
+    assert!(snap.is_dirty);
+    assert!(snap.can_undo);
     assert!(!snap.can_redo);
 }
 
@@ -44,21 +47,31 @@ fn bridge_command_execution_undo_and_redo_parity() {
     assert!(!bridge.can_redo());
     assert!(bridge.is_dirty());
 
-    // 2. Undo
+    // 2. Undo removes the object; the initial canvas entry (A1) remains,
+    // so undo is still available afterwards.
     let undone = bridge.undo().expect("undo");
     assert!(undone);
-    assert!(!bridge.can_undo());
+    assert!(bridge.can_undo());
     assert!(bridge.can_redo());
 
     // Verify object removed in session
     assert!(bridge
         .session()
         .unwrap()
-        .document
+        .document()
         .find_object(obj_id)
         .is_none());
 
-    // 3. Redo
+    // 2b. Undo again removes the initial canvas itself.
+    let undone_canvas = bridge.undo().expect("undo canvas");
+    assert!(undone_canvas);
+    assert!(!bridge.can_undo());
+    assert_eq!(bridge.snapshot().surface_count, 0);
+
+    // 3. Redo restores the canvas, then the object.
+    let redone_canvas = bridge.redo().expect("redo canvas");
+    assert!(redone_canvas);
+    assert_eq!(bridge.snapshot().surface_count, 1);
     let redone = bridge.redo().expect("redo");
     assert!(redone);
     assert!(bridge.can_undo());
@@ -68,7 +81,7 @@ fn bridge_command_execution_undo_and_redo_parity() {
     assert!(bridge
         .session()
         .unwrap()
-        .document
+        .document()
         .find_object(obj_id)
         .is_some());
 }

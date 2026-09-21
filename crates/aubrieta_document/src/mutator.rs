@@ -510,38 +510,11 @@ impl<'doc> DocumentMutator<'doc> {
                     let cy = b[1] + b[3] / 2.0;
                     let sx = new_w / b[2];
                     let sy = new_h / b[3];
-                    let map = |p: aubrieta_geometry::GPoint| {
-                        aubrieta_geometry::GPoint::new(
-                            cx + (p.x - cx) * sx,
-                            cy + (p.y - cy) * sy,
-                        )
-                    };
-                    let verbs = path
-                        .verbs
-                        .iter()
-                        .map(|v| match *v {
-                            aubrieta_geometry::PathVerb::MoveTo(p) => {
-                                aubrieta_geometry::PathVerb::MoveTo(map(p))
-                            }
-                            aubrieta_geometry::PathVerb::LineTo(p) => {
-                                aubrieta_geometry::PathVerb::LineTo(map(p))
-                            }
-                            aubrieta_geometry::PathVerb::QuadTo(c, p) => {
-                                aubrieta_geometry::PathVerb::QuadTo(map(c), map(p))
-                            }
-                            aubrieta_geometry::PathVerb::CubicTo(c1, c2, p) => {
-                                aubrieta_geometry::PathVerb::CubicTo(map(c1), map(c2), map(p))
-                            }
-                            aubrieta_geometry::PathVerb::Close => {
-                                aubrieta_geometry::PathVerb::Close
-                            }
-                        })
-                        .collect::<Vec<_>>();
-                    let mut new_path = aubrieta_geometry::GPath::new();
-                    for v in verbs {
-                        new_path.push(v).map_err(AubrietaError::invalid_input)?;
+                    let center = aubrieta_geometry::GPoint::new(cx, cy);
+                    let new_path = path.scaled_about(center, sx, sy);
+                    if Self::path_is_finite(&new_path) {
+                        object.shape = Some(crate::ShapeKind::Path(new_path));
                     }
-                    object.shape = Some(crate::ShapeKind::Path(new_path));
                 }
                 object.bounds = Some(new_b);
                 let mut changes = ChangeSet::empty();
@@ -621,7 +594,7 @@ impl<'doc> DocumentMutator<'doc> {
                 let t = t.clamp(0.0, 1.0);
                 let proj = aubrieta_geometry::GPoint::new(a.x + abx * t, a.y + aby * t);
                 let d = proj.distance_to(target);
-                if best.map_or(true, |(_, _, bd)| d < bd) {
+                if best.is_none_or(|(_, _, bd)| d < bd) {
                     best = Some((ci, si, d));
                 }
             }
@@ -932,6 +905,20 @@ impl<'doc> DocumentMutator<'doc> {
         Err(AubrietaError::not_found(format!(
             "object `{id}` does not exist"
         )))
+    }
+
+    /// True when every coordinate of a path is finite (offset guard).
+    fn path_is_finite(path: &aubrieta_geometry::GPath) -> bool {
+        path.verbs.iter().all(|v| match v {
+            aubrieta_geometry::PathVerb::MoveTo(p) | aubrieta_geometry::PathVerb::LineTo(p) => {
+                p.is_finite()
+            }
+            aubrieta_geometry::PathVerb::QuadTo(c, p) => c.is_finite() && p.is_finite(),
+            aubrieta_geometry::PathVerb::CubicTo(c1, c2, p) => {
+                c1.is_finite() && c2.is_finite() && p.is_finite()
+            }
+            aubrieta_geometry::PathVerb::Close => true,
+        })
     }
 
     /// Loads the editable appearance stack for granular commands (F-18).
@@ -2189,6 +2176,22 @@ impl<'doc> DocumentMutator<'doc> {
         Ok(changes)
     }
 
+    /// Attaches a fully-formed surface (A4/A5).
+    /// Reserved for history redo of `BatchSurfacesAdded` and engine-level
+    /// restore paths; interactive code uses `add_surface`.
+    pub fn attach_surface(&mut self, surface: crate::document::Surface) {
+        if let Some(pos) = self
+            .document
+            .surfaces
+            .iter()
+            .position(|s| s.id == surface.id)
+        {
+            self.document.surfaces[pos] = surface;
+        } else {
+            self.document.surfaces.push(surface);
+        }
+    }
+
     /// Reverts a change set in reverse order (undo primitive).
     pub fn revert(&mut self, changes: &ChangeSet) -> Result<(), AubrietaError> {
         for change in changes.changes.iter().rev() {
@@ -2541,7 +2544,9 @@ mod tests {
             .with_stroke("aubrieta.gray/900", 2.0);
 
         let changes = mutator.set_appearance(obj_id, Some(app)).unwrap();
-        assert_eq!(changes.len(), 1);
+        // F-06: one atomic set emits mirrored Fill/Stroke entries plus the
+        // stack entry so undo reverts both together.
+        assert_eq!(changes.len(), 3);
 
         let obj = mutator.document.find_object(obj_id).unwrap();
         assert!(obj.appearance.is_some());
@@ -2551,6 +2556,8 @@ mod tests {
         mutator.revert(&changes).unwrap();
         let obj_undone = mutator.document.find_object(obj_id).unwrap();
         assert!(obj_undone.appearance.is_none());
+        assert!(obj_undone.fill.is_none());
+        assert!(obj_undone.stroke.is_none());
     }
 
     #[test]

@@ -215,17 +215,17 @@ impl DocumentObject {
     }
 
     /// Computes the local affine transformation for this object.
-    /// Rotation is about the bounds center (F-07): `T(center) * R * T(-center)`.
-    /// When there are no bounds, falls back to rotation about the origin.
+    /// Model: `T(bounds_origin) * R(rotation)` (F-07). Translation carries
+    /// the bounds origin so `ORIGIN` maps to the object position and
+    /// `world_transform` composes by accumulation; rotation pivots about
+    /// the bounds top-left in the local frame. Exporters must use the same
+    /// pivot (top-left) for exact fidelity. When there are no bounds, falls
+    /// back to pure rotation about the origin.
     #[must_use]
     pub fn local_transform(&self) -> aubrieta_geometry::GAffine {
         let rot = aubrieta_geometry::GAffine::rotate(self.rotation);
         if let Some(b) = self.bounds {
-            let cx = b[0] + b[2] / 2.0;
-            let cy = b[1] + b[3] / 2.0;
-            aubrieta_geometry::GAffine::translate(cx, cy)
-                .after(rot)
-                .after(aubrieta_geometry::GAffine::translate(-cx, -cy))
+            aubrieta_geometry::GAffine::translate(b[0], b[1]).after(rot)
         } else {
             rot
         }

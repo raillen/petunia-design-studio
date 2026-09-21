@@ -1,9 +1,9 @@
-# 08.15 — GUI Implementation Map & Component Ownership (Slint, Egui & Iced)
+# 08.15 — GUI Implementation Map & Component Ownership (Slint & Egui)
 
 <aside>
 🎯
 
-**Regra de Governança:** O **Slint** é a implementação primária da interface gráfica (`apps/aubrieta-slint`). O **egui** atua como interface secundária experimental e workbench de depuração técnica (`apps/aubrieta-egui`). O **Iced** é mantido ativo como contingência e salvaguarda estratégica de licenciamento (`apps/aubrieta-iced`). O **GPUI foi descontinuado**. A biblioteca interna `aubrieta_ui_gpui` atua como a infraestrutura neutra de desacoplamento (`AubrietaGuiBridge` e `AubrietaShell`).
+**Regra de Governança:** O **Slint** é a implementação primária da interface gráfica (`apps/aubrieta-slint`). O **egui** atua como interface secundária leve (pós-V1, low-end) e workbench de depuração técnica (`apps/aubrieta-egui`). O **Iced foi aposentado** (`apps/aubrieta-iced` removido). O **GPUI foi descontinuado**. A biblioteca interna `aubrieta_shell` (ex-`aubrieta_ui_gpui`) atua como a infraestrutura neutra de desacoplamento (`AubrietaGuiBridge` e `AubrietaShell`); sessão, portas e view-models vivem em `aubrieta_application`.
 
 </aside>
 
@@ -26,12 +26,12 @@
 
 ---
 
-# Fronteira da Crate `aubrieta_ui_gpui` (GUI Bridge & Shell)
+# Fronteira da Crate `aubrieta_shell` (GUI Bridge & Shell)
 
-A crate `crates/aubrieta_ui_gpui` (nome legado preservado para compatibilidade interna do workspace) **não depende de GPUI** e define a ponte agnóstica de controle:
+A crate `crates/aubrieta_shell` (renomeada de `aubrieta_ui_gpui`; **não depende de GPUI**) define a ponte agnóstica de controle:
 
 ```
-crates/aubrieta_ui_gpui
+crates/aubrieta_shell
 ├── bridge/
 │   ├── gui_bridge.rs      (AubrietaGuiBridge unificado)
 │   ├── ports.rs           (ActionQueryPort, CommandPort, InspectionPort, etc.)

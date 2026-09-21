@@ -11,6 +11,7 @@ mod document;
 mod document_object;
 pub mod hierarchy;
 mod mutator;
+pub mod shape_factory;
 pub mod surface_metadata;
 pub mod variable_data;
 

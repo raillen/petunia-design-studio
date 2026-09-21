@@ -248,7 +248,7 @@ impl Replayer {
                 }
                 Change::BatchSurfacesAdded { surfaces } => {
                     for s in surfaces {
-                        mutator.document_mut().surfaces.push(s);
+                        mutator.attach_surface(s);
                     }
                 }
             }
@@ -407,7 +407,7 @@ mod tests {
                 &CommandRequest::new(Command::AddDataSource { source: ds }),
             )
             .unwrap();
-        assert_eq!(doc.data_sources.len(), 1);
+        assert_eq!(doc.data_sources().len(), 1);
 
         // 2. Add Data Binding
         let binding = DataBinding {
@@ -425,7 +425,7 @@ mod tests {
                 &CommandRequest::new(Command::AddDataBinding { binding }),
             )
             .unwrap();
-        assert_eq!(doc.bindings.len(), 1);
+        assert_eq!(doc.bindings().len(), 1);
 
         // 3. Materialize merge (2 records -> 2 new surfaces)
         history
@@ -437,14 +437,14 @@ mod tests {
                 }),
             )
             .unwrap();
-        assert_eq!(doc.surfaces.len(), 3);
+        assert_eq!(doc.surfaces().len(), 3);
 
         // 4. Undo merge
         assert!(history.undo(&mut doc).unwrap());
-        assert_eq!(doc.surfaces.len(), 1);
+        assert_eq!(doc.surfaces().len(), 1);
 
         // 5. Redo merge
         assert!(history.redo(&mut doc).unwrap());
-        assert_eq!(doc.surfaces.len(), 3);
+        assert_eq!(doc.surfaces().len(), 3);
     }
 }

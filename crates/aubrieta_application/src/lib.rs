@@ -6,19 +6,26 @@
 //! `DocumentMutator` -> `ChangeSet`. History owns undo/redo.
 
 mod actions;
+pub mod appearance_service;
+pub mod boolean_service;
 mod capabilities;
 mod commands;
+mod creation;
+pub mod data_merge;
 mod history;
-mod interaction;
-mod ports;
-mod session;
-mod tools;
+pub mod hierarchy_service;
+pub mod interaction;
+pub mod ports;
+pub mod session;
+pub mod surface_service;
+pub mod tools;
 mod transaction;
-mod view_models;
+pub mod view_models;
 
 pub use actions::{ActionId, ActionRequest};
 pub use capabilities::{CapabilityInfo, CapabilityRegistry, CapabilityState};
 pub use commands::{Command, CommandRequest, CommandResult};
+pub use creation::{create_artboard_commands, create_shape_commands};
 pub use history::History;
 pub use interaction::{NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers};
 pub use ports::{

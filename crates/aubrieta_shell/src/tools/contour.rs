@@ -95,7 +95,13 @@ impl ContourTool {
                                             corner_radii,
                                         }) = obj.shape
                                         {
-                                            let new_r = (corner_radii[0] + delta).clamp(0.0, 100.0);
+                                            // Physical clamp from bounds (Table B).
+                                            let new_r =
+                                                aubrieta_geometry::step_corner_radius(
+                                                    corner_radii[0],
+                                                    delta,
+                                                    obj.bounds,
+                                                );
                                             let c = bridge.set_shape(
                                                 id,
                                                 Some(aubrieta_document::ShapeKind::Rectangle {

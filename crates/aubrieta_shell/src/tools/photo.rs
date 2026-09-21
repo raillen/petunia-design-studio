@@ -1,10 +1,9 @@
 //! Photo persona tools: raster marquee selections, brush, eraser, and crop (08.31, 10.9).
 
-use aubrieta_application::{Command, CommandRequest};
 use aubrieta_document::ChangeSet;
 use aubrieta_foundation::AubrietaError;
 use aubrieta_geometry::{GPoint, GRect};
-use aubrieta_raster::brush::{BlendMode, BrushDab};
+use aubrieta_raster::brush::BrushDab;
 
 use crate::bridge::AubrietaGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
@@ -104,17 +103,14 @@ impl PhotoTool {
                                 AubrietaError::invalid_input("no active surface for crop")
                             })?;
 
-                        let x = p0.x.min(p1.x);
-                        let y = p0.y.min(p1.y);
-                        let w = (p1.x - p0.x).abs().max(10.0);
-                        let h = (p1.y - p0.y).abs().max(10.0);
-
-                        let crop_cmd = CommandRequest::new(Command::SetSurfaceGeometry {
-                            surface: active_surface,
-                            origin: [x, y],
-                            dimensions: [w, h],
-                        });
-                        return bridge.submit_command(crop_cmd);
+                        return bridge.submit_all(
+                            "Crop surface",
+                            aubrieta_application::surface_service::crop_commands(
+                                active_surface,
+                                [p0.x, p0.y],
+                                [p1.x, p1.y],
+                            ),
+                        );
                     }
                 }
                 self.dabs.clear();
@@ -129,18 +125,10 @@ impl PhotoTool {
 
     fn record_dab(&mut self, pos: GPoint) {
         let is_eraser = self.kind == PhotoToolKind::Eraser;
-        self.dabs.push(BrushDab {
-            center_x: pos.x,
-            center_y: pos.y,
-            radius: 12.0,
-            hardness: 0.8,
-            opacity: 1.0,
-            color: if is_eraser {
-                [0.0, 0.0, 0.0, 0.0]
-            } else {
-                [0.1, 0.1, 0.1, 1.0]
-            },
-            blend_mode: BlendMode::Normal,
+        self.dabs.push(if is_eraser {
+            BrushDab::eraser_dab(pos.x, pos.y)
+        } else {
+            BrushDab::paint_dab(pos.x, pos.y)
         });
     }
 

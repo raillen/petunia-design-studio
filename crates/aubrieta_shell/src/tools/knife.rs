@@ -86,7 +86,7 @@ impl KnifeTool {
                     };
 
                     let target_ids: Vec<aubrieta_foundation::ObjectId> = surface
-                        .objects
+                        .objects()
                         .iter()
                         .filter(|obj| obj.hit_test(p0) || obj.hit_test(pt))
                         .map(|obj| obj.id)

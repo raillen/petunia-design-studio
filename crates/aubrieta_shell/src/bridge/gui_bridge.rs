@@ -90,7 +90,7 @@ impl AubrietaGuiBridge {
         document: Document,
     ) -> Result<(), AubrietaError> {
         let mut session = DocumentSession::with_document(title, document);
-        if session.active_surface()().is_none() {
+        if session.active_surface().is_none() {
             if let Some(first) = session.surfaces().first() {
                 session.set_active_surface(first.id);
             }
@@ -155,6 +155,18 @@ impl AubrietaGuiBridge {
     /// Submits a validated command request.
     pub fn submit_command(&mut self, request: CommandRequest) -> Result<ChangeSet, AubrietaError> {
         CommandPort::submit_command(self, request)
+    }
+
+    /// Submits a batch of commands atomically as one undo entry (F-01).
+    /// Creation gestures build their list via
+    /// `aubrieta_application::creation` and commit here.
+    pub fn submit_all(
+        &mut self,
+        label: &str,
+        commands: Vec<Command>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        let session = self.session_req_mut()?;
+        session.transact(label, commands)
     }
 
     /// Undoes the last committed command.
@@ -335,191 +347,129 @@ impl AubrietaGuiBridge {
         self.submit_command(CommandRequest::new(Command::OffsetPath { id, delta }))
     }
 
-    /// Sets the blend mode of an object (10.4).
+    /// Sets the blend mode of an object (10.4, F-18).
     pub fn set_blend_mode(
         &mut self,
         id: ObjectId,
         blend_mode: aubrieta_document::BlendMode,
     ) -> Result<ChangeSet, AubrietaError> {
-        let mut app = if let Some(session) = self.active_session.as_ref() {
-            session
-                .document
-                .find_object(id)
-                .map(|o| o.effective_appearance())
-                .unwrap_or_default()
-        } else {
-            aubrieta_document::AppearanceStack::new()
-        };
-        app.blend_mode = blend_mode;
-        self.submit_command(CommandRequest::new(Command::SetAppearance {
-            id,
-            appearance: Some(app),
-        }))
+        self.submit_command(CommandRequest::new(Command::SetStackBlend { id, blend_mode }))
     }
 
-    /// Adds a fill layer to the object's appearance stack (10.4).
+    /// Adds a fill layer to the object's appearance stack (10.4, F-18).
     pub fn add_fill(
         &mut self,
         id: ObjectId,
         paint: aubrieta_document::Paint,
     ) -> Result<ChangeSet, AubrietaError> {
-        let mut app = if let Some(session) = self.active_session.as_ref() {
-            session
-                .document
-                .find_object(id)
-                .map(|o| o.effective_appearance())
-                .unwrap_or_default()
-        } else {
-            aubrieta_document::AppearanceStack::new()
-        };
-        let next_id = app.fills.iter().map(|f| f.id).max().unwrap_or(0) + 1;
-        let mut fill_item = aubrieta_document::FillItem::solid(next_id, "aubrieta.blue/500");
-        fill_item.paint = paint;
-        app.fills.push(fill_item);
-        self.submit_command(CommandRequest::new(Command::SetAppearance {
+        self.submit_command(CommandRequest::new(Command::AddFill {
             id,
-            appearance: Some(app),
+            fill: aubrieta_document::FillItem {
+                id: 0,
+                paint,
+                opacity: 1.0,
+                blend_mode: aubrieta_document::BlendMode::Normal,
+                visible: true,
+            },
         }))
     }
 
-    /// Removes a fill layer by its ID (10.4).
+    /// Removes a fill layer by its ID (10.4, F-18).
     pub fn remove_fill(
         &mut self,
         id: ObjectId,
         fill_id: u32,
     ) -> Result<ChangeSet, AubrietaError> {
-        let mut app = if let Some(session) = self.active_session.as_ref() {
-            session
-                .document
-                .find_object(id)
-                .map(|o| o.effective_appearance())
-                .unwrap_or_default()
-        } else {
-            aubrieta_document::AppearanceStack::new()
-        };
-        app.fills.retain(|f| f.id != fill_id);
-        self.submit_command(CommandRequest::new(Command::SetAppearance {
-            id,
-            appearance: Some(app),
-        }))
+        self.submit_command(CommandRequest::new(Command::RemoveFill { id, fill_id }))
     }
 
-    /// Adds a stroke layer to the object's appearance stack (10.4).
+    /// Adds a stroke layer to the object's appearance stack (10.4, F-18).
     pub fn add_stroke(
         &mut self,
         id: ObjectId,
         paint: aubrieta_document::Paint,
         width: f64,
     ) -> Result<ChangeSet, AubrietaError> {
-        let mut app = if let Some(session) = self.active_session.as_ref() {
-            session
-                .document
-                .find_object(id)
-                .map(|o| o.effective_appearance())
-                .unwrap_or_default()
-        } else {
-            aubrieta_document::AppearanceStack::new()
-        };
-        let next_id = app.strokes.iter().map(|s| s.id).max().unwrap_or(0) + 1;
         let mut stroke_item =
-            aubrieta_document::StrokeItem::solid(next_id, "aubrieta.gray/700", width);
+            aubrieta_document::StrokeItem::solid(0, "aubrieta.gray/700", width);
         stroke_item.paint = paint;
-        app.strokes.push(stroke_item);
-        self.submit_command(CommandRequest::new(Command::SetAppearance {
+        self.submit_command(CommandRequest::new(Command::AddStroke {
             id,
-            appearance: Some(app),
+            stroke: stroke_item,
         }))
     }
 
-    /// Removes a stroke layer by its ID (10.4).
+    /// Removes a stroke layer by its ID (10.4, F-18).
     pub fn remove_stroke(
         &mut self,
         id: ObjectId,
         stroke_id: u32,
     ) -> Result<ChangeSet, AubrietaError> {
-        let mut app = if let Some(session) = self.active_session.as_ref() {
-            session
-                .document
-                .find_object(id)
-                .map(|o| o.effective_appearance())
-                .unwrap_or_default()
-        } else {
-            aubrieta_document::AppearanceStack::new()
-        };
-        app.strokes.retain(|s| s.id != stroke_id);
-        self.submit_command(CommandRequest::new(Command::SetAppearance {
-            id,
-            appearance: Some(app),
-        }))
+        self.submit_command(CommandRequest::new(Command::RemoveStroke { id, stroke_id }))
     }
 
     /// Sets linear gradient fill with two stops on the object (10.4).
+    /// Secondary entries are preserved: the gradient applies to the primary
+    /// fill (or appends one when the stack is empty).
     pub fn set_linear_gradient_fill(
         &mut self,
         id: ObjectId,
         color1: impl Into<String>,
         color2: impl Into<String>,
     ) -> Result<ChangeSet, AubrietaError> {
-        let mut app = if let Some(session) = self.active_session.as_ref() {
-            session
-                .document
-                .find_object(id)
-                .map(|o| o.effective_appearance())
-                .unwrap_or_default()
-        } else {
-            aubrieta_document::AppearanceStack::new()
-        };
-        let grad = aubrieta_document::LinearGradient::new(
-            [0.0, 0.0],
-            [1.0, 0.0],
-            vec![
-                aubrieta_document::GradientStop::new(0.0, color1),
-                aubrieta_document::GradientStop::new(1.0, color2),
-            ],
+        let stack = self
+            .active_session
+            .as_ref()
+            .and_then(|s| s.find_object(id))
+            .map(|o| o.effective_appearance())
+            .unwrap_or_default();
+        let paint = aubrieta_document::Paint::LinearGradient(
+            aubrieta_document::LinearGradient::new(
+                [0.0, 0.0],
+                [1.0, 0.0],
+                vec![
+                    aubrieta_document::GradientStop::new(0.0, color1),
+                    aubrieta_document::GradientStop::new(1.0, color2),
+                ],
+            ),
         );
-        if let Some(first_fill) = app.fills.first_mut() {
-            first_fill.paint = aubrieta_document::Paint::LinearGradient(grad);
-        } else {
-            app.fills.push(aubrieta_document::FillItem::linear_gradient(1, grad));
-        }
+        let stack =
+            aubrieta_application::appearance_service::with_primary_gradient(stack, paint);
         self.submit_command(CommandRequest::new(Command::SetAppearance {
             id,
-            appearance: Some(app),
+            appearance: Some(stack),
         }))
     }
 
     /// Sets radial gradient fill with two stops on the object (10.4).
+    /// Secondary entries are preserved (see `set_linear_gradient_fill`).
     pub fn set_radial_gradient_fill(
         &mut self,
         id: ObjectId,
         color1: impl Into<String>,
         color2: impl Into<String>,
     ) -> Result<ChangeSet, AubrietaError> {
-        let mut app = if let Some(session) = self.active_session.as_ref() {
-            session
-                .document
-                .find_object(id)
-                .map(|o| o.effective_appearance())
-                .unwrap_or_default()
-        } else {
-            aubrieta_document::AppearanceStack::new()
-        };
-        let grad = aubrieta_document::RadialGradient::new(
-            [0.5, 0.5],
-            0.5,
-            vec![
-                aubrieta_document::GradientStop::new(0.0, color1),
-                aubrieta_document::GradientStop::new(1.0, color2),
-            ],
+        let stack = self
+            .active_session
+            .as_ref()
+            .and_then(|s| s.find_object(id))
+            .map(|o| o.effective_appearance())
+            .unwrap_or_default();
+        let paint = aubrieta_document::Paint::RadialGradient(
+            aubrieta_document::RadialGradient::new(
+                [0.5, 0.5],
+                0.5,
+                vec![
+                    aubrieta_document::GradientStop::new(0.0, color1),
+                    aubrieta_document::GradientStop::new(1.0, color2),
+                ],
+            ),
         );
-        if let Some(first_fill) = app.fills.first_mut() {
-            first_fill.paint = aubrieta_document::Paint::RadialGradient(grad);
-        } else {
-            app.fills.push(aubrieta_document::FillItem::radial_gradient(1, grad));
-        }
+        let stack =
+            aubrieta_application::appearance_service::with_primary_gradient(stack, paint);
         self.submit_command(CommandRequest::new(Command::SetAppearance {
             id,
-            appearance: Some(app),
+            appearance: Some(stack),
         }))
     }
 
@@ -790,11 +740,11 @@ impl ActionQueryPort for AubrietaGuiBridge {
         let can_undo = self
             .active_session
             .as_ref()
-            .is_some_and(|s| s.history.can_undo());
+            .is_some_and(|s| s.history().can_undo());
         let can_redo = self
             .active_session
             .as_ref()
-            .is_some_and(|s| s.history.can_redo());
+            .is_some_and(|s| s.history().can_redo());
         let is_dirty = self.active_session.as_ref().is_some_and(|s| s.is_dirty());
 
         let actions = [
@@ -911,13 +861,13 @@ impl CommandPort for AubrietaGuiBridge {
     fn can_undo(&self) -> bool {
         self.active_session
             .as_ref()
-            .is_some_and(|s| s.history.can_undo())
+            .is_some_and(|s| s.history().can_undo())
     }
 
     fn can_redo(&self) -> bool {
         self.active_session
             .as_ref()
-            .is_some_and(|s| s.history.can_redo())
+            .is_some_and(|s| s.history().can_redo())
     }
 }
 
@@ -1071,7 +1021,7 @@ impl InspectionPort for AubrietaGuiBridge {
     fn revision(&self) -> u64 {
         self.active_session
             .as_ref()
-            .map_or(0, |s| s.current_revision)
+            .map_or(0, |s| s.current_revision())
     }
 
     fn is_dirty(&self) -> bool {

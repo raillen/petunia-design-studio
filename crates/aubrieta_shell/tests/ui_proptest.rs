@@ -62,10 +62,13 @@ proptest! {
         let mut gen = aubrieta_foundation::IdGenerator::new();
 
         for s in 0..num_surfaces {
-            doc.surfaces.push(aubrieta_document::Surface::new(
+            let surface = aubrieta_document::Surface::new(
                 gen.next_surface(),
                 format!("Surface {s}"),
-            ));
+            );
+            aubrieta_document::DocumentMutator::new(&mut doc)
+                .add_surface(surface.id, surface.name.clone())
+                .unwrap();
         }
 
         adapter.open_session("Test Doc", doc).unwrap();

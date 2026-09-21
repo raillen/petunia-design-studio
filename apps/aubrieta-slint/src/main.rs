@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use aubrieta_application::{Command, CommandRequest};
 use aubrieta_document::{Bleed, ContainerRole, Guide, GuideOrientation, Margins};
-use aubrieta_foundation::{AubrietaError, IdGenerator, ObjectId};
+use aubrieta_foundation::{AubrietaError, ObjectId};
 use aubrieta_io::{
     export_document_pdf, export_document_svg, export_raster, PdfExportOptions,
     RasterExportOptions, RasterFormat, RawRasterImage,
@@ -146,13 +146,13 @@ impl AubrietaSlintState {
 
         // 4. Validate Vector & Raster Export Pipelines (Step 4)
         let session = self.shell.bridge.session().ok_or("No session found")?;
-        let svg = export_document_svg(&session.document());
+        let svg = export_document_svg(session.document());
         if !svg.starts_with("<svg") && !svg.contains("<svg") {
             return Err("SVG export produced invalid XML envelope".to_string());
         }
 
         let (pdf_bytes, report) =
-            export_document_pdf(&session.document(), &PdfExportOptions::default())
+            export_document_pdf(session.document(), &PdfExportOptions::default())
                 .map_err(|e| format!("PDF export failed: {e}"))?;
         if !pdf_bytes.starts_with(b"%PDF") {
             return Err("PDF export produced invalid PDF header".to_string());
@@ -189,12 +189,13 @@ impl AubrietaSlintState {
 
 fn populate_showcase_document(shell: &mut AubrietaShell) -> Result<(), AubrietaError> {
     shell.new_document("Aubrieta Showcase Project [Slint]")?;
-    let mut id_gen = IdGenerator::new();
-    let surface_1 = id_gen.next_surface();
-    let rect_id = id_gen.next_object();
-    let circle_id = id_gen.next_object();
-    let star_id = id_gen.next_object();
-    let text_id = id_gen.next_object();
+    // Allocate every ID from the session lane: parallel local generators
+    // collide with the session-owned counter (Canvas takes SurfaceId(1)).
+    let surface_1 = shell.bridge.next_surface_id()?;
+    let rect_id = shell.bridge.next_object_id()?;
+    let circle_id = shell.bridge.next_object_id()?;
+    let star_id = shell.bridge.next_object_id()?;
+    let text_id = shell.bridge.next_object_id()?;
 
     shell
         .bridge
@@ -275,6 +276,8 @@ fn populate_showcase_document(shell: &mut AubrietaShell) -> Result<(), AubrietaE
     )?;
 
     shell.bridge.set_selection(vec![rect_id]);
+    // Showcase editing happens on the Main Artboard, not the initial canvas.
+    shell.bridge.set_active_surface(surface_1)?;
     Ok(())
 }
 
@@ -292,11 +295,10 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
         .iter()
         .map(|r| {
             let kind = if let Some(session) = state.shell.bridge.session() {
-                session
-                    .document
-                    .surfaces
+                session.document()
+                    .surfaces()
                     .iter()
-                    .flat_map(|s| &s.objects)
+                    .flat_map(|s| s.objects())
                     .find(|o| o.id == r.id)
                     .map(|o| match &o.shape {
                         Some(aubrieta_document::ShapeKind::Ellipse) => "Ellipse",
@@ -337,9 +339,9 @@ fn sync_ui_from_shell(window: &MainWindow, state: &AubrietaSlintState) {
     let mut canvas_items = Vec::new();
     if let Some(session) = state.shell.bridge.session() {
         let selection = state.shell.bridge.selection();
-        for surface in &session.document().surfaces {
+        for surface in session.document().surfaces() {
             let sb = surface.bounds();
-            for obj in &surface.objects {
+            for obj in surface.objects() {
                 if let Some(b) = obj.bounds {
                     let is_sel = selection.contains(obj.id);
                     let name_lower = obj.name.to_lowercase();
@@ -750,7 +752,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .shell
                 .bridge
                 .session()
-                .and_then(|s| s.document.surfaces.first())
+                .and_then(|s| s.document().surfaces().first())
             {
                 let b = surface.bounds();
                 st.shell
@@ -808,7 +810,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .shell
                 .bridge
                 .session()
-                .map(|s| format!("{}.aub", s.title))
+                .map(|s| format!("{}.aub", s.title()))
                 .unwrap_or_else(|| "projeto.aub".to_string());
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("Aubrieta Design (*.aub)", &["aub"])
@@ -839,13 +841,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 println!("RFD: Inserindo imagem: {:?}", path);
                 let mut st = state_clone.borrow_mut();
-                let mut id_gen = IdGenerator::new();
-                let obj_id = id_gen.next_object();
+                let Ok(obj_id) = st.shell.bridge.next_object_id() else { return };
                 if let Some(surface) = st
                     .shell
                     .bridge
                     .session()
-                    .and_then(|s| s.document.surfaces.first().cloned())
+                    .and_then(|s| s.document().surfaces().first().cloned())
                 {
                     let file_stem = path
                         .file_stem()
@@ -916,15 +917,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let win_weak = main_window.as_weak();
         main_window.on_add_rectangle_clicked(move || {
             let mut st = state_clone.borrow_mut();
-            let mut id_gen = IdGenerator::new();
             if let Some(surface) = st
                 .shell
                 .bridge
                 .session()
-                .and_then(|s| s.document.surfaces.first().cloned())
+                .and_then(|s| s.document().surfaces().first().cloned())
             {
-                let new_id = id_gen.next_object();
-                let count = surface.objects.len() + 1;
+                let Ok(new_id) = st.shell.bridge.next_object_id() else { return };
+                let count = surface.objects().len() + 1;
                 let _ =
                     st.shell
                         .bridge
@@ -957,15 +957,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let win_weak = main_window.as_weak();
         main_window.on_add_circle_clicked(move || {
             let mut st = state_clone.borrow_mut();
-            let mut id_gen = IdGenerator::new();
             if let Some(surface) = st
                 .shell
                 .bridge
                 .session()
-                .and_then(|s| s.document.surfaces.first().cloned())
+                .and_then(|s| s.document().surfaces().first().cloned())
             {
-                let new_id = id_gen.next_object();
-                let count = surface.objects.len() + 1;
+                let Ok(new_id) = st.shell.bridge.next_object_id() else { return };
+                let count = surface.objects().len() + 1;
                 let _ =
                     st.shell
                         .bridge
@@ -998,15 +997,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let win_weak = main_window.as_weak();
         main_window.on_add_star_clicked(move || {
             let mut st = state_clone.borrow_mut();
-            let mut id_gen = IdGenerator::new();
             if let Some(surface) = st
                 .shell
                 .bridge
                 .session()
-                .and_then(|s| s.document.surfaces.first().cloned())
+                .and_then(|s| s.document().surfaces().first().cloned())
             {
-                let new_id = id_gen.next_object();
-                let count = surface.objects.len() + 1;
+                let Ok(new_id) = st.shell.bridge.next_object_id() else { return };
+                let count = surface.objects().len() + 1;
                 let offset = (count as f64 * 35.0) % 250.0;
                 let _ = st.shell.bridge.create_shape_object(
                     surface.id,
@@ -1035,15 +1033,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let win_weak = main_window.as_weak();
         main_window.on_add_text_clicked(move || {
             let mut st = state_clone.borrow_mut();
-            let mut id_gen = IdGenerator::new();
             if let Some(surface) = st
                 .shell
                 .bridge
                 .session()
-                .and_then(|s| s.document.surfaces.first().cloned())
+                .and_then(|s| s.document().surfaces().first().cloned())
             {
-                let new_id = id_gen.next_object();
-                let count = surface.objects.len() + 1;
+                let Ok(new_id) = st.shell.bridge.next_object_id() else { return };
+                let count = surface.objects().len() + 1;
                 let offset = (count as f64 * 25.0) % 200.0;
                 let _ = st.shell.bridge.create_shape_object(
                     surface.id,
@@ -1078,9 +1075,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
             if sel_ids.len() < 2 {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document().surfaces.first() {
-                        if surface.objects.len() >= 2 {
-                            sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
+                    if let Some(surface) = session.document().surfaces().first() {
+                        if surface.objects().len() >= 2 {
+                            sel_ids = vec![surface.objects()[0].id, surface.objects()[1].id];
                         }
                     }
                 }
@@ -1088,13 +1085,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if sel_ids.len() >= 2 {
                 let id_a = sel_ids[0];
                 let id_b = sel_ids[1];
-                let mut id_gen = IdGenerator::new();
-                let target_id = id_gen.next_object();
+                let Ok(target_id) = st.shell.bridge.next_object_id() else { return };
                 if let Some(surface) = st
                     .shell
                     .bridge
                     .session()
-                    .and_then(|s| s.document.surfaces.first().cloned())
+                    .and_then(|s| s.document().surfaces().first().cloned())
                 {
                     let _ = st.shell.bridge.apply_boolean(
                         surface.id,
@@ -1121,9 +1117,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
             if sel_ids.len() < 2 {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document().surfaces.first() {
-                        if surface.objects.len() >= 2 {
-                            sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
+                    if let Some(surface) = session.document().surfaces().first() {
+                        if surface.objects().len() >= 2 {
+                            sel_ids = vec![surface.objects()[0].id, surface.objects()[1].id];
                         }
                     }
                 }
@@ -1131,13 +1127,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if sel_ids.len() >= 2 {
                 let id_a = sel_ids[0];
                 let id_b = sel_ids[1];
-                let mut id_gen = IdGenerator::new();
-                let target_id = id_gen.next_object();
+                let Ok(target_id) = st.shell.bridge.next_object_id() else { return };
                 if let Some(surface) = st
                     .shell
                     .bridge
                     .session()
-                    .and_then(|s| s.document.surfaces.first().cloned())
+                    .and_then(|s| s.document().surfaces().first().cloned())
                 {
                     let _ = st.shell.bridge.apply_boolean(
                         surface.id,
@@ -1164,9 +1159,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
             if sel_ids.len() < 2 {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document().surfaces.first() {
-                        if surface.objects.len() >= 2 {
-                            sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
+                    if let Some(surface) = session.document().surfaces().first() {
+                        if surface.objects().len() >= 2 {
+                            sel_ids = vec![surface.objects()[0].id, surface.objects()[1].id];
                         }
                     }
                 }
@@ -1174,13 +1169,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if sel_ids.len() >= 2 {
                 let id_a = sel_ids[0];
                 let id_b = sel_ids[1];
-                let mut id_gen = IdGenerator::new();
-                let target_id = id_gen.next_object();
+                let Ok(target_id) = st.shell.bridge.next_object_id() else { return };
                 if let Some(surface) = st
                     .shell
                     .bridge
                     .session()
-                    .and_then(|s| s.document.surfaces.first().cloned())
+                    .and_then(|s| s.document().surfaces().first().cloned())
                 {
                     let _ = st.shell.bridge.apply_boolean(
                         surface.id,
@@ -1207,9 +1201,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
             if sel_ids.len() < 2 {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document().surfaces.first() {
-                        if surface.objects.len() >= 2 {
-                            sel_ids = vec![surface.objects[0].id, surface.objects[1].id];
+                    if let Some(surface) = session.document().surfaces().first() {
+                        if surface.objects().len() >= 2 {
+                            sel_ids = vec![surface.objects()[0].id, surface.objects()[1].id];
                         }
                     }
                 }
@@ -1217,13 +1211,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if sel_ids.len() >= 2 {
                 let id_a = sel_ids[0];
                 let id_b = sel_ids[1];
-                let mut id_gen = IdGenerator::new();
-                let target_id = id_gen.next_object();
+                let Ok(target_id) = st.shell.bridge.next_object_id() else { return };
                 if let Some(surface) = st
                     .shell
                     .bridge
                     .session()
-                    .and_then(|s| s.document.surfaces.first().cloned())
+                    .and_then(|s| s.document().surfaces().first().cloned())
                 {
                     let _ = st.shell.bridge.apply_boolean(
                         surface.id,
@@ -1285,7 +1278,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     st.shell
                         .bridge
                         .session()
-                        .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                        .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
                 }) {
                     let mode = match mode_str.as_str() {
                         "Left" => aubrieta_document::AlignmentMode::Left,
@@ -1316,7 +1309,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     st.shell
                         .bridge
                         .session()
-                        .and_then(|s| s.document.surfaces.first().map(|sf| sf.id))
+                        .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
                 }) {
                     let axis = match axis_str.as_str() {
                         "Vertical" => aubrieta_document::DistributionAxis::Vertical,
@@ -1386,11 +1379,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(obj) = session
-                        .document
-                        .surfaces
+                    if let Some(obj) = session.document()
+                        .surfaces()
                         .iter()
-                        .flat_map(|s| &s.objects)
+                        .flat_map(|s| s.objects())
                         .find(|o| o.id == sel_id)
                     {
                         if let Some(b) = obj.bounds {
@@ -1413,11 +1405,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(obj) = session
-                        .document
-                        .surfaces
+                    if let Some(obj) = session.document()
+                        .surfaces()
                         .iter()
-                        .flat_map(|s| &s.objects)
+                        .flat_map(|s| s.objects())
                         .find(|o| o.id == sel_id)
                     {
                         if let Some(b) = obj.bounds {
@@ -1440,11 +1431,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(obj) = session
-                        .document
-                        .surfaces
+                    if let Some(obj) = session.document()
+                        .surfaces()
                         .iter()
-                        .flat_map(|s| &s.objects)
+                        .flat_map(|s| s.objects())
                         .find(|o| o.id == sel_id)
                     {
                         if let Some(b) = obj.bounds {
@@ -1467,11 +1457,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
                 if let Some(session) = st.shell.bridge.session() {
-                    if let Some(obj) = session
-                        .document
-                        .surfaces
+                    if let Some(obj) = session.document()
+                        .surfaces()
                         .iter()
-                        .flat_map(|s| &s.objects)
+                        .flat_map(|s| s.objects())
                         .find(|o| o.id == sel_id)
                     {
                         if let Some(b) = obj.bounds {
@@ -1659,8 +1648,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let clone_info =
                 if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
                     if let Some(session) = st.shell.bridge.session() {
-                        if let Some(surface) = session.document().surfaces.first() {
-                            if let Some(obj) = surface.objects.iter().find(|o| o.id == sel_id) {
+                        if let Some(surface) = session.document().surfaces().first() {
+                            if let Some(obj) = surface.objects().iter().find(|o| o.id == sel_id) {
                                 let b = obj.bounds.unwrap_or([100.0, 100.0, 100.0, 100.0]);
                                 let clone_bounds = [b[0] + 20.0, b[1] + 20.0, b[2], b[3]];
                                 let fill = obj.fill.clone();
@@ -1681,8 +1670,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
 
             if let Some((surf_id, name, clone_bounds, fill)) = clone_info {
-                let mut id_gen = IdGenerator::new();
-                let clone_id = id_gen.next_object();
+                let Ok(clone_id) = st.shell.bridge.next_object_id() else { return };
                 let _ =
                     st.shell
                         .bridge
@@ -1817,7 +1805,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 st.shell
                     .bridge
                     .session()
-                    .and_then(|s| s.document.surfaces.first().map(|surf| surf.id))
+                    .and_then(|s| s.document().surfaces().first().map(|surf| surf.id))
             });
             let selected_ids = st.shell.bridge.selection().selected_ids;
             if let (Some(surface), false) = (surface_opt, selected_ids.is_empty()) {
@@ -1849,7 +1837,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .bridge
                     .session()
                     .and_then(|s| {
-                        s.document
+                        s.document()
                             .find_object(id)
                             .map(|o| o.is_container() || o.role.is_some())
                     })
@@ -1862,7 +1850,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .shell
                         .bridge
                         .session()
-                        .and_then(|s| s.document.find_object(id).and_then(|o| o.parent));
+                        .and_then(|s| s.document().find_object(id).and_then(|o| o.parent));
                     if let Some(parent_id) = parent_opt {
                         let _ = st.shell.bridge.ungroup(parent_id);
                     }
@@ -1883,7 +1871,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 st.shell
                     .bridge
                     .session()
-                    .and_then(|s| s.document.surfaces.first().map(|surf| surf.id))
+                    .and_then(|s| s.document().surfaces().first().map(|surf| surf.id))
             });
             let selected_ids = st.shell.bridge.selection().selected_ids;
             if let (Some(surface), true) = (surface_opt, selected_ids.len() >= 2) {
@@ -1911,11 +1899,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let selected_ids = st.shell.bridge.selection().selected_ids;
             for id in selected_ids {
                 let clip_group = st.shell.bridge.session().and_then(|s| {
-                    let obj = s.document.find_object(id)?;
+                    let obj = s.document().find_object(id)?;
                     if obj.role == Some(ContainerRole::ClipGroup) {
                         Some(obj.id)
                     } else if let Some(pid) = obj.parent {
-                        let parent = s.document.find_object(pid)?;
+                        let parent = s.document().find_object(pid)?;
                         if parent.role == Some(ContainerRole::ClipGroup) {
                             Some(pid)
                         } else {
@@ -1944,7 +1932,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let sel_ids = st.shell.bridge.selection().selected_ids;
             for id in sel_ids {
                 let current = st.shell.bridge.session().and_then(|s| {
-                    s.document.find_object(id).map(|o| (o.bounds, o.rotation))
+                    s.document().find_object(id).map(|o| (o.bounds, o.rotation))
                 });
                 if let Some((Some(b), rot)) = current {
                     let new_b = [b[0] + dx as f64, b[1] + dy as f64, b[2], b[3]];
@@ -1967,9 +1955,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .shell
                     .bridge
                     .active_surface()
-                    .and_then(|sid| session.document().surfaces.iter().find(|s| s.id == sid))
-                    .or_else(|| session.document().surfaces.first());
-                surf.map(|s| s.objects.iter().map(|o| o.id).collect())
+                    .and_then(|sid| session.document().surfaces().iter().find(|s| s.id == sid))
+                    .or_else(|| session.document().surfaces().first());
+                surf.map(|s| s.objects().iter().map(|o| o.id).collect())
                     .unwrap_or_default()
             } else {
                 Vec::new()
@@ -1993,10 +1981,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .shell
                     .bridge
                     .active_surface()
-                    .and_then(|sid| session.document().surfaces.iter().find(|s| s.id == sid))
-                    .or_else(|| session.document().surfaces.first());
+                    .and_then(|sid| session.document().surfaces().iter().find(|s| s.id == sid))
+                    .or_else(|| session.document().surfaces().first());
                 if let Some(surface) = surf {
-                    let objects: Vec<ObjectId> = surface.objects.iter().map(|o| o.id).collect();
+                    let objects: Vec<ObjectId> = surface.objects().iter().map(|o| o.id).collect();
                     if !objects.is_empty() {
                         let current_sel = st.shell.bridge.selection().selected_ids.first().copied();
                         let current_idx =
@@ -2072,7 +2060,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .add_filter("SVG Vector (*.svg)", &["svg"])
                         .set_file_name("export.svg");
                     if let Some(path) = dialog.save_file() {
-                        let svg_content = export_document_svg(&session.document());
+                        let svg_content = export_document_svg(session.document());
                         match std::fs::write(&path, svg_content.as_bytes()) {
                             Ok(()) => {
                                 if let Some(win) = win_weak.upgrade() {
@@ -2097,7 +2085,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .set_file_name("export.pdf");
                     if let Some(path) = dialog.save_file() {
                         let options = PdfExportOptions::default();
-                        match export_document_pdf(&session.document(), &options) {
+                        match export_document_pdf(session.document(), &options) {
                             Ok((pdf_bytes, _)) => {
                                 match std::fs::write(&path, &pdf_bytes) {
                                     Ok(()) => {
@@ -2132,11 +2120,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .add_filter("PNG Image (*.png)", &["png"])
                         .set_file_name("export.png");
                     if let Some(path) = dialog.save_file() {
-                        if let Some(surface) = session.document().surfaces.first() {
+                        if let Some(surface) = session.document().surfaces().first() {
                             let w = (surface.dimensions[0].round() as usize).max(10);
                             let h = (surface.dimensions[1].round() as usize).max(10);
                             let mut buffer = vec![255u8; w * h * 4];
-                            for obj in &surface.objects {
+                            for obj in surface.objects() {
                                 if !obj.visible {
                                     continue;
                                 }

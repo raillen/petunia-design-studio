@@ -81,7 +81,7 @@ proptest! {
             DocumentMutator::new(&mut doc).add_surface(id, name.clone()).unwrap();
         }
         let reopened = Document::from_json(&doc.to_json().unwrap()).unwrap();
-        prop_assert_eq!(reopened.surfaces.len(), names.len());
+        prop_assert_eq!(reopened.surfaces().len(), names.len());
         let _ = Surface::new(gen.next_surface(), "unused-construction-check");
     }
 }

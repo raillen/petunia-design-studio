@@ -258,7 +258,7 @@ impl SelectTool {
                     if let Some(session) = bridge.session() {
                         if let Some(surface_id) = session.active_surface() {
                             if let Ok(surface) = session.surface(surface_id) {
-                                for obj in &surface.objects {
+                                for obj in surface.objects() {
                                     if obj.visible && !obj.locked {
                                         if let Some([ox, oy, ow, oh]) = obj.bounds {
                                             let obj_rect = GRect::new(ox, oy, ox + ow, oy + oh);
@@ -390,7 +390,7 @@ impl SelectTool {
         let tolerance = 4.0 / camera.zoom;
 
         // Search in reverse z-order (topmost first)
-        for obj in surface.objects.iter().rev() {
+        for obj in surface.objects().iter().rev() {
             if obj.visible && !obj.locked {
                 if let Some([x, y, w, h]) = obj.bounds {
                     let rect = GRect::new(
@@ -442,6 +442,8 @@ impl SelectTool {
 }
 
 /// Calculates new bounding box coordinates when dragging a specific transform handle.
+/// Thin mapping over the shared geometry primitive (Table B); rotation and
+/// node affordances are not resizable and pass bounds through unchanged.
 #[must_use]
 pub fn calculate_resized_bounds(
     handle: SelectionHandleKind,
@@ -449,56 +451,23 @@ pub fn calculate_resized_bounds(
     dx: f64,
     dy: f64,
 ) -> (f64, f64, f64, f64) {
-    let [ix, iy, iw, ih] = initial;
-    let mut nx = ix;
-    let mut ny = iy;
-    let mut nw = iw;
-    let mut nh = ih;
-
-    match handle {
-        SelectionHandleKind::TopLeft => {
-            nx += dx;
-            ny += dy;
-            nw -= dx;
-            nh -= dy;
-        }
-        SelectionHandleKind::Top => {
-            ny += dy;
-            nh -= dy;
-        }
-        SelectionHandleKind::TopRight => {
-            ny += dy;
-            nw += dx;
-            nh -= dy;
-        }
-        SelectionHandleKind::Right => {
-            nw += dx;
-        }
+    let mapped = match handle {
+        SelectionHandleKind::TopLeft => Some(aubrieta_geometry::ResizeHandle::TopLeft),
+        SelectionHandleKind::Top => Some(aubrieta_geometry::ResizeHandle::Top),
+        SelectionHandleKind::TopRight => Some(aubrieta_geometry::ResizeHandle::TopRight),
+        SelectionHandleKind::Right => Some(aubrieta_geometry::ResizeHandle::Right),
         SelectionHandleKind::BottomRight => {
-            nw += dx;
-            nh += dy;
+            Some(aubrieta_geometry::ResizeHandle::BottomRight)
         }
-        SelectionHandleKind::Bottom => {
-            nh += dy;
-        }
+        SelectionHandleKind::Bottom => Some(aubrieta_geometry::ResizeHandle::Bottom),
         SelectionHandleKind::BottomLeft => {
-            nx += dx;
-            nw -= dx;
-            nh += dy;
+            Some(aubrieta_geometry::ResizeHandle::BottomLeft)
         }
-        SelectionHandleKind::Left => {
-            nx += dx;
-            nw -= dx;
-        }
-        SelectionHandleKind::Rotation => {}
+        SelectionHandleKind::Left => Some(aubrieta_geometry::ResizeHandle::Left),
+        SelectionHandleKind::Rotation => None,
+    };
+    match mapped {
+        Some(h) => aubrieta_geometry::resize_rect_from_handle(h, initial, dx, dy),
+        None => (initial[0], initial[1], initial[2], initial[3]),
     }
-
-    if nw < 5.0 {
-        nw = 5.0;
-    }
-    if nh < 5.0 {
-        nh = 5.0;
-    }
-
-    (nx, ny, nw, nh)
 }

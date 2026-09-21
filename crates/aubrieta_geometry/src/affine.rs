@@ -110,6 +110,36 @@ impl GAffine {
     }
 }
 
+/// Rotates `point` around `pivot` by `delta_angle` radians (Table B).
+/// Returns the rotated point; degenerate pivots (NaN) pass through.
+#[must_use]
+pub fn rotate_point_around(point: GPoint, pivot: GPoint, delta_angle: f64) -> GPoint {
+    if !delta_angle.is_finite() || !pivot.is_finite() || !point.is_finite() {
+        return point;
+    }
+    let transform = GAffine::translate(pivot.x, pivot.y)
+        .after(GAffine::rotate(delta_angle))
+        .after(GAffine::translate(-pivot.x, -pivot.y));
+    transform.apply(point)
+}
+
+/// Computes the signed angular delta from `p0` to `p1` around `pivot`
+/// (Table B). Returns `None` when either vector is degenerate, so callers
+/// never apply an `atan2(0,0)` phantom rotation.
+#[must_use]
+pub fn pivot_angle_delta(p0: GPoint, p1: GPoint, pivot: GPoint) -> Option<f64> {
+    let v0x = p0.x - pivot.x;
+    let v0y = p0.y - pivot.y;
+    let v1x = p1.x - pivot.x;
+    let v1y = p1.y - pivot.y;
+    if v0x * v0x + v0y * v0y < 1e-12 || v1x * v1x + v1y * v1y < 1e-12 {
+        return None;
+    }
+    let a0 = v0y.atan2(v0x);
+    let a1 = v1y.atan2(v1x);
+    Some(a1 - a0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

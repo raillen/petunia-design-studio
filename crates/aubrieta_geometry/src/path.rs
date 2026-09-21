@@ -114,6 +114,30 @@ impl GPath {
         Self { verbs }
     }
 
+    /// Returns the path scaled about `center` by `(sx, sy)` (Table B).
+    /// Used by path offsetting so curves track their bounds. Exact for all
+    /// verbs; callers guarantee finite factors near 1.0.
+    #[must_use]
+    pub fn scaled_about(&self, center: GPoint, sx: f64, sy: f64) -> Self {
+        let map = |p: GPoint| {
+            GPoint::new(center.x + (p.x - center.x) * sx, center.y + (p.y - center.y) * sy)
+        };
+        let verbs = self
+            .verbs
+            .iter()
+            .map(|verb| match *verb {
+                PathVerb::MoveTo(p) => PathVerb::MoveTo(map(p)),
+                PathVerb::LineTo(p) => PathVerb::LineTo(map(p)),
+                PathVerb::QuadTo(c, p) => PathVerb::QuadTo(map(c), map(p)),
+                PathVerb::CubicTo(c1, c2, p) => {
+                    PathVerb::CubicTo(map(c1), map(c2), map(p))
+                }
+                PathVerb::Close => PathVerb::Close,
+            })
+            .collect();
+        Self { verbs }
+    }
+
     /// Flattens curves to polygons within `tolerance`, one contour per
     /// subpath. Closure points are not duplicated.
     #[must_use]

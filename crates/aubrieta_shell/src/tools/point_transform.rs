@@ -67,9 +67,13 @@ impl PointTransformTool {
 
                 if let (Some(p0), Some(p1)) = (start, current) {
                     let pivot = self.pivot.unwrap_or(p0);
-                    let a0 = (p0.y - pivot.y).atan2(p0.x - pivot.x);
-                    let a1 = (p1.y - pivot.y).atan2(p1.x - pivot.x);
-                    let delta_angle = a1 - a0;
+                    // Shared primitive rejects degenerate vectors instead of
+                    // applying an atan2(0,0) phantom rotation (Table B).
+                    let Some(delta_angle) =
+                        aubrieta_geometry::pivot_angle_delta(p0, p1, pivot)
+                    else {
+                        return Ok(ChangeSet::empty());
+                    };
 
                     let selected = bridge.selection().selected_ids;
                     let mut combined = ChangeSet::empty();

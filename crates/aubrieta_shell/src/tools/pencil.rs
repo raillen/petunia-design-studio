@@ -1,9 +1,8 @@
 //! Freehand path sketching and curve fitting tool (10.2).
 
-use aubrieta_application::{Command, CommandRequest};
 use aubrieta_document::ChangeSet;
 use aubrieta_foundation::AubrietaError;
-use aubrieta_geometry::{GPath, GPoint, PathVerb};
+use aubrieta_geometry::GPoint;
 
 use crate::bridge::AubrietaGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
@@ -92,11 +91,11 @@ impl PencilTool {
             .and_then(|s| s.active_surface())
             .ok_or_else(|| AubrietaError::invalid_input("no active surface for path creation"))?;
 
-        let mut path = GPath::new();
-        let _ = path.push(PathVerb::MoveTo(pts[0]));
-        for pt in &pts[1..] {
-            let _ = path.push(PathVerb::LineTo(*pt));
-        }
+        // Shared freehand pipeline (10.2, F-14): simplify, smooth, fit.
+        // Deterministic; pressure/width stay POST_V1.
+        let smoothed = aubrieta_geometry::smooth_samples(pts, 1.5, 1);
+        let path = aubrieta_geometry::fit_midpoint_quads(&smoothed)
+            .map_err(AubrietaError::invalid_input)?;
 
         let bounds = path
             .bounding_box()
@@ -104,37 +103,26 @@ impl PencilTool {
             .unwrap_or([pts[0].x, pts[0].y, 10.0, 10.0]);
 
         let obj_id = bridge.next_object_id()?;
-        let mut combined = ChangeSet::empty();
 
-        let c1 = bridge.submit_command(CommandRequest::new(Command::CreateObject {
-            surface: active_surface,
-            id: obj_id,
-            name: "Freehand Path".to_string(),
-        }))?;
-        combined.extend(c1);
-
-        let c2 = bridge.submit_command(CommandRequest::new(Command::SetBounds {
-            id: obj_id,
-            bounds: Some(bounds),
-            rotation: 0.0,
-        }))?;
-        combined.extend(c2);
-
-        let c3 = bridge.submit_command(CommandRequest::new(Command::SetShape {
-            id: obj_id,
-            shape: Some(aubrieta_document::ShapeKind::Path(path)),
-        }))?;
-        combined.extend(c3);
-
-        let c4 = bridge.submit_command(CommandRequest::new(Command::SetStroke {
-            id: obj_id,
-            stroke: Some("aubrieta.gray/900".to_string()),
-            width: 2.0,
-        }))?;
-        combined.extend(c4);
+        // One gesture, one undo entry (F-01).
+        let changes = bridge.submit_all(
+            "Freehand path",
+            aubrieta_application::create_shape_commands(
+                active_surface,
+                obj_id,
+                "Freehand Path",
+                aubrieta_document::ShapeKind::Path(path),
+                Some(bounds),
+                None,
+                Some((
+                    aubrieta_document::shape_factory::DEFAULT_PATH_STROKE.to_string(),
+                    aubrieta_document::shape_factory::DEFAULT_PENCIL_STROKE_WIDTH,
+                )),
+            ),
+        )?;
 
         bridge.set_selection(vec![obj_id]);
-        Ok(combined)
+        Ok(changes)
     }
 
     /// Resolves live preview overlays for active freehand drawing.

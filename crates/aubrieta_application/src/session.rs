@@ -104,16 +104,16 @@ impl DocumentSession {
     #[must_use]
     pub fn new(title: impl Into<String>) -> Self {
         let document = Document::default();
-        let active_surface = document.surfaces.first().map(|s| s.id);
+        let active_surface = document.surfaces().first().map(|s| s.id);
         let max_id = document
-            .surfaces
+            .surfaces()
             .iter()
             .map(|s| s.id.raw())
             .chain(
                 document
-                    .surfaces
+                    .surfaces()
                     .iter()
-                    .flat_map(|s| s.objects.iter().map(|o| o.id.raw())),
+                    .flat_map(|s| s.objects().iter().map(|o| o.id.raw())),
             )
             .max()
             .unwrap_or(0);
@@ -132,16 +132,16 @@ impl DocumentSession {
     /// Creates a session wrapping an existing document.
     #[must_use]
     pub fn with_document(title: impl Into<String>, document: Document) -> Self {
-        let active_surface = document.surfaces.first().map(|s| s.id);
+        let active_surface = document.surfaces().first().map(|s| s.id);
         let max_id = document
-            .surfaces
+            .surfaces()
             .iter()
             .map(|s| s.id.raw())
             .chain(
                 document
-                    .surfaces
+                    .surfaces()
                     .iter()
-                    .flat_map(|s| s.objects.iter().map(|o| o.id.raw())),
+                    .flat_map(|s| s.objects().iter().map(|o| o.id.raw())),
             )
             .max()
             .unwrap_or(0);
@@ -161,9 +161,9 @@ impl DocumentSession {
     pub fn next_object_id(&mut self) -> ObjectId {
         let max_existing = self
             .document
-            .surfaces
+            .surfaces()
             .iter()
-            .flat_map(|s| s.objects.iter().map(|o| o.id.raw()))
+            .flat_map(|s| s.objects().iter().map(|o| o.id.raw()))
             .max()
             .unwrap_or(0);
         let id = self.id_generator.next_object();
@@ -179,7 +179,7 @@ impl DocumentSession {
     pub fn next_surface_id(&mut self) -> SurfaceId {
         let max_existing = self
             .document
-            .surfaces
+            .surfaces()
             .iter()
             .map(|s| s.id.raw())
             .max()
@@ -259,7 +259,7 @@ impl DocumentSession {
     /// All surfaces in document order.
     #[must_use]
     pub fn surfaces(&self) -> &[aubrieta_document::Surface] {
-        &self.document.surfaces
+        self.document.surfaces()
     }
 
     /// Finds a variable data source by stable ID.
@@ -274,7 +274,7 @@ impl DocumentSession {
     /// All variable data bindings in definition order.
     #[must_use]
     pub fn bindings(&self) -> &[DataBinding] {
-        &self.document.bindings
+        self.document.bindings()
     }
 
     /// Executes a command request through history, updating the revision and pruning selection.
@@ -320,6 +320,31 @@ impl DocumentSession {
         }
     }
 
+    /// Executes a batch of commands atomically as one undo entry (F-01).
+    /// Used by creation gestures (pen/pencil/shape/text/artboard): one
+    /// gesture commits exactly one history entry. Empty batches are a NoOp.
+    pub fn transact(
+        &mut self,
+        label: &str,
+        cmds: Vec<Command>,
+    ) -> Result<ChangeSet, AubrietaError> {
+        if cmds.is_empty() {
+            return Ok(ChangeSet::empty());
+        }
+        let mut tx = super::transaction::Transaction::begin(&self.document, label);
+        for cmd in cmds {
+            tx.update(&CommandRequest::new(cmd))?;
+        }
+        let staged = tx.staged().clone();
+        if staged.is_empty() {
+            return Ok(staged);
+        }
+        tx.commit(&mut self.document, &mut self.history);
+        self.current_revision += 1;
+        self.prune_selection();
+        Ok(staged)
+    }
+
     /// Undoes the last committed command.
     pub fn undo(&mut self) -> Result<bool, AubrietaError> {
         let undone = self.history.undo(&mut self.document)?;
@@ -344,7 +369,7 @@ impl DocumentSession {
     pub fn select_all(&mut self) {
         if let Some(surface_id) = self.active_surface {
             if let Ok(surface) = self.document.surface(surface_id) {
-                let all_ids: Vec<ObjectId> = surface.objects.iter().map(|o| o.id).collect();
+                let all_ids: Vec<ObjectId> = surface.objects().iter().map(|o| o.id).collect();
                 self.selection.select_exact(all_ids);
             }
         }
@@ -354,9 +379,9 @@ impl DocumentSession {
     pub fn prune_selection(&mut self) {
         let valid_ids: Vec<ObjectId> = self
             .document
-            .surfaces
+            .surfaces()
             .iter()
-            .flat_map(|s| s.objects.iter().map(|o| o.id))
+            .flat_map(|s| s.objects().iter().map(|o| o.id))
             .collect();
         self.selection.prune_missing(&valid_ids);
     }
@@ -364,10 +389,10 @@ impl DocumentSession {
     /// Resolves high-level document metrics.
     #[must_use]
     pub fn summary(&self) -> DocumentSummary {
-        let total_objects = self.document.surfaces.iter().map(|s| s.objects.len()).sum();
+        let total_objects = self.document.surfaces().iter().map(|s| s.objects().len()).sum();
         DocumentSummary {
             title: self.title.clone(),
-            surface_count: self.document.surfaces.len(),
+            surface_count: self.document.surfaces().len(),
             total_objects,
             revision: self.current_revision,
             is_dirty: self.is_dirty(),
@@ -417,13 +442,13 @@ impl DocumentSession {
     /// Builds a full session snapshot.
     #[must_use]
     pub fn snapshot(&self) -> SessionSnapshot {
-        let total_objects = self.document.surfaces.iter().map(|s| s.objects.len()).sum();
+        let total_objects = self.document.surfaces().iter().map(|s| s.objects().len()).sum();
         SessionSnapshot {
             active_surface: self.active_surface,
             title: self.title.clone(),
             revision: self.current_revision,
             is_dirty: self.is_dirty(),
-            surface_count: self.document.surfaces.len(),
+            surface_count: self.document.surfaces().len(),
             total_objects,
             selected_count: self.selection.selected_ids.len(),
             can_undo: self.history.can_undo(),
@@ -437,13 +462,13 @@ impl DocumentSession {
         let mut surfaces = Vec::new();
         let mut rows = Vec::new();
 
-        for surface in &self.document.surfaces {
+        for surface in self.document.surfaces() {
             let is_active = self.active_surface == Some(surface.id);
             surfaces.push(SurfaceRowViewModel {
                 id: surface.id,
                 name: surface.name.clone(),
                 is_active,
-                object_count: surface.objects.len(),
+                object_count: surface.objects().len(),
                 origin: surface.origin,
                 dimensions: surface.dimensions,
                 bleed: surface.bleed,
@@ -455,7 +480,7 @@ impl DocumentSession {
             let mut visited = std::collections::HashSet::new();
 
             // First emit root-level objects and recursively their subtrees
-            for obj in &surface.objects {
+            for obj in surface.objects() {
                 if obj.parent.is_none() {
                     Self::push_layer_tree_rows(
                         surface,
@@ -469,7 +494,7 @@ impl DocumentSession {
             }
 
             // Fallback for any unparented/orphaned nodes
-            for obj in &surface.objects {
+            for obj in surface.objects() {
                 if !visited.contains(&obj.id) {
                     Self::push_layer_tree_rows(
                         surface,
@@ -527,7 +552,7 @@ impl DocumentSession {
         });
 
         for &child_id in &obj.children {
-            if let Some(child) = surface.objects.iter().find(|o| o.id == child_id) {
+            if let Some(child) = surface.objects().iter().find(|o| o.id == child_id) {
                 Self::push_layer_tree_rows(surface, child, depth + 1, selected_ids, rows, visited);
             }
         }
@@ -545,7 +570,7 @@ impl DocumentSession {
                         id: s.id,
                         name: s.name.clone(),
                         is_active: true,
-                        object_count: s.objects.len(),
+                        object_count: s.objects().len(),
                         origin: s.origin,
                         dimensions: s.dimensions,
                         bleed: s.bleed,
@@ -577,7 +602,7 @@ impl DocumentSession {
                     locked: obj.locked,
                     bounds: obj.bounds,
                     rotation: obj.rotation,
-                    appearance: Some(obj.effective_appearance()),
+                    appearance: obj.appearance.clone(),
                     active_surface: None,
                 };
             }
@@ -615,7 +640,7 @@ impl DocumentSession {
             locked: selected_objects.iter().any(|o| o.locked),
             bounds: sel_vm.combined_bounds,
             rotation: 0.0,
-            appearance: key_obj.map(|o| o.effective_appearance()),
+            appearance: None,
             active_surface: None,
         }
     }
@@ -626,7 +651,7 @@ impl DocumentSession {
         let mut sources = Vec::new();
         let mut total_records = 0;
 
-        for ds in &self.document.data_sources {
+        for ds in self.document.data_sources() {
             total_records += ds.records.len();
             let fields: Vec<FieldViewModel> = ds
                 .schema
@@ -650,7 +675,7 @@ impl DocumentSession {
         }
 
         let mut bindings = Vec::new();
-        for b in &self.document.bindings {
+        for b in self.document.bindings() {
             let field_name = self
                 .document
                 .data_source(b.source_id)

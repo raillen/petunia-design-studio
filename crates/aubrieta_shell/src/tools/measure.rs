@@ -9,16 +9,8 @@ use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
 use aubrieta_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
 
-/// Measurement readout data.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct MeasurementReadout {
-    pub start: GPoint,
-    pub end: GPoint,
-    pub dx: f64,
-    pub dy: f64,
-    pub distance: f64,
-    pub angle_deg: f64,
-}
+/// Measurement readout data (shared primitive, Table B).
+pub use aubrieta_geometry::measure::MeasurementReadout;
 
 /// Interactive measurement tool providing transient HUD dimensions without altering document state.
 #[derive(Clone, Debug, Default)]
@@ -47,18 +39,7 @@ impl MeasureTool {
     #[must_use]
     pub fn readout(&self) -> Option<MeasurementReadout> {
         let (p0, p1) = (self.start_doc?, self.current_doc?);
-        let dx = p1.x - p0.x;
-        let dy = p1.y - p0.y;
-        let distance = (dx * dx + dy * dy).sqrt();
-        let angle_deg = dy.atan2(dx).to_degrees();
-        Some(MeasurementReadout {
-            start: p0,
-            end: p1,
-            dx,
-            dy,
-            distance,
-            angle_deg,
-        })
+        Some(aubrieta_geometry::measure_readout(p0, p1))
     }
 
     /// Handles normalized pointer events.

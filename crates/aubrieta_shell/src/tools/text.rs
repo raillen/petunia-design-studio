@@ -1,6 +1,5 @@
 //! Typography text creation tools (10.6).
 
-use aubrieta_application::{Command, CommandRequest};
 use aubrieta_document::ChangeSet;
 use aubrieta_foundation::AubrietaError;
 use aubrieta_geometry::{GPoint, GRect};
@@ -113,52 +112,27 @@ impl TextTool {
             .ok_or_else(|| AubrietaError::invalid_input("no active surface for text creation"))?;
 
         let obj_id = bridge.next_object_id()?;
-        let name = match self.mode {
-            TextToolMode::Artistic => "Artistic Text",
-            TextToolMode::Frame => "Text Frame",
+        let (name, text_shape) = match self.mode {
+            TextToolMode::Artistic => aubrieta_document::shape_factory::artistic_text(),
+            TextToolMode::Frame => aubrieta_document::shape_factory::frame_text(),
         };
 
-        let mut combined = ChangeSet::empty();
-
-        let c1 = bridge.submit_command(CommandRequest::new(Command::CreateObject {
-            surface: active_surface,
-            id: obj_id,
-            name: name.to_string(),
-        }))?;
-        combined.extend(c1);
-
-        let c2 = bridge.submit_command(CommandRequest::new(Command::SetBounds {
-            id: obj_id,
-            bounds: Some(bounds),
-            rotation: 0.0,
-        }))?;
-        combined.extend(c2);
-
-        let text_shape = aubrieta_document::ShapeKind::Text {
-            content: "Aubrieta Typography".to_string(),
-            font_family: "Inter".to_string(),
-            font_size: if self.mode == TextToolMode::Artistic {
-                24.0
-            } else {
-                14.0
-            },
-            line_height: 1.3,
-            letter_spacing: 0.0,
-        };
-        let c3 = bridge.submit_command(CommandRequest::new(Command::SetShape {
-            id: obj_id,
-            shape: Some(text_shape),
-        }))?;
-        combined.extend(c3);
-
-        let c4 = bridge.submit_command(CommandRequest::new(Command::SetFill {
-            id: obj_id,
-            fill: Some("aubrieta.gray/900".to_string()),
-        }))?;
-        combined.extend(c4);
+        // One gesture, one undo entry (F-01).
+        let changes = bridge.submit_all(
+            "Create text",
+            aubrieta_application::create_shape_commands(
+                active_surface,
+                obj_id,
+                name,
+                text_shape,
+                Some(bounds),
+                Some(aubrieta_document::shape_factory::DEFAULT_TEXT_FILL.to_string()),
+                None,
+            ),
+        )?;
 
         bridge.set_selection(vec![obj_id]);
-        Ok(combined)
+        Ok(changes)
     }
 
     /// Resolves overlays when dragging out a frame text bounding box.

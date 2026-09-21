@@ -124,7 +124,7 @@ Every reusable component specifies:
 
 # No raw toolkit leakage
 
-GPUI entities/elements/actions/assets may exist inside `aubrieta_ui_gpui`. They may not appear in domain/application public interfaces, canonical PropertyDescriptor contracts, document serialization, plugin APIs or MCP schemas.
+GPUI entities/elements/actions/assets may exist inside `aubrieta_shell`. They may not appear in domain/application public interfaces, canonical PropertyDescriptor contracts, document serialization, plugin APIs or MCP schemas.
 
 If a feature needs GPUI-only functionality, expose the smallest toolkit-neutral semantic capability at the bridge and implement it in the adapter.
 

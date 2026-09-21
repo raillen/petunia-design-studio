@@ -35,8 +35,7 @@ pub fn simplify_rdp(points: &[GPoint], epsilon: f64) -> Vec<GPoint> {
         let denom = (dx * dx + dy * dy).sqrt().max(1e-9);
         let mut max_dist = 0.0;
         let mut max_idx = first;
-        for i in (first + 1)..last {
-            let p = points[i];
+        for (i, p) in points.iter().enumerate().take(last).skip(first + 1) {
             let dist = ((dy * p.x - dx * p.y + b.x * a.y - b.y * a.x).abs()) / denom;
             if dist > max_dist {
                 max_dist = dist;

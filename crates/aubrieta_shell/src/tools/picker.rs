@@ -1,6 +1,5 @@
 //! Eyedropper and style sampling tools (08.24, 09.25, 10.4).
 
-use aubrieta_application::{Command, CommandRequest};
 use aubrieta_document::ChangeSet;
 use aubrieta_foundation::AubrietaError;
 
@@ -64,7 +63,7 @@ impl PickerTool {
 
         // Hit-test in reverse draw order (topmost first)
         let hit_object = surface
-            .objects
+            .objects()
             .iter()
             .rev()
             .find(|obj| obj.hit_test(pt))
@@ -76,52 +75,39 @@ impl PickerTool {
         };
 
         let selected_ids = bridge.selection().selected_ids;
-        let mut combined = ChangeSet::empty();
+        let mut all_cmds = Vec::new();
 
         match self.mode {
             PickerMode::Color => {
                 if let Some(fill) = hit.fill {
                     for sel_id in selected_ids {
-                        let cmd = CommandRequest::new(Command::SetFill {
+                        all_cmds.push(aubrieta_application::Command::SetFill {
                             id: sel_id,
                             fill: Some(fill.clone()),
                         });
-                        let c = bridge.submit_command(cmd)?;
-                        combined.extend(c);
                     }
                 }
             }
             PickerMode::Style => {
+                let style = aubrieta_application::appearance_service::sample_style(&hit);
                 for sel_id in selected_ids {
-                    if let Some(fill) = &hit.fill {
-                        let c1 = bridge.submit_command(CommandRequest::new(Command::SetFill {
-                            id: sel_id,
-                            fill: Some(fill.clone()),
-                        }))?;
-                        combined.extend(c1);
-                    }
-                    if let Some(stroke) = &hit.stroke {
-                        let c2 =
-                            bridge.submit_command(CommandRequest::new(Command::SetStroke {
-                                id: sel_id,
-                                stroke: Some(stroke.clone()),
-                                width: hit.stroke_width,
-                            }))?;
-                        combined.extend(c2);
-                    }
-                    if let Some(app) = &hit.appearance {
-                        let c3 =
-                            bridge.submit_command(CommandRequest::new(Command::SetAppearance {
-                                id: sel_id,
-                                appearance: Some(app.clone()),
-                            }))?;
-                        combined.extend(c3);
-                    }
+                    all_cmds.extend(
+                        aubrieta_application::appearance_service::style_sample_commands(
+                            sel_id, &style,
+                        ),
+                    );
                 }
             }
         }
 
-        Ok(combined)
+        if all_cmds.is_empty() {
+            return Ok(ChangeSet::empty());
+        }
+        let label = match self.mode {
+            PickerMode::Color => "Pick color",
+            PickerMode::Style => "Pick style",
+        };
+        bridge.submit_all(label, all_cmds)
     }
 
     /// Resolves overlays (none for eyedropper sampling).

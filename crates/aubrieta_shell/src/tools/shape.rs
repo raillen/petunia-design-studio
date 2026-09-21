@@ -1,6 +1,5 @@
 //! Parametric shape creation tools (10.3).
 
-use aubrieta_application::{Command, CommandRequest};
 use aubrieta_document::ChangeSet;
 use aubrieta_foundation::AubrietaError;
 use aubrieta_geometry::{GPoint, GRect};
@@ -124,71 +123,30 @@ impl ShapeTool {
         let obj_id = bridge.next_object_id()?;
 
         let (name, doc_shape) = match self.kind {
-            ShapeKind::Rectangle => (
-                "Rectangle",
-                aubrieta_document::ShapeKind::Rectangle {
-                    corner_radii: [0.0; 4],
-                },
-            ),
-            ShapeKind::Ellipse => ("Ellipse", aubrieta_document::ShapeKind::Ellipse),
-            ShapeKind::Polygon => (
-                "Polygon",
-                aubrieta_document::ShapeKind::Polygon { sides: 5 },
-            ),
-            ShapeKind::Star => (
-                "Star",
-                aubrieta_document::ShapeKind::Star {
-                    points: 5,
-                    inner_ratio: 0.5,
-                },
-            ),
+            ShapeKind::Rectangle => aubrieta_document::shape_factory::rectangle(),
+            ShapeKind::Ellipse => aubrieta_document::shape_factory::ellipse(),
+            ShapeKind::Polygon => aubrieta_document::shape_factory::polygon(),
+            ShapeKind::Star => aubrieta_document::shape_factory::star(),
         };
 
-        let mut combined = ChangeSet::empty();
-
-        let create_cmd = CommandRequest::new(Command::CreateObject {
-            surface: active_surface,
-            id: obj_id,
-            name: name.to_string(),
-        });
-        let c1 = bridge.submit_command(create_cmd)?;
-        for c in c1.changes {
-            combined.push(c);
-        }
-
-        let bounds_cmd = CommandRequest::new(Command::SetBounds {
-            id: obj_id,
-            bounds: Some(bounds),
-            rotation: 0.0,
-        });
-        let c2 = bridge.submit_command(bounds_cmd)?;
-        for c in c2.changes {
-            combined.push(c);
-        }
-
-        let shape_cmd = CommandRequest::new(Command::SetShape {
-            id: obj_id,
-            shape: Some(doc_shape),
-        });
-        let c_shape = bridge.submit_command(shape_cmd)?;
-        for c in c_shape.changes {
-            combined.push(c);
-        }
-
-        // Set default fill and stroke
-        let fill_cmd = CommandRequest::new(Command::SetFill {
-            id: obj_id,
-            fill: Some("aubrieta.blue/500".to_string()),
-        });
-        let c3 = bridge.submit_command(fill_cmd)?;
-        for c in c3.changes {
-            combined.push(c);
-        }
+        // One gesture, one undo entry (F-01).
+        let changes = bridge.submit_all(
+            "Create shape",
+            aubrieta_application::create_shape_commands(
+                active_surface,
+                obj_id,
+                name,
+                doc_shape,
+                Some(bounds),
+                Some(aubrieta_document::shape_factory::DEFAULT_SHAPE_FILL.to_string()),
+                None,
+            ),
+        )?;
 
         // Select the newly created shape
         bridge.set_selection(vec![obj_id]);
 
-        Ok(combined)
+        Ok(changes)
     }
 
     /// Resolves overlays for the Shape tool during drag.

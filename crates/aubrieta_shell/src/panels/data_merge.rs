@@ -97,6 +97,7 @@ impl DataMergePanelController {
     }
 
     /// Evaluates preflight findings for a data source against the document template.
+    /// Delegates to the shared engine implementation (Table B).
     pub fn preflight(
         &self,
         bridge: &AubrietaGuiBridge,
@@ -105,75 +106,6 @@ impl DataMergePanelController {
         let session = bridge
             .session()
             .ok_or_else(|| AubrietaError::invalid_input("no active document session"))?;
-        let source = session.data_source(source_id).ok_or_else(|| {
-            AubrietaError::not_found(format!("data source `{source_id}` not found"))
-        })?;
-
-        let mut findings = Vec::new();
-
-        // 1. Check for unbound fields
-        for field in &source.schema.fields {
-            let has_binding = session
-                .document
-                .bindings
-                .iter()
-                .any(|b| b.source_id == source_id && b.field_id == field.id);
-            if !has_binding {
-                findings.push(PreflightFinding {
-                    record_key: "*".to_string(),
-                    object_id: None,
-                    field_id: Some(field.id),
-                    message: format!("Field `{}` has no document property bindings", field.name),
-                    is_blocking: false,
-                });
-            }
-        }
-
-        // 2. Check each record for missing required values or bad paths
-        for record in &source.records {
-            for binding in session.bindings() {
-                if binding.source_id != source_id {
-                    continue;
-                }
-                match record.get(binding.field_id) {
-                    None | Some(aubrieta_document::FieldValue::Null) => {
-                        if matches!(
-                            binding.missing_policy,
-                            aubrieta_document::MissingValuePolicy::Fail
-                        ) {
-                            findings.push(PreflightFinding {
-                                record_key: record.key.clone(),
-                                object_id: Some(binding.target_object),
-                                field_id: Some(binding.field_id),
-                                message: format!(
-                                    "Record `{}` missing required value for field `{}`",
-                                    record.key, binding.field_id
-                                ),
-                                is_blocking: true,
-                            });
-                        }
-                    }
-                    Some(aubrieta_document::FieldValue::ImageRef(path)) => {
-                        if let Err(e) =
-                            aubrieta_document::PathSecurity::sanitize_relative_path(path)
-                        {
-                            findings.push(PreflightFinding {
-                                record_key: record.key.clone(),
-                                object_id: Some(binding.target_object),
-                                field_id: Some(binding.field_id),
-                                message: format!(
-                                    "Record `{}` image path security error: {e}",
-                                    record.key
-                                ),
-                                is_blocking: true,
-                            });
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        Ok(findings)
+        aubrieta_application::data_merge::preflight(session.document(), source_id)
     }
 }

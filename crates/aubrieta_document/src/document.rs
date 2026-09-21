@@ -24,8 +24,9 @@ pub struct Surface {
     pub id: SurfaceId,
     /// Human label. Not identity.
     pub name: String,
-    /// Objects owned by this surface, in z-order.
-    pub objects: Vec<DocumentObject>,
+    /// Objects owned by this surface, in z-order. Crate-visible (A4): read via
+    /// `objects()`, mutate only through `DocumentMutator`.
+    pub(crate) objects: Vec<DocumentObject>,
     /// Global origin coordinate [x, y] in document pasteboard points.
     #[serde(default)]
     pub origin: [f64; 2],
@@ -88,6 +89,27 @@ impl Surface {
             self.dimensions[1] + self.bleed.top + self.bleed.bottom,
         ]
     }
+
+    /// Objects owned by this surface in z-order (A4 read lane).
+    #[must_use]
+    pub fn objects(&self) -> &[DocumentObject] {
+        &self.objects
+    }
+
+    /// Builds a surface pre-populated with objects in z-order (A4).
+    /// Test fixtures and engine restore paths use this instead of
+    /// pushing into storage directly.
+    #[must_use]
+    pub fn with_objects(
+        id: SurfaceId,
+        name: impl Into<String>,
+        objects: Vec<DocumentObject>,
+    ) -> Self {
+        Self {
+            objects,
+            ..Self::new(id, name)
+        }
+    }
 }
 
 /// Canonical document: owns surfaces; objects live inside surfaces.
@@ -95,14 +117,17 @@ impl Surface {
 pub struct Document {
     /// Schema version of this payload.
     pub schema_version: u32,
-    /// Surfaces in document order.
-    pub surfaces: Vec<Surface>,
-    /// Variable data source definitions (10.11).
+    /// Surfaces in document order. Crate-visible (A4): read via `surfaces()`,
+    /// mutate only through `DocumentMutator`.
+    pub(crate) surfaces: Vec<Surface>,
+    /// Variable data source definitions (10.11). Crate-visible (A4): read via
+    /// `data_sources()`, mutate only through `DocumentMutator`.
     #[serde(default)]
-    pub data_sources: Vec<crate::variable_data::DataSourceDefinition>,
-    /// Variable data property bindings (10.11).
+    pub(crate) data_sources: Vec<crate::variable_data::DataSourceDefinition>,
+    /// Variable data property bindings (10.11). Crate-visible (A4): read via
+    /// `bindings()`, mutate only through `DocumentMutator`.
     #[serde(default)]
-    pub bindings: Vec<crate::variable_data::DataBinding>,
+    pub(crate) bindings: Vec<crate::variable_data::DataBinding>,
 }
 
 impl Document {
@@ -141,6 +166,24 @@ impl Document {
         id: crate::variable_data::BindingId,
     ) -> Option<&crate::variable_data::DataBinding> {
         self.bindings.iter().find(|b| b.id == id)
+    }
+
+    /// All surfaces in document order (A4 read lane).
+    #[must_use]
+    pub fn surfaces(&self) -> &[Surface] {
+        &self.surfaces
+    }
+
+    /// All variable data source definitions (A4 read lane).
+    #[must_use]
+    pub fn data_sources(&self) -> &[crate::variable_data::DataSourceDefinition] {
+        &self.data_sources
+    }
+
+    /// All variable data property bindings (A4 read lane).
+    #[must_use]
+    pub fn bindings(&self) -> &[crate::variable_data::DataBinding] {
+        &self.bindings
     }
 
     /// Finds a surface by stable ID.

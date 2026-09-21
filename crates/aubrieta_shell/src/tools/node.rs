@@ -106,7 +106,7 @@ impl NodeTool {
                 if let Some(session) = bridge.session() {
                     if let Some(surface_id) = session.active_surface() {
                         if let Ok(surface) = session.surface(surface_id) {
-                            for obj in surface.objects.iter().rev() {
+                            for obj in surface.objects().iter().rev() {
                                 if let Some([x, y, w, h]) = obj.bounds {
                                     if event.doc_pos.x >= x
                                         && event.doc_pos.x <= x + w
@@ -143,17 +143,13 @@ impl NodeTool {
                         if let Some(session) = bridge.session() {
                             if let Some(obj) = session.find_object(obj_id) {
                                 if let Some(ShapeKind::Path(mut path)) = obj.shape.clone() {
-                                    if let Some(verb) = path.verbs.get_mut(idx) {
-                                        match verb {
-                                            PathVerb::MoveTo(pt) | PathVerb::LineTo(pt) => {
-                                                *pt = event.doc_pos;
-                                            }
-                                            PathVerb::QuadTo(_, pt)
-                                            | PathVerb::CubicTo(_, _, pt) => {
-                                                *pt = event.doc_pos;
-                                            }
-                                            PathVerb::Close => {}
-                                        }
+                                    // Shared primitive moves endpoint and control
+                                    // handles together, preserving tangents (Table B).
+                                    if aubrieta_geometry::move_verb_to(
+                                        &mut path.verbs,
+                                        idx,
+                                        event.doc_pos,
+                                    ) {
                                         updated_path = Some(path);
                                     }
                                 }

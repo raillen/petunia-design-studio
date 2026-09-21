@@ -3,7 +3,7 @@
 use aubrieta_application::{Command, CommandRequest};
 use aubrieta_document::ChangeSet;
 use aubrieta_foundation::AubrietaError;
-use aubrieta_geometry::{BooleanOp, GPoint};
+use aubrieta_geometry::GPoint;
 
 use crate::bridge::AubrietaGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
@@ -87,18 +87,17 @@ impl ShapeBuilderTool {
                         })?;
 
                     let target_id = bridge.next_object_id()?;
-                    let op = if event.modifiers.from_center {
-                        BooleanOp::Difference
-                    } else {
-                        BooleanOp::Union
-                    };
+                    let plan = aubrieta_application::boolean_service::plan_boolean(
+                        &selected,
+                        event.modifiers.from_center,
+                    )?;
 
                     let boolean_cmd = CommandRequest::new(Command::ApplyBoolean {
                         surface: active_surface,
                         target_id,
-                        subject_id: selected[0],
-                        clip_id: selected[1],
-                        op,
+                        subject_id: plan.subject_id,
+                        clip_id: plan.clip_id,
+                        op: plan.op,
                     });
                     let changes = bridge.submit_command(boolean_cmd)?;
                     bridge.set_selection(vec![target_id]);

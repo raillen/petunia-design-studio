@@ -1,6 +1,5 @@
 //! Pen tool state machine for Bézier path construction (10.2).
 
-use aubrieta_application::{Command, CommandRequest};
 use aubrieta_document::ChangeSet;
 use aubrieta_foundation::AubrietaError;
 use aubrieta_geometry::GPoint;
@@ -232,19 +231,43 @@ impl PenTool {
             .ok_or_else(|| AubrietaError::invalid_input("no active surface for path creation"))?;
 
         let obj_id = bridge.next_object_id()?;
+        let anchor_count = self.anchors.len();
 
-        // Calculate bounding box across anchors
+        // Absolute handle positions + bounding box over anchors and handles.
         let mut min_x = f64::MAX;
         let mut min_y = f64::MAX;
         let mut max_x = f64::MIN;
         let mut max_y = f64::MIN;
-
-        for a in &self.anchors {
-            min_x = min_x.min(a.point.x);
-            min_y = min_y.min(a.point.y);
-            max_x = max_x.max(a.point.x);
-            max_y = max_y.max(a.point.y);
-        }
+        let mut include = |p: aubrieta_geometry::GPoint| {
+            min_x = min_x.min(p.x);
+            min_y = min_y.min(p.y);
+            max_x = max_x.max(p.x);
+            max_y = max_y.max(p.y);
+        };
+        let abs_anchors: Vec<(
+            aubrieta_geometry::GPoint,
+            Option<aubrieta_geometry::GPoint>,
+            Option<aubrieta_geometry::GPoint>,
+        )> = self
+            .anchors
+            .iter()
+            .map(|a| {
+                let abs_in = a
+                    .handle_in
+                    .map(|off| aubrieta_geometry::GPoint::new(a.point.x + off.x, a.point.y + off.y));
+                let abs_out = a.handle_out.map(|off| {
+                    aubrieta_geometry::GPoint::new(a.point.x + off.x, a.point.y + off.y)
+                });
+                include(a.point);
+                if let Some(h) = abs_in {
+                    include(h);
+                }
+                if let Some(h) = abs_out {
+                    include(h);
+                }
+                (a.point, abs_in, abs_out)
+            })
+            .collect();
 
         let bounds = [
             min_x,
@@ -253,58 +276,27 @@ impl PenTool {
             (max_y - min_y).max(1.0),
         ];
 
-        let mut combined = ChangeSet::empty();
+        // Bézier handles are preserved via the shared geometry builder (F-02):
+        // segments with handles become CubicTo, otherwise LineTo.
+        let path = aubrieta_geometry::anchors_to_path(&abs_anchors, _closed)
+            .map_err(AubrietaError::invalid_input)?;
 
-        let create_cmd = CommandRequest::new(Command::CreateObject {
-            surface: active_surface,
-            id: obj_id,
-            name: format!("Path {}", self.anchors.len()),
-        });
-        let c1 = bridge.submit_command(create_cmd)?;
-        for c in c1.changes {
-            combined.push(c);
-        }
-
-        let bounds_cmd = CommandRequest::new(Command::SetBounds {
-            id: obj_id,
-            bounds: Some(bounds),
-            rotation: 0.0,
-        });
-        let c2 = bridge.submit_command(bounds_cmd)?;
-        for c in c2.changes {
-            combined.push(c);
-        }
-
-        // Construct path from anchors
-        let mut path = aubrieta_geometry::GPath::new();
-        if let Some(first) = self.anchors.first() {
-            let _ = path.push(aubrieta_geometry::PathVerb::MoveTo(first.point));
-            for a in &self.anchors[1..] {
-                let _ = path.push(aubrieta_geometry::PathVerb::LineTo(a.point));
-            }
-            if _closed {
-                let _ = path.push(aubrieta_geometry::PathVerb::Close);
-            }
-        }
-        let shape_cmd = CommandRequest::new(Command::SetShape {
-            id: obj_id,
-            shape: Some(aubrieta_document::ShapeKind::Path(path)),
-        });
-        let c_shape = bridge.submit_command(shape_cmd)?;
-        for c in c_shape.changes {
-            combined.push(c);
-        }
-
-        // Set default stroke
-        let stroke_cmd = CommandRequest::new(Command::SetStroke {
-            id: obj_id,
-            stroke: Some("aubrieta.gray/900".to_string()),
-            width: 1.5,
-        });
-        let c3 = bridge.submit_command(stroke_cmd)?;
-        for c in c3.changes {
-            combined.push(c);
-        }
+        // One gesture, one undo entry (F-01).
+        let changes = bridge.submit_all(
+            "Create path",
+            aubrieta_application::create_shape_commands(
+                active_surface,
+                obj_id,
+                format!("Path {anchor_count}"),
+                aubrieta_document::ShapeKind::Path(path),
+                Some(bounds),
+                None,
+                Some((
+                    aubrieta_document::shape_factory::DEFAULT_PATH_STROKE.to_string(),
+                    aubrieta_document::shape_factory::DEFAULT_PATH_STROKE_WIDTH,
+                )),
+            ),
+        )?;
 
         // Select the newly created path
         bridge.set_selection(vec![obj_id]);
@@ -313,7 +305,7 @@ impl PenTool {
         self.anchors.clear();
         self.phase = PenPhase::Idle;
 
-        Ok(combined)
+        Ok(changes)
     }
 
     /// Resolves preview overlays for the Pen tool.

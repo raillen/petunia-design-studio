@@ -160,7 +160,7 @@ fn select_tool_drag_translation_and_duplicate_drag() {
     let dup_obj = bridge
         .session()
         .unwrap()
-        .document
+        .document()
         .find_object(dup_id)
         .unwrap();
     assert_eq!(dup_obj.bounds, Some([150.0, 150.0, 100.0, 100.0]));
@@ -279,7 +279,7 @@ fn shape_tool_creates_constrained_square() {
     let sel_obj = bridge
         .session()
         .unwrap()
-        .document
+        .document()
         .find_object(sel_obj_id)
         .unwrap();
 
