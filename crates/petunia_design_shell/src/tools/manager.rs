@@ -334,8 +334,8 @@ impl ToolManager {
             ToolKind::VectorFloodFill => self.smart_fill_tool.overlays(),
             ToolKind::ArtisticText => self.artistic_text_tool.overlays(camera),
             ToolKind::FrameText => self.frame_text_tool.overlays(camera),
-            ToolKind::Gradient => self.gradient_tool.overlays(),
-            ToolKind::Transparency => self.transparency_tool.overlays(),
+            ToolKind::Gradient => self.gradient_tool.overlays(bridge, camera),
+            ToolKind::Transparency => self.transparency_tool.overlays(bridge, camera),
             ToolKind::ColorPicker => self.color_picker_tool.overlays(),
             ToolKind::StylePicker => self.style_picker_tool.overlays(),
             ToolKind::Artboard => self.artboard_tool.overlays(camera),
@@ -349,7 +349,7 @@ impl ToolManager {
             ToolKind::FloodSelect => self.photo_flood_select_tool.overlays(camera),
             ToolKind::PixelPaintBrush => self.photo_brush_tool.overlays(camera),
             ToolKind::PixelEraser => self.photo_eraser_tool.overlays(camera),
-            ToolKind::PhotoGradient => self.photo_gradient_tool.overlays(),
+            ToolKind::PhotoGradient => self.photo_gradient_tool.overlays(bridge, camera),
             ToolKind::Crop => self.photo_crop_tool.overlays(camera),
         }
     }

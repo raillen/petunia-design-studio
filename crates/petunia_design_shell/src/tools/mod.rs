@@ -20,7 +20,7 @@ pub mod view;
 
 pub use artboard::ArtboardTool;
 pub use contour::{ContourMode, ContourTool};
-pub use gradient::{GradientTool, GradientToolMode};
+pub use gradient::{GradientKind, GradientTool, GradientToolMode};
 pub use knife::{KnifeMode, KnifeTool};
 pub use manager::ToolManager;
 pub use measure::{MeasureTool, MeasurementReadout};

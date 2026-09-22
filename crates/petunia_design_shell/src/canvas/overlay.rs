@@ -185,6 +185,26 @@ pub fn hit_test_handle_or_border(
     None
 }
 
+/// Gradient overlay kind for the gradient line preview.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GradientOverlayKind {
+    Linear,
+    Radial,
+}
+
+/// Committed gradient line plus stop handles, in screen space.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GradientOverlay {
+    /// Gradient vector start (line start or radial center).
+    pub start: GPoint,
+    /// Gradient vector end (line end or radial edge).
+    pub end: GPoint,
+    /// `(offset, handle position)` per stop.
+    pub stops: Vec<(f64, GPoint)>,
+    /// Geometry kind being previewed.
+    pub kind: GradientOverlayKind,
+}
+
 /// Aggregate canvas overlays currently rendered over artwork.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CanvasOverlays {
@@ -206,4 +226,6 @@ pub struct CanvasOverlays {
     pub marquee_additive: bool,
     /// True while the active marquee/lasso removes from the selection (Alt).
     pub marquee_subtractive: bool,
+    /// Committed gradient line plus stop handles, if a gradient is selected.
+    pub gradient: Option<GradientOverlay>,
 }

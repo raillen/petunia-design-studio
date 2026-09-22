@@ -2199,3 +2199,459 @@ fn knife_converts_parametric_in_batch() {
         Some(petunia_design_document::ShapeKind::Rectangle { .. })
     ));
 }
+
+fn gradient_test_object(
+    bridge: &mut PetuniaDesignGuiBridge,
+    fill: &str,
+) -> petunia_design_foundation::ObjectId {
+    let surface_id = bridge.active_surface().unwrap();
+    let mut gen = IdGenerator::new();
+    let id = gen.next_object();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id,
+            name: "GradBox".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some([0.0, 0.0, 200.0, 100.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    bridge.set_fill(id, Some(fill.to_string())).unwrap();
+    bridge.clear_selection();
+    bridge.set_selection(vec![id]);
+    id
+}
+
+fn primary_linear(
+    bridge: &PetuniaDesignGuiBridge,
+    id: petunia_design_foundation::ObjectId,
+) -> Option<petunia_design_document::LinearGradient> {
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    match obj
+        .effective_appearance()
+        .primary_fill()
+        .map(|f| f.paint.clone())
+    {
+        Some(petunia_design_document::Paint::LinearGradient(g)) => Some(g),
+        _ => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn gradient_drag(
+    tool: &mut GradientTool,
+    bridge: &mut PetuniaDesignGuiBridge,
+    camera: &ViewportCamera,
+    snap: &mut SnapEngine,
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+    modifiers: SemanticModifiers,
+) {
+    let p0 = GPoint::new(x0, y0);
+    let p1 = GPoint::new(x1, y1);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(
+            PointerPhase::Down,
+            PointerButton::Primary,
+            p0,
+            p0,
+            modifiers,
+        ),
+        bridge,
+        camera,
+        snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(
+            PointerPhase::Move,
+            PointerButton::Primary,
+            p1,
+            p1,
+            modifiers,
+        ),
+        bridge,
+        camera,
+        snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Up, PointerButton::Primary, p1, p1, modifiers),
+        bridge,
+        camera,
+        snap,
+    )
+    .unwrap();
+}
+
+#[test]
+fn gradient_linear_drag_creates_two_stop_gradient() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Gradient Create").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    let mut tool = GradientTool::new(GradientToolMode::Fill);
+
+    gradient_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        10.0,
+        50.0,
+        110.0,
+        50.0,
+        SemanticModifiers::default(),
+    );
+
+    let g = primary_linear(&bridge, id).expect("linear gradient");
+    assert_eq!(g.start, [10.0, 50.0]);
+    assert_eq!(g.end, [110.0, 50.0]);
+    assert_eq!(g.stops.len(), 2);
+    assert!(g.stops.iter().all(|s| s.color == "ptnd.red/500"));
+}
+
+#[test]
+fn gradient_shift_snaps_vector_to_45_degrees() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Gradient Shift").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    let mut tool = GradientTool::new(GradientToolMode::Fill);
+    let shift = SemanticModifiers {
+        constrain: true,
+        ..Default::default()
+    };
+
+    gradient_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        10.0,
+        50.0,
+        110.0,
+        100.0,
+        shift,
+    );
+
+    let g = primary_linear(&bridge, id).expect("linear gradient");
+    // atan2(50, 100) rounds to 45° with distance preserved.
+    assert!((g.end[0] - g.start[0] - (g.end[1] - g.start[1])).abs() < 1e-6);
+}
+
+#[test]
+fn gradient_click_never_creates() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Gradient Click").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    let mut tool = GradientTool::new(GradientToolMode::Fill);
+    let plain = SemanticModifiers::default();
+
+    gradient_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        50.0,
+        50.0,
+        50.0,
+        50.0,
+        plain,
+    );
+
+    assert!(primary_linear(&bridge, id).is_none());
+}
+
+#[test]
+fn gradient_redrag_repositions_and_keeps_stops() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Gradient Move").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    let mut tool = GradientTool::new(GradientToolMode::Fill);
+    let plain = SemanticModifiers::default();
+
+    gradient_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        10.0,
+        50.0,
+        110.0,
+        50.0,
+        plain,
+    );
+    // Second drag far from stops (stops sit at x=10/110, y=50).
+    std::thread::sleep(std::time::Duration::from_millis(450));
+    gradient_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        0.0,
+        0.0,
+        200.0,
+        100.0,
+        plain,
+    );
+
+    let g = primary_linear(&bridge, id).expect("linear gradient");
+    assert_eq!(g.start, [0.0, 0.0]);
+    assert_eq!(g.end, [200.0, 100.0]);
+    assert_eq!(g.stops.len(), 2);
+}
+
+#[test]
+fn gradient_double_click_adds_sampled_stop() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Gradient Add").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    let mut tool = GradientTool::new(GradientToolMode::Fill);
+    let plain = SemanticModifiers::default();
+    gradient_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        10.0,
+        50.0,
+        110.0,
+        50.0,
+        plain,
+    );
+
+    // Double-click the middle of the line: sampled stop appears.
+    let p = GPoint::new(60.0, 50.0);
+    for phase in [PointerPhase::Down, PointerPhase::Down] {
+        tool.on_pointer_event(
+            &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p, p, plain),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+        tool.on_pointer_event(
+            &NormalizedPointerEvent::new(phase, PointerButton::Primary, p, p, plain),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    }
+
+    let g = primary_linear(&bridge, id).expect("linear gradient");
+    assert_eq!(g.stops.len(), 3);
+    assert!((g.stops[1].offset - 0.5).abs() < 1e-6);
+    bridge.undo().unwrap();
+    assert_eq!(primary_linear(&bridge, id).unwrap().stops.len(), 2);
+}
+
+#[test]
+fn gradient_double_click_on_stop_removes_but_keeps_two() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Gradient Remove").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    let mut tool = GradientTool::new(GradientToolMode::Fill);
+    let plain = SemanticModifiers::default();
+    gradient_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        10.0,
+        50.0,
+        110.0,
+        50.0,
+        plain,
+    );
+
+    // Add a middle stop first (double-click at x=60).
+    let mid = GPoint::new(60.0, 50.0);
+    for _ in 0..2 {
+        tool.on_pointer_event(
+            &NormalizedPointerEvent::new(
+                PointerPhase::Down,
+                PointerButton::Primary,
+                mid,
+                mid,
+                plain,
+            ),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    }
+    assert_eq!(primary_linear(&bridge, id).unwrap().stops.len(), 3);
+
+    // Double-click exactly on the middle stop removes it…
+    std::thread::sleep(std::time::Duration::from_millis(450));
+    for _ in 0..2 {
+        tool.on_pointer_event(
+            &NormalizedPointerEvent::new(
+                PointerPhase::Down,
+                PointerButton::Primary,
+                mid,
+                mid,
+                plain,
+            ),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    }
+    assert_eq!(primary_linear(&bridge, id).unwrap().stops.len(), 2);
+
+    // …but the last two stops are protected.
+    std::thread::sleep(std::time::Duration::from_millis(450));
+    let end = GPoint::new(110.0, 50.0);
+    for _ in 0..2 {
+        tool.on_pointer_event(
+            &NormalizedPointerEvent::new(
+                PointerPhase::Down,
+                PointerButton::Primary,
+                end,
+                end,
+                plain,
+            ),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    }
+    assert_eq!(primary_linear(&bridge, id).unwrap().stops.len(), 2);
+}
+
+#[test]
+fn gradient_stop_drag_moves_offset() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Gradient Stop").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    let mut tool = GradientTool::new(GradientToolMode::Fill);
+    let plain = SemanticModifiers::default();
+    gradient_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        10.0,
+        50.0,
+        110.0,
+        50.0,
+        plain,
+    );
+
+    // Add a middle stop, then drag it from x=60 to x=85 (t 0.5 -> 0.75).
+    let mid = GPoint::new(60.0, 50.0);
+    for _ in 0..2 {
+        tool.on_pointer_event(
+            &NormalizedPointerEvent::new(
+                PointerPhase::Down,
+                PointerButton::Primary,
+                mid,
+                mid,
+                plain,
+            ),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(450));
+    let p = GPoint::new(60.0, 50.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p, p, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    let q = GPoint::new(85.0, 50.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, q, q, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Up, PointerButton::Primary, q, q, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let g = primary_linear(&bridge, id).expect("linear gradient");
+    assert_eq!(g.stops.len(), 3);
+    assert!((g.stops[1].offset - 0.75).abs() < 1e-6, "got {:?}", g.stops);
+}
+
+#[test]
+fn gradient_radial_drag_sets_center_and_radius() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Gradient Radial").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    let mut tool = GradientTool::new(GradientToolMode::Fill);
+    tool.set_kind(GradientKind::Radial);
+
+    gradient_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        100.0,
+        50.0,
+        150.0,
+        50.0,
+        SemanticModifiers::default(),
+    );
+
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    match obj
+        .effective_appearance()
+        .primary_fill()
+        .map(|f| f.paint.clone())
+    {
+        Some(petunia_design_document::Paint::RadialGradient(g)) => {
+            assert_eq!(g.center, [100.0, 50.0]);
+            assert!((g.radius - 50.0).abs() < 1e-6);
+        }
+        _ => panic!("expected radial gradient"),
+    }
+}

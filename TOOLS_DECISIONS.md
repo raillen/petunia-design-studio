@@ -22,7 +22,20 @@ Doutrina-mãe: ADR 09.31 (`petunia-design-studio/09 31 — Non-Destructive Editi
 | # | Batch | Escopo | Motivo da ordem |
 |---|---|---|---|
 | 6 | Knife × Scissors | Linha de corte amostrada em 1 undo; tesoura por clique; auto-convert no batch | Pequeno, fecha a família 10.2 |
-| 7 | Gradient | Stops múltiplos, radial/cônico, snap de ângulo, preview vivo | Médio, sem modelo novo |
+| 7 | Gradient | Stops múltiplos, radial, snap de ângulo, preview vivo | Médio, sem modelo novo |
+
+## Batch 7 — Gradient (decisões)
+
+- **Linear + Radial, sem cônico.** `Paint` não tem `ConicGradient` e SVG/PDF não
+  o representam — modelo novo + fallback de export é outro batch. Registrado futuro.
+- **Stops no canvas:** duplo-clique na linha adiciona (cor amostrada do ponto
+  médio em literal `rgb()`), duplo-clique no stop remove (mínimo 2), arrastar
+  move offset (Shift = passos de 0.05). Overlay `GradientOverlay` novo expõe
+  linha + alças (aditivo em `CanvasOverlays`, sem quebrar leitores).
+- **Sem cor inventada:** criação a partir de sólido duplica a cor nos 2 stops;
+  troca de geometria preserva stops; `sort_and_reindex` mantém ids estáveis.
+- **Clique nunca cria** (limiar 3 px). Shift trava vetor em 45°. Um gesto, um undo.
+- **Transparency intocado:** continua proxy documentado até virar modificador (batch 10).
 | 8 | Picker + Measure | Amostra stroke/gradiente/appearance; Measure com área | Pequenos, mesmo padrão |
 | 9 | ShapeBuilder | Síntese booleana de região com highlight + 1 undo | Médio, usa boolean avaliado |
 | 10 | Transparency como modificador | `TransparentGradient` vira 2º `ModifierKind` (gatilho de revisita do ADR: generaliza identidade/ordem) | Médio-grande, valida a fundação |
