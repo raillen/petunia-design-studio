@@ -23,7 +23,7 @@ pub use contour::{ContourMode, ContourTool};
 pub use gradient::{GradientKind, GradientTool, GradientToolMode};
 pub use knife::{KnifeMode, KnifeTool};
 pub use manager::ToolManager;
-pub use measure::{MeasureTool, MeasurementReadout};
+pub use measure::{AreaReadout, MeasureMode, MeasureTool, MeasurementReadout};
 pub use node::NodeTool;
 pub use pen::{NodeType, PenAnchor, PenCursorHint, PenPhase, PenTool};
 pub use pencil::{PencilFidelity, PencilTool};

@@ -2655,3 +2655,286 @@ fn gradient_radial_drag_sets_center_and_radius() {
         _ => panic!("expected radial gradient"),
     }
 }
+
+fn picker_test_box(
+    bridge: &mut PetuniaDesignGuiBridge,
+    gen: &mut IdGenerator,
+    name: &str,
+    bounds: [f64; 4],
+    fill: Option<&str>,
+    stroke: Option<(&str, f64)>,
+) -> petunia_design_foundation::ObjectId {
+    let surface_id = bridge.active_surface().unwrap();
+    let id = gen.next_object();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id,
+            name: name.to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some(bounds),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    if let Some(fill) = fill {
+        bridge.set_fill(id, Some(fill.to_string())).unwrap();
+    }
+    if let Some((stroke, width)) = stroke {
+        bridge
+            .set_stroke(id, Some(stroke.to_string()), width)
+            .unwrap();
+    }
+    id
+}
+
+fn picker_click(
+    tool: &mut PickerTool,
+    bridge: &mut PetuniaDesignGuiBridge,
+    camera: &ViewportCamera,
+    snap: &mut SnapEngine,
+    x: f64,
+    y: f64,
+) {
+    let p = GPoint::new(x, y);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(
+            PointerPhase::Up,
+            PointerButton::Primary,
+            p,
+            p,
+            SemanticModifiers::default(),
+        ),
+        bridge,
+        camera,
+        snap,
+    )
+    .unwrap();
+}
+
+#[test]
+fn picker_color_samples_fill_and_stroke() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Picker Color").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    picker_test_box(
+        &mut bridge,
+        &mut gen,
+        "Source",
+        [10.0, 10.0, 80.0, 80.0],
+        Some("ptnd.red/500"),
+        Some(("ptnd.blue/500", 3.0)),
+    );
+    let target = picker_test_box(
+        &mut bridge,
+        &mut gen,
+        "Target",
+        [200.0, 200.0, 50.0, 50.0],
+        Some("ptnd.gray/500"),
+        None,
+    );
+    bridge.clear_selection();
+    bridge.set_selection(vec![target]);
+    let mut tool = PickerTool::new(PickerMode::Color);
+
+    picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
+
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(target)
+        .unwrap();
+    let stack = obj.effective_appearance();
+    let fill_paint = stack.primary_fill().map(|f| f.paint.clone());
+    assert!(matches!(
+        fill_paint,
+        Some(petunia_design_document::Paint::Solid(ref t)) if t == "ptnd.red/500"
+    ));
+    let stroke = stack.primary_stroke().expect("stroke");
+    assert!(
+        matches!(&stroke.paint, petunia_design_document::Paint::Solid(t) if t == "ptnd.blue/500")
+    );
+    assert!((stroke.width - 3.0).abs() < 1e-9);
+}
+
+#[test]
+fn picker_color_keeps_sampled_gradient() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Picker Gradient").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let source = picker_test_box(
+        &mut bridge,
+        &mut gen,
+        "Source",
+        [10.0, 10.0, 80.0, 80.0],
+        Some("ptnd.red/500"),
+        None,
+    );
+    // Give the source a real linear gradient via the gradient tool.
+    bridge.clear_selection();
+    bridge.set_selection(vec![source]);
+    let mut gtool = GradientTool::new(GradientToolMode::Fill);
+    gradient_drag(
+        &mut gtool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        10.0,
+        50.0,
+        90.0,
+        50.0,
+        SemanticModifiers::default(),
+    );
+    let target = picker_test_box(
+        &mut bridge,
+        &mut gen,
+        "Target",
+        [200.0, 200.0, 50.0, 50.0],
+        Some("ptnd.gray/500"),
+        None,
+    );
+    bridge.clear_selection();
+    bridge.set_selection(vec![target]);
+    let mut tool = PickerTool::new(PickerMode::Color);
+
+    picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
+
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(target)
+        .unwrap();
+    assert!(matches!(
+        obj.effective_appearance()
+            .primary_fill()
+            .map(|f| f.paint.clone()),
+        Some(petunia_design_document::Paint::LinearGradient(_))
+    ));
+}
+
+#[test]
+fn picker_skips_locked_objects() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Picker Locked").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    // Locked red box on top of an unlocked blue box (topmost = last created).
+    picker_test_box(
+        &mut bridge,
+        &mut gen,
+        "Below",
+        [10.0, 10.0, 80.0, 80.0],
+        Some("ptnd.blue/500"),
+        None,
+    );
+    let locked = picker_test_box(
+        &mut bridge,
+        &mut gen,
+        "Locked",
+        [10.0, 10.0, 80.0, 80.0],
+        Some("ptnd.red/500"),
+        None,
+    );
+    bridge.set_locked(locked, true).unwrap();
+    let target = picker_test_box(
+        &mut bridge,
+        &mut gen,
+        "Target",
+        [200.0, 200.0, 50.0, 50.0],
+        Some("ptnd.gray/500"),
+        None,
+    );
+    bridge.clear_selection();
+    bridge.set_selection(vec![target]);
+    let mut tool = PickerTool::new(PickerMode::Color);
+
+    // The locked top box is skipped: the blue box below is sampled.
+    picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
+
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(target)
+        .unwrap();
+    assert!(matches!(
+        obj.effective_appearance().primary_fill().map(|f| f.paint.clone()),
+        Some(petunia_design_document::Paint::Solid(ref t)) if t == "ptnd.blue/500"
+    ));
+}
+
+#[test]
+fn measure_area_drag_reports_rect() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Measure Area").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = MeasureTool::new();
+    tool.set_mode(MeasureMode::Area);
+    let plain = SemanticModifiers::default();
+
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 30.0, 40.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 10.0, 10.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let readout = tool.area_readout().expect("area");
+    assert_eq!(
+        (
+            readout.width,
+            readout.height,
+            readout.area,
+            readout.perimeter
+        ),
+        (20.0, 30.0, 600.0, 100.0)
+    );
+    assert!(tool.overlays().marquee_screen.is_some());
+    // Distance mode is untouched and still the default.
+    assert_eq!(MeasureTool::new().mode(), MeasureMode::Distance);
+}
+
+#[test]
+fn measure_selection_totals_evaluated_areas() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Measure Total").expect("doc");
+    let mut gen = IdGenerator::new();
+    let a = picker_test_box(
+        &mut bridge,
+        &mut gen,
+        "A",
+        [0.0, 0.0, 10.0, 20.0],
+        None,
+        None,
+    );
+    let b = picker_test_box(
+        &mut bridge,
+        &mut gen,
+        "B",
+        [50.0, 50.0, 30.0, 40.0],
+        None,
+        None,
+    );
+
+    assert!((MeasureTool::measured_area(&bridge, &[a, b]) - (200.0 + 1200.0)).abs() < 1e-6);
+    assert_eq!(MeasureTool::measured_area(&bridge, &[]), 0.0);
+}

@@ -37,6 +37,25 @@ Doutrina-mãe: ADR 09.31 (`petunia-design-studio/09 31 — Non-Destructive Editi
 - **Clique nunca cria** (limiar 3 px). Shift trava vetor em 45°. Um gesto, um undo.
 - **Transparency intocado:** continua proxy documentado até virar modificador (batch 10).
 | 8 | Picker + Measure | Amostra stroke/gradiente/appearance; Measure com área | Pequenos, mesmo padrão |
+
+## Batch 8 — Picker + Measure (decisões)
+
+- **Color = par completo.** Amostra fill primário (sólido ou gradiente preservado)
+  + stroke (paint + largura) e aplica via um `SetAppearance` por alvo: preserva
+  resto da stack, 1 undo. Style continua stack inteira. Sem split por modificador
+  (previsível > esperto).
+- **Travados nunca amostram** (filtro `visible && !locked` — faltava).
+- **Measure com área:** `MeasureMode::{Distance, Area}`; arrasto = retângulo
+  (área + perímetro, overlay marquee); parado com seleção = soma das áreas
+  avaliadas (`measured_area`, respeita modificadores vivos).
+- **Infra:** `AreaReadout`/`area_readout` na geometria (Table B) para a UI ler.
+
+## Nota de infra (descoberta nos batches 7–8)
+
+- O `target-dir` compartilhado entre worktrees envenena fingerprints quando dois
+  agentes compilam juntos (sintomas: itens "inexistentes" que existem).
+  **Regra: `CARGO_TARGET_DIR=/tmp/petunia-tools-target` em todo comando cargo
+  desta worktree.**
 | 9 | ShapeBuilder | Síntese booleana de região com highlight + 1 undo | Médio, usa boolean avaliado |
 | 10 | Transparency como modificador | `TransparentGradient` vira 2º `ModifierKind` (gatilho de revisita do ADR: generaliza identidade/ordem) | Médio-grande, valida a fundação |
 | 11 | Text-on-Path | Handles start/end, fluxo no path | Médio, spec 10.6 V1 |
