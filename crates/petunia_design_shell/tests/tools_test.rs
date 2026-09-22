@@ -1654,3 +1654,311 @@ fn node_marquee_selects_several_nodes() {
 
     assert_eq!(tool.selected_nodes().len(), 2);
 }
+
+fn corner_test_rect(
+    bridge: &mut PetuniaDesignGuiBridge,
+    bounds: [f64; 4],
+) -> petunia_design_foundation::ObjectId {
+    let surface_id = bridge.active_surface().unwrap();
+    let mut gen = IdGenerator::new();
+    let id = gen.next_object();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id,
+            name: "CornerRect".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            }),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some(bounds),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    bridge.clear_selection();
+    id
+}
+
+fn contour_rect_radii(
+    bridge: &PetuniaDesignGuiBridge,
+    id: petunia_design_foundation::ObjectId,
+) -> [f64; 4] {
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    match obj.shape.as_ref().unwrap() {
+        petunia_design_document::ShapeKind::Rectangle { corner_radii } => *corner_radii,
+        _ => panic!("expected rectangle"),
+    }
+}
+
+#[test]
+fn corner_drag_edits_single_corner_with_one_undo() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Corner Tool").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = corner_test_rect(&mut bridge, [0.0, 0.0, 100.0, 100.0]);
+    let mut tool = ContourTool::new(ContourMode::Corner);
+    let plain = SemanticModifiers::default();
+
+    // Grab the top-left corner widget and pull outward.
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 5.0, 5.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert!(tool.is_active());
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, -30.0, -30.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert!(tool.overlays(&bridge, &camera).marquee_screen.is_some());
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, -30.0, -30.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let radii = contour_rect_radii(&bridge, id);
+    assert!(radii[0] > 40.0 && radii[0] <= 50.0, "got {radii:?}");
+    assert_eq!([radii[1], radii[2], radii[3]], [0.0, 0.0, 0.0]);
+
+    // One undo restores the sharp rectangle.
+    bridge.undo().unwrap();
+    assert_eq!(contour_rect_radii(&bridge, id), [0.0; 4]);
+}
+
+#[test]
+fn corner_shift_drag_edits_all_four() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Corner All").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = corner_test_rect(&mut bridge, [0.0, 0.0, 100.0, 100.0]);
+    let mut tool = ContourTool::new(ContourMode::Corner);
+    let shift = SemanticModifiers {
+        constrain: true,
+        ..Default::default()
+    };
+
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 5.0, 5.0, shift),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, -30.0, -30.0, shift),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, -30.0, -30.0, shift),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let radii = contour_rect_radii(&bridge, id);
+    assert!(radii.iter().all(|r| *r > 40.0), "got {radii:?}");
+}
+
+#[test]
+fn contour_drag_sets_live_modifier_with_one_undo() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Contour Live").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = corner_test_rect(&mut bridge, [0.0, 0.0, 100.0, 100.0]);
+    bridge.set_selection(vec![id]);
+    let mut tool = ContourTool::new(ContourMode::Contour);
+    let plain = SemanticModifiers::default();
+
+    // Drag outward from the center: radial delta +40.
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 50.0, 50.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 90.0, 50.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 90.0, 50.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    // Live modifier set; base geometry untouched.
+    let mods = bridge.modifiers(id);
+    assert_eq!(mods.len(), 1);
+    let petunia_design_document::ModifierKind::ContourOffset { distance, .. } = &mods[0].kind;
+    assert!((distance - 40.0).abs() < 1e-6, "got {distance}");
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    assert!(matches!(
+        obj.shape,
+        Some(petunia_design_document::ShapeKind::Rectangle { .. })
+    ));
+    assert_eq!(obj.bounds, Some([0.0, 0.0, 100.0, 100.0]));
+    // …but the evaluated outline grew.
+    let eval = obj.evaluated_bounds().unwrap();
+    assert!((eval[2] - 180.0).abs() < 2.0, "got {eval:?}");
+
+    // One undo clears the live offset.
+    bridge.undo().unwrap();
+    assert!(bridge.modifiers(id).is_empty());
+}
+
+#[test]
+fn contour_bake_commits_geometry_explicitly() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Contour Bake").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = corner_test_rect(&mut bridge, [0.0, 0.0, 100.0, 100.0]);
+    bridge.set_selection(vec![id]);
+    let mut tool = ContourTool::new(ContourMode::Contour);
+    let plain = SemanticModifiers::default();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 50.0, 50.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 90.0, 50.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 90.0, 50.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    bridge.bake_contour(id).unwrap();
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    assert!(matches!(
+        obj.shape,
+        Some(petunia_design_document::ShapeKind::Path(_))
+    ));
+    assert!(bridge.modifiers(id).is_empty());
+    let bounds = obj.bounds.unwrap();
+    assert!((bounds[2] - 180.0).abs() < 2.0, "got {bounds:?}");
+}
+
+#[test]
+fn corner_tool_leaves_non_rectangles_alone() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Corner Guard").expect("doc");
+    let surface_id = bridge.active_surface().unwrap();
+    let mut gen = IdGenerator::new();
+    let id = gen.next_object();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id,
+            name: "Oval".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Ellipse),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some([0.0, 0.0, 100.0, 60.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    bridge.set_selection(vec![id]);
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = ContourTool::new(ContourMode::Corner);
+    let plain = SemanticModifiers::default();
+
+    // No corner widgets on an ellipse: no drag, no silent bake.
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 50.0, 30.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert!(!tool.is_active());
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 90.0, 30.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 90.0, 30.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    assert!(matches!(
+        obj.shape,
+        Some(petunia_design_document::ShapeKind::Ellipse)
+    ));
+}

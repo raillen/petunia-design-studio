@@ -197,7 +197,7 @@ pub fn export_document_svg(document: &Document) -> String {
             .iter()
             .filter(|o| o.is_clip_mask && o.visible)
         {
-            let d = export_path_d(&mask.to_path());
+            let d = export_path_d(&mask.evaluated_path());
             if d.is_empty() {
                 continue;
             }
@@ -237,7 +237,7 @@ fn export_object_svg(
     let total_opacity = (eff.opacity * entry_opacity).clamp(0.0, 1.0);
 
     // Outline; un-outlinable shapes (text) fall back to their bounds rect.
-    let mut outline = obj.to_path();
+    let mut outline = obj.evaluated_path();
     let mut notes: Vec<String> = Vec::new();
     if outline.verbs.is_empty() {
         if let Some(b) = obj.bounds {

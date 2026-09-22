@@ -65,6 +65,10 @@ pub struct DocumentObject {
     /// Canonical vector shape or text content of this object, if not a container.
     #[serde(default)]
     pub shape: Option<ShapeKind>,
+    /// Ordered live modifier chain (the non-destructive EffectChain, 09.31).
+    /// Empty by default; evaluated on read, never stored as geometry.
+    #[serde(default)]
+    pub modifiers: Vec<crate::modifiers::ModifierItem>,
 }
 
 /// Canonical geometric shape or text content representation.
@@ -114,6 +118,7 @@ impl DocumentObject {
             clip_mask_id: None,
             mask_mode: crate::hierarchy::MaskMode::Vector,
             shape: None,
+            modifiers: Vec::new(),
         }
     }
 
@@ -122,13 +127,17 @@ impl DocumentObject {
     /// non-square bounds do not distort (F-20). Text has no outline: returns an
     /// empty path so `ConvertToCurves` must reject it explicitly instead of
     /// silently substituting a rectangle.
+    ///
+    /// This is the editable BASE source. Readers that must see live modifiers
+    /// (render, hit-test, selection, booleans, export) use
+    /// [`Self::evaluated_path`] instead. Node editing always targets base.
     #[must_use]
     pub fn to_path(&self) -> petunia_design_geometry::GPath {
         let b = self.bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
         let rect = petunia_design_geometry::GRect::new(b[0], b[1], b[0] + b[2], b[1] + b[3]);
         match &self.shape {
             Some(ShapeKind::Rectangle { corner_radii }) => {
-                petunia_design_geometry::GPath::rect(rect, corner_radii[0], corner_radii[0])
+                petunia_design_geometry::GPath::rect_corners(rect, *corner_radii)
             }
             Some(ShapeKind::Ellipse) => {
                 let rx = b[2] / 2.0;
@@ -156,11 +165,44 @@ impl DocumentObject {
         }
     }
 
+    /// Folds the live modifier chain over the base path (09.31).
+    /// Render, hit-testing, selection, booleans, and export read this;
+    /// editing tools write base. Empty chain returns base unchanged.
+    #[must_use]
+    pub fn evaluated_path(&self) -> petunia_design_geometry::GPath {
+        crate::modifiers::evaluate_modifiers(&self.to_path(), &self.modifiers)
+    }
+
+    /// Bounds of the evaluated outline, falling back to stored base bounds.
+    #[must_use]
+    pub fn evaluated_bounds(&self) -> Option<[f64; 4]> {
+        if self.modifiers.iter().any(|m| m.enabled) {
+            self.evaluated_path().bounding_box().map(|r| {
+                [
+                    r.x0,
+                    r.y0,
+                    r.width().max(1.0),
+                    r.height().max(1.0),
+                ]
+            })
+        } else {
+            self.bounds
+        }
+    }
+
     /// Hit-tests whether a document point lies within this object's shape or bounds.
     #[must_use]
     pub fn hit_test(&self, point: petunia_design_geometry::GPoint) -> bool {
         if !self.visible {
             return false;
+        }
+        if self.modifiers.iter().any(|m| m.enabled) {
+            // Live modifiers move the outline: test the evaluated geometry.
+            let evaluated = self.evaluated_path();
+            if evaluated.is_empty() {
+                return false;
+            }
+            return evaluated.contains_point(point, 0.5);
         }
         if let Some(b) = self.bounds {
             if point.x < b[0] || point.x > b[0] + b[2] || point.y < b[1] || point.y > b[1] + b[3] {

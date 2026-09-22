@@ -10,6 +10,7 @@ mod changeset;
 mod document;
 mod document_object;
 pub mod hierarchy;
+pub mod modifiers;
 mod mutator;
 pub mod shape_factory;
 pub mod surface_metadata;
@@ -24,6 +25,7 @@ pub use changeset::{Change, ChangeSet};
 pub use document::{Document, Surface};
 pub use document_object::{AlignmentMode, ArrangePosition, DistributionAxis, DocumentObject, ShapeKind};
 pub use hierarchy::{ContainerRole, HierarchyValidation, MaskMode};
+pub use modifiers::{ModifierItem, ModifierKind, evaluate_modifiers};
 pub use mutator::DocumentMutator;
 pub use surface_metadata::{Bleed, Guide, GuideOrientation, Margins};
 pub use variable_data::{

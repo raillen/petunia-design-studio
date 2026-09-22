@@ -441,6 +441,7 @@ export component MainWindow inherits Window {
     callback boolean_xor_clicked();
     callback convert_to_curves_clicked();
     callback bake_corners_clicked();
+    callback bake_contour_clicked();
     callback align_objects_clicked(string);
     callback distribute_objects_clicked(string);
     callback set_selected_color(color);
@@ -883,6 +884,11 @@ export component MainWindow inherits Window {
                     icon: IconSet.Maximize2;
                     tooltip: "Bake Cantos";
                     clicked => { root.bake_corners_clicked(); }
+                }
+                StudioIconButton {
+                    icon: IconSet.CircleDotDashed;
+                    tooltip: "Bake Contour (aplica offset vivo)";
+                    clicked => { root.bake_contour_clicked(); }
                 }
 
                 Rectangle { width: 1px; height: 18px; background: Tokens.border-subtle; y: 10px; }

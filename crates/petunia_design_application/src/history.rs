@@ -190,6 +190,9 @@ impl Replayer {
                 Change::AppearanceChanged { id, next, .. } => {
                     mutator.set_appearance(id, next)?;
                 }
+                Change::ModifiersChanged { id, next, .. } => {
+                    mutator.set_modifiers(id, next)?;
+                }
                 Change::Reparented {
                     id, next_parent, ..
                 } => {

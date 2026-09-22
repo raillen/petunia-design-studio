@@ -293,8 +293,89 @@ impl GPath {
         path
     }
 
-    /// Creates a straight line segment from `p1` to `p2`.
+    /// Creates a rectangle with one radius per corner:
+    /// `[top-left, top-right, bottom-right, bottom-left]` (clockwise).
+    /// Each radius clamps to half the shortest edge so corners never
+    /// overlap. Zero radii stay sharp lines.
     #[must_use]
+    pub fn rect_corners(rect: GRect, radii: [f64; 4]) -> Self {
+        const KAPPA: f64 = 0.5522847498307936;
+        let (x0, y0, x1, y1) = (rect.x0, rect.y0, rect.x1, rect.y1);
+        let limit = rect.width().max(0.0).min(rect.height().max(0.0)) / 2.0;
+        let [tl, tr, br, bl] = [
+            radii[0].abs().min(limit),
+            radii[1].abs().min(limit),
+            radii[2].abs().min(limit),
+            radii[3].abs().min(limit),
+        ];
+        let mut path = Self::new();
+        let edge_to = |path: &mut Self, p: GPoint| {
+            if path.is_empty() {
+                let _ = path.push(PathVerb::MoveTo(p));
+            } else {
+                let _ = path.push(PathVerb::LineTo(p));
+            }
+        };
+        // Quarter-circle arc as one cubic through tangent points.
+        let corner_arc =
+            |path: &mut Self, start: GPoint, c1: GPoint, c2: GPoint, end: GPoint| {
+                edge_to(path, start);
+                let _ = path.push(PathVerb::CubicTo(c1, c2, end));
+            };
+        // Clockwise from the left of the top edge.
+        if tl > 1e-9 {
+            let (k, cx, cy) = (tl * KAPPA, x0 + tl, y0 + tl);
+            corner_arc(
+                &mut path,
+                GPoint::new(x0, cy),
+                GPoint::new(x0, cy - k),
+                GPoint::new(cx - k, y0),
+                GPoint::new(cx, y0),
+            );
+        } else {
+            edge_to(&mut path, GPoint::new(x0, y0));
+        }
+        if tr > 1e-9 {
+            let (k, cx, cy) = (tr * KAPPA, x1 - tr, y0 + tr);
+            corner_arc(
+                &mut path,
+                GPoint::new(cx, y0),
+                GPoint::new(cx + k, y0),
+                GPoint::new(x1, cy - k),
+                GPoint::new(x1, cy),
+            );
+        } else {
+            edge_to(&mut path, GPoint::new(x1, y0));
+        }
+        if br > 1e-9 {
+            let (k, cx, cy) = (br * KAPPA, x1 - br, y1 - br);
+            corner_arc(
+                &mut path,
+                GPoint::new(x1, cy),
+                GPoint::new(x1, cy + k),
+                GPoint::new(cx + k, y1),
+                GPoint::new(cx, y1),
+            );
+        } else {
+            edge_to(&mut path, GPoint::new(x1, y1));
+        }
+        if bl > 1e-9 {
+            let (k, cx, cy) = (bl * KAPPA, x0 + bl, y1 - bl);
+            corner_arc(
+                &mut path,
+                GPoint::new(cx, y1),
+                GPoint::new(cx - k, y1),
+                GPoint::new(x0, cy + k),
+                GPoint::new(x0, cy),
+            );
+        } else {
+            edge_to(&mut path, GPoint::new(x0, y1));
+        }
+        let _ = path.push(PathVerb::Close);
+        path
+    }
+
+    /// Creates a straight line segment from `p1` to `p2`.    #[must_use]
     pub fn line(p1: GPoint, p2: GPoint) -> Self {
         let mut path = Self::new();
         let _ = path.push(PathVerb::MoveTo(p1));
@@ -520,6 +601,39 @@ mod tests {
         let moved = triangle().transformed(GAffine::translate(10.0, 0.0));
         let bounds = moved.bounding_box().expect("bounds");
         assert_eq!(bounds, GRect::new(10.0, 0.0, 14.0, 3.0));
+    }
+
+    #[test]
+    fn rect_corners_all_sharp_matches_plain_rect() {
+        let sharp = GPath::rect_corners(GRect::new(0.0, 0.0, 100.0, 60.0), [0.0; 4]);
+        assert_eq!(sharp.bounding_box(), Some(GRect::new(0.0, 0.0, 100.0, 60.0)));
+        assert!(sharp.verbs.iter().all(|v| matches!(
+            v,
+            PathVerb::MoveTo(_) | PathVerb::LineTo(_) | PathVerb::Close
+        )));
+    }
+
+    #[test]
+    fn rect_corners_single_round_keeps_bounds() {
+        let one = GPath::rect_corners(GRect::new(0.0, 0.0, 100.0, 60.0), [20.0, 0.0, 0.0, 0.0]);
+        assert_eq!(one.bounding_box(), Some(GRect::new(0.0, 0.0, 100.0, 60.0)));
+        assert_eq!(
+            one.verbs.iter().filter(|v| matches!(v, PathVerb::CubicTo(_, _, _))).count(),
+            1
+        );
+    }
+
+    #[test]
+    fn rect_corners_clamp_huge_radii() {
+        let big = GPath::rect_corners(GRect::new(0.0, 0.0, 100.0, 60.0), [500.0; 4]);
+        let bounds = big.bounding_box().expect("bounds");
+        assert!((bounds.width() - 100.0).abs() < 1e-6, "got {bounds:?}");
+        assert!(big.verbs.iter().all(|v| match v {
+            PathVerb::MoveTo(p) | PathVerb::LineTo(p) => p.is_finite(),
+            PathVerb::QuadTo(c, p) => c.is_finite() && p.is_finite(),
+            PathVerb::CubicTo(c1, c2, p) => c1.is_finite() && c2.is_finite() && p.is_finite(),
+            PathVerb::Close => true,
+        }));
     }
 
     #[test]

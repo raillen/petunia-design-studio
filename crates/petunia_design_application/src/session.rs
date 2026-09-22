@@ -656,7 +656,8 @@ impl DocumentSession {
 
         for &id in &self.selection.selected_ids {
             if let Some(obj) = self.document.find_object(id) {
-                if let Some([x, y, w, h]) = obj.bounds {
+                // Selection follows the evaluated outline (09.31).
+                if let Some([x, y, w, h]) = obj.evaluated_bounds() {
                     has_bounds = true;
                     min_x = min_x.min(x);
                     min_y = min_y.min(y);

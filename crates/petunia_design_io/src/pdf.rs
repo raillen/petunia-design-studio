@@ -192,7 +192,7 @@ fn export_object(
 
     // Geometry: canonical outline; legacy grid fallback when unbounded so
     // old headless fixtures keep exporting (F-13).
-    let outline = obj.to_path();
+    let outline = obj.evaluated_path();
     let mut pb = PathBuilder::new();
     let mut has_geometry = false;
     for verb in &outline.verbs {
@@ -381,7 +381,7 @@ fn export_object(
     let mut clip_guard = false;
     if let Some(mask_id) = obj.clip_mask_id {
         if let Some(mask) = surface.objects().iter().find(|o| o.id == mask_id) {
-            let mask_verbs = mask.to_path().verbs;
+            let mask_verbs = mask.evaluated_path().verbs;
             if mask_verbs.is_empty() {
                 report.degradations.push(DegradationItem {
                     code: "CLIP_MASK_UNOUTLINABLE".to_string(),

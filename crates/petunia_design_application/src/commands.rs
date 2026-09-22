@@ -251,8 +251,16 @@ pub enum Command {
     ConvertToCurves { id: ObjectId },
     /// Bakes corner geometry into an explicit vector path (10.2, 10.3).
     BakeCorners { id: ObjectId },
-    /// Offsets a path or object bounds outward or inward (10.3).
+    /// Offsets an outline, non-destructively (09.31, 10.3).
+    /// Upserts the live `ContourOffset` modifier; base geometry is untouched.
     OffsetPath { id: ObjectId, delta: f64 },
+    /// Replaces an object's live modifier chain (09.31, one undo entry).
+    SetModifiers {
+        id: ObjectId,
+        modifiers: Vec<petunia_design_document::ModifierItem>,
+    },
+    /// Bakes live contour offsets into base geometry (explicit user op, 09.31).
+    BakeContour { id: ObjectId },
     /// Aligns multiple objects relative to their collective bounds (10.1).
     AlignObjects {
         surface: SurfaceId,
@@ -523,10 +531,11 @@ pub fn execute(
                 .clone();
 
             // Explicit flatten tolerance (F-21): part of the operation's
-            // evidence, no longer a magic literal.
+            // evidence, no longer a magic literal. Operands read evaluated
+            // (09.31): live modifiers participate without being consumed.
             let tolerance = petunia_design_geometry::GeometryTolerance::default_tolerance().clamped();
-            let subj_path = subject.to_path();
-            let clip_path = clip.to_path();
+            let subj_path = subject.evaluated_path();
+            let clip_path = clip.evaluated_path();
 
             let subj_input =
                 petunia_design_geometry::BooleanInput::new(subj_path.to_polygons(tolerance.flatten));
@@ -582,6 +591,8 @@ pub fn execute(
         Command::ConvertToCurves { id } => mutator.convert_to_curves(*id),
         Command::BakeCorners { id } => mutator.bake_corners(*id),
         Command::OffsetPath { id, delta } => mutator.offset_path(*id, *delta),
+        Command::SetModifiers { id, modifiers } => mutator.set_modifiers(*id, modifiers.clone()),
+        Command::BakeContour { id } => mutator.bake_contour(*id),
         Command::AlignObjects { surface, ids, mode } => mutator.align_objects(*surface, ids, *mode),
         Command::DistributeObjects { surface, ids, axis } => {
             mutator.distribute_objects(*surface, ids, *axis)

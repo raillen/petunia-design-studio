@@ -85,6 +85,12 @@ pub enum Change {
         previous: Option<crate::appearance::AppearanceStack>,
         next: Option<crate::appearance::AppearanceStack>,
     },
+    /// An object's live modifier chain changed (09.31).
+    ModifiersChanged {
+        id: ObjectId,
+        previous: Vec<crate::modifiers::ModifierItem>,
+        next: Vec<crate::modifiers::ModifierItem>,
+    },
     /// An object's parent in the canonical tree changed.
     Reparented {
         id: ObjectId,

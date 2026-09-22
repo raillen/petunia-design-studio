@@ -810,7 +810,7 @@ fn sync_ui_from_shell(window: &MainWindow, state: &PetuniaSlintState) {
                             let rot = GAffine::translate(b[0], b[1])
                                 .after(GAffine::rotate(obj.rotation))
                                 .after(GAffine::translate(-b[0], -b[1]));
-                            let rp = obj.to_path().transformed(rot);
+                            let rp = obj.evaluated_path().transformed(rot);
                             if let Some(bb) = rp.bounding_box() {
                                 draw_x = bb.x0;
                                 draw_y = bb.y0;
@@ -839,9 +839,10 @@ fn sync_ui_from_shell(window: &MainWindow, state: &PetuniaSlintState) {
                             Some(petunia_design_document::ShapeKind::Rectangle { corner_radii }) => {
                                 corner_radius = corner_radii[0] as f32;
                             }
-                            Some(petunia_design_document::ShapeKind::Path(path)) => {
-                                let local =
-                                    path.transformed(GAffine::translate(-b[0], -b[1]));
+                            Some(petunia_design_document::ShapeKind::Path(_)) => {
+                                let local = obj
+                                    .evaluated_path()
+                                    .transformed(GAffine::translate(-b[0], -b[1]));
                                 svg_path = local.to_svg_path_data();
                                 is_path = true;
                                 is_circle = false;
@@ -849,7 +850,7 @@ fn sync_ui_from_shell(window: &MainWindow, state: &PetuniaSlintState) {
                             Some(petunia_design_document::ShapeKind::Polygon { .. })
                             | Some(petunia_design_document::ShapeKind::Star { .. }) => {
                                 let local_path = obj
-                                    .to_path()
+                                    .evaluated_path()
                                     .transformed(GAffine::translate(-b[0], -b[1]));
                                 svg_path = local_path.to_svg_path_data();
                                 is_path = true;
@@ -1802,6 +1803,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let sel = st.shell.bridge.selection().selected_ids.clone();
             for id in sel {
                 let _ = st.shell.bridge.bake_corners(id);
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
+        });
+    }
+
+    // Bake contour (explicit commit of live offsets, 09.31)
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_bake_contour_clicked(move || {
+            let mut st = state_clone.borrow_mut();
+            let sel = st.shell.bridge.selection().selected_ids.clone();
+            for id in sel {
+                let _ = st.shell.bridge.bake_contour(id);
             }
             if let Some(win) = win_weak.upgrade() {
                 sync_ui_from_shell(&win, &st);

@@ -365,9 +365,78 @@ impl PetuniaDesignGuiBridge {
         self.submit_command(CommandRequest::new(Command::BakeCorners { id }))
     }
 
-    /// Offsets a path or object bounds outward or inward (10.3).
+    /// Offsets an outline, non-destructively (09.31, 10.3).
+    /// Upserts the live `ContourOffset` modifier; base geometry is untouched.
     pub fn offset_path(&mut self, id: ObjectId, delta: f64) -> Result<ChangeSet, PetuniaError> {
         self.submit_command(CommandRequest::new(Command::OffsetPath { id, delta }))
+    }
+
+    /// Replaces an object's live modifier chain (09.31, one undo entry).
+    pub fn set_modifiers(
+        &mut self,
+        id: ObjectId,
+        modifiers: Vec<petunia_design_document::ModifierItem>,
+    ) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::SetModifiers { id, modifiers }))
+    }
+
+    /// Sets an object's live contour offset with join/cap style (09.31).
+    /// Zero distance removes the entry. Base geometry is never touched.
+    pub fn set_contour_offset(
+        &mut self,
+        id: ObjectId,
+        distance: f64,
+        join: petunia_design_geometry::OffsetJoin,
+        cap: petunia_design_geometry::OffsetCap,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let next = {
+            let session = self.session_req_mut()?;
+            let obj = session.document().find_object(id).ok_or_else(|| {
+                PetuniaError::invalid_input(format!("object `{id}` does not exist"))
+            })?;
+            let mut next = obj.modifiers.clone();
+            if distance.abs() < 1e-9 {
+                next.retain(|m| {
+                    !matches!(
+                        m.kind,
+                        petunia_design_document::ModifierKind::ContourOffset { .. }
+                    )
+                });
+            } else if let Some(entry) = next.iter_mut().find(|m| {
+                matches!(
+                    m.kind,
+                    petunia_design_document::ModifierKind::ContourOffset { .. }
+                )
+            }) {
+                entry.kind = petunia_design_document::ModifierKind::ContourOffset {
+                    distance,
+                    join,
+                    cap,
+                };
+            } else {
+                let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+                next.push(petunia_design_document::ModifierItem::enabled(
+                    nid,
+                    petunia_design_document::ModifierKind::ContourOffset { distance, join, cap },
+                ));
+            }
+            next
+        };
+        self.set_modifiers(id, next)
+    }
+
+    /// Bakes live contour offsets into base geometry (explicit user op, 09.31).
+    pub fn bake_contour(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::BakeContour { id }))
+    }
+
+    /// Reads an object's live modifier chain.
+    #[must_use]
+    pub fn modifiers(&self, id: ObjectId) -> Vec<petunia_design_document::ModifierItem> {
+        self.session()
+            .and_then(|s| s.find_object(id))
+            .map(|o| o.modifiers.clone())
+            .unwrap_or_default()
     }
 
     /// Sets the blend mode of an object (10.4, F-18).
