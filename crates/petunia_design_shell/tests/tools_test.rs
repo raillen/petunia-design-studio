@@ -1212,3 +1212,445 @@ fn pencil_sculpt_redraw_over_middle_reshapes_same_object() {
     assert_ne!(bounds_before, bounds_after);
     assert!(bounds_after.unwrap()[1] < bounds_before.unwrap()[1]);
 }
+
+fn node_test_path(
+    bridge: &mut PetuniaDesignGuiBridge,
+    verbs: Vec<petunia_design_geometry::PathVerb>,
+) -> petunia_design_foundation::ObjectId {
+    let surface_id = bridge.active_surface().unwrap();
+    let mut gen = IdGenerator::new();
+    let id = gen.next_object();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id,
+            name: "NodePath".to_string(),
+        }))
+        .unwrap();
+    let mut path = petunia_design_geometry::GPath::new();
+    for verb in verbs {
+        path.push(verb).unwrap();
+    }
+    let bounds = path
+        .bounding_box()
+        .map(|r| [r.x0, r.y0, r.width().max(1.0), r.height().max(1.0)]);
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Path(path)),
+        }))
+        .unwrap();
+    if let Some(bounds) = bounds {
+        bridge
+            .submit_command(CommandRequest::new(Command::SetBounds {
+                id,
+                bounds: Some(bounds),
+                rotation: 0.0,
+            }))
+            .unwrap();
+    }
+    bridge.clear_selection();
+    id
+}
+
+fn node_event(
+    phase: PointerPhase,
+    x: f64,
+    y: f64,
+    modifiers: SemanticModifiers,
+) -> NormalizedPointerEvent {
+    let p = GPoint::new(x, y);
+    NormalizedPointerEvent::new(phase, PointerButton::Primary, p, p, modifiers)
+}
+
+fn node_endpoints(
+    bridge: &PetuniaDesignGuiBridge,
+    id: petunia_design_foundation::ObjectId,
+) -> Vec<GPoint> {
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    match obj.shape.as_ref().unwrap() {
+        petunia_design_document::ShapeKind::Path(path) => path
+            .verbs
+            .iter()
+            .filter_map(|v| match v {
+                petunia_design_geometry::PathVerb::MoveTo(p)
+                | petunia_design_geometry::PathVerb::LineTo(p)
+                | petunia_design_geometry::PathVerb::QuadTo(_, p)
+                | petunia_design_geometry::PathVerb::CubicTo(_, _, p) => Some(*p),
+                petunia_design_geometry::PathVerb::Close => None,
+            })
+            .collect(),
+        _ => panic!("expected path"),
+    }
+}
+
+#[test]
+fn node_shift_multiselect_drags_once_and_undos_once() {
+    use petunia_design_geometry::PathVerb as V;
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Node Multi").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = node_test_path(
+        &mut bridge,
+        vec![
+            V::MoveTo(GPoint::new(10.0, 10.0)),
+            V::LineTo(GPoint::new(60.0, 10.0)),
+            V::LineTo(GPoint::new(60.0, 60.0)),
+        ],
+    );
+    bridge.set_selection(vec![id]);
+    let mut tool = NodeTool::new();
+    let plain = SemanticModifiers::default();
+    let shift = SemanticModifiers {
+        constrain: true,
+        ..Default::default()
+    };
+
+    // Click node 0, Shift-click node 1: both selected, nothing committed yet.
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Down, 10.0, 10.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Up, 10.0, 10.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Down, 60.0, 10.0, shift),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(tool.selected_nodes().len(), 2);
+
+    // Drag both by (+10, +10): one commit on Up.
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Move, 70.0, 20.0, shift),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Up, 70.0, 20.0, shift),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let pts = node_endpoints(&bridge, id);
+    assert_eq!(pts[0], GPoint::new(20.0, 20.0));
+    assert_eq!(pts[1], GPoint::new(70.0, 20.0));
+    assert_eq!(pts[2], GPoint::new(60.0, 60.0));
+    // Bounds followed the edit.
+    let bounds = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap()
+        .bounds
+        .unwrap();
+    assert_eq!(bounds[0], 20.0);
+
+    // Exactly one undo entry restores both nodes.
+    assert!(bridge.can_undo());
+    bridge.undo().unwrap();
+    let pts = node_endpoints(&bridge, id);
+    assert_eq!(pts[0], GPoint::new(10.0, 10.0));
+    assert_eq!(pts[1], GPoint::new(60.0, 10.0));
+}
+
+#[test]
+fn node_handle_drag_keeps_symmetric_mirror() {
+    use petunia_design_geometry::PathVerb as V;
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Node Handle").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = node_test_path(
+        &mut bridge,
+        vec![
+            V::MoveTo(GPoint::new(0.0, 0.0)),
+            V::CubicTo(
+                GPoint::new(10.0, 0.0),
+                GPoint::new(20.0, 0.0),
+                GPoint::new(30.0, 0.0),
+            ),
+            V::CubicTo(
+                GPoint::new(40.0, 0.0),
+                GPoint::new(50.0, 0.0),
+                GPoint::new(60.0, 0.0),
+            ),
+        ],
+    );
+    bridge.set_selection(vec![id]);
+    let mut tool = NodeTool::new();
+    let plain = SemanticModifiers::default();
+
+    // Select the middle anchor, then grab its outgoing handle at (40, 0).
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Down, 30.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Up, 30.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Down, 40.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Move, 50.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Up, 50.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    // Symmetric mirror: out (50,0), in mirrored to (10,0).
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    match obj.shape.as_ref().unwrap() {
+        petunia_design_document::ShapeKind::Path(path) => {
+            assert_eq!(
+                path.verbs[1],
+                V::CubicTo(
+                    GPoint::new(10.0, 0.0),
+                    GPoint::new(10.0, 0.0),
+                    GPoint::new(30.0, 0.0)
+                )
+            );
+            assert_eq!(
+                path.verbs[2],
+                V::CubicTo(
+                    GPoint::new(50.0, 0.0),
+                    GPoint::new(50.0, 0.0),
+                    GPoint::new(60.0, 0.0)
+                )
+            );
+        }
+        _ => panic!("expected path"),
+    }
+}
+
+#[test]
+fn node_convert_smooth_then_symmetric() {
+    use petunia_design_geometry::PathVerb as V;
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Node Convert").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = node_test_path(
+        &mut bridge,
+        vec![
+            V::MoveTo(GPoint::new(0.0, 0.0)),
+            V::CubicTo(
+                GPoint::new(10.0, 5.0),
+                GPoint::new(20.0, -5.0),
+                GPoint::new(30.0, 0.0),
+            ),
+            V::LineTo(GPoint::new(60.0, 0.0)),
+        ],
+    );
+    bridge.set_selection(vec![id]);
+    let mut tool = NodeTool::new();
+    let plain = SemanticModifiers::default();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Down, 30.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Up, 30.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    tool.convert_selected_nodes(&mut bridge, NodeType::Smooth)
+        .unwrap();
+    let verbs = path_verbs(&bridge, id);
+    // Smooth keeps unequal lengths but aligns directions.
+    assert!(verbs.len() == 3);
+
+    tool.convert_selected_nodes(&mut bridge, NodeType::Symmetric)
+        .unwrap();
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    match obj.shape.as_ref().unwrap() {
+        petunia_design_document::ShapeKind::Path(path) => {
+            // In-handle is verb 1's second control; out-handle is verb 2's
+            // first control (cubic) or shared control (quad upgrade).
+            let (in_handle, out_handle) = match (&path.verbs[1], &path.verbs[2]) {
+                (V::CubicTo(_, c2, _), V::CubicTo(c1, _, _)) => (*c2, *c1),
+                (V::CubicTo(_, c2, _), V::QuadTo(c, _)) => (*c2, *c),
+                _ => panic!("expected curve verbs"),
+            };
+            let p = GPoint::new(30.0, 0.0);
+            let in_len = in_handle.distance_to(p);
+            let out_len = out_handle.distance_to(p);
+            assert!((in_len - out_len).abs() < 1e-6, "in={in_len} out={out_len}");
+        }
+        _ => panic!("expected path"),
+    }
+}
+
+#[test]
+fn node_double_click_adds_and_removes() {
+    use petunia_design_geometry::PathVerb as V;
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Node AddRemove").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = node_test_path(
+        &mut bridge,
+        vec![
+            V::MoveTo(GPoint::new(0.0, 0.0)),
+            V::LineTo(GPoint::new(60.0, 0.0)),
+        ],
+    );
+    bridge.set_selection(vec![id]);
+    let mut tool = NodeTool::new();
+    let plain = SemanticModifiers::default();
+
+    // Double-click mid-segment inserts a shape-preserving node.
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Down, 30.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Up, 30.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Down, 30.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(path_verbs(&bridge, id).len(), 3);
+    let pts = node_endpoints(&bridge, id);
+    assert_eq!(pts[1], GPoint::new(30.0, 0.0));
+
+    // Double-click the new node removes it again.
+    std::thread::sleep(std::time::Duration::from_millis(450));
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Down, 30.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Up, 30.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Down, 30.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(path_verbs(&bridge, id).len(), 2);
+}
+
+#[test]
+fn node_marquee_selects_several_nodes() {
+    use petunia_design_geometry::PathVerb as V;
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Node Marquee").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = node_test_path(
+        &mut bridge,
+        vec![
+            V::MoveTo(GPoint::new(10.0, 10.0)),
+            V::LineTo(GPoint::new(60.0, 10.0)),
+            V::LineTo(GPoint::new(60.0, 60.0)),
+            V::LineTo(GPoint::new(10.0, 60.0)),
+        ],
+    );
+    bridge.set_selection(vec![id]);
+    let mut tool = NodeTool::new();
+    let plain = SemanticModifiers::default();
+
+    // Marquee over empty canvas covering the top two nodes.
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Down, -50.0, -50.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Move, 70.0, 30.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert!(tool.overlays(&camera, &bridge).marquee_screen.is_some());
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Up, 70.0, 30.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    assert_eq!(tool.selected_nodes().len(), 2);
+}
