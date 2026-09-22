@@ -968,3 +968,247 @@ fn pen_cursor_hint_distinguishes_contexts() {
         PenCursorHint::ContinuePath
     );
 }
+
+fn pencil_stroke(
+    tool: &mut PencilTool,
+    bridge: &mut PetuniaDesignGuiBridge,
+    camera: &ViewportCamera,
+    snap: &mut SnapEngine,
+    points: &[(f64, f64)],
+    modifiers: SemanticModifiers,
+) {
+    for (i, (x, y)) in points.iter().enumerate() {
+        let phase = if i == 0 {
+            PointerPhase::Down
+        } else if i == points.len() - 1 {
+            PointerPhase::Up
+        } else {
+            PointerPhase::Move
+        };
+        let p = GPoint::new(*x, *y);
+        tool.on_pointer_event(
+            &NormalizedPointerEvent::new(
+                PointerPhase::Move,
+                PointerButton::Primary,
+                p,
+                p,
+                modifiers,
+            ),
+            bridge,
+            camera,
+            snap,
+        )
+        .unwrap();
+        if phase != PointerPhase::Move {
+            tool.on_pointer_event(
+                &NormalizedPointerEvent::new(phase, PointerButton::Primary, p, p, modifiers),
+                bridge,
+                camera,
+                snap,
+            )
+            .unwrap();
+        }
+    }
+}
+
+fn path_verbs(
+    bridge: &PetuniaDesignGuiBridge,
+    id: petunia_design_foundation::ObjectId,
+) -> Vec<petunia_design_geometry::PathVerb> {
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    match obj.shape.as_ref().unwrap() {
+        petunia_design_document::ShapeKind::Path(path) => path.verbs.clone(),
+        _ => panic!("expected path"),
+    }
+}
+
+#[test]
+fn pencil_shift_commits_straight_line() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Pencil Straight").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PencilTool::new();
+    let shift = SemanticModifiers {
+        constrain: true,
+        ..Default::default()
+    };
+
+    pencil_stroke(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        &[(50.0, 50.0), (100.0, 80.0), (150.0, 60.0), (200.0, 200.0)],
+        shift,
+    );
+
+    assert_eq!(bridge.snapshot().total_objects, 1);
+    let id = bridge.selection().selected_ids[0];
+    let verbs = path_verbs(&bridge, id);
+    assert_eq!(verbs.len(), 2);
+    assert!(matches!(
+        verbs[0],
+        petunia_design_geometry::PathVerb::MoveTo(_)
+    ));
+    assert!(matches!(
+        verbs[1],
+        petunia_design_geometry::PathVerb::LineTo(_)
+    ));
+}
+
+#[test]
+fn pencil_auto_closes_loop_near_start() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Pencil Close").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PencilTool::new();
+
+    pencil_stroke(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        &[
+            (100.0, 100.0),
+            (200.0, 100.0),
+            (200.0, 200.0),
+            (100.0, 200.0),
+            (102.0, 102.0),
+        ],
+        SemanticModifiers::default(),
+    );
+
+    assert_eq!(bridge.snapshot().total_objects, 1);
+    let id = bridge.selection().selected_ids[0];
+    let verbs = path_verbs(&bridge, id);
+    assert!(verbs.contains(&petunia_design_geometry::PathVerb::Close));
+}
+
+#[test]
+fn pencil_fidelity_smooth_simplifies_more_than_precise() {
+    // Hand jitter input: Smooth collapses it, Precise preserves it.
+    // Snap disabled: grid snap would erase sub-grid jitter before the fit.
+    let points: Vec<(f64, f64)> = (0..41)
+        .map(|i| (i as f64 * 5.0, if i % 2 == 0 { 1.5 } else { -1.5 }))
+        .collect();
+    let freehand = SemanticModifiers {
+        disable_snap: true,
+        ..Default::default()
+    };
+    let mut counts = Vec::new();
+    for fidelity in [PencilFidelity::Precise, PencilFidelity::Smooth] {
+        let mut bridge = PetuniaDesignGuiBridge::new();
+        bridge.new_document("Pencil Fidelity").expect("doc");
+        let camera = ViewportCamera::new(1000.0, 1000.0);
+        let mut snap = SnapEngine::new();
+        let mut tool = PencilTool::new();
+        tool.set_fidelity(fidelity);
+        pencil_stroke(
+            &mut tool,
+            &mut bridge,
+            &camera,
+            &mut snap,
+            &points,
+            freehand,
+        );
+        assert_eq!(bridge.snapshot().total_objects, 1);
+        let id = bridge.selection().selected_ids[0];
+        counts.push(path_verbs(&bridge, id).len());
+    }
+    assert!(
+        counts[1] < counts[0],
+        "smooth should collapse jitter: {counts:?}"
+    );
+}
+
+#[test]
+fn pencil_sculpt_extends_selected_path_from_endpoint() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Pencil Extend").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PencilTool::new();
+
+    pencil_stroke(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        &[(100.0, 300.0), (200.0, 300.0)],
+        SemanticModifiers::default(),
+    );
+    assert_eq!(bridge.snapshot().total_objects, 1);
+    let target = bridge.selection().selected_ids[0];
+    let before = path_verbs(&bridge, target).len();
+
+    // Fresh tool starting on the path end extends the same object.
+    let mut sculpt = PencilTool::new();
+    assert_eq!(sculpt.sculpt_target(), None);
+    pencil_stroke(
+        &mut sculpt,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        &[(200.0, 300.0), (260.0, 300.0), (320.0, 320.0)],
+        SemanticModifiers::default(),
+    );
+
+    assert_eq!(bridge.snapshot().total_objects, 1);
+    assert_eq!(bridge.selection().selected_ids, vec![target]);
+    assert!(path_verbs(&bridge, target).len() > before);
+}
+
+#[test]
+fn pencil_sculpt_redraw_over_middle_reshapes_same_object() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Pencil Reshape").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PencilTool::new();
+
+    pencil_stroke(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        &[(100.0, 300.0), (200.0, 300.0), (300.0, 300.0)],
+        SemanticModifiers::default(),
+    );
+    let target = bridge.selection().selected_ids[0];
+    let bounds_before = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(target)
+        .unwrap()
+        .bounds;
+
+    // Redraw the middle pushed upward: same object, new geometry.
+    let mut sculpt = PencilTool::new();
+    pencil_stroke(
+        &mut sculpt,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        &[(150.0, 300.0), (200.0, 220.0), (250.0, 300.0)],
+        SemanticModifiers::default(),
+    );
+
+    assert_eq!(bridge.snapshot().total_objects, 1);
+    let bounds_after = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(target)
+        .unwrap()
+        .bounds;
+    assert_ne!(bounds_before, bounds_after);
+    assert!(bounds_after.unwrap()[1] < bounds_before.unwrap()[1]);
+}
