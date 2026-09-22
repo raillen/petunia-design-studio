@@ -579,3 +579,392 @@ fn select_manager_exposes_gesture_and_rule_settings() {
         MarqueeSelectRule::Contained
     );
 }
+
+fn pen_down(
+    tool: &mut PenTool,
+    bridge: &mut PetuniaDesignGuiBridge,
+    camera: &ViewportCamera,
+    snap: &mut SnapEngine,
+    x: f64,
+    y: f64,
+    modifiers: SemanticModifiers,
+) {
+    let p = GPoint::new(x, y);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p, p, modifiers),
+        bridge,
+        camera,
+        snap,
+    )
+    .unwrap();
+}
+
+fn pen_move(
+    tool: &mut PenTool,
+    camera: &ViewportCamera,
+    snap: &mut SnapEngine,
+    x: f64,
+    y: f64,
+    modifiers: SemanticModifiers,
+) {
+    let p = GPoint::new(x, y);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p, p, modifiers),
+        &mut PetuniaDesignGuiBridge::new(),
+        camera,
+        snap,
+    )
+    .unwrap();
+}
+
+#[test]
+fn pen_shift_constrains_anchor_to_45_degrees() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Pen Shift").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PenTool::new();
+
+    pen_down(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        100.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    let shift = SemanticModifiers {
+        constrain: true,
+        ..Default::default()
+    };
+    pen_down(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        200.0,
+        150.0,
+        shift,
+    );
+
+    let anchors = tool.anchors();
+    assert_eq!(anchors.len(), 2);
+    // atan2(50, 100) rounds to 45°: x and y offsets match, distance kept.
+    let (dx, dy) = (anchors[1].point.x - 100.0, anchors[1].point.y - 100.0);
+    assert!((dx - dy).abs() < 1e-6, "got dx={dx} dy={dy}");
+    assert!((dx.hypot(dy) - 100.0_f64.hypot(50.0)) < 1e-6);
+}
+
+#[test]
+fn pen_alt_drag_breaks_handle_mirror() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Pen Break").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PenTool::new();
+    let alt = SemanticModifiers {
+        duplicate: true,
+        ..Default::default()
+    };
+
+    pen_down(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        100.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    // Alt-drag adjusts only the outgoing handle (cusp break).
+    let p = GPoint::new(130.0, 110.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p, p, alt),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let anchor = &tool.anchors()[0];
+    assert!(anchor.handle_out.is_some());
+    assert_eq!(anchor.handle_in, None);
+    assert_eq!(anchor.node_type, NodeType::Cusp);
+}
+
+#[test]
+fn pen_click_back_on_last_anchor_removes_handles() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Pen Recollect").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PenTool::new();
+
+    pen_down(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        100.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    pen_move(
+        &mut tool,
+        &camera,
+        &mut snap,
+        140.0,
+        120.0,
+        SemanticModifiers::default(),
+    );
+    assert!(tool.anchors()[0].handle_out.is_some());
+
+    // Second anchor far away so the recollect click is unambiguous.
+    pen_down(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        300.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    pen_move(
+        &mut tool,
+        &camera,
+        &mut snap,
+        340.0,
+        120.0,
+        SemanticModifiers::default(),
+    );
+    assert!(tool.anchors()[1].handle_out.is_some());
+    // Wait out the double-click window so the next click reads as recollect.
+    std::thread::sleep(std::time::Duration::from_millis(450));
+    // Click back on the last anchor: handles removed, curve becomes straight.
+    pen_down(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        300.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    let last = tool.anchors().last().unwrap();
+    assert_eq!(last.handle_in, None);
+    assert_eq!(last.handle_out, None);
+    assert_eq!(tool.anchors().len(), 2);
+    // Only the last anchor was recollected; the first keeps its handles.
+    assert!(tool.anchors()[0].handle_out.is_some());
+}
+
+#[test]
+fn pen_secondary_click_finishes_open_path() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Pen Finish").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PenTool::new();
+
+    pen_down(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        100.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    pen_down(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        200.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    assert!(tool.is_active());
+
+    let p = GPoint::new(200.0, 100.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(
+            PointerPhase::Down,
+            PointerButton::Secondary,
+            p,
+            p,
+            SemanticModifiers::default(),
+        ),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    assert!(!tool.is_active());
+    assert_eq!(bridge.snapshot().total_objects, 1);
+}
+
+#[test]
+fn pen_double_click_finishes_open_path() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Pen Double").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PenTool::new();
+
+    pen_down(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        100.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    pen_down(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        300.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    // Immediate second down on the same spot: double-click finish.
+    pen_down(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        300.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+
+    assert!(!tool.is_active());
+    assert_eq!(bridge.snapshot().total_objects, 1);
+}
+
+#[test]
+fn pen_continues_existing_open_path_from_endpoint() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Pen Continue").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PenTool::new();
+
+    pen_down(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        100.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    pen_down(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        200.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    tool.finish_open_path(&mut bridge).unwrap();
+    assert_eq!(bridge.snapshot().total_objects, 1);
+    let target = bridge.selection().selected_ids[0];
+
+    // Fresh tool clicking the end anchor continues the same object.
+    let mut cont = PenTool::new();
+    pen_down(
+        &mut cont,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        200.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    assert_eq!(cont.continuing_object(), Some(target));
+    pen_down(
+        &mut cont,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        300.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    cont.finish_open_path(&mut bridge).unwrap();
+
+    // Same object, extended shape — no duplicate path created.
+    assert_eq!(bridge.snapshot().total_objects, 1);
+    assert_eq!(bridge.selection().selected_ids, vec![target]);
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(target)
+        .unwrap();
+    let verbs = match obj.shape.as_ref().unwrap() {
+        petunia_design_document::ShapeKind::Path(path) => path.verbs.len(),
+        _ => panic!("expected path"),
+    };
+    assert_eq!(verbs, 3);
+}
+
+#[test]
+fn pen_cursor_hint_distinguishes_contexts() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Pen Cursor").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let tool = PenTool::new();
+
+    // Empty canvas, no paths: fresh create.
+    assert_eq!(
+        tool.cursor_hint(
+            GPoint::new(500.0, 500.0),
+            GPoint::new(500.0, 500.0),
+            &bridge,
+            &camera
+        ),
+        PenCursorHint::CreateNew
+    );
+
+    // With an open path committed, hovering its endpoint offers continuation.
+    let mut draw = PenTool::new();
+    pen_down(
+        &mut draw,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        100.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    pen_down(
+        &mut draw,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        200.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    draw.finish_open_path(&mut bridge).unwrap();
+
+    let fresh = PenTool::new();
+    assert_eq!(
+        fresh.cursor_hint(
+            GPoint::new(200.0, 100.0),
+            GPoint::new(200.0, 100.0),
+            &bridge,
+            &camera
+        ),
+        PenCursorHint::ContinuePath
+    );
+}

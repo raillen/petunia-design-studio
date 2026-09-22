@@ -25,7 +25,7 @@ pub use knife::{KnifeMode, KnifeTool};
 pub use manager::ToolManager;
 pub use measure::{MeasureTool, MeasurementReadout};
 pub use node::NodeTool;
-pub use pen::{NodeType, PenAnchor, PenPhase, PenTool};
+pub use pen::{NodeType, PenAnchor, PenCursorHint, PenPhase, PenTool};
 pub use pencil::PencilTool;
 pub use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers,
