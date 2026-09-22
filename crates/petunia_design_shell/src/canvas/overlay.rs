@@ -228,4 +228,6 @@ pub struct CanvasOverlays {
     pub marquee_subtractive: bool,
     /// Committed gradient line plus stop handles, if a gradient is selected.
     pub gradient: Option<GradientOverlay>,
+    /// Pending shape-builder region outline in document space, if any.
+    pub region_preview: Option<Vec<GPoint>>,
 }

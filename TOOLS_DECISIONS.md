@@ -57,6 +57,21 @@ Doutrina-mãe: ADR 09.31 (`petunia-design-studio/09 31 — Non-Destructive Editi
   **Regra: `CARGO_TARGET_DIR=/tmp/petunia-tools-target` em todo comando cargo
   desta worktree.**
 | 9 | ShapeBuilder | Síntese booleana de região com highlight + 1 undo | Médio, usa boolean avaliado |
+
+## Batch 9 — ShapeBuilder + SmartFill (decisões)
+
+- **Região = face por assinatura de cobertura** (interseção de quem cobre menos
+  união do resto), sobre outlines avaliados. Para 2 formas = faces exatas do
+  Illustrator; para N, aproximação documentada (faces distintas podem partilhar
+  assinatura). Flood de espaço negativo aberto fica futuro (face detection).
+- **Click cria, Alt subtrai, drag funde.** Subtração que consome tudo deleta o
+  objeto; fontes do merge são preservadas (desvio documentado do AI, que
+  consome — reversível via undo, sem perda silenciosa).
+- **SmartFill = mesmo motor, fill default** (`ptnd.blue/500`, precedente do
+  gradient). Flood real fica futuro.
+- **Achado:** união booleana com acumulador vazio retornava vazio para sempre
+  (identidade quebrada) — corrigido com teste.
+- **Overlay:** `region_preview` (doc-space) para highlight de hover/drag.
 | 10 | Transparency como modificador | `TransparentGradient` vira 2º `ModifierKind` (gatilho de revisita do ADR: generaliza identidade/ordem) | Médio-grande, valida a fundação |
 | 11 | Text-on-Path | Handles start/end, fluxo no path | Médio, spec 10.6 V1 |
 | 12 | SmartFill real | Flood de regiões limitadas (face detection — spike antes) | Pesquisa antes |

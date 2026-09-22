@@ -1657,10 +1657,10 @@ fn node_marquee_selects_several_nodes() {
 
 fn corner_test_rect(
     bridge: &mut PetuniaDesignGuiBridge,
+    gen: &mut IdGenerator,
     bounds: [f64; 4],
 ) -> petunia_design_foundation::ObjectId {
     let surface_id = bridge.active_surface().unwrap();
-    let mut gen = IdGenerator::new();
     let id = gen.next_object();
     bridge
         .submit_command(CommandRequest::new(Command::CreateObject {
@@ -1710,7 +1710,8 @@ fn corner_drag_edits_single_corner_with_one_undo() {
     bridge.new_document("Corner Tool").expect("doc");
     let camera = ViewportCamera::new(1000.0, 1000.0);
     let mut snap = SnapEngine::new();
-    let id = corner_test_rect(&mut bridge, [0.0, 0.0, 100.0, 100.0]);
+    let mut gen = IdGenerator::new();
+    let id = corner_test_rect(&mut bridge, &mut gen, [0.0, 0.0, 100.0, 100.0]);
     let mut tool = ContourTool::new(ContourMode::Corner);
     let plain = SemanticModifiers::default();
 
@@ -1754,7 +1755,8 @@ fn corner_shift_drag_edits_all_four() {
     bridge.new_document("Corner All").expect("doc");
     let camera = ViewportCamera::new(1000.0, 1000.0);
     let mut snap = SnapEngine::new();
-    let id = corner_test_rect(&mut bridge, [0.0, 0.0, 100.0, 100.0]);
+    let mut gen = IdGenerator::new();
+    let id = corner_test_rect(&mut bridge, &mut gen, [0.0, 0.0, 100.0, 100.0]);
     let mut tool = ContourTool::new(ContourMode::Corner);
     let shift = SemanticModifiers {
         constrain: true,
@@ -1793,7 +1795,8 @@ fn contour_drag_sets_live_modifier_with_one_undo() {
     bridge.new_document("Contour Live").expect("doc");
     let camera = ViewportCamera::new(1000.0, 1000.0);
     let mut snap = SnapEngine::new();
-    let id = corner_test_rect(&mut bridge, [0.0, 0.0, 100.0, 100.0]);
+    let mut gen = IdGenerator::new();
+    let id = corner_test_rect(&mut bridge, &mut gen, [0.0, 0.0, 100.0, 100.0]);
     bridge.set_selection(vec![id]);
     let mut tool = ContourTool::new(ContourMode::Contour);
     let plain = SemanticModifiers::default();
@@ -1852,7 +1855,8 @@ fn contour_bake_commits_geometry_explicitly() {
     bridge.new_document("Contour Bake").expect("doc");
     let camera = ViewportCamera::new(1000.0, 1000.0);
     let mut snap = SnapEngine::new();
-    let id = corner_test_rect(&mut bridge, [0.0, 0.0, 100.0, 100.0]);
+    let mut gen = IdGenerator::new();
+    let id = corner_test_rect(&mut bridge, &mut gen, [0.0, 0.0, 100.0, 100.0]);
     bridge.set_selection(vec![id]);
     let mut tool = ContourTool::new(ContourMode::Contour);
     let plain = SemanticModifiers::default();
@@ -2937,4 +2941,245 @@ fn measure_selection_totals_evaluated_areas() {
 
     assert!((MeasureTool::measured_area(&bridge, &[a, b]) - (200.0 + 1200.0)).abs() < 1e-6);
     assert_eq!(MeasureTool::measured_area(&bridge, &[]), 0.0);
+}
+
+fn builder_two_rects(
+    bridge: &mut PetuniaDesignGuiBridge,
+) -> Vec<petunia_design_foundation::ObjectId> {
+    let mut gen = IdGenerator::new();
+    let a = corner_test_rect(bridge, &mut gen, [0.0, 0.0, 100.0, 100.0]);
+    let b = corner_test_rect(bridge, &mut gen, [50.0, 50.0, 100.0, 100.0]);
+    bridge.clear_selection();
+    bridge.set_selection(vec![a, b]);
+    vec![a, b]
+}
+
+fn builder_click(
+    tool: &mut ShapeBuilderTool,
+    bridge: &mut PetuniaDesignGuiBridge,
+    camera: &ViewportCamera,
+    snap: &mut SnapEngine,
+    x: f64,
+    y: f64,
+    modifiers: SemanticModifiers,
+) {
+    let p = GPoint::new(x, y);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p, p, modifiers),
+        bridge,
+        camera,
+        snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Up, PointerButton::Primary, p, p, modifiers),
+        bridge,
+        camera,
+        snap,
+    )
+    .unwrap();
+}
+
+fn object_bounds(
+    bridge: &PetuniaDesignGuiBridge,
+    id: petunia_design_foundation::ObjectId,
+) -> [f64; 4] {
+    bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap()
+        .bounds
+        .unwrap()
+}
+
+#[test]
+fn builder_click_overlap_creates_intersection() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Builder Overlap").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    builder_two_rects(&mut bridge);
+    let mut tool = ShapeBuilderTool::new(BuilderMode::ShapeBuilder);
+
+    builder_click(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        75.0,
+        75.0,
+        SemanticModifiers::default(),
+    );
+
+    assert_eq!(bridge.snapshot().total_objects, 3);
+    let region = bridge.selection().selected_ids[0];
+    let bounds = object_bounds(&bridge, region);
+    assert!((bounds[0] - 50.0).abs() < 1.0, "got {bounds:?}");
+    assert!((bounds[1] - 50.0).abs() < 1.0, "got {bounds:?}");
+    assert!((bounds[2] - 50.0).abs() < 1.0, "got {bounds:?}");
+    assert!((bounds[3] - 50.0).abs() < 1.0, "got {bounds:?}");
+}
+
+#[test]
+fn builder_click_exclusive_part_subtracts_other() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Builder Exclusive").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    builder_two_rects(&mut bridge);
+    let mut tool = ShapeBuilderTool::new(BuilderMode::ShapeBuilder);
+
+    // Top-left of A is outside B: region is A minus B (L-shaped, full extent).
+    builder_click(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        10.0,
+        10.0,
+        SemanticModifiers::default(),
+    );
+
+    assert_eq!(bridge.snapshot().total_objects, 3);
+    let region = bridge.selection().selected_ids[0];
+    let bounds = object_bounds(&bridge, region);
+    assert!((bounds[2] - 100.0).abs() < 1.0, "got {bounds:?}");
+    // The notch is real: the region outline avoids B's interior corner.
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(region)
+        .unwrap();
+    match obj.shape.as_ref().unwrap() {
+        petunia_design_document::ShapeKind::Path(path) => {
+            assert!(path.verbs.len() > 5, "L-shape needs vertices");
+        }
+        _ => panic!("expected path"),
+    }
+}
+
+#[test]
+fn builder_alt_click_carves_both_with_one_undo() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Builder Subtract").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let ids = builder_two_rects(&mut bridge);
+    let mut tool = ShapeBuilderTool::new(BuilderMode::ShapeBuilder);
+    let alt = SemanticModifiers {
+        duplicate: true,
+        ..Default::default()
+    };
+
+    builder_click(&mut tool, &mut bridge, &camera, &mut snap, 75.0, 75.0, alt);
+
+    // Both rects lost the overlap, nothing created or deleted.
+    assert_eq!(bridge.snapshot().total_objects, 2);
+    for id in &ids {
+        let bounds = object_bounds(&bridge, *id);
+        assert!((bounds[2] - 100.0).abs() < 1.0, "got {bounds:?}");
+    }
+    bridge.undo().unwrap();
+    assert_eq!(object_bounds(&bridge, ids[0]), [0.0, 0.0, 100.0, 100.0]);
+    assert_eq!(object_bounds(&bridge, ids[1]), [50.0, 50.0, 100.0, 100.0]);
+}
+
+#[test]
+fn builder_drag_merges_crossed_regions_keeping_sources() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Builder Drag").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    builder_two_rects(&mut bridge);
+    let mut tool = ShapeBuilderTool::new(BuilderMode::ShapeBuilder);
+    let plain = SemanticModifiers::default();
+
+    // Drag from A-only through the overlap into B-only.
+    let p0 = GPoint::new(10.0, 10.0);
+    let p1 = GPoint::new(140.0, 140.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p0, p0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p1, p1, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Up, PointerButton::Primary, p1, p1, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    assert_eq!(bridge.snapshot().total_objects, 3);
+    let region = bridge.selection().selected_ids[0];
+    let bounds = object_bounds(&bridge, region);
+    assert!((bounds[2] - 150.0).abs() < 2.0, "got {bounds:?}");
+    assert!((bounds[3] - 150.0).abs() < 2.0, "got {bounds:?}");
+}
+
+#[test]
+fn smartfill_click_uses_default_fill() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Smart Fill").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    builder_two_rects(&mut bridge);
+    let mut tool = ShapeBuilderTool::new(BuilderMode::SmartFill);
+
+    builder_click(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        75.0,
+        75.0,
+        SemanticModifiers::default(),
+    );
+
+    assert_eq!(bridge.snapshot().total_objects, 3);
+    let region = bridge.selection().selected_ids[0];
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(region)
+        .unwrap();
+    assert!(matches!(
+        obj.effective_appearance().primary_fill().map(|f| f.paint.clone()),
+        Some(petunia_design_document::Paint::Solid(ref t)) if t == "ptnd.blue/500"
+    ));
+}
+
+#[test]
+fn builder_click_empty_is_noop() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Builder Empty").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    builder_two_rects(&mut bridge);
+    let mut tool = ShapeBuilderTool::new(BuilderMode::ShapeBuilder);
+
+    builder_click(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        500.0,
+        500.0,
+        SemanticModifiers::default(),
+    );
+
+    assert_eq!(bridge.snapshot().total_objects, 2);
 }
