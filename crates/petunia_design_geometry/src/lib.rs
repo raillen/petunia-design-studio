@@ -8,6 +8,7 @@
 
 mod affine;
 mod boolean;
+mod cut;
 pub mod measure;
 mod node_edit;
 mod offset;
@@ -18,6 +19,7 @@ mod smooth;
 
 pub use affine::{pivot_angle_delta, rotate_point_around, scale_bounds_about, scale_factor_around, GAffine};
 pub use boolean::{boolean_op, boolean_op_with_fill, BooleanInput, BooleanOp, FillRule, GeometryTolerance};
+pub use cut::{cut_path_by_line, split_path_at_point};
 pub use measure::{measure_readout, MeasurementReadout};
 pub use node_edit::{move_verb, move_verb_to};
 pub use offset::{offset_path, OffsetCap, OffsetJoin};

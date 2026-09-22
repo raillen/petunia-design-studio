@@ -1962,3 +1962,240 @@ fn corner_tool_leaves_non_rectangles_alone() {
         Some(petunia_design_document::ShapeKind::Ellipse)
     ));
 }
+
+fn knife_closed_rect(bridge: &mut PetuniaDesignGuiBridge) -> petunia_design_foundation::ObjectId {
+    use petunia_design_geometry::PathVerb as V;
+    node_test_path(
+        bridge,
+        vec![
+            V::MoveTo(GPoint::new(0.0, 0.0)),
+            V::LineTo(GPoint::new(100.0, 0.0)),
+            V::LineTo(GPoint::new(100.0, 60.0)),
+            V::LineTo(GPoint::new(0.0, 60.0)),
+            V::Close,
+        ],
+    )
+}
+
+#[test]
+fn knife_cut_splits_rect_in_one_undo() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Knife Cut").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = knife_closed_rect(&mut bridge);
+    let mut tool = KnifeTool::new(KnifeMode::Knife);
+    let plain = SemanticModifiers::default();
+
+    // Vertical cut across the whole rect.
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 50.0, -10.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 50.0, 70.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 50.0, 70.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    assert_eq!(bridge.snapshot().total_objects, 2);
+    // One undo restores the single closed rect.
+    bridge.undo().unwrap();
+    assert_eq!(bridge.snapshot().total_objects, 1);
+    let verbs = path_verbs(&bridge, id);
+    assert!(verbs.contains(&petunia_design_geometry::PathVerb::Close));
+}
+
+#[test]
+fn knife_graze_is_noop() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Knife Graze").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = knife_closed_rect(&mut bridge);
+    let before = path_verbs(&bridge, id);
+    let mut tool = KnifeTool::new(KnifeMode::Knife);
+    let plain = SemanticModifiers::default();
+
+    // Drag far away from everything.
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 500.0, 500.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 600.0, 600.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 600.0, 600.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    assert_eq!(bridge.snapshot().total_objects, 1);
+    assert_eq!(path_verbs(&bridge, id), before);
+}
+
+#[test]
+fn scissors_click_opens_closed_loop() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Scissors Open").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = knife_closed_rect(&mut bridge);
+    let mut tool = KnifeTool::new(KnifeMode::Scissors);
+    let plain = SemanticModifiers::default();
+
+    // Click (no drag) just inside the top edge.
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 50.0, 2.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 50.0, 2.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    // Same single object, now an open loop starting at the cut.
+    assert_eq!(bridge.snapshot().total_objects, 1);
+    let verbs = path_verbs(&bridge, id);
+    assert!(!verbs.contains(&petunia_design_geometry::PathVerb::Close));
+    bridge.undo().unwrap();
+    assert!(path_verbs(&bridge, id).contains(&petunia_design_geometry::PathVerb::Close));
+}
+
+#[test]
+fn scissors_click_divides_open_stroke() {
+    use petunia_design_geometry::PathVerb as V;
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Scissors Divide").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    node_test_path(
+        &mut bridge,
+        vec![
+            V::MoveTo(GPoint::new(0.0, 0.0)),
+            V::LineTo(GPoint::new(100.0, 0.0)),
+        ],
+    );
+    let mut tool = KnifeTool::new(KnifeMode::Scissors);
+    let plain = SemanticModifiers::default();
+
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 30.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 30.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    assert_eq!(bridge.snapshot().total_objects, 2);
+    bridge.undo().unwrap();
+    assert_eq!(bridge.snapshot().total_objects, 1);
+}
+
+#[test]
+fn knife_converts_parametric_in_batch() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Knife Convert").expect("doc");
+    let surface_id = bridge.active_surface().unwrap();
+    let mut gen = IdGenerator::new();
+    let id = gen.next_object();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id,
+            name: "ParamRect".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            }),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some([0.0, 0.0, 100.0, 60.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = KnifeTool::new(KnifeMode::Knife);
+    let plain = SemanticModifiers::default();
+
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 50.0, -10.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 50.0, 70.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 50.0, 70.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    // Cut landed and the source is now curves…
+    assert_eq!(bridge.snapshot().total_objects, 2);
+    // …and a single undo restores the parametric rectangle.
+    bridge.undo().unwrap();
+    assert_eq!(bridge.snapshot().total_objects, 1);
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    assert!(matches!(
+        obj.shape,
+        Some(petunia_design_document::ShapeKind::Rectangle { .. })
+    ));
+}

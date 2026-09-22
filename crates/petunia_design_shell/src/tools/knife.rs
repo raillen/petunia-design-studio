@@ -1,13 +1,22 @@
-//! Knife and Scissors vector slicing tools (10.2).
+//! Knife and Scissors vector slicing tools (10.2, TOOLS_DECISIONS Batch 6).
+//!
+//! Market split: Knife drags a cut line across shapes (Corel/Affinity);
+//! Scissors click-splits at points (Illustrator). One gesture, one undo.
 
-use petunia_design_document::ChangeSet;
-use petunia_design_foundation::PetuniaError;
+use petunia_design_application::Command;
+use petunia_design_document::{ChangeSet, ShapeKind};
+use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
 use petunia_design_geometry::GPoint;
 
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
+
+/// Click-vs-drag threshold in screen pixels (scissors click = split).
+const CLICK_THRESHOLD_PX: f64 = 3.0;
 
 /// Slicing tool mode (10.2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,6 +33,7 @@ pub struct KnifeTool {
     mode: KnifeMode,
     start_doc: Option<GPoint>,
     current_doc: Option<GPoint>,
+    cut_point: Option<GPoint>,
 }
 
 impl KnifeTool {
@@ -34,13 +44,21 @@ impl KnifeTool {
             mode,
             start_doc: None,
             current_doc: None,
+            cut_point: None,
         }
+    }
+
+    /// Current mode.
+    #[must_use]
+    pub fn mode(&self) -> KnifeMode {
+        self.mode
     }
 
     /// Cancels active slicing gesture.
     pub fn cancel(&mut self) {
         self.start_doc = None;
         self.current_doc = None;
+        self.cut_point = None;
     }
 
     /// Handles pointer events for vector slicing.
@@ -48,16 +66,18 @@ impl KnifeTool {
         &mut self,
         event: &NormalizedPointerEvent,
         bridge: &mut PetuniaDesignGuiBridge,
-        _camera: &ViewportCamera,
-        _snap: &mut SnapEngine,
+        camera: &ViewportCamera,
+        snap: &mut SnapEngine,
     ) -> Result<ChangeSet, PetuniaError> {
         match event.phase {
             PointerPhase::Down => {
                 if event.button != PointerButton::Primary {
                     return Ok(ChangeSet::empty());
                 }
+                snap.reset_hysteresis();
                 self.start_doc = Some(event.doc_pos);
                 self.current_doc = Some(event.doc_pos);
+                self.cut_point = None;
                 Ok(ChangeSet::empty())
             }
             PointerPhase::Move => {
@@ -69,54 +89,301 @@ impl KnifeTool {
             PointerPhase::Up => {
                 let start = self.start_doc.take();
                 let current = self.current_doc.take();
-
-                if let Some(p0) = start {
-                    let pt = current.unwrap_or(p0);
-                    let session = match bridge.session() {
-                        Some(s) => s,
-                        None => return Ok(ChangeSet::empty()),
-                    };
-                    let surface_id = match session.active_surface() {
-                        Some(s) => s,
-                        None => return Ok(ChangeSet::empty()),
-                    };
-                    let surface = match session.surface(surface_id) {
-                        Ok(s) => s,
-                        Err(_) => return Ok(ChangeSet::empty()),
-                    };
-
-                    let target_ids: Vec<petunia_design_foundation::ObjectId> = surface
-                        .objects()
-                        .iter()
-                        .filter(|obj| obj.hit_test(p0) || obj.hit_test(pt))
-                        .map(|obj| obj.id)
-                        .collect();
-
-                    let mut combined = ChangeSet::empty();
-                    for id in target_ids {
-                        let c = bridge.slice_path(id, [pt.x, pt.y])?;
-                        combined.extend(c);
-                    }
-                    return Ok(combined);
+                let (Some(p0), Some(p1)) = (start, current) else {
+                    return Ok(ChangeSet::empty());
+                };
+                // Scissors ignores drags; knife ignores clicks.
+                let zoom = camera.zoom.max(0.1);
+                let dragged = p0.distance_to(p1) * zoom > CLICK_THRESHOLD_PX;
+                let tol = 8.0 / zoom;
+                match self.mode {
+                    KnifeMode::Knife if dragged => self.commit_knife(p0, p1, tol, bridge),
+                    KnifeMode::Scissors if !dragged => self.commit_scissors(p0, tol, bridge),
+                    _ => Ok(ChangeSet::empty()),
                 }
-                Ok(ChangeSet::empty())
             }
             PointerPhase::Cancel => {
                 self.cancel();
+                snap.reset_hysteresis();
                 Ok(ChangeSet::empty())
             }
         }
     }
 
-    /// Resolves overlays displaying the active cutting line.
+    /// Cuts along the drag segment: every crossed object splits into pieces,
+    /// all in one undo entry. Parametric shapes convert in-batch (the gesture
+    /// asks for a cut; a cut needs curves).
+    fn commit_knife(
+        &mut self,
+        p0: GPoint,
+        p1: GPoint,
+        tol: f64,
+        bridge: &mut PetuniaDesignGuiBridge,
+    ) -> Result<ChangeSet, PetuniaError> {
+        if p0.distance_to(p1) < 1e-9 {
+            return Ok(ChangeSet::empty());
+        }
+        let targets = hit_targets_along(p0, p1, tol, bridge);
+        if targets.is_empty() {
+            return Ok(ChangeSet::empty());
+        }
+        let active_surface = bridge.session().and_then(|s| s.active_surface());
+        let Some(surface_id) = active_surface else {
+            return Ok(ChangeSet::empty());
+        };
+        let mut cmds = Vec::new();
+        for id in targets {
+            let Some(source) = bridge.session().and_then(|s| s.find_object(id)).cloned() else {
+                continue;
+            };
+            let base = base_path(bridge, id);
+            let Some(base) = base else {
+                continue;
+            };
+            let pieces = petunia_design_geometry::cut_path_by_line(&base, p0, p1, 0.5);
+            if pieces.len() <= 1 && pieces.first().is_some_and(|p| p.verbs == base.verbs) {
+                continue;
+            }
+            push_cut_commands(bridge, &mut cmds, surface_id, &source, &pieces)?;
+        }
+        if cmds.is_empty() {
+            return Ok(ChangeSet::empty());
+        }
+        bridge.submit_all("Knife cut", cmds)
+    }
+
+    /// Splits the topmost hit object once at the click point.
+    fn commit_scissors(
+        &mut self,
+        pt: GPoint,
+        tol: f64,
+        bridge: &mut PetuniaDesignGuiBridge,
+    ) -> Result<ChangeSet, PetuniaError> {
+        self.cut_point = Some(pt);
+        let Some(id) = hit_object_top(pt, tol, bridge) else {
+            return Ok(ChangeSet::empty());
+        };
+        let active_surface = bridge.session().and_then(|s| s.active_surface());
+        let Some(surface_id) = active_surface else {
+            return Ok(ChangeSet::empty());
+        };
+        let Some(source) = bridge.session().and_then(|s| s.find_object(id)).cloned() else {
+            return Ok(ChangeSet::empty());
+        };
+        let Some(base) = base_path(bridge, id) else {
+            return Ok(ChangeSet::empty());
+        };
+        let pieces = petunia_design_geometry::split_path_at_point(&base, pt, 0.5);
+        if pieces.len() <= 1 && pieces.first().is_some_and(|p| p.verbs == base.verbs) {
+            return Ok(ChangeSet::empty());
+        }
+        let mut cmds = Vec::new();
+        push_cut_commands(bridge, &mut cmds, surface_id, &source, &pieces)?;
+        if cmds.is_empty() {
+            return Ok(ChangeSet::empty());
+        }
+        bridge.submit_all("Scissors split", cmds)
+    }
+
+    /// Resolves overlays: knife shows the cut line, scissors the cut point.
     #[must_use]
     pub fn overlays(&self) -> CanvasOverlays {
         let mut overlays = CanvasOverlays::default();
-        if self.mode == KnifeMode::Knife {
-            if let (Some(p0), Some(p1)) = (self.start_doc, self.current_doc) {
-                overlays.pen_preview = Some(vec![p0, p1]);
+        match self.mode {
+            KnifeMode::Knife => {
+                if let (Some(p0), Some(p1)) = (self.start_doc, self.current_doc) {
+                    overlays.pen_preview = Some(vec![p0, p1]);
+                }
+            }
+            KnifeMode::Scissors => {
+                if let Some(pt) = self.cut_point {
+                    overlays.pen_preview = Some(vec![pt]);
+                }
             }
         }
         overlays
     }
+}
+
+/// Objects crossed by segment `p0->p1`: fill hits plus outline proximity
+/// (open strokes have no interior to hit), topmost first, restricted to
+/// sliceable shapes (text and containers excluded).
+fn hit_targets_along(
+    p0: GPoint,
+    p1: GPoint,
+    tol: f64,
+    bridge: &PetuniaDesignGuiBridge,
+) -> Vec<ObjectId> {
+    let Some(session) = bridge.session() else {
+        return Vec::new();
+    };
+    let Some(surface_id) = session.active_surface() else {
+        return Vec::new();
+    };
+    let Ok(surface) = session.surface(surface_id) else {
+        return Vec::new();
+    };
+    let length = p0.distance_to(p1);
+    let steps = ((length / 2.0).ceil() as usize).clamp(1, 64);
+    let mut targets = Vec::new();
+    for obj in surface.objects().iter().rev() {
+        if !obj.visible || obj.locked || !is_sliceable(&obj.shape) {
+            continue;
+        }
+        let crossed = (0..=steps).any(|i| {
+            let t = (i as f64) / (steps as f64);
+            near_object(
+                obj,
+                GPoint::new(p0.x + (p1.x - p0.x) * t, p0.y + (p1.y - p0.y) * t),
+                tol,
+            )
+        });
+        if crossed && !targets.contains(&obj.id) {
+            targets.push(obj.id);
+        }
+    }
+    targets
+}
+
+/// True for paths (slice directly) and convertible parametric shapes.
+/// Text rejects conversion explicitly, containers have no outline.
+fn is_sliceable(shape: &Option<ShapeKind>) -> bool {
+    match shape {
+        Some(ShapeKind::Path(_)) => true,
+        Some(ShapeKind::Text { .. }) | None => false,
+        Some(_) => true,
+    }
+}
+
+/// Base outline for cutting: stored paths directly, parametric shapes via
+/// their canonical outline (converted in-batch by the caller).
+fn base_path(
+    bridge: &PetuniaDesignGuiBridge,
+    id: ObjectId,
+) -> Option<petunia_design_geometry::GPath> {
+    let session = bridge.session()?;
+    let obj = session.find_object(id)?;
+    match &obj.shape {
+        Some(ShapeKind::Path(path)) => Some(path.clone()),
+        Some(_) => Some(obj.to_path()),
+        None => None,
+    }
+}
+
+/// True when the object needs conversion before its pieces land.
+fn needs_convert(bridge: &PetuniaDesignGuiBridge, id: ObjectId) -> bool {
+    bridge
+        .session()
+        .and_then(|s| s.find_object(id))
+        .is_some_and(|obj| !matches!(obj.shape, Some(ShapeKind::Path(_))))
+}
+
+/// Emits one undo-batch worth of cut commands: the source object becomes
+/// piece zero (converting parametric shapes first), extra pieces are created
+/// with copied style. Degenerate pieces are dropped; fully-degenerate cuts
+/// yield no commands.
+fn push_cut_commands(
+    bridge: &mut PetuniaDesignGuiBridge,
+    cmds: &mut Vec<Command>,
+    surface_id: SurfaceId,
+    source: &petunia_design_document::DocumentObject,
+    pieces: &[petunia_design_geometry::GPath],
+) -> Result<(), PetuniaError> {
+    let mut kept: Vec<(petunia_design_geometry::GPath, [f64; 4])> = Vec::new();
+    for piece in pieces {
+        // Length-based degenerate check: straight cuts have zero-height boxes.
+        if piece.approx_length(0.5) < 1.0 {
+            continue;
+        }
+        let Some(rect) = piece.bounding_box() else {
+            continue;
+        };
+        kept.push((
+            piece.clone(),
+            [
+                rect.x0,
+                rect.y0,
+                rect.width().max(1.0),
+                rect.height().max(1.0),
+            ],
+        ));
+    }
+    if kept.is_empty() {
+        return Ok(());
+    }
+    if needs_convert(bridge, source.id) {
+        cmds.push(Command::ConvertToCurves { id: source.id });
+    }
+    let stroke = source.stroke.clone().map(|s| (s, source.stroke_width));
+    let mut first = true;
+    for (piece, bounds) in kept {
+        if first {
+            first = false;
+            cmds.push(Command::SetShape {
+                id: source.id,
+                shape: Some(ShapeKind::Path(piece)),
+            });
+            cmds.push(Command::SetBounds {
+                id: source.id,
+                bounds: Some(bounds),
+                rotation: source.rotation,
+            });
+        } else {
+            let new_id = bridge.next_object_id()?;
+            cmds.extend(petunia_design_application::create_shape_commands(
+                surface_id,
+                new_id,
+                format!("{} Cut", source.name),
+                ShapeKind::Path(piece),
+                Some(bounds),
+                source.fill.clone(),
+                stroke.clone(),
+            ));
+            if source.opacity != 1.0 {
+                cmds.push(Command::SetOpacity {
+                    id: new_id,
+                    opacity: source.opacity,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Topmost sliceable object under `pt`, if any.
+fn hit_object_top(pt: GPoint, tol: f64, bridge: &PetuniaDesignGuiBridge) -> Option<ObjectId> {
+    let session = bridge.session()?;
+    let surface_id = session.active_surface()?;
+    let surface = session.surface(surface_id).ok()?;
+    surface
+        .objects()
+        .iter()
+        .rev()
+        .find(|obj| {
+            obj.visible && !obj.locked && is_sliceable(&obj.shape) && near_object(obj, pt, tol)
+        })
+        .map(|obj| obj.id)
+}
+
+/// True on fill hit or within `tol` of the evaluated outline.
+/// Open strokes have no interior, so outline proximity is the only way
+/// to target them (global stroke-aware hit-test stays future work).
+fn near_object(obj: &petunia_design_document::DocumentObject, pt: GPoint, tol: f64) -> bool {
+    if obj.hit_test(pt) {
+        return true;
+    }
+    obj.evaluated_path()
+        .to_polygons(0.5)
+        .iter()
+        .flat_map(|contour| contour.windows(2))
+        .any(|w| dist_to_segment(pt, w[0], w[1]) <= tol)
+}
+
+/// Shortest distance from `pt` to segment `a->b`.
+fn dist_to_segment(pt: GPoint, a: GPoint, b: GPoint) -> f64 {
+    let abx = b.x - a.x;
+    let aby = b.y - a.y;
+    let len2 = (abx * abx + aby * aby).max(1e-12);
+    let t = (((pt.x - a.x) * abx + (pt.y - a.y) * aby) / len2).clamp(0.0, 1.0);
+    pt.distance_to(GPoint::new(a.x + abx * t, a.y + aby * t))
 }
