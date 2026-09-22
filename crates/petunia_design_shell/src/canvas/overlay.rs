@@ -1,9 +1,10 @@
 //! Overlay geometry and selection handle hit-testing (08.6, 10.1).
 
+use petunia_design_foundation::ObjectId;
 use petunia_design_geometry::{GPoint, GRect};
 
-use petunia_design_application::view_camera::ViewportCamera;
 use super::snapping::SnapGuideVisual;
+use petunia_design_application::view_camera::ViewportCamera;
 
 /// Handle affordance kind on a selection bounding box.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -195,4 +196,14 @@ pub struct CanvasOverlays {
     pub snap_guides: Vec<SnapGuideVisual>,
     /// Pen tool provisional path preview points in document space.
     pub pen_preview: Option<Vec<GPoint>>,
+    /// Object currently hovered by the Select tool (click feedback, hover outline).
+    pub hovered_object: Option<ObjectId>,
+    /// Object pressed on pointer-down by the Select tool (click feedback).
+    pub pressed_object: Option<ObjectId>,
+    /// Freehand lasso path in screen space, if a lasso gesture is active.
+    pub lasso_screen: Option<Vec<GPoint>>,
+    /// True while the active marquee/lasso adds to the selection (Shift).
+    pub marquee_additive: bool,
+    /// True while the active marquee/lasso removes from the selection (Alt).
+    pub marquee_subtractive: bool,
 }

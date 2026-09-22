@@ -10,7 +10,6 @@ use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 use super::artboard::ArtboardTool;
 use super::contour::{ContourMode, ContourTool};
 use super::gradient::{GradientTool, GradientToolMode};
-use petunia_design_application::interaction::NormalizedPointerEvent;
 use super::knife::{KnifeMode, KnifeTool};
 use super::measure::MeasureTool;
 use super::node::NodeTool;
@@ -24,7 +23,7 @@ use super::shape::{ShapeKind, ShapeTool};
 use super::shape_builder::{BuilderMode, ShapeBuilderTool};
 use super::text::{TextTool, TextToolMode};
 use super::view::{ViewTool, ViewToolMode};
-
+use petunia_design_application::interaction::NormalizedPointerEvent;
 
 /// Central manager orchestrating vector tools and event routing.
 #[derive(Debug)]
@@ -132,6 +131,28 @@ impl ToolManager {
     /// Alias for `set_active_tool`.
     pub fn set_tool(&mut self, kind: ToolKind) {
         self.set_active_tool(kind);
+    }
+
+    /// Borrows the Select tool for settings/gesture configuration.
+    #[must_use]
+    pub fn select_tool(&self) -> &super::select::SelectTool {
+        &self.select_tool
+    }
+
+    /// Mutably borrows the Select tool (gesture mode, marquee rule).
+    pub fn select_tool_mut(&mut self) -> &mut super::select::SelectTool {
+        &mut self.select_tool
+    }
+
+    /// Switches the Select empty-canvas gesture (rectangle vs. lasso).
+    pub fn set_select_gesture_mode(&mut self, mode: super::select::SelectGestureMode) {
+        self.select_tool.set_gesture_mode(mode);
+    }
+
+    /// Sets the Select marquee rule backing the settings menu option
+    /// (overlap vs. fully contained vs. directional).
+    pub fn set_select_marquee_rule(&mut self, rule: super::select::MarqueeSelectRule) {
+        self.select_tool.set_marquee_rule(rule);
     }
 
     /// Cancels any active gesture in the current tool.
@@ -290,7 +311,11 @@ impl ToolManager {
 
     /// Resolves overlays produced by the active tool.
     #[must_use]
-    pub fn overlays(&self, camera: &ViewportCamera, bridge: &PetuniaDesignGuiBridge) -> CanvasOverlays {
+    pub fn overlays(
+        &self,
+        camera: &ViewportCamera,
+        bridge: &PetuniaDesignGuiBridge,
+    ) -> CanvasOverlays {
         match self.active_kind {
             ToolKind::Select => self.select_tool.overlays(camera, bridge),
             ToolKind::Pen => self.pen_tool.overlays(),

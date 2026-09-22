@@ -299,3 +299,283 @@ fn tool_manager_tool_switching_cancels_provisional_gestures() {
     manager.set_tool(ToolKind::Rectangle);
     assert_eq!(manager.active_kind(), ToolKind::Rectangle);
 }
+
+fn select_test_bridge_two_boxes() -> (
+    PetuniaDesignGuiBridge,
+    petunia_design_foundation::ObjectId,
+    petunia_design_foundation::ObjectId,
+) {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Select Batch1").expect("doc");
+    let surface_id = bridge.active_surface().unwrap();
+    let mut gen = IdGenerator::new();
+    let id1 = gen.next_object();
+    let id2 = gen.next_object();
+    for (id, name, bounds) in [
+        (id1, "Box1", [10.0, 10.0, 50.0, 50.0]),
+        (id2, "Box2", [100.0, 100.0, 50.0, 50.0]),
+    ] {
+        bridge
+            .submit_command(CommandRequest::new(Command::CreateObject {
+                surface: surface_id,
+                id,
+                name: name.to_string(),
+            }))
+            .unwrap();
+        bridge
+            .submit_command(CommandRequest::new(Command::SetBounds {
+                id,
+                bounds: Some(bounds),
+                rotation: 0.0,
+            }))
+            .unwrap();
+    }
+    bridge.clear_selection();
+    (bridge, id1, id2)
+}
+
+fn pointer_event(
+    phase: PointerPhase,
+    x: f64,
+    y: f64,
+    modifiers: SemanticModifiers,
+) -> NormalizedPointerEvent {
+    NormalizedPointerEvent::new(
+        phase,
+        PointerButton::Primary,
+        GPoint::new(x, y),
+        GPoint::new(x, y),
+        modifiers,
+    )
+}
+
+#[test]
+fn select_hover_and_pressed_feedback_tracks_object() {
+    let (mut bridge, id1, _) = select_test_bridge_two_boxes();
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = SelectTool::new();
+
+    // Hover over Box1 without pressing: hover feedback appears, no selection yet.
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 20.0, 20.0, SemanticModifiers::default()),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(tool.hovered_object(), Some(id1));
+    assert_eq!(tool.pressed_object(), None);
+    let ov = tool.overlays(&camera, &bridge);
+    assert_eq!(ov.hovered_object, Some(id1));
+
+    // Press on Box1: pressed feedback appears and selection happens on Down.
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 20.0, 20.0, SemanticModifiers::default()),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(tool.pressed_object(), Some(id1));
+    assert_eq!(bridge.selection().selected_ids, vec![id1]);
+
+    // Release without drag: pressed clears, hover stays, selection stays.
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 20.0, 20.0, SemanticModifiers::default()),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(tool.pressed_object(), None);
+    assert_eq!(tool.hovered_object(), Some(id1));
+    assert_eq!(bridge.selection().selected_ids, vec![id1]);
+}
+
+#[test]
+fn select_click_on_selected_collapses_multi_selection() {
+    let (mut bridge, id1, id2) = select_test_bridge_two_boxes();
+    bridge.set_selection(vec![id1, id2]);
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = SelectTool::new();
+
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 20.0, 20.0, SemanticModifiers::default()),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    // Down on an already-selected object keeps the multi-selection for a drag.
+    assert_eq!(bridge.selection().count, 2);
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 20.0, 20.0, SemanticModifiers::default()),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    // Up without drag collapses onto the clicked object (market behavior).
+    assert_eq!(bridge.selection().selected_ids, vec![id1]);
+}
+
+#[test]
+fn select_rectangle_rule_intersect_vs_contained() {
+    // Partial overlap marquee: x 0..40 covers only the left part of Box1 (10..60).
+    for (rule, expect_box1) in [
+        (MarqueeSelectRule::Intersect, true),
+        (MarqueeSelectRule::Contained, false),
+    ] {
+        let (mut bridge, id1, _) = select_test_bridge_two_boxes();
+        let camera = ViewportCamera::new(1000.0, 1000.0);
+        let mut snap = SnapEngine::new();
+        let mut tool = SelectTool::new();
+        tool.set_marquee_rule(rule);
+        tool.on_pointer_event(
+            &pointer_event(PointerPhase::Down, 0.0, 0.0, SemanticModifiers::default()),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+        tool.on_pointer_event(
+            &pointer_event(PointerPhase::Move, 40.0, 40.0, SemanticModifiers::default()),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+        // Marquee preview exposes the rect plus additive flags for the UI.
+        let ov = tool.overlays(&camera, &bridge);
+        assert!(ov.marquee_screen.is_some());
+        tool.on_pointer_event(
+            &pointer_event(PointerPhase::Up, 40.0, 40.0, SemanticModifiers::default()),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+        assert_eq!(
+            bridge.selection().selected_ids.contains(&id1),
+            expect_box1,
+            "rule {rule:?}"
+        );
+    }
+}
+
+#[test]
+fn select_rectangle_additive_marquee_with_shift() {
+    let (mut bridge, id1, id2) = select_test_bridge_two_boxes();
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = SelectTool::new();
+    tool.set_marquee_rule(MarqueeSelectRule::Intersect);
+
+    // First marquee selects Box1.
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 0.0, 0.0, SemanticModifiers::default()),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 70.0, 70.0, SemanticModifiers::default()),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 70.0, 70.0, SemanticModifiers::default()),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(bridge.selection().selected_ids, vec![id1]);
+
+    // Shift-marquee over Box2 adds instead of replacing.
+    let shift = SemanticModifiers {
+        constrain: true,
+        ..Default::default()
+    };
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 90.0, 90.0, shift),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 160.0, 160.0, shift),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 160.0, 160.0, shift),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    let selected = bridge.selection().selected_ids;
+    assert!(selected.contains(&id1) && selected.contains(&id2));
+}
+
+#[test]
+fn select_lasso_encloses_box() {
+    let (mut bridge, id1, id2) = select_test_bridge_two_boxes();
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = SelectTool::new();
+    tool.set_gesture_mode(SelectGestureMode::Lasso);
+    tool.set_marquee_rule(MarqueeSelectRule::Intersect);
+
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 0.0, 0.0, SemanticModifiers::default()),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    for (x, y) in [(70.0, 0.0), (70.0, 70.0), (0.0, 70.0)] {
+        tool.on_pointer_event(
+            &pointer_event(PointerPhase::Move, x, y, SemanticModifiers::default()),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    }
+    // Lasso preview exposes the freehand path for the UI.
+    assert!(tool.overlays(&camera, &bridge).lasso_screen.is_some());
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 0.0, 70.0, SemanticModifiers::default()),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(bridge.selection().selected_ids, vec![id1]);
+    assert!(!bridge.selection().selected_ids.contains(&id2));
+}
+
+#[test]
+fn select_manager_exposes_gesture_and_rule_settings() {
+    let mut manager = ToolManager::new();
+    manager.set_select_gesture_mode(SelectGestureMode::Lasso);
+    manager.set_select_marquee_rule(MarqueeSelectRule::Contained);
+    assert_eq!(
+        manager.select_tool().gesture_mode(),
+        SelectGestureMode::Lasso
+    );
+    assert_eq!(
+        manager.select_tool().marquee_rule(),
+        MarqueeSelectRule::Contained
+    );
+}
