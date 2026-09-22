@@ -8,15 +8,6 @@ license.workspace = true
 name = "petunia-design"
 path = "src/main.rs"
 
-[features]
-# Live-preview (Slint 1.13+): replaces native .slint codegen with stubs that watch
-# the sources, so the running app reloads the UI on save without losing model state.
-# Opt-in only — never enabled by a default or release build.
-#
-#   SLINT_LIVE_PREVIEW=1 cargo run -p petunia-design --features live-preview
-#
-live-preview = ["slint/live-preview"]
-
 [dependencies]
 petunia_design_foundation = { path = "../../crates/petunia_design_foundation" }
 petunia_design_geometry = { path = "../../crates/petunia_design_geometry" }
@@ -25,11 +16,4 @@ petunia_design_document = { path = "../../crates/petunia_design_document" }
 petunia_design_application = { path = "../../crates/petunia_design_application" }
 petunia_design_shell = { path = "../../crates/petunia_design_shell" }
 petunia_design_io = { path = "../../crates/petunia_design_io" }
-petunia_design_resources = { path = "../../crates/petunia_design_resources" }
-slint = { version = "1.18", default-features = true }
-rfd = "0.15"
-serde_json.workspace = true
-
-[build-dependencies]
-slint-build = "1.18"
-lucide-slint = "1.47"
+freya = "0.5.0-rc.7"
