@@ -3,6 +3,10 @@
 // Feature code MUST reference these tokens instead of literal hex values.
 // Document artwork colors are NOT UI tokens and never come from here.
 //
+// Every metric below is traceable to one sentence of `08.35 — Slint Pixel
+// Geometry, Color Tokens, Panels`. The section each block comes from is cited
+// inline so a reviewer can check the mapping site by site.
+//
 // Values are the Petunia-owned dark reference palette; tuning requires a
 // centralized change here plus visual QA (08.35).
 
@@ -39,6 +43,10 @@ export global Tokens {
     out property <color> overlay-pressed: #FFFFFF24;
     out property <color> scrim: #000000BB;
 
+    // ── Elevation (08.35 §surfaces: popovers/small floating surfaces) ───────
+    out property <color> shadow-popover: #00000066;
+    out property <length> shadow-popover-blur: 14px;
+
     // ── Persona identity ────────────────────────────────────────────────────
     out property <color> studio-design: #35C7D4;
     out property <color> studio-photo: #F06C8D;
@@ -48,16 +56,79 @@ export global Tokens {
     out property <color> status-warning: #E3AE52;
     out property <color> status-error: #E76573;
 
-    // ── Geometry (logical px, 4 px grid) ────────────────────────────────────
+    // ── Borders (width) ─────────────────────────────────────────────────────
+    // 08.35 §chrome rows: "Borders are 1 px."
+    out property <length> border-width: 1px;
+
+    // ── Geometry: chrome rows (08.35 §chrome rows) ──────────────────────────
+    // "Menu row 28 px; Persona row 40 px; context toolbar 34 px; tab strip
+    //  30 px." Shell chrome rows are `token + space-1` tall so the canonical
+    // row height owns the row and the padding stays derivable.
     out property <length> menu-row-height: 28px;
+    // A dropdown is only as wide as its longest option (plus the shortcut
+    // column), never a fixed guess. The minimum keeps a two-item menu from
+    // collapsing into a sliver.
+    out property <length> menu-popup-min-width: 150px;
+    out property <length> menu-trailing-column: 92px;
     out property <length> persona-row-height: 40px;
     out property <length> context-toolbar-height: 34px;
     out property <length> tab-strip-height: 30px;
     out property <length> status-bar-height: 26px;
+
+    // 08.35 §chrome rows: "Toolbar internal padding 4 px vertical and 8 px
+    // horizontal."
+    out property <length> toolbar-padding-vertical: 4px;
+    out property <length> toolbar-padding-horizontal: 8px;
+
+    // 08.35 §brand/persona: "Segment height 30 px within 40 px row."
+    out property <length> persona-tab-height: 30px;
+    out property <length> persona-segment-padding: 2px;
+    // Inline padding of a persona segment. The two segments are labels, not
+    // buttons, so the padding stays modest; 08.35 §spacing supplies the value.
+    out property <length> persona-tab-padding: 8px;
+    // Gap between the two persona segments. Wider than the container's own
+    // inset so the segments read as two controls rather than one pill split in
+    // half.
+    out property <length> persona-segment-gap: 6px;
+    // The brand slot is a square that stays inside the persona row, leaving
+    // room for the symbolic mark without letting a wordmark back in.
+    out property <length> brand-mark-size: 20px;
+
+    // The shell control cluster is centred on the window, so it would collide
+    // with the menus once the window is too narrow to hold both. Past this
+    // width it is dropped rather than overlapped.
+    out property <length> shell-cluster-breakpoint: 760px;
+    // Fixed width of the zoom box in the centred control cluster. Wide enough
+    // for the highest reachable value (`MAX_ZOOM` 256 → "25600%") plus the
+    // chevron, so a live number never resizes the bar.
+    out property <length> shell-readout-width: 72px;
+    // Height of an inline vertical divider inside a horizontal bar.
+    out property <length> divider-inline-height: 18px;
+    // The context toolbar's transform readout is a fixed slot: live numbers must
+    // not resize the bar while the user drags an object.
+    out property <length> hud-readout-width: 224px;
+
+    // ── Geometry: tool rail (08.35 §tool rail) ──────────────────────────────
+    // "Width 44 px; inner padding 5 px; 34×34 buttons; 18–20 px glyph; 2 px
+    //  inter-button gap; semantic separators with 6 px margin."
     out property <length> tool-rail-width: 44px;
     out property <length> tool-rail-padding: 5px;
     out property <length> tool-button-size: 34px;
     out property <length> tool-button-gap: 2px;
+    out property <length> tool-separator-margin: 6px;
+    out property <length> icon-button-size: 32px;
+
+    // ── Geometry: icon sizing (08.35 §icons) ────────────────────────────────
+    // "Standard inline 16 px; toolbar 18; tool rail 20; dialog hero max 32."
+    out property <length> icon-inline-size: 16px;
+    out property <length> icon-toolbar-size: 18px;
+    out property <length> icon-tool-rail-size: 20px;
+    out property <length> icon-hero-max-size: 32px;
+
+    // ── Geometry: panels / right dock (08.35 §panels) ───────────────────────
+    // "Default 304 px. Panel tab row 32 px. Panel inner padding 8 px. Section
+    //  header 28 px. Property row 30–32 px. Search/filter row 30 px.
+    //  Footer 32 px where used."
     out property <length> right-dock-default-width: 304px;
     out property <length> right-dock-min-width: 240px;
     out property <length> right-dock-max-width: 520px;
@@ -65,18 +136,76 @@ export global Tokens {
     out property <length> panel-padding: 8px;
     out property <length> panel-section-header: 28px;
     out property <length> property-row-height: 30px;
+    out property <length> property-row-height-max: 32px;
+    out property <length> panel-search-row-height: 30px;
+    out property <length> panel-footer-height: 32px;
+
+    // 08.35 §property fields: "Height 28 px Compact / 32 px Comfortable."
+    out property <length> property-field-compact: 28px;
+    out property <length> property-field-comfortable: 32px;
+
+    // ── Geometry: layer rows (08.35 §layer rows) ────────────────────────────
+    // "Row 28 px; disclosure 16; type/thumbnail 20; indent 16/level; eye and
+    //  lock hit targets 28; 4 px gaps. Drag insertion line 2 px accent.
+    //  Auto-scroll threshold 24 px from edge."
     out property <length> layer-row-height: 28px;
+    out property <length> layer-disclosure-size: 16px;
+    out property <length> layer-thumbnail-size: 20px;
+    out property <length> layer-indent-step: 16px;
+    out property <length> layer-tool-hit-size: 28px;
+    out property <length> layer-insertion-line: 2px;
+    out property <length> layer-autoscroll-threshold: 24px;
+
+    // ── Geometry: menu popup (08.35 §menus) ─────────────────────────────────
+    // "Row 28 px; icon column 20; label flexible; shortcut trailing; submenu
+    //  chevron 12. Horizontal padding 8. Separator 1 px with 4 px vertical
+    //  margin."
+    out property <length> menu-popup-width: 360px;
+    out property <length> menu-icon-column: 20px;
+    out property <length> menu-chevron-size: 12px;
+    out property <length> menu-separator-margin: 4px;
+
+    // ── Geometry: tooltip (08.35 §tooltips) ─────────────────────────────────
+    // "Padding 8 px; radius 7; max width 320."
+    out property <length> tooltip-padding: 8px;
+    out property <length> tooltip-max-width: 320px;
+
+    // ── Geometry: dialogs (08.35 §dialogs) ──────────────────────────────────
+    // "modal minimum 360 px. 20 px outer padding; 16–24 px section gap;
+    //  actions 32 px high."
+    out property <length> dialog-min-width: 360px;
+    out property <length> dialog-padding: 20px;
+    out property <length> dialog-section-gap-min: 16px;
+    out property <length> dialog-section-gap-max: 24px;
+    out property <length> dialog-action-height: 32px;
+
+    // ── Geometry: splitters (08.35 §splitters) ──────────────────────────────
+    // "1 px visible, 6 px interaction."
     out property <length> splitter-visual: 1px;
     out property <length> splitter-hit: 6px;
+
+    // ── Geometry: scrollbars (08.35 §scrollbars) ────────────────────────────
+    // "8–10 px visual track/thumb. Minimum thumb length 24 px."
+    out property <length> scrollbar-thickness: 8px;
+    out property <length> scrollbar-thumb-min: 24px;
+
+    // ── Geometry: status bar (08.35 §status) ────────────────────────────────
     out property <length> status-item-height: 22px;
 
-    // ── Radii ───────────────────────────────────────────────────────────────
+    // ── Radii (08.35 §radii) ────────────────────────────────────────────────
+    // "3 px micro tags; 5 px fields/buttons; 7 px popovers/small floating
+    //  surfaces; 10 px dialogs/floating palettes. Persistent dock boundaries
+    //  remain square."
     out property <length> radius-micro: 3px;
     out property <length> radius-control: 5px;
     out property <length> radius-popover: 7px;
     out property <length> radius-dialog: 10px;
 
-    // ── Spacing scale ───────────────────────────────────────────────────────
+    // ── Spacing scale (08.35 §spacing) ──────────────────────────────────────
+    // "Base 4 px. Allowed common spacing: 0, 4, 8, 12, 16, 20, 24, 32, 40.
+    //  Half-step optical exceptions 2 px and 6 px are allowed only for
+    //  icons/hit areas/separators."
+    out property <length> space-0: 0px;
     out property <length> space-1: 4px;
     out property <length> space-2: 8px;
     out property <length> space-3: 12px;
@@ -85,6 +214,8 @@ export global Tokens {
     out property <length> space-6: 24px;
     out property <length> space-8: 32px;
     out property <length> space-10: 40px;
+    out property <length> space-half: 2px;
+    out property <length> space-optical: 6px;
 
     // ── Typography ──────────────────────────────────────────────────────────
     out property <length> caption-size: 11px;
@@ -94,7 +225,32 @@ export global Tokens {
     out property <length> dialog-section-size: 15px;
     out property <length> dialog-title-size: 18px;
 
-    // ── Focus ───────────────────────────────────────────────────────────────
+    // ── Focus (08.35 §focus) ────────────────────────────────────────────────
+    // "2 px focus ring with 1 px offset when geometry allows."
     out property <length> focus-ring: 2px;
     out property <length> focus-ring-offset: 1px;
+
+    // ── Motion (08.35 §tooltips / §menus) ───────────────────────────────────
+    // "Initial delay 500 ms; subsequent nearby tooltip 100–150 ms."
+    // "Submenu hover delay ~180 ms."
+    out property <duration> tooltip-delay: 500ms;
+    out property <duration> tooltip-nearby-delay: 150ms;
+    out property <duration> submenu-delay: 180ms;
+
+    // ── Enforcement notes (08.21 §development token enforcement) ────────────
+    //
+    // `app.slint` consumes these tokens for every shell metric. The remaining
+    // raw `px` literals in that file are deliberate and fall into three
+    // classes, none of which 08.21 treats as a violation:
+    //
+    // 1. Document geometry — artboard position/size, object `x/y/w/h`,
+    //    corner radii, bleed/margin/guide offsets, ruler ticks and selection
+    //    handles. 08.21: "Document colors, export parameters and geometry
+    //    values are domain data and are not UI tokens."
+    // 2. Window and dialog extents — preferred window size, modal card sizes,
+    //    fixed panel list heights. These are layout extents, not metrics.
+    // 3. Micro-geometry with no canonical metric yet — 24 px color swatches,
+    //    20 px blend chip, 16 px micro tags, 18 px chrome hairlines. 08.35
+    //    does not define these, so inventing a token would be a fabricated
+    //    contract. They are candidates for a reviewed 08.35 amendment.
 }

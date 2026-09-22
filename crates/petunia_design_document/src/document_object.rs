@@ -139,7 +139,8 @@ impl DocumentObject {
             Some(ShapeKind::Path(path)) => path.clone(),
             Some(ShapeKind::Polygon { sides }) => {
                 let radius = b[2].min(b[3]) / 2.0;
-                let center = petunia_design_geometry::GPoint::new(b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
+                let center =
+                    petunia_design_geometry::GPoint::new(b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
                 petunia_design_geometry::GPath::regular_polygon(center, radius, *sides as usize)
             }
             Some(ShapeKind::Star {
@@ -148,7 +149,8 @@ impl DocumentObject {
             }) => {
                 let outer_r = b[2].min(b[3]) / 2.0;
                 let inner_r = outer_r * inner_ratio.clamp(0.1, 0.9);
-                let center = petunia_design_geometry::GPoint::new(b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
+                let center =
+                    petunia_design_geometry::GPoint::new(b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
                 petunia_design_geometry::GPath::star(center, outer_r, inner_r, *points as usize)
             }
             Some(ShapeKind::Text { .. }) => petunia_design_geometry::GPath::new(),

@@ -9,23 +9,26 @@ use std::cell::RefCell;
 use std::env;
 use std::rc::Rc;
 
-use petunia_design_application::{Command, CommandRequest};
-use petunia_design_document::{Bleed, ContainerRole, Guide, GuideOrientation, Margins};
-use petunia_design_foundation::{PetuniaError, ObjectId};
-use petunia_design_io::{
-    export_document_pdf, export_document_svg, export_raster, PdfExportOptions,
-    RasterExportOptions, RasterFormat, RawRasterImage,
-};
-use petunia_design_geometry::{GAffine, GPoint, GRect};
 use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers,
 };
+use petunia_design_application::menus;
 use petunia_design_application::tools::ToolKind;
+use petunia_design_application::{ActionId, ActionRequest, Command, CommandRequest};
+use petunia_design_document::{Bleed, ContainerRole, Guide, GuideOrientation, Margins};
+use petunia_design_foundation::{ObjectId, PetuniaError};
+use petunia_design_geometry::{GAffine, GPoint, GRect};
+use petunia_design_io::{
+    export_document_pdf, export_document_svg, export_raster, PdfExportOptions, RasterExportOptions,
+    RasterFormat, RawRasterImage,
+};
 use petunia_design_shell::bridge::{
     DataMergePresentationModel, HistoryPresentationModel, LayersPresentationModel,
     PropertiesPresentationModel,
 };
 use petunia_design_shell::canvas::overlay::{hit_test_handle_or_border, SelectionHandleKind};
+use petunia_design_shell::context_toolbar::{self, ToolbarEntryKind};
+use petunia_design_shell::menu::{MenuItemPresentation, MenuNodePresentation, ShellControlKind};
 use petunia_design_shell::shell::PetuniaShell;
 use slint::{ComponentHandle, VecModel};
 
@@ -34,7 +37,9 @@ pub struct PetuniaSlintState {
     pub drag_start_doc: Option<GPoint>,
     pub dragging_object_id: Option<ObjectId>,
     pub drag_initial_bounds: Option<[f64; 4]>,
-    /// Command ids currently listed in the palette (for Enter-to-run-first).
+    /// Action tokens currently listed in the palette, in menu order, for
+    /// Enter-to-run-first. Tokens, not action ids: two items may share an
+    /// action and differ only by payload.
     pub palette_filtered: Vec<String>,
 }
 
@@ -47,10 +52,21 @@ impl Default for PetuniaSlintState {
 impl PetuniaSlintState {
     pub fn new() -> Self {
         let mut shell = PetuniaShell::new(950.0, 700.0);
-        shell.camera.pan_x = 80.0;
-        shell.camera.pan_y = 80.0;
-        shell.camera.zoom = 1.0;
+        // The product speaks pt-BR today; the canonical source catalog stays
+        // en-US and every label resolves through the same service (12.6).
+        shell
+            .bridge
+            .set_locale(petunia_design_resources::i18n::Locale::PtBr);
         let _ = populate_showcase_document(&mut shell);
+        // The camera belongs to the session, so it is framed after the
+        // document exists (15.B).
+        let mut camera = shell.view_camera();
+        camera.viewport_width = 950.0;
+        camera.viewport_height = 700.0;
+        camera.pan_x = 80.0;
+        camera.pan_y = 80.0;
+        camera.zoom = 1.0;
+        shell.set_view_camera(camera);
         Self {
             shell,
             drag_start_doc: None,
@@ -78,6 +94,30 @@ impl PetuniaSlintState {
         self.shell.undo().map_err(|e| format!("undo: {e}"))?;
         self.shell.redo().map_err(|e| format!("redo: {e}"))?;
 
+        // The context toolbar the UI paints is scoped to the active tool, and it
+        // is never empty and never nameless: the badge is the first entry and it
+        // carries the tool's catalog name (08.23).
+        for tool in [
+            ToolKind::Select,
+            ToolKind::Pen,
+            ToolKind::Rectangle,
+            ToolKind::Crop,
+        ] {
+            self.shell.set_active_tool(tool);
+            let entries = self.shell.bridge.query_context_toolbar(tool, false);
+            let Some(first) = entries.first() else {
+                return Err(format!("context toolbar is empty for {tool:?}"));
+            };
+            if first.kind != ToolbarEntryKind::ToolBadge {
+                return Err(format!(
+                    "context toolbar does not open on the badge for {tool:?}"
+                ));
+            }
+            if first.label.is_empty() {
+                return Err(format!("context toolbar badge is nameless for {tool:?}"));
+            }
+        }
+
         // 1. Validate Layers Hierarchy Presentation Model
         let layers = self.shell.query_layers();
         if layers.rows.is_empty() {
@@ -88,7 +128,11 @@ impl PetuniaSlintState {
         let surface_id = snap.active_surface.ok_or("No active surface in snapshot")?;
         let rect_id = layers.rows[0].id;
         let circle_id = layers.rows[1].id;
-        let group_id = self.shell.bridge.next_object_id().map_err(|e| e.to_string())?;
+        let group_id = self
+            .shell
+            .bridge
+            .next_object_id()
+            .map_err(|e| e.to_string())?;
 
         self.shell
             .bridge
@@ -111,8 +155,16 @@ impl PetuniaSlintState {
         }
 
         // 3. Validate Clipping Mask Creation & Release (Step 2)
-        let mask_id = self.shell.bridge.next_object_id().map_err(|e| e.to_string())?;
-        let clip_group_id = self.shell.bridge.next_object_id().map_err(|e| e.to_string())?;
+        let mask_id = self
+            .shell
+            .bridge
+            .next_object_id()
+            .map_err(|e| e.to_string())?;
+        let clip_group_id = self
+            .shell
+            .bridge
+            .next_object_id()
+            .map_err(|e| e.to_string())?;
         self.shell
             .bridge
             .create_shape_object(
@@ -183,18 +235,60 @@ impl PetuniaSlintState {
         let _ = self.shell.bridge.query_history();
         let _ = self.shell.query_data_merge();
 
-        // 5. Command palette dispatch (state-level, no window needed).
-        if !run_palette_command(self, "no-such-command") {
-        } else {
-            return Err("palette ran an unknown command".to_string());
+        // 5. The menu/palette Action lane (state-level, no window needed).
+        // One token lane serves the menu bar, the command palette, shortcuts
+        // and this test, so a broken registry shows up here first.
+        if run_action_token(self, "ptnd.action.does.not.exist#null").is_some() {
+            return Err("an unknown action token resolved".to_string());
         }
-        let zoom_before = self.shell.camera.zoom;
-        // zoom commands report no resync needed by design; the zoom
-        // change itself proves dispatch ran.
-        run_palette_command(self, "zoom-in");
-        if self.shell.camera.zoom <= zoom_before {
-            return Err("palette zoom-in did not change zoom".to_string());
+        let zoom_before = self.shell.view_camera().zoom;
+        let ran = run_action_token(self, "ptnd.action.view.zoom_in#null");
+        if ran.as_deref() != Some("ptnd.action.view.zoom_in") {
+            return Err("the action lane did not resolve view.zoom_in".to_string());
         }
+        if self.shell.view_camera().zoom <= zoom_before {
+            return Err("view.zoom_in did not change the zoom".to_string());
+        }
+
+        // The menu and the palette must expose the wired actions and must not
+        // offer a blocked capability as runnable (15.F §2).
+        let menu = self.shell.bridge.query_menu_bar();
+        if menu.item_count() == 0 || menu.enabled_count() == 0 {
+            return Err("the menu bar resolved no runnable item".to_string());
+        }
+        let offered = self.shell.bridge.query_command_index();
+        if offered.is_empty() {
+            return Err("the command index is empty".to_string());
+        }
+        if offered
+            .iter()
+            .any(|item| item.action_id == "ptnd.action.file.place")
+        {
+            return Err("a blocked action was offered as runnable".to_string());
+        }
+
+        // Export goes through the same Action lane, not through a private
+        // renderer in the app: the artifact must be a real PNG.
+        let export_dir = std::env::temp_dir().join("petunia-design-smoke-export");
+        let _ = std::fs::create_dir_all(&export_dir);
+        let export_path = export_dir.join("smoke.png");
+        let export_payload = serde_json::json!({
+            "path": export_path.to_string_lossy(),
+            "format": "png"
+        });
+        self.shell
+            .bridge
+            .dispatch_action(ActionRequest::new(
+                ActionId::new("ptnd.action.file.export"),
+                export_payload,
+            ))
+            .map_err(|e| format!("export action failed: {e}"))?;
+        let exported =
+            std::fs::read(&export_path).map_err(|e| format!("exported artifact missing: {e}"))?;
+        if !exported.starts_with(b"\x89PNG") {
+            return Err("the export action produced a non-PNG artifact".to_string());
+        }
+        let _ = std::fs::remove_dir_all(&export_dir);
         println!(
             "OK petunia-design smoke test: surfaces={} title=\"{}\" svg_len={} pdf_len={} png_len={}",
             snap.surface_count, snap.title, svg.len(), pdf_bytes.len(), png_bytes.len()
@@ -313,12 +407,12 @@ fn paint_to_slint(paint: &petunia_design_document::Paint) -> Option<slint::Color
     match paint {
         petunia_design_document::Paint::None => None,
         petunia_design_document::Paint::Solid(token) => Some(token_to_slint(token)),
-        petunia_design_document::Paint::LinearGradient(g) => g
-            .sample_rgba(0.5)
-            .map(|(rgb, _)| sample_to_slint(rgb)),
-        petunia_design_document::Paint::RadialGradient(g) => g
-            .sample_rgba(0.5)
-            .map(|(rgb, _)| sample_to_slint(rgb)),
+        petunia_design_document::Paint::LinearGradient(g) => {
+            g.sample_rgba(0.5).map(|(rgb, _)| sample_to_slint(rgb))
+        }
+        petunia_design_document::Paint::RadialGradient(g) => {
+            g.sample_rgba(0.5).map(|(rgb, _)| sample_to_slint(rgb))
+        }
     }
 }
 
@@ -357,343 +451,390 @@ fn tool_cursor_kind(tool: ToolKind) -> &'static str {
     }
 }
 
-/// Static command-palette catalog: (id, label, hint).
-fn palette_catalog() -> Vec<(&'static str, &'static str, &'static str)> {
-    vec![
-        ("undo", "Desfazer", "Ctrl+Z"),
-        ("redo", "Refazer", "Ctrl+Y"),
-        ("group", "Agrupar seleção", "Ctrl+G"),
-        ("ungroup", "Desagrupar", "Ctrl+Shift+G"),
-        ("clip-mask", "Criar máscara de recorte", ""),
-        ("clip-release", "Liberar máscara", ""),
-        ("align-left", "Alinhar à esquerda", ""),
-        ("align-center", "Alinhar ao centro", ""),
-        ("align-right", "Alinhar à direita", ""),
-        ("align-top", "Alinhar ao topo", ""),
-        ("align-middle", "Alinhar ao meio", ""),
-        ("align-bottom", "Alinhar à base", ""),
-        ("distribute-h", "Distribuir horizontalmente", ""),
-        ("distribute-v", "Distribuir verticalmente", ""),
-        ("bool-union", "Booleano: União", ""),
-        ("bool-subtract", "Booleano: Subtração", ""),
-        ("bool-intersect", "Booleano: Intersecção", ""),
-        ("bool-xor", "Booleano: Exclusão", ""),
-        ("convert-curves", "Converter em curvas", ""),
-        ("bake-corners", "Bake cantos", ""),
-        ("duplicate", "Duplicar seleção", "Ctrl+D"),
-        ("delete", "Excluir seleção", "Delete"),
-        ("select-all", "Selecionar tudo", "Ctrl+A"),
-        ("zoom-in", "Aproximar zoom", ""),
-        ("zoom-out", "Afastar zoom", ""),
-        ("zoom-fit", "Ajustar à tela", ""),
-        ("export", "Abrir exportação", "Ctrl+E"),
-    ]
+/// Builds the registry-driven menu bar and pushes it to the UI (15.G).
+///
+/// The UI contributes nothing to this structure: labels, order, shortcuts and
+/// availability all come from the surface registry, so a wired action cannot
+/// be missing from the bar and a blocked one cannot look functional.
+fn push_menu(win: &MainWindow, st: &PetuniaSlintState) {
+    let families: Vec<MenuFamilyEntry> = st
+        .shell
+        .bridge
+        .query_menu_bar()
+        .families
+        .into_iter()
+        .map(|family| {
+            // Groups are collected first because a row refers to its submenu by
+            // index: the DTO stays flat (arrays of structs) and the popup needs
+            // no recursive type to render a branch.
+            let groups: Vec<MenuGroupEntry> = family
+                .nodes
+                .iter()
+                .filter_map(|node| match node {
+                    MenuNodePresentation::Group(group) => Some(MenuGroupEntry {
+                        label: group.label.clone().into(),
+                        items: Rc::new(VecModel::from(
+                            group.items.iter().map(menu_item_entry).collect::<Vec<_>>(),
+                        ))
+                        .into(),
+                    }),
+                    MenuNodePresentation::Item(_) => None,
+                })
+                .collect();
+
+            let mut group_cursor: i32 = 0;
+            let rows: Vec<MenuRowEntry> = family
+                .nodes
+                .iter()
+                .map(|node| match node {
+                    MenuNodePresentation::Item(item) => MenuRowEntry {
+                        is_group: false,
+                        label: item.label.clone().into(),
+                        token: item.action_token.clone().into(),
+                        shortcut: item.shortcut.clone().into(),
+                        enabled: item.enabled,
+                        disabled_reason: item.disabled_reason.clone().into(),
+                        group_index: -1,
+                    },
+                    MenuNodePresentation::Group(group) => {
+                        let index = group_cursor;
+                        group_cursor += 1;
+                        // A branch is offered when anything in it can run; an
+                        // entirely blocked submenu must not look available.
+                        let enabled = group.items.iter().any(|item| item.enabled);
+                        MenuRowEntry {
+                            is_group: true,
+                            label: group.label.clone().into(),
+                            token: "".into(),
+                            shortcut: "".into(),
+                            enabled,
+                            disabled_reason: "".into(),
+                            group_index: index,
+                        }
+                    }
+                })
+                .collect();
+
+            MenuFamilyEntry {
+                label: family.label.into(),
+                rows: Rc::new(VecModel::from(rows)).into(),
+                groups: Rc::new(VecModel::from(groups)).into(),
+            }
+        })
+        .collect();
+    win.set_menu_families(Rc::new(VecModel::from(families)).into());
 }
 
-/// Pushes the filtered palette catalog to the UI, recording the listed
-/// ids in state order for Enter-to-run-first.
-fn push_palette_items(win: &MainWindow, query: &str, st: &mut PetuniaSlintState) {
-    let q = query.to_lowercase();
-    let items: Vec<PaletteItem> = palette_catalog()
-        .into_iter()
-        .filter(|(id, label, hint)| {
-            q.is_empty()
-                || label.to_lowercase().contains(&q)
-                || id.contains(&q)
-                || hint.to_lowercase().contains(&q)
+/// Fills the popup behind the zoom box (08.2).
+///
+/// The rows are the registry's zoom levels, presented exactly like menu rows:
+/// the box shows the same labels, the same shortcuts and the same availability
+/// the View submenu shows, because both read `menus::zoom_levels`.
+fn push_zoom_levels(win: &MainWindow, st: &PetuniaSlintState) {
+    let rows: Vec<MenuRowEntry> = st
+        .shell
+        .bridge
+        .query_zoom_levels()
+        .iter()
+        .map(|item| MenuRowEntry {
+            is_group: false,
+            label: item.label.clone().into(),
+            token: item.action_token.clone().into(),
+            shortcut: item.shortcut.clone().into(),
+            enabled: item.enabled,
+            disabled_reason: item.disabled_reason.clone().into(),
+            group_index: -1,
         })
-        .map(|(id, label, hint)| {
-            st.palette_filtered.push(id.to_string());
+        .collect();
+    win.set_zoom_rows(Rc::new(VecModel::from(rows)).into());
+}
+
+/// Converts one resolved menu item into the Slint row payload.
+fn menu_item_entry(item: &MenuItemPresentation) -> MenuItemEntry {
+    MenuItemEntry {
+        token: item.action_token.clone().into(),
+        label: item.label.clone().into(),
+        shortcut: item.shortcut.clone().into(),
+        enabled: item.enabled,
+        disabled_reason: item.disabled_reason.clone().into(),
+    }
+}
+
+/// Pushes the centred shell control cluster (08.2).
+///
+/// Order, rendering kind, tooltip and availability all arrive from the shell,
+/// which reads them from the registry: the menu bar row paints the list it is
+/// handed and declares no control of its own. The zoom readout is the one entry
+/// whose value the UI supplies, because it is the live camera state.
+fn push_shell_controls(win: &MainWindow, st: &PetuniaSlintState) {
+    let controls: Vec<ShellControlEntry> = st
+        .shell
+        .bridge
+        .query_shell_controls()
+        .into_iter()
+        .map(|control| ShellControlEntry {
+            id: control.id.into(),
+            kind: match control.kind {
+                ShellControlKind::Icon => "icon".into(),
+                ShellControlKind::Readout => "readout".into(),
+                ShellControlKind::Divider => "divider".into(),
+            },
+            tooltip: control.tooltip.into(),
+            enabled: control.enabled,
+        })
+        .collect();
+    win.set_shell_controls(Rc::new(VecModel::from(controls)).into());
+
+    // The one control that stays in the tab strip, labelled from the catalog.
+    win.set_snap_label(
+        st.shell
+            .bridge
+            .surface_label("ptnd.surface.tabs.snapping")
+            .unwrap_or_default()
+            .into(),
+    );
+}
+
+/// Pushes the canonical context toolbar for the active tool (08.23).
+///
+/// Contextuality is decided in the shell: the entries that do not apply to the
+/// active tool never reach the UI, so the bar cannot show a vector control while
+/// a raster tool is active. Labels, tooltips and blocked reasons arrive
+/// localized, from the same catalog and the same registry the menu uses.
+fn push_context_toolbar(win: &MainWindow, st: &PetuniaSlintState) {
+    let has_selection = st.shell.bridge.action_context().selection_count > 0;
+    let entries: Vec<ContextToolbarEntry> = st
+        .shell
+        .bridge
+        .query_context_toolbar(st.shell.active_tool(), has_selection)
+        .into_iter()
+        .map(|entry| {
+            let kind = match entry.kind {
+                ToolbarEntryKind::ToolBadge => "tool_badge",
+                ToolbarEntryKind::TransformReadout => "transform_readout",
+                ToolbarEntryKind::ColorSwatches => "color_swatches",
+                ToolbarEntryKind::Command => "command",
+                ToolbarEntryKind::Divider => "divider",
+                ToolbarEntryKind::Spacer => "spacer",
+            };
+            ContextToolbarEntry {
+                id: entry.id.into(),
+                kind: kind.into(),
+                label: entry.label.into(),
+                tooltip: entry.tooltip.into(),
+                tooltip_alt: entry.tooltip_alt.into(),
+                enabled: entry.enabled,
+                disabled_reason: entry.disabled_reason.into(),
+            }
+        })
+        .collect();
+    win.set_context_toolbar(Rc::new(VecModel::from(entries)).into());
+}
+
+/// Pushes the registered personas.
+///
+/// The switcher renders whatever the registry declares, with catalog labels, so
+/// the shell holds no persona name and no persona count of its own.
+fn push_personas(win: &MainWindow, st: &PetuniaSlintState) {
+    let personas: Vec<PersonaEntry> = st
+        .shell
+        .bridge
+        .personas()
+        .into_iter()
+        .map(|persona| PersonaEntry {
+            id: persona.id.into(),
+            label: persona.label.into(),
+            hint: persona.hint.into(),
+        })
+        .collect();
+    win.set_personas(Rc::new(VecModel::from(personas)).into());
+}
+
+/// Pushes the command palette index, recording the listed tokens in order for
+/// Enter-to-run-first.
+///
+/// The palette is a second *view* of the same registry as the menu, never a
+/// second catalog: a command exists here exactly when the menu offers it (08.2).
+fn push_palette_items(win: &MainWindow, st: &mut PetuniaSlintState, query: &str) {
+    let needle = query.to_lowercase();
+    let index = st.shell.bridge.query_command_index();
+    let items: Vec<PaletteItem> = index
+        .into_iter()
+        .filter(|item| {
+            needle.is_empty()
+                || item.label.to_lowercase().contains(&needle)
+                || item.action_id.to_lowercase().contains(&needle)
+                || item.shortcut.to_lowercase().contains(&needle)
+        })
+        .map(|item| {
+            st.palette_filtered.push(item.action_token.clone());
             PaletteItem {
-                id: id.into(),
-                label: label.into(),
-                hint: hint.into(),
+                id: item.action_token.into(),
+                label: item.label.into(),
+                hint: item.shortcut.into(),
             }
         })
         .collect();
     win.set_palette_items(Rc::new(VecModel::from(items)).into());
 }
 
-/// Runs one palette command id against the live shell. Returns true when
-/// the UI should resync afterwards.
-fn run_palette_command(state: &mut PetuniaSlintState, id: &str) -> bool {
-    let st = state;
-    match id {
-        "undo" => {
-            let _ = st.shell.undo();
-            true
-        }
-        "redo" => {
-            let _ = st.shell.redo();
-            true
-        }
-        "group" => {
-            let _ = st.shell.layers_panel.group_selection(
-                &mut st.shell.bridge,
-                petunia_design_document::ContainerRole::Group,
-            );
-            true
-        }
-        "ungroup" => {
-            let _ = st
-                .shell
-                .layers_panel
-                .ungroup_selection(&mut st.shell.bridge);
-            true
-        }
-        "clip-mask" => {
-            let _ = st
-                .shell
-                .layers_panel
-                .create_clipping_mask(&mut st.shell.bridge);
-            true
-        }
-        "clip-release" => {
-            // Release selected clip groups; with an empty relevant
-            // selection, release all clip groups on the active surface.
-            let targets: Vec<ObjectId> = st
-                .shell
-                .bridge
-                .session()
-                .map(|s| {
-                    let sel = st.shell.bridge.selection().selected_ids.clone();
-                    let scope: Vec<ObjectId> = if sel.is_empty() {
-                        match s.active_surface() {
-                            Some(surf) => s
-                                .surface(surf)
-                                .map(|sf| {
-                                    sf.objects().iter().map(|o| o.id).collect()
-                                })
-                                .unwrap_or_default(),
-                            None => vec![],
-                        }
-                    } else {
-                        sel
-                    };
-                    scope
-                        .into_iter()
-                        .filter(|oid| {
-                            s.find_object(*oid).is_some_and(|o| {
-                                o.is_container()
-                                    && o.role
-                                        == Some(petunia_design_document::ContainerRole::ClipGroup)
-                            })
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            for gid in targets {
-                let _ = st
-                    .shell
-                    .layers_panel
-                    .release_clipping_mask(&mut st.shell.bridge, gid);
-            }
-            true
-        }
-        "delete" => {
-            let ids = st.shell.bridge.selection().selected_ids.clone();
-            for id in ids {
-                let _ = st.shell.bridge.submit_command(CommandRequest::new(
-                    Command::DeleteObject { id },
-                ));
-            }
-            st.shell.bridge.set_selection(vec![]);
-            true
-        }
-        "select-all" => {
-            if let Some(session) = st.shell.bridge.session() {
-                let _ = session;
-            }
-            // Selection lives in the session; select via surface objects.
-            let all: Vec<ObjectId> = st
-                .shell
-                .bridge
-                .session()
-                .map(|s| {
-                    s.document()
-                        .surfaces()
-                        .iter()
-                        .flat_map(|sf| sf.objects())
-                        .map(|o| o.id)
-                        .collect()
-                })
-                .unwrap_or_default();
-            st.shell.bridge.set_selection(all);
-            true
-        }
-        "duplicate" => {
-            // Offset duplicate of the primary selection via panel lane.
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            if let Some(first) = sel.first().copied() {
-                if let Some(session) = st.shell.bridge.session() {
-                    if let Some(obj) = session
-                        .document()
-                        .surfaces()
-                        .iter()
-                        .flat_map(|s| s.objects())
-                        .find(|o| o.id == first)
-                        .cloned()
-                    {
-                        if let Some(surface_id) = session
-                            .document()
-                            .surfaces()
-                            .iter()
-                            .find(|sf| sf.objects().iter().any(|o| o.id == first))
-                            .map(|sf| sf.id)
-                        {
-                            if let Ok(new_id) = st.shell.bridge.next_object_id() {
-                                let b = obj.bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
-                                let nb =
-                                    [b[0] + 20.0, b[1] + 20.0, b[2], b[3]];
-                                let cmds = vec![
-                                    Command::CreateShapeObject {
-                                        surface: surface_id,
-                                        id: new_id,
-                                        name: format!("{} Copy", obj.name),
-                                        shape: obj.shape.clone().unwrap_or(
-                                            petunia_design_document::ShapeKind::Rectangle {
-                                                corner_radii: [0.0; 4],
-                                            },
-                                        ),
-                                        bounds: Some(nb),
-                                        fill: obj.fill.clone(),
-                                        stroke: obj.stroke.clone(),
-                                        stroke_width: obj.stroke_width,
-                                    },
-                                    Command::SetBounds {
-                                        id: new_id,
-                                        bounds: Some(nb),
-                                        rotation: obj.rotation,
-                                    },
-                                ];
-                                let _ = st.shell.bridge.submit_all("Duplicate object", cmds);
-                                st.shell.bridge.set_selection(vec![new_id]);
-                            }
-                        }
-                    }
-                }
-            }
-            true
-        }
-        "zoom-in" => {
-            st.shell.camera.set_zoom(st.shell.camera.zoom * 1.25);
-            false
-        }
-        "zoom-out" => {
-            st.shell.camera.set_zoom(st.shell.camera.zoom / 1.25);
-            false
-        }
-        "zoom-fit" => {
-            if let Some(session) = st.shell.bridge.session() {
-                if let Some(surface) = session.document().surfaces().first() {
-                    let b = surface.bounds();
-                    st.shell.fit_surface(petunia_design_geometry::GRect::new(
-                        b[0], b[1], b[0] + b[2], b[1] + b[3],
-                    ));
-                }
-            }
-            false
-        }
-        "export" => false,
-        mode if mode.starts_with("align-") => {
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            if let Some(surface_id) = st.shell.bridge.active_surface().or_else(|| {
-                st.shell
-                    .bridge
-                    .session()
-                    .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
-            }) {
-                let amode = match mode {
-                    "align-left" => petunia_design_document::AlignmentMode::Left,
-                    "align-right" => petunia_design_document::AlignmentMode::Right,
-                    "align-top" => petunia_design_document::AlignmentMode::Top,
-                    "align-bottom" => petunia_design_document::AlignmentMode::Bottom,
-                    "align-middle" => petunia_design_document::AlignmentMode::Middle,
-                    _ => petunia_design_document::AlignmentMode::Center,
-                };
-                let _ = st.shell.bridge.align_objects(surface_id, sel, amode);
-            }
-            true
-        }
-        mode if mode.starts_with("distribute-") => {
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            if let Some(surface_id) = st.shell.bridge.active_surface().or_else(|| {
-                st.shell
-                    .bridge
-                    .session()
-                    .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
-            }) {
-                let axis = if mode == "distribute-v" {
-                    petunia_design_document::DistributionAxis::Vertical
-                } else {
-                    petunia_design_document::DistributionAxis::Horizontal
-                };
-                let _ = st.shell.bridge.distribute_objects(surface_id, sel, axis);
-            }
-            true
-        }
-        mode if mode.starts_with("bool-") => {
-            let mut sel = st.shell.bridge.selection().selected_ids.clone();
-            if sel.len() < 2 {
-                if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document().surfaces().first() {
-                        if surface.objects().len() >= 2 {
-                            sel = vec![surface.objects()[0].id, surface.objects()[1].id];
-                        }
-                    }
-                }
-            }
-            if sel.len() >= 2 {
-                if let Ok(target_id) = st.shell.bridge.next_object_id() {
-                    if let Some(surface) = st
-                        .shell
-                        .bridge
-                        .session()
-                        .and_then(|s| s.document().surfaces().first().cloned())
-                    {
-                        let op = match mode {
-                            "bool-subtract" => petunia_design_geometry::BooleanOp::Difference,
-                            "bool-intersect" => petunia_design_geometry::BooleanOp::Intersection,
-                            "bool-xor" => petunia_design_geometry::BooleanOp::Xor,
-                            _ => petunia_design_geometry::BooleanOp::Union,
-                        };
-                        let _ = st.shell.bridge.apply_boolean(
-                            surface.id,
-                            target_id,
-                            sel[0],
-                            sel[1],
-                            op,
-                        );
-                        st.shell.bridge.set_selection(vec![target_id]);
-                    }
-                }
-            }
-            true
-        }
-        "convert-curves" => {
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            for id in sel {
-                let _ = st.shell.bridge.convert_to_curves(id);
-            }
-            true
-        }
-        "bake-corners" => {
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            for id in sel {
-                let _ = st.shell.bridge.bake_corners(id);
-            }
-            true
-        }
-        _ => false,
+/// Actions whose destination is a user choice, so the UI must collect it
+/// before the Action lane can run (see `activate_token`).
+fn needs_destination(action_id: &str) -> bool {
+    matches!(
+        action_id,
+        "ptnd.action.file.open" | "ptnd.action.file.save_as" | "ptnd.action.file.export"
+    )
+}
+
+/// Runs one menu/palette token through the Action lane.
+///
+/// Returns the action id that resolved, or `None` for an unknown token.
+/// A blocked capability is never dispatched, even if a stale token asks for
+/// it: the UI's disabled state and this guard agree because both read the same
+/// availability rule (15.F §2).
+fn run_action_token(state: &mut PetuniaSlintState, token: &str) -> Option<String> {
+    let (item, payload) = menus::item_for_token(token)?;
+    let action_id = item.surface.to_string();
+    if needs_destination(&action_id) {
+        return Some(action_id);
     }
+    let availability = menus::availability(&action_id, &state.shell.bridge.action_context());
+    if !availability.enabled {
+        return Some(action_id);
+    }
+    let _ = state
+        .shell
+        .bridge
+        .dispatch_action(ActionRequest::new(ActionId::new(&action_id), payload));
+    Some(action_id)
+}
+
+/// Dispatches an action carrying a user-chosen filesystem path.
+fn dispatch_path_action(
+    state: &mut PetuniaSlintState,
+    action_id: &str,
+    path: &std::path::Path,
+) -> Result<(), String> {
+    let payload = serde_json::json!({ "path": path.to_string_lossy() });
+    state
+        .shell
+        .bridge
+        .dispatch_action(ActionRequest::new(ActionId::new(action_id), payload))
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+/// Runs one menu/palette activation: dispatches inline actions and opens the
+/// dialog or file picker for the ones that need a user-chosen destination.
+fn activate_token(win: &MainWindow, state: &Rc<RefCell<PetuniaSlintState>>, token: &str) {
+    let action_id = {
+        let mut st = state.borrow_mut();
+        let Some(action_id) = run_action_token(&mut st, token) else {
+            return;
+        };
+        action_id
+    };
+
+    match action_id.as_str() {
+        "ptnd.action.file.export" => {
+            win.set_export_status_message("".into());
+            win.set_export_dialog_open(true);
+        }
+        "ptnd.action.file.open" => {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("Petunia Design Studio Project (*.PTND)", &["PTND", "ptnd"])
+                .set_title("Abrir documento")
+                .pick_file()
+            {
+                let mut st = state.borrow_mut();
+                if let Err(error) = dispatch_path_action(&mut st, &action_id, &path) {
+                    win.set_status_hint(error.into());
+                }
+            }
+        }
+        "ptnd.action.file.save_as" => {
+            let default_name = state.borrow().shell.bridge.session().map_or_else(
+                || "Untitled.PTND".to_string(),
+                |s| format!("{}.PTND", s.title()),
+            );
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("Petunia Design Studio Project (*.PTND)", &["PTND", "ptnd"])
+                .set_file_name(&default_name)
+                .set_title("Salvar documento como")
+                .save_file()
+            {
+                let mut st = state.borrow_mut();
+                if let Err(error) = dispatch_path_action(&mut st, &action_id, &path) {
+                    win.set_status_hint(error.into());
+                }
+            }
+        }
+        _ => {}
+    }
+
+    let st = state.borrow();
+    // The session owns the palette flag, so the overlay mirrors it instead of
+    // keeping a second opinion (15.B).
+    win.set_palette_open(
+        st.shell
+            .bridge
+            .session()
+            .is_some_and(|session| session.view.command_palette_open),
+    );
+    sync_ui_from_shell(win, &st);
 }
 
 fn sync_ui_from_shell(window: &MainWindow, state: &PetuniaSlintState) {
     let tool_str = format!("{:?}", state.shell.active_tool());
     window.set_active_tool_name(tool_str.into());
 
-    let zoom_pct = (state.shell.camera.zoom * 100.0).round() as i32;
+    let zoom_pct = (state.shell.view_camera().zoom * 100.0).round() as i32;
     window.set_zoom_pct(zoom_pct);
+
+    // Registry-driven menu bar plus the shell chrome titles resolved from the
+    // string catalog. Both are derived: the UI owns neither the structure nor
+    // the strings (15.G, 09.16).
+    push_menu(window, state);
+    push_personas(window, state);
+    push_shell_controls(window, state);
+    push_zoom_levels(window, state);
+    push_context_toolbar(window, state);
+    // The OS window title is a catalog string, not a literal in the .slint.
+    window.set_window_title(
+        state
+            .shell
+            .bridge
+            .localization()
+            .text("ptnd.text.shell.brand", state.shell.bridge.locale())
+            .into(),
+    );
+    {
+        let localization = state.shell.bridge.localization();
+        let locale = state.shell.bridge.locale().clone();
+        window.set_title_panel_layers(localization.text("ptnd.text.panel.layers", &locale).into());
+        window.set_title_panel_properties(
+            localization
+                .text("ptnd.text.panel.properties", &locale)
+                .into(),
+        );
+        window
+            .set_title_panel_history(localization.text("ptnd.text.panel.history", &locale).into());
+        window.set_title_panel_data_merge(
+            localization
+                .text("ptnd.text.panel.data_merge", &locale)
+                .into(),
+        );
+        // The session owns the palette flag, so the overlay mirrors it rather
+        // than keeping a second opinion (15.B).
+        window.set_palette_open(
+            state
+                .shell
+                .bridge
+                .session()
+                .is_some_and(|session| session.view.command_palette_open),
+        );
+    }
 
     // Sync Layers
     let layers: LayersPresentationModel = state.shell.query_layers();
@@ -702,7 +843,8 @@ fn sync_ui_from_shell(window: &MainWindow, state: &PetuniaSlintState) {
         .iter()
         .map(|r| {
             let kind = if let Some(session) = state.shell.bridge.session() {
-                session.document()
+                session
+                    .document()
                     .surfaces()
                     .iter()
                     .flat_map(|s| s.objects())
@@ -779,7 +921,10 @@ fn sync_ui_from_shell(window: &MainWindow, state: &PetuniaSlintState) {
                     // Geometry: rotated objects bake rotation about the
                     // bounds top-left (document model) into path data and
                     // report the rotated bounding box.
-                    let mut is_circle = matches!(&obj.shape, Some(petunia_design_document::ShapeKind::Ellipse));
+                    let mut is_circle = matches!(
+                        &obj.shape,
+                        Some(petunia_design_document::ShapeKind::Ellipse)
+                    );
                     let mut is_path = false;
                     let mut is_text = false;
                     let mut text_content = String::new();
@@ -789,7 +934,10 @@ fn sync_ui_from_shell(window: &MainWindow, state: &PetuniaSlintState) {
                     let mut corner_radius = 0.0f32;
                     let (draw_x, draw_y, draw_w, draw_h);
                     if rotated {
-                        if matches!(&obj.shape, Some(petunia_design_document::ShapeKind::Text { .. })) {
+                        if matches!(
+                            &obj.shape,
+                            Some(petunia_design_document::ShapeKind::Text { .. })
+                        ) {
                             // Text has no vector outline: draw unrotated
                             // (known fidelity gap, documented).
                             is_text = true;
@@ -827,21 +975,21 @@ fn sync_ui_from_shell(window: &MainWindow, state: &PetuniaSlintState) {
                             Some(petunia_design_document::ShapeKind::Ellipse) => {
                                 is_circle = true;
                             }
-                            Some(petunia_design_document::ShapeKind::Rectangle { corner_radii }) => {
+                            Some(petunia_design_document::ShapeKind::Rectangle {
+                                corner_radii,
+                            }) => {
                                 corner_radius = corner_radii[0] as f32;
                             }
                             Some(petunia_design_document::ShapeKind::Path(path)) => {
-                                let local =
-                                    path.transformed(GAffine::translate(-b[0], -b[1]));
+                                let local = path.transformed(GAffine::translate(-b[0], -b[1]));
                                 svg_path = local.to_svg_path_data();
                                 is_path = true;
                                 is_circle = false;
                             }
                             Some(petunia_design_document::ShapeKind::Polygon { .. })
                             | Some(petunia_design_document::ShapeKind::Star { .. }) => {
-                                let local_path = obj
-                                    .to_path()
-                                    .transformed(GAffine::translate(-b[0], -b[1]));
+                                let local_path =
+                                    obj.to_path().transformed(GAffine::translate(-b[0], -b[1]));
                                 svg_path = local_path.to_svg_path_data();
                                 is_path = true;
                                 is_circle = false;
@@ -857,8 +1005,8 @@ fn sync_ui_from_shell(window: &MainWindow, state: &PetuniaSlintState) {
                             }
                             None => {
                                 let name_lower = obj.name.to_lowercase();
-                                is_circle = name_lower.contains("circle")
-                                    || name_lower.contains("ellipse");
+                                is_circle =
+                                    name_lower.contains("circle") || name_lower.contains("ellipse");
                             }
                         }
                     }
@@ -866,8 +1014,9 @@ fn sync_ui_from_shell(window: &MainWindow, state: &PetuniaSlintState) {
                         if let Some(fill) = &obj.fill {
                             text_color = token_to_slint(fill);
                         }
-                        if let Some(petunia_design_document::ShapeKind::Text { font_size, .. }) =
-                            &obj.shape
+                        if let Some(petunia_design_document::ShapeKind::Text {
+                            font_size, ..
+                        }) = &obj.shape
                         {
                             text_size = *font_size as f32;
                         }
@@ -1112,39 +1261,179 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Persona switcher (08.2)
+    // Persona switcher (08.2, 15.G). Switching travels by registered id, and
+    // the menu bar is re-derived because persona-scoped families come and go
+    // with the mode. The hint is a catalog string, not a literal.
     {
+        let state_clone = state.clone();
         let win_weak = main_window.as_weak();
-        main_window.on_switch_persona(move |p| {
+        main_window.on_switch_persona(move |persona| {
+            let mut st = state_clone.borrow_mut();
+            if !st.shell.bridge.set_persona(persona.as_str()) {
+                return;
+            }
+            let hint = st
+                .shell
+                .bridge
+                .persona_hint(persona.as_str())
+                .unwrap_or_default();
             if let Some(win) = win_weak.upgrade() {
-                win.set_active_persona(p);
-                let hint = if p == 0 {
-                    "🎨 Design Persona: Modo Vetorial ativo. Ferramentas de desenho, nós, preenchimento e curvas."
-                } else {
-                    "📷 Photo Persona: Modo Raster ativo. Pincéis de pixels, recorte, retoque e máscaras raster."
-                };
+                push_menu(&win, &st);
                 win.set_status_hint(hint.into());
             }
         });
     }
 
-    // Command palette (Ctrl+K) (08.2)
+    // Canonical context toolbar (08.23). An entry is a fourth *view* of the
+    // registry: it resolves to the menu token it was declared with and travels
+    // the exact lane a menu row travels, so availability, payload and the
+    // blocked reason cannot differ between the bar and the menu.
     {
         let state_clone = state.clone();
         let win_weak = main_window.as_weak();
-        main_window.on_open_palette(move || {
-            let mut st = state_clone.borrow_mut();
-            st.palette_filtered.clear();
+        main_window.on_context_toolbar_activated(move |id| {
+            let Some(entry) = context_toolbar::entry(id.as_str()) else {
+                return;
+            };
+            if entry.kind != ToolbarEntryKind::Command {
+                return;
+            }
+            let token = entry.token.to_string();
             if let Some(win) = win_weak.upgrade() {
-                win.set_palette_query("".into());
-                push_palette_items(&win, "", &mut st);
-                win.set_palette_open(true);
+                activate_token(&win, &state_clone, token.as_str());
+            }
+        });
+    }
+
+    // Centred shell control cluster (08.2). A control is a second *view* of the
+    // registry, never a second dispatch path: it resolves to an action id, is
+    // checked against the same availability rule the menu uses, and only then
+    // travels the Action lane.
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_shell_control_activated(move |id| {
+            let Some(action_id) = petunia_design_shell::menu::shell_control_action(id.as_str())
+            else {
+                return;
+            };
+            {
+                let mut st = state_clone.borrow_mut();
+                let availability =
+                    menus::availability(action_id, &st.shell.bridge.action_context());
+                if !availability.enabled {
+                    // A blocked control stays blocked: the guard and the UI's
+                    // disabled state read the same rule (15.F §2).
+                    return;
+                }
+                let _ = st.shell.bridge.dispatch_action(ActionRequest::new(
+                    ActionId::new(action_id),
+                    serde_json::json!({}),
+                ));
+            }
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &state_clone.borrow());
+            }
+        });
+    }
+
+    // Menu bar (15.G): generated from the surface registry, and every
+    // activation travels the same Action-token lane as the palette.
+    {
+        let win_weak = main_window.as_weak();
+        main_window.on_menu_family_toggled(move |index, x| {
+            if let Some(win) = win_weak.upgrade() {
+                let current = win.get_open_menu_index();
+                let opening = current != index;
+                win.set_open_menu_index(if opening { index } else { -1 });
+                if opening {
+                    // Anchor the popup under the family that owns it.
+                    win.set_open_menu_x(x);
+                }
             }
         });
     }
     {
         let win_weak = main_window.as_weak();
+        main_window.on_menu_closed(move || {
+            if let Some(win) = win_weak.upgrade() {
+                win.set_open_menu_index(-1);
+            }
+        });
+    }
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_menu_item_activated(move |token| {
+            if let Some(win) = win_weak.upgrade() {
+                activate_token(&win, &state_clone, token.as_str());
+            }
+        });
+    }
+    {
+        // A zoom level is an ordinary registry item, so it travels the same
+        // lane a menu row does: token in, Action out, `sync` back.
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_zoom_level_activated(move |token| {
+            if let Some(win) = win_weak.upgrade() {
+                activate_token(&win, &state_clone, token.as_str());
+            }
+        });
+    }
+
+    // Command palette (Ctrl+K): opening and closing go through the Action lane
+    // (`ptnd.action.view.command_palette`), and the overlay mirrors the session.
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_open_palette(move || {
+            let mut st = state_clone.borrow_mut();
+            let _ = st
+                .shell
+                .bridge
+                .dispatch_action(ActionRequest::without_payload(ActionId::new(
+                    "ptnd.action.view.command_palette",
+                )));
+            let opened = st
+                .shell
+                .bridge
+                .session()
+                .is_some_and(|session| session.view.command_palette_open);
+            if let Some(win) = win_weak.upgrade() {
+                // The palette and an open menu never share the screen.
+                win.set_open_menu_index(-1);
+            }
+            st.palette_filtered.clear();
+            if let Some(win) = win_weak.upgrade() {
+                win.set_palette_query("".into());
+                if opened {
+                    push_palette_items(&win, &mut st, "");
+                }
+                win.set_palette_open(opened);
+            }
+        });
+    }
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
         main_window.on_close_palette(move || {
+            let mut st = state_clone.borrow_mut();
+            // Closing is idempotent: only dispatch while it is actually open,
+            // so a stray Escape cannot reopen the overlay.
+            if st
+                .shell
+                .bridge
+                .session()
+                .is_some_and(|session| session.view.command_palette_open)
+            {
+                let _ = st
+                    .shell
+                    .bridge
+                    .dispatch_action(ActionRequest::without_payload(ActionId::new(
+                        "ptnd.action.view.command_palette",
+                    )));
+            }
             if let Some(win) = win_weak.upgrade() {
                 win.set_palette_open(false);
             }
@@ -1157,55 +1446,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             st.palette_filtered.clear();
             if let Some(win) = win_weak.upgrade() {
-                push_palette_items(&win, text.as_str(), &mut st);
+                push_palette_items(&win, &mut st, text.as_str());
             }
         });
     }
     {
         let state_clone = state.clone();
         let win_weak = main_window.as_weak();
-        let activate = move |id: String| {
-            let mut st = state_clone.borrow_mut();
-            let should_sync = run_palette_command(&mut st, id.as_str());
-            if id == "export" {
-                if let Some(win) = win_weak.upgrade() {
-                    win.set_palette_open(false);
-                    win.set_export_dialog_open(true);
-                }
-                return;
-            }
+        main_window.on_palette_activate(move |token| {
             if let Some(win) = win_weak.upgrade() {
-                win.set_palette_open(false);
-                if should_sync {
-                    sync_ui_from_shell(&win, &st);
-                }
+                activate_token(&win, &state_clone, token.as_str());
             }
-        };
-        let state_clone2 = state.clone();
-        let win_weak2 = main_window.as_weak();
-        main_window.on_palette_activate(move |id| {
-            let _ = &state_clone2;
-            let _ = &win_weak2;
-            activate(id.to_string());
         });
-        // Enter-to-run-first needs its own closure over fresh clones.
-        let state_clone3 = state.clone();
-        let win_weak3 = main_window.as_weak();
+    }
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
         main_window.on_palette_activate_first(move || {
-            let first = state_clone3
-                .borrow()
-                .palette_filtered
-                .first()
-                .cloned();
-            if let Some(id) = first {
-                let mut st = state_clone3.borrow_mut();
-                let should_sync = run_palette_command(&mut st, id.as_str());
-                if let Some(win) = win_weak3.upgrade() {
-                    win.set_palette_open(false);
-                    if should_sync {
-                        sync_ui_from_shell(&win, &st);
-                    }
-                }
+            let first = state_clone.borrow().palette_filtered.first().cloned();
+            if let (Some(token), Some(win)) = (first, win_weak.upgrade()) {
+                activate_token(&win, &state_clone, &token);
             }
         });
     }
@@ -1283,9 +1543,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let state_clone = state.clone();
         let win_weak = main_window.as_weak();
         main_window.on_new_doc_clicked(move || {
-            let _ = state_clone.borrow_mut().shell.new_document("Untitled");
+            let mut st = state_clone.borrow_mut();
+            let _ = st
+                .shell
+                .bridge
+                .dispatch_action(ActionRequest::without_payload(ActionId::new(
+                    "ptnd.action.file.new",
+                )));
             if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &state_clone.borrow());
+                sync_ui_from_shell(&win, &st);
             }
         });
     }
@@ -1295,21 +1561,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let state_clone = state.clone();
         let win_weak = main_window.as_weak();
         main_window.on_open_doc_clicked(move || {
+            // The dialog picks the path; the Action lane does the work. The
+            // old handler created an empty document and printed the filename,
+            // which is exactly the fake UI the contract forbids (15.F §2).
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("Petunia Design Studio Project (*.PTND)", &["PTND", "ptnd"])
-                .add_filter("Gráficos Vetoriais SVG (*.svg)", &["svg"])
-                .add_filter("Todos os arquivos (*.*)", &["*"])
-                .set_title("Abrir Documento Aubrieta")
+                .set_title("Abrir documento")
                 .pick_file()
             {
-                println!("RFD: Arquivo selecionado para abertura: {:?}", path);
-                let title = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("Novo Documento");
-                let _ = state_clone.borrow_mut().shell.new_document(title);
+                let mut st = state_clone.borrow_mut();
+                let result = dispatch_path_action(&mut st, "ptnd.action.file.open", &path);
                 if let Some(win) = win_weak.upgrade() {
-                    sync_ui_from_shell(&win, &state_clone.borrow());
+                    if let Err(error) = result {
+                        win.set_status_hint(format!("Falha ao abrir: {error}").into());
+                    }
+                    sync_ui_from_shell(&win, &st);
                 }
             }
         });
@@ -1320,23 +1586,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let state_clone = state.clone();
         let win_weak = main_window.as_weak();
         main_window.on_save_doc_clicked(move || {
-            let default_name = state_clone
+            // `file.save` reuses the recorded path; only a session that has
+            // never been written needs a destination, and then the same action
+            // lane runs `file.save_as` with the chosen path.
+            let known_path = state_clone
                 .borrow()
                 .shell
                 .bridge
                 .session()
-                .map(|s| format!("{}.aub", s.title()))
-                .unwrap_or_else(|| "projeto.aub".to_string());
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("Petunia Design Studio Project (*.PTND)", &["PTND", "ptnd"])
-                .set_file_name(&default_name)
-                .set_title("Salvar Projeto Aubrieta")
-                .save_file()
-            {
-                println!("RFD: Salvando projeto em: {:?}", path);
-                if let Some(win) = win_weak.upgrade() {
-                    sync_ui_from_shell(&win, &state_clone.borrow());
+                .and_then(|session| session.path().map(std::path::Path::to_path_buf));
+            let mut st = state_clone.borrow_mut();
+            let result = if let Some(path) = known_path {
+                dispatch_path_action(&mut st, "ptnd.action.file.save", &path)
+            } else {
+                let default_name = st.shell.bridge.session().map_or_else(
+                    || "Untitled.PTND".to_string(),
+                    |s| format!("{}.PTND", s.title()),
+                );
+                match rfd::FileDialog::new()
+                    .add_filter("Petunia Design Studio Project (*.PTND)", &["PTND", "ptnd"])
+                    .set_file_name(&default_name)
+                    .set_title("Salvar documento")
+                    .save_file()
+                {
+                    Some(path) => dispatch_path_action(&mut st, "ptnd.action.file.save_as", &path),
+                    None => Ok(()),
                 }
+            };
+            if let Some(win) = win_weak.upgrade() {
+                if let Err(error) = result {
+                    win.set_status_hint(format!("Falha ao salvar: {error}").into());
+                }
+                sync_ui_from_shell(&win, &st);
             }
         });
     }
@@ -1346,47 +1627,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let state_clone = state.clone();
         let win_weak = main_window.as_weak();
         main_window.on_place_image_clicked(move || {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter(
-                    "Imagens Raster/Vetoriais (*.png, *.jpg, *.jpeg, *.svg)",
-                    &["png", "jpg", "jpeg", "svg"],
-                )
-                .set_title("Inserir Imagem no Documento")
-                .pick_file()
-            {
-                println!("RFD: Inserindo imagem: {:?}", path);
-                let mut st = state_clone.borrow_mut();
-                let Ok(obj_id) = st.shell.bridge.next_object_id() else { return };
-                if let Some(surface) = st
-                    .shell
-                    .bridge
-                    .session()
-                    .and_then(|s| s.document().surfaces().first().cloned())
-                {
-                    let file_stem = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("Imagem");
-                    let _ = st.shell.bridge.submit_command(CommandRequest::new(
-                        Command::CreateObject {
-                            surface: surface.id,
-                            id: obj_id,
-                            name: format!("Imagem: {file_stem}"),
-                        },
-                    ));
-                    let _ =
-                        st.shell
-                            .bridge
-                            .set_bounds(obj_id, Some([180.0, 180.0, 240.0, 160.0]), 0.0);
-                    let _ = st
-                        .shell
-                        .bridge
-                        .set_fill(obj_id, Some("ptnd.green/500".to_string()));
-                    st.shell.bridge.set_selection(vec![obj_id]);
-                }
-                if let Some(win) = win_weak.upgrade() {
-                    sync_ui_from_shell(&win, &st);
-                }
+            // `ptnd.action.file.place` is blocked: the document model has no
+            // image object yet, so a placed asset has nowhere to live. The old
+            // handler created a coloured rectangle named after the file, which
+            // is a fake placement. The UI reports the blocker instead (15.F §2).
+            let state = state_clone.borrow();
+            let reason = menus::availability(
+                "ptnd.action.file.place",
+                &state.shell.bridge.action_context(),
+            )
+            .reason
+            .unwrap_or("Placing an asset is not available yet");
+            if let Some(win) = win_weak.upgrade() {
+                win.set_status_hint(reason.into());
             }
         });
     }
@@ -1438,7 +1691,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .session()
                 .and_then(|s| s.document().surfaces().first().cloned())
             {
-                let Ok(new_id) = st.shell.bridge.next_object_id() else { return };
+                let Ok(new_id) = st.shell.bridge.next_object_id() else {
+                    return;
+                };
                 let count = surface.objects().len() + 1;
                 let _ =
                     st.shell
@@ -1478,7 +1733,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .session()
                 .and_then(|s| s.document().surfaces().first().cloned())
             {
-                let Ok(new_id) = st.shell.bridge.next_object_id() else { return };
+                let Ok(new_id) = st.shell.bridge.next_object_id() else {
+                    return;
+                };
                 let count = surface.objects().len() + 1;
                 let _ =
                     st.shell
@@ -1518,7 +1775,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .session()
                 .and_then(|s| s.document().surfaces().first().cloned())
             {
-                let Ok(new_id) = st.shell.bridge.next_object_id() else { return };
+                let Ok(new_id) = st.shell.bridge.next_object_id() else {
+                    return;
+                };
                 let count = surface.objects().len() + 1;
                 let offset = (count as f64 * 35.0) % 250.0;
                 let _ = st.shell.bridge.create_shape_object(
@@ -1554,7 +1813,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .session()
                 .and_then(|s| s.document().surfaces().first().cloned())
             {
-                let Ok(new_id) = st.shell.bridge.next_object_id() else { return };
+                let Ok(new_id) = st.shell.bridge.next_object_id() else {
+                    return;
+                };
                 let count = surface.objects().len() + 1;
                 let offset = (count as f64 * 25.0) % 200.0;
                 let _ = st.shell.bridge.create_shape_object(
@@ -1600,7 +1861,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if sel_ids.len() >= 2 {
                 let id_a = sel_ids[0];
                 let id_b = sel_ids[1];
-                let Ok(target_id) = st.shell.bridge.next_object_id() else { return };
+                let Ok(target_id) = st.shell.bridge.next_object_id() else {
+                    return;
+                };
                 if let Some(surface) = st
                     .shell
                     .bridge
@@ -1642,7 +1905,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if sel_ids.len() >= 2 {
                 let id_a = sel_ids[0];
                 let id_b = sel_ids[1];
-                let Ok(target_id) = st.shell.bridge.next_object_id() else { return };
+                let Ok(target_id) = st.shell.bridge.next_object_id() else {
+                    return;
+                };
                 if let Some(surface) = st
                     .shell
                     .bridge
@@ -1684,7 +1949,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if sel_ids.len() >= 2 {
                 let id_a = sel_ids[0];
                 let id_b = sel_ids[1];
-                let Ok(target_id) = st.shell.bridge.next_object_id() else { return };
+                let Ok(target_id) = st.shell.bridge.next_object_id() else {
+                    return;
+                };
                 if let Some(surface) = st
                     .shell
                     .bridge
@@ -1726,7 +1993,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if sel_ids.len() >= 2 {
                 let id_a = sel_ids[0];
                 let id_b = sel_ids[1];
-                let Ok(target_id) = st.shell.bridge.next_object_id() else { return };
+                let Ok(target_id) = st.shell.bridge.next_object_id() else {
+                    return;
+                };
                 if let Some(surface) = st
                     .shell
                     .bridge
@@ -2015,11 +2284,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .and_then(|o| o.bounds)
                     });
                     if let Some(b) = current {
-                        let _ = st.shell.bridge.set_bounds(
-                            sel_id,
-                            Some(b),
-                            deg.to_radians(),
-                        );
+                        let _ = st
+                            .shell
+                            .bridge
+                            .set_bounds(sel_id, Some(b), deg.to_radians());
                     }
                 }
             }
@@ -2257,7 +2525,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
 
             if let Some((surf_id, name, clone_bounds, fill)) = clone_info {
-                let Ok(clone_id) = st.shell.bridge.next_object_id() else { return };
+                let Ok(clone_id) = st.shell.bridge.next_object_id() else {
+                    return;
+                };
                 let _ =
                     st.shell
                         .bridge
@@ -2338,14 +2608,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let surf_id = r.surface_id;
                     let id = r.id;
                     let new_index = (idx - 1) as usize;
-                    let _ = st
-                        .shell
-                        .bridge
-                        .submit_command(CommandRequest::new(Command::ReorderObject {
+                    let _ = st.shell.bridge.submit_command(CommandRequest::new(
+                        Command::ReorderObject {
                             surface: surf_id,
                             id,
                             new_index,
-                        }));
+                        },
+                    ));
                 }
             }
             if let Some(win) = win_weak.upgrade() {
@@ -2366,14 +2635,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let surf_id = r.surface_id;
                     let id = r.id;
                     let new_index = (idx + 1) as usize;
-                    let _ = st
-                        .shell
-                        .bridge
-                        .submit_command(CommandRequest::new(Command::ReorderObject {
+                    let _ = st.shell.bridge.submit_command(CommandRequest::new(
+                        Command::ReorderObject {
                             surface: surf_id,
                             id,
                             new_index,
-                        }));
+                        },
+                    ));
                 }
             }
             if let Some(win) = win_weak.upgrade() {
@@ -2518,9 +2786,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             let sel_ids = st.shell.bridge.selection().selected_ids;
             for id in sel_ids {
-                let current = st.shell.bridge.session().and_then(|s| {
-                    s.document().find_object(id).map(|o| (o.bounds, o.rotation))
-                });
+                let current = st
+                    .shell
+                    .bridge
+                    .session()
+                    .and_then(|s| s.document().find_object(id).map(|o| (o.bounds, o.rotation)));
                 if let Some((Some(b), rot)) = current {
                     let new_b = [b[0] + dx as f64, b[1] + dy as f64, b[2], b[3]];
                     let _ = st.shell.bridge.set_bounds(id, Some(new_b), rot);
@@ -2629,185 +2899,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let state_clone = state.clone();
         let win_weak = main_window.as_weak();
         main_window.on_do_export_clicked(move || {
-            let st = state_clone.borrow();
-            let fmt = if let Some(win) = win_weak.upgrade() {
-                win.get_export_format().to_string()
-            } else {
-                "png".to_string()
+            // Export is one Action, not three private pipelines: the dialog
+            // collects format and destination, then `ptnd.action.file.export`
+            // runs the engines (SVG/PDF exporters, CPU compositor for PNG).
+            let fmt = win_weak.upgrade().map_or_else(
+                || "png".to_string(),
+                |win| win.get_export_format().to_string(),
+            );
+            let (filter_label, extension) = match fmt.as_str() {
+                "svg" => ("SVG Vector (*.svg)", "svg"),
+                "pdf" => ("PDF Document (*.pdf)", "pdf"),
+                _ => ("PNG Image (*.png)", "png"),
+            };
+            let Some(path) = rfd::FileDialog::new()
+                .add_filter(filter_label, &[extension])
+                .set_file_name(format!("export.{extension}"))
+                .save_file()
+            else {
+                return;
             };
 
-            let session = match st.shell.bridge.session() {
-                Some(s) => s,
-                None => return,
-            };
-
-            match fmt.as_str() {
-                "svg" => {
-                    let dialog = rfd::FileDialog::new()
-                        .add_filter("SVG Vector (*.svg)", &["svg"])
-                        .set_file_name("export.svg");
-                    if let Some(path) = dialog.save_file() {
-                        let svg_content = export_document_svg(session.document());
-                        match std::fs::write(&path, svg_content.as_bytes()) {
-                            Ok(()) => {
-                                if let Some(win) = win_weak.upgrade() {
-                                    win.set_export_status_message(
-                                        format!("SVG exportado: {}", path.display()).into(),
-                                    );
-                                }
-                            }
-                            Err(e) => {
-                                if let Some(win) = win_weak.upgrade() {
-                                    win.set_export_status_message(
-                                        format!("Erro SVG: {e}").into(),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-                "pdf" => {
-                    let dialog = rfd::FileDialog::new()
-                        .add_filter("PDF Document (*.pdf)", &["pdf"])
-                        .set_file_name("export.pdf");
-                    if let Some(path) = dialog.save_file() {
-                        let options = PdfExportOptions::default();
-                        match export_document_pdf(session.document(), &options) {
-                            Ok((pdf_bytes, _)) => {
-                                match std::fs::write(&path, &pdf_bytes) {
-                                    Ok(()) => {
-                                        if let Some(win) = win_weak.upgrade() {
-                                            win.set_export_status_message(
-                                                format!("PDF exportado: {}", path.display()).into(),
-                                            );
-                                        }
-                                    }
-                                    Err(e) => {
-                                        if let Some(win) = win_weak.upgrade() {
-                                            win.set_export_status_message(
-                                                format!("Erro ao gravar PDF: {e}").into(),
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                if let Some(win) = win_weak.upgrade() {
-                                    win.set_export_status_message(
-                                        format!("Erro PDF: {e}").into(),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {
-                    // PNG (Raster)
-                    let dialog = rfd::FileDialog::new()
-                        .add_filter("PNG Image (*.png)", &["png"])
-                        .set_file_name("export.png");
-                    if let Some(path) = dialog.save_file() {
-                        if let Some(surface) = session.document().surfaces().first() {
-                            let w = (surface.dimensions[0].round() as usize).max(10);
-                            let h = (surface.dimensions[1].round() as usize).max(10);
-                            let mut buffer = vec![255u8; w * h * 4];
-                            for obj in surface.objects() {
-                                if !obj.visible {
-                                    continue;
-                                }
-                                if let Some(b) = obj.bounds {
-                                    let ox = (b[0] - surface.origin[0]).max(0.0) as usize;
-                                    let oy = (b[1] - surface.origin[1]).max(0.0) as usize;
-                                    let ow = (b[2] as usize).min(w.saturating_sub(ox));
-                                    let oh = (b[3] as usize).min(h.saturating_sub(oy));
-                                    let (cr, cg, cb, ca) = if let Some(fill) = &obj.fill {
-                                        if fill.contains("blue") {
-                                            (59u8, 130u8, 246u8, 255u8)
-                                        } else if fill.contains("yellow") {
-                                            (234, 179, 8, 255)
-                                        } else if fill.contains("green") {
-                                            (16, 185, 129, 255)
-                                        } else if fill.contains("purple") {
-                                            (139, 92, 246, 255)
-                                        } else if fill.contains("rose") || fill.contains("red") {
-                                            (244, 63, 94, 255)
-                                        } else {
-                                            (100, 116, 139, 255)
-                                        }
-                                    } else {
-                                        (59, 130, 246, 255)
-                                    };
-                                    let is_circle = matches!(
-                                        obj.shape,
-                                        Some(petunia_design_document::ShapeKind::Ellipse)
-                                    );
-                                    for py in 0..oh {
-                                        for px in 0..ow {
-                                            if is_circle {
-                                                let rx = ow as f64 / 2.0;
-                                                let ry = oh as f64 / 2.0;
-                                                let dx = (px as f64 - rx) / rx.max(1.0);
-                                                let dy = (py as f64 - ry) / ry.max(1.0);
-                                                if dx * dx + dy * dy > 1.0 {
-                                                    continue;
-                                                }
-                                            }
-                                            let idx = ((oy + py) * w + (ox + px)) * 4;
-                                            if idx + 3 < buffer.len() {
-                                                let alpha = ca as f32 / 255.0;
-                                                buffer[idx] = (cr as f32 * alpha
-                                                    + buffer[idx] as f32 * (1.0 - alpha))
-                                                    as u8;
-                                                buffer[idx + 1] = (cg as f32 * alpha
-                                                    + buffer[idx + 1] as f32 * (1.0 - alpha))
-                                                    as u8;
-                                                buffer[idx + 2] = (cb as f32 * alpha
-                                                    + buffer[idx + 2] as f32 * (1.0 - alpha))
-                                                    as u8;
-                                                buffer[idx + 3] = 255;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            if let Ok(raw) =
-                                RawRasterImage::from_rgba8(w as u32, h as u32, buffer)
-                            {
-                                let opts = RasterExportOptions {
-                                    format: RasterFormat::Png,
-                                    jpeg_quality: 90,
-                                    allow_degradations: true,
-                                };
-                                match export_raster(&raw, &opts) {
-                                    Ok((png_bytes, _)) => match std::fs::write(&path, &png_bytes)
-                                    {
-                                        Ok(()) => {
-                                            if let Some(win) = win_weak.upgrade() {
-                                                win.set_export_status_message(
-                                                    format!("PNG exportado: {}", path.display())
-                                                        .into(),
-                                                );
-                                            }
-                                        }
-                                        Err(e) => {
-                                            if let Some(win) = win_weak.upgrade() {
-                                                win.set_export_status_message(
-                                                    format!("Erro ao gravar PNG: {e}").into(),
-                                                );
-                                            }
-                                        }
-                                    },
-                                    Err(e) => {
-                                        if let Some(win) = win_weak.upgrade() {
-                                            win.set_export_status_message(
-                                                format!("Erro PNG: {e}").into(),
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+            let mut st = state_clone.borrow_mut();
+            let payload = serde_json::json!({
+                "path": path.to_string_lossy(),
+                "format": fmt,
+            });
+            let outcome = st.shell.bridge.dispatch_action(ActionRequest::new(
+                ActionId::new("ptnd.action.file.export"),
+                payload,
+            ));
+            if let Some(win) = win_weak.upgrade() {
+                match outcome {
+                    Ok(_) => win
+                        .set_export_status_message(format!("Exportado: {}", path.display()).into()),
+                    Err(error) => win
+                        .set_export_status_message(format!("Falha na exportação: {error}").into()),
                 }
             }
         });
@@ -2820,7 +2946,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         main_window.on_canvas_pointer_down(move |x, y| {
             let screen_pt = GPoint::new(x as f64, y as f64);
             let mut st = state_clone.borrow_mut();
-            let doc_pt = st.shell.camera.screen_to_doc(screen_pt);
+            let doc_pt = st.shell.view_camera().screen_to_doc(screen_pt);
             st.drag_start_doc = Some(doc_pt);
 
             let evt = NormalizedPointerEvent::new(
@@ -2848,7 +2974,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         main_window.on_canvas_dragged(move |x, y| {
             let screen_pt = GPoint::new(x as f64, y as f64);
             let mut st = state_clone.borrow_mut();
-            let doc_pt = st.shell.camera.screen_to_doc(screen_pt);
+            let camera = st.shell.view_camera();
+            let doc_pt = camera.screen_to_doc(screen_pt);
 
             let evt = NormalizedPointerEvent::new(
                 PointerPhase::Move,
@@ -2872,14 +2999,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .combined_bounds
                         .unwrap_or([0.0, 0.0, 0.0, 0.0]);
                     let doc_box = GRect::new(bx, by, bx + bw, by + bh);
-                    if let Some(handle) = hit_test_handle_or_border(
-                        doc_box,
-                        screen_pt,
-                        doc_pt,
-                        &st.shell.camera,
-                        14.0,
-                        8.0,
-                    ) {
+                    if let Some(handle) =
+                        hit_test_handle_or_border(doc_box, screen_pt, doc_pt, &camera, 14.0, 8.0)
+                    {
                         match handle {
                             SelectionHandleKind::TopLeft | SelectionHandleKind::BottomRight => {
                                 "nwse-resize"
@@ -2931,7 +3053,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         main_window.on_canvas_pointer_up(move |x, y| {
             let screen_pt = GPoint::new(x as f64, y as f64);
             let mut st = state_clone.borrow_mut();
-            let doc_pt = st.shell.camera.screen_to_doc(screen_pt);
+            let doc_pt = st.shell.view_camera().screen_to_doc(screen_pt);
 
             if let Some(win) = win_weak.upgrade() {
                 win.set_has_preview(false);
@@ -2963,10 +3085,149 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
+
+    /// Canonical token declarations from `ui/tokens.slint` (08.35).
+    const TOKENS_SLINT: &str = include_str!("../ui/tokens.slint");
+    /// Shell markup that consumes them (15.F).
+    const APP_SLINT: &str = include_str!("../ui/app.slint");
 
     #[test]
     fn slint_app_smoke_test_headless() {
         let mut state = PetuniaSlintState::new();
-        assert!(state.smoke_test().is_ok());
+        if let Err(failure) = state.smoke_test() {
+            panic!("slint smoke test failed: {failure}");
+        }
+    }
+
+    /// Every `out property` of the `Tokens` global, by name.
+    fn declared_tokens(source: &str) -> BTreeSet<String> {
+        let mut names = BTreeSet::new();
+        for line in source.lines() {
+            let line = line.trim();
+            let Some(rest) = line.strip_prefix("out property <") else {
+                continue;
+            };
+            let Some((_ty, name)) = rest.split_once('>') else {
+                continue;
+            };
+            let name = name.trim();
+            let Some(name) = name.split(':').next() else {
+                continue;
+            };
+            let name = name.trim();
+            if !name.is_empty() {
+                names.insert(name.to_string());
+            }
+        }
+        names
+    }
+
+    /// Every `Tokens.<name>` reference in a source file.
+    fn referenced_tokens(source: &str) -> BTreeSet<String> {
+        let mut names = BTreeSet::new();
+        let mut rest = source;
+        while let Some(position) = rest.find("Tokens.") {
+            let after = &rest[position + "Tokens.".len()..];
+            let name: String = after
+                .chars()
+                .take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '-')
+                .collect();
+            if !name.is_empty() {
+                names.insert(name.clone());
+            }
+            rest = &after[name.len()..];
+        }
+        names
+    }
+
+    #[test]
+    fn ui_references_only_declared_tokens() {
+        let declared = declared_tokens(TOKENS_SLINT);
+        let referenced = referenced_tokens(APP_SLINT);
+        assert!(
+            declared.len() >= 100,
+            "tokens.slint should declare the full 08.35 set, found {}",
+            declared.len()
+        );
+        let dangling: Vec<_> = referenced.difference(&declared).collect();
+        assert!(
+            dangling.is_empty(),
+            "ui/app.slint references undeclared tokens: {dangling:?}"
+        );
+        assert!(
+            referenced.len() >= 60,
+            "ui/app.slint should consume the token set, found {} uses",
+            referenced.len()
+        );
+    }
+
+    #[test]
+    fn ui_color_literals_are_confined_to_document_artwork() {
+        let start = APP_SLINT
+            .find("[CanvasObjectItem]> canvas_objects: [")
+            .expect("canvas object data block should exist");
+        let end = APP_SLINT[start..]
+            .find("\n    ];")
+            .map(|offset| start + offset)
+            .expect("canvas object data block should be closed");
+
+        let mut offenders = Vec::new();
+        let mut offset = 0usize;
+        for (index, line) in APP_SLINT.lines().enumerate() {
+            let in_block = offset >= start && offset <= end;
+            if !in_block && has_hex_color(line) {
+                offenders.push(index + 1);
+            }
+            offset += line.len() + 1;
+        }
+        assert!(
+            offenders.is_empty(),
+            "raw hex colors are only allowed for document artwork (08.21); lines {offenders:?}"
+        );
+    }
+
+    /// True when the line carries a `#rrggbb`/`#rgb` style literal.
+    fn has_hex_color(line: &str) -> bool {
+        let mut rest = line;
+        while let Some(position) = rest.find('#') {
+            let digits: String = rest[position + 1..]
+                .chars()
+                .take_while(|c| c.is_ascii_hexdigit())
+                .collect();
+            if matches!(digits.len(), 3 | 4 | 6 | 8) {
+                return true;
+            }
+            rest = &rest[position + 1..];
+        }
+        false
+    }
+
+    #[test]
+    fn ui_shell_rows_use_their_canonical_geometry_tokens() {
+        // 08.35 names each chrome row; the mapping is by component, not by
+        // value, because 28 px serves several different rows. These are the
+        // sites the handoff called out as ambiguous.
+        for site in [
+            "height: Tokens.menu-row-height;",
+            "height: Tokens.persona-row-height;",
+            "height: Tokens.context-toolbar-height;",
+            "height: Tokens.tab-strip-height + Tokens.space-1;",
+            "height: Tokens.status-bar-height;",
+            "width: Tokens.tool-rail-width;",
+            "width: Tokens.right-dock-default-width;",
+            "height: Tokens.panel-tab-height + Tokens.space-1;",
+            "height: Tokens.layer-row-height;",
+            "height: Tokens.property-field-compact;",
+            "width: Tokens.layer-tool-hit-size;",
+            "height: Tokens.property-row-height;",
+            "height: Tokens.dialog-action-height;",
+            "height: Tokens.icon-button-size;",
+        ] {
+            assert!(
+                APP_SLINT.contains(site),
+                "ui/app.slint should use the canonical token for `{site}`"
+            );
+        }
     }
 }

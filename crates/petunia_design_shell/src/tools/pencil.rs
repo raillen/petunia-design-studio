@@ -7,7 +7,9 @@ use petunia_design_geometry::GPoint;
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Freehand pencil tool capturing raw pointer gestures and committing smoothed paths (10.2).
 #[derive(Clone, Debug, Default)]

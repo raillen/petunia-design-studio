@@ -10,12 +10,16 @@
 
 pub mod bridge;
 pub mod canvas;
+pub mod context_toolbar;
+pub mod menu;
 pub mod panels;
 pub mod shell;
 pub mod tools;
 
 pub use bridge::*;
 pub use canvas::*;
+pub use context_toolbar::*;
+pub use menu::*;
 pub use panels::*;
 pub use shell::*;
 pub use tools::*;

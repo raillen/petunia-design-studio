@@ -142,7 +142,9 @@ impl Replayer {
                 Change::SurfaceAdded { id, name } => {
                     mutator.add_surface(id, name)?;
                 }
-                Change::ObjectAdded { surface, object, .. } => {
+                Change::ObjectAdded {
+                    surface, object, ..
+                } => {
                     mutator.add_object(surface, object)?;
                 }
                 Change::ObjectRemoved { object, .. } => {

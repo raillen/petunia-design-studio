@@ -1,7 +1,7 @@
 //! The only writer path: UI/Shortcut/Plugin/MCP -> Action -> Command ->
 //! `DocumentMutator` -> `ChangeSet`. Nothing touches storage directly.
 
-use petunia_design_foundation::{PetuniaError, ObjectId, SurfaceId};
+use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
 
 use crate::changeset::{Change, ChangeSet};
 use crate::document::Document;
@@ -86,8 +86,7 @@ impl<'doc> DocumentMutator<'doc> {
                 let mut changes = ChangeSet::empty();
                 // Detach from parent container.
                 if let Some(parent_id) = object.parent {
-                    if let Some(parent) = surface.objects.iter_mut().find(|o| o.id == parent_id)
-                    {
+                    if let Some(parent) = surface.objects.iter_mut().find(|o| o.id == parent_id) {
                         if let Some(p) = parent.children.iter().position(|c| *c == id) {
                             let prev = parent.children.clone();
                             parent.children.remove(p);
@@ -116,9 +115,7 @@ impl<'doc> DocumentMutator<'doc> {
                 }
                 // Children of a removed container become root-level (parent=None).
                 for child_id in object.children.clone() {
-                    if let Some(child) =
-                        surface.objects.iter_mut().find(|o| o.id == child_id)
-                    {
+                    if let Some(child) = surface.objects.iter_mut().find(|o| o.id == child_id) {
                         let prev_parent = child.parent;
                         child.parent = None;
                         changes.push(Change::Reparented {
@@ -355,8 +352,9 @@ impl<'doc> DocumentMutator<'doc> {
         let subj_input = petunia_design_geometry::BooleanInput::new(
             subject.to_path().to_polygons(tolerance.flatten),
         );
-        let clip_input =
-            petunia_design_geometry::BooleanInput::new(clip.to_path().to_polygons(tolerance.flatten));
+        let clip_input = petunia_design_geometry::BooleanInput::new(
+            clip.to_path().to_polygons(tolerance.flatten),
+        );
 
         let pieces = [
             (
@@ -545,19 +543,16 @@ impl<'doc> DocumentMutator<'doc> {
     /// `point`, preserving Bézier verbs by re-emitting the flattened split as
     /// line segments plus the original verbs' structure via `from_polygons`.
     /// Returns the shape change; bounds are recomputed from the result.
-    pub fn slice_path(
-        &mut self,
-        id: ObjectId,
-        point: [f64; 2],
-    ) -> Result<ChangeSet, PetuniaError> {
+    pub fn slice_path(&mut self, id: ObjectId, point: [f64; 2]) -> Result<ChangeSet, PetuniaError> {
         if !point[0].is_finite() || !point[1].is_finite() {
             return Err(PetuniaError::invalid_input("slice point must be finite"));
         }
         // Snapshot shape+bounds without holding a borrow across mutation.
         let (prev_shape, prev_bounds, prev_rot) = {
-            let obj = self.document.find_object(id).ok_or_else(|| {
-                PetuniaError::not_found(format!("object `{id}` does not exist"))
-            })?;
+            let obj = self
+                .document
+                .find_object(id)
+                .ok_or_else(|| PetuniaError::not_found(format!("object `{id}` does not exist")))?;
             (obj.shape.clone(), obj.bounds, obj.rotation)
         };
         let path = match prev_shape.clone() {
@@ -910,9 +905,8 @@ impl<'doc> DocumentMutator<'doc> {
     /// True when every coordinate of a path is finite (offset guard).
     fn path_is_finite(path: &petunia_design_geometry::GPath) -> bool {
         path.verbs.iter().all(|v| match v {
-            petunia_design_geometry::PathVerb::MoveTo(p) | petunia_design_geometry::PathVerb::LineTo(p) => {
-                p.is_finite()
-            }
+            petunia_design_geometry::PathVerb::MoveTo(p)
+            | petunia_design_geometry::PathVerb::LineTo(p) => p.is_finite(),
             petunia_design_geometry::PathVerb::QuadTo(c, p) => c.is_finite() && p.is_finite(),
             petunia_design_geometry::PathVerb::CubicTo(c1, c2, p) => {
                 c1.is_finite() && c2.is_finite() && p.is_finite()
@@ -925,7 +919,10 @@ impl<'doc> DocumentMutator<'doc> {
     /// Returns `(object_id, stack)`: the effective stack when no explicit
     /// stack exists, so simple UI targets the primary entry without ever
     /// silently deleting secondary entries (10.4).
-    fn editable_stack(&self, id: ObjectId) -> Result<crate::appearance::AppearanceStack, PetuniaError> {
+    fn editable_stack(
+        &self,
+        id: ObjectId,
+    ) -> Result<crate::appearance::AppearanceStack, PetuniaError> {
         self.document
             .find_object(id)
             .map(|o| o.effective_appearance())
@@ -966,9 +963,13 @@ impl<'doc> DocumentMutator<'doc> {
         opacity: f64,
     ) -> Result<ChangeSet, PetuniaError> {
         let mut stack = self.editable_stack(id)?;
-        let entry = stack.fills.iter_mut().find(|f| f.id == fill_id).ok_or_else(|| {
-            PetuniaError::not_found(format!("fill `{fill_id}` not found on object `{id}`"))
-        })?;
+        let entry = stack
+            .fills
+            .iter_mut()
+            .find(|f| f.id == fill_id)
+            .ok_or_else(|| {
+                PetuniaError::not_found(format!("fill `{fill_id}` not found on object `{id}`"))
+            })?;
         let clamped = opacity.clamp(0.0, 1.0);
         if (entry.opacity - clamped).abs() <= f64::EPSILON {
             return Ok(ChangeSet::empty());
@@ -985,9 +986,13 @@ impl<'doc> DocumentMutator<'doc> {
         blend_mode: crate::appearance::BlendMode,
     ) -> Result<ChangeSet, PetuniaError> {
         let mut stack = self.editable_stack(id)?;
-        let entry = stack.fills.iter_mut().find(|f| f.id == fill_id).ok_or_else(|| {
-            PetuniaError::not_found(format!("fill `{fill_id}` not found on object `{id}`"))
-        })?;
+        let entry = stack
+            .fills
+            .iter_mut()
+            .find(|f| f.id == fill_id)
+            .ok_or_else(|| {
+                PetuniaError::not_found(format!("fill `{fill_id}` not found on object `{id}`"))
+            })?;
         if entry.blend_mode == blend_mode {
             return Ok(ChangeSet::empty());
         }
@@ -1056,7 +1061,9 @@ impl<'doc> DocumentMutator<'doc> {
         width: f64,
     ) -> Result<ChangeSet, PetuniaError> {
         if !width.is_finite() || width < 0.0 {
-            return Err(PetuniaError::invalid_input("stroke width must be finite and >= 0"));
+            return Err(PetuniaError::invalid_input(
+                "stroke width must be finite and >= 0",
+            ));
         }
         let mut stack = self.editable_stack(id)?;
         let entry = stack
@@ -1296,7 +1303,9 @@ impl<'doc> DocumentMutator<'doc> {
                 )));
             }
             if *id == group_id {
-                return Err(PetuniaError::invalid_input("cannot group object into itself"));
+                return Err(PetuniaError::invalid_input(
+                    "cannot group object into itself",
+                ));
             }
         }
 
@@ -2207,7 +2216,9 @@ impl<'doc> DocumentMutator<'doc> {
                         })?;
                     self.document.surfaces.remove(pos);
                 }
-                Change::ObjectAdded { surface, object, .. } => {
+                Change::ObjectAdded {
+                    surface, object, ..
+                } => {
                     let target = self.document.surface_mut(surface)?;
                     let pos = target
                         .objects

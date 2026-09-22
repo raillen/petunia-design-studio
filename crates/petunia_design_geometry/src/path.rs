@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{GAffine, GPoint, GRect};
 use crate::boolean::FillRule;
+use crate::{GAffine, GPoint, GRect};
 
 /// Cross-product sign of edge `a->b` relative to `p`: >0 when `p` is left.
 fn is_left(a: GPoint, b: GPoint, p: GPoint) -> f64 {
@@ -120,7 +120,10 @@ impl GPath {
     #[must_use]
     pub fn scaled_about(&self, center: GPoint, sx: f64, sy: f64) -> Self {
         let map = |p: GPoint| {
-            GPoint::new(center.x + (p.x - center.x) * sx, center.y + (p.y - center.y) * sy)
+            GPoint::new(
+                center.x + (p.x - center.x) * sx,
+                center.y + (p.y - center.y) * sy,
+            )
         };
         let verbs = self
             .verbs
@@ -129,9 +132,7 @@ impl GPath {
                 PathVerb::MoveTo(p) => PathVerb::MoveTo(map(p)),
                 PathVerb::LineTo(p) => PathVerb::LineTo(map(p)),
                 PathVerb::QuadTo(c, p) => PathVerb::QuadTo(map(c), map(p)),
-                PathVerb::CubicTo(c1, c2, p) => {
-                    PathVerb::CubicTo(map(c1), map(c2), map(p))
-                }
+                PathVerb::CubicTo(c1, c2, p) => PathVerb::CubicTo(map(c1), map(c2), map(p)),
                 PathVerb::Close => PathVerb::Close,
             })
             .collect();
@@ -398,9 +399,7 @@ impl GPath {
                         let pi = contour[i];
                         let pj = contour[(i + 1) % n];
                         if pi.y <= point.y {
-                            if pj.y > point.y
-                                && is_left(pi, pj, point) > 0.0
-                            {
+                            if pj.y > point.y && is_left(pi, pj, point) > 0.0 {
                                 winding += 1;
                             }
                         } else if pj.y <= point.y && is_left(pi, pj, point) < 0.0 {

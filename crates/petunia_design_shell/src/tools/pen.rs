@@ -7,7 +7,9 @@ use petunia_design_geometry::GPoint;
 use crate::bridge::*;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Node constraint type (cusp, smooth, symmetric).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -252,9 +254,9 @@ impl PenTool {
             .anchors
             .iter()
             .map(|a| {
-                let abs_in = a
-                    .handle_in
-                    .map(|off| petunia_design_geometry::GPoint::new(a.point.x + off.x, a.point.y + off.y));
+                let abs_in = a.handle_in.map(|off| {
+                    petunia_design_geometry::GPoint::new(a.point.x + off.x, a.point.y + off.y)
+                });
                 let abs_out = a.handle_out.map(|off| {
                     petunia_design_geometry::GPoint::new(a.point.x + off.x, a.point.y + off.y)
                 });

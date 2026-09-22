@@ -7,7 +7,9 @@ use petunia_design_geometry::{GPoint, GRect};
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Typography tool mode (10.6).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

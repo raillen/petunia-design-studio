@@ -3,14 +3,14 @@
 //! Maps Petunia Document surfaces into PDF pages with vector paths, fills,
 //! strokes, RGB and CMYK color preservation, and preflight fidelity analysis.
 
-use petunia_design_document::{Document, DocumentObject, Surface};
-use petunia_design_foundation::PetuniaError;
 use krilla::color::{cmyk, rgb};
 use krilla::geom::{PathBuilder, Rect as KrillaRect, Transform};
 use krilla::num::NormalizedF32;
 use krilla::page::PageSettings;
 use krilla::paint::{Fill, FillRule, LineCap, LineJoin, Paint, Stroke, StrokeDash};
 use krilla::Document as KrillaDocument;
+use petunia_design_document::{Document, DocumentObject, Surface};
+use petunia_design_foundation::PetuniaError;
 use serde::{Deserialize, Serialize};
 
 /// Export fidelity grade according to the Petunia capability contract (09.11).
@@ -250,7 +250,10 @@ fn export_object(
                     description: format!("{label} linear gradient sampled at center stop"),
                     grade: FidelityGrade::Approximate,
                 });
-                (sample_gradient_paint(g.sample_rgba(0.5)), entry.opacity as f32)
+                (
+                    sample_gradient_paint(g.sample_rgba(0.5)),
+                    entry.opacity as f32,
+                )
             }
             petunia_design_document::Paint::RadialGradient(g) => {
                 report.degradations.push(DegradationItem {
@@ -258,7 +261,10 @@ fn export_object(
                     description: format!("{label} radial gradient sampled at center stop"),
                     grade: FidelityGrade::Approximate,
                 });
-                (sample_gradient_paint(g.sample_rgba(0.5)), entry.opacity as f32)
+                (
+                    sample_gradient_paint(g.sample_rgba(0.5)),
+                    entry.opacity as f32,
+                )
             }
         },
         None => match obj.fill.as_deref() {

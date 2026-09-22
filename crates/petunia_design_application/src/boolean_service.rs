@@ -4,7 +4,7 @@
 //! intent, decides subject/clip/operation. Execution stays a single
 //! `Command::ApplyBoolean`, submitted atomically by the caller.
 
-use petunia_design_foundation::{PetuniaError, ObjectId};
+use petunia_design_foundation::{ObjectId, PetuniaError};
 use petunia_design_geometry::BooleanOp;
 
 /// Planned boolean operation over two operands.

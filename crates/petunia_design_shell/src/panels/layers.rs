@@ -2,9 +2,9 @@
 
 use petunia_design_application::{ActionId, ActionRequest, Command, CommandRequest};
 use petunia_design_document::ChangeSet;
-use petunia_design_foundation::{PetuniaError, ObjectId, SurfaceId};
+use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
 
-use crate::bridge::{PetuniaDesignGuiBridge, LayersPresentationModel};
+use crate::bridge::{LayersPresentationModel, PetuniaDesignGuiBridge};
 
 /// Controller managing the Layers Panel interactions over the unified object tree (10.5).
 #[derive(Debug, Default)]
@@ -109,10 +109,8 @@ impl LayersPanelController {
             .ok_or_else(|| PetuniaError::invalid_input("no active surface"))?;
         let group_id = bridge.next_object_id()?;
         let plan = hierarchy_service::plan_group(surface, group_id, sel_ids, role)?;
-        let changes = bridge.submit_all(
-            "Group objects",
-            hierarchy_service::group_commands(plan),
-        )?;
+        let changes =
+            bridge.submit_all("Group objects", hierarchy_service::group_commands(plan))?;
         bridge.set_selection(vec![group_id]);
         Ok(changes)
     }

@@ -10,7 +10,6 @@ use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 use super::artboard::ArtboardTool;
 use super::contour::{ContourMode, ContourTool};
 use super::gradient::{GradientTool, GradientToolMode};
-use petunia_design_application::interaction::NormalizedPointerEvent;
 use super::knife::{KnifeMode, KnifeTool};
 use super::measure::MeasureTool;
 use super::node::NodeTool;
@@ -24,7 +23,7 @@ use super::shape::{ShapeKind, ShapeTool};
 use super::shape_builder::{BuilderMode, ShapeBuilderTool};
 use super::text::{TextTool, TextToolMode};
 use super::view::{ViewTool, ViewToolMode};
-
+use petunia_design_application::interaction::NormalizedPointerEvent;
 
 /// Central manager orchestrating vector tools and event routing.
 #[derive(Debug)]
@@ -290,7 +289,11 @@ impl ToolManager {
 
     /// Resolves overlays produced by the active tool.
     #[must_use]
-    pub fn overlays(&self, camera: &ViewportCamera, bridge: &PetuniaDesignGuiBridge) -> CanvasOverlays {
+    pub fn overlays(
+        &self,
+        camera: &ViewportCamera,
+        bridge: &PetuniaDesignGuiBridge,
+    ) -> CanvasOverlays {
         match self.active_kind {
             ToolKind::Select => self.select_tool.overlays(camera, bridge),
             ToolKind::Pen => self.pen_tool.overlays(),

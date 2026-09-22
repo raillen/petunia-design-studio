@@ -152,7 +152,10 @@ pub fn resolve_color_to_rgb(token: &str) -> [f32; 3] {
         }
     }
     let lower = t.to_lowercase();
-    if let Some(inner) = lower.strip_prefix("gray(").and_then(|s| s.strip_suffix(')')) {
+    if let Some(inner) = lower
+        .strip_prefix("gray(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         if let Ok(v) = inner.trim().parse::<f32>() {
             let v = v.clamp(0.0, 1.0);
             return [v, v, v];
@@ -177,23 +180,37 @@ pub fn resolve_color_to_rgb(token: &str) -> [f32; 3] {
             }
         }
     }
-    if let Some(inner) = lower.strip_prefix("cmyk(").and_then(|s| s.strip_suffix(')')) {
+    if let Some(inner) = lower
+        .strip_prefix("cmyk(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         let parts: Vec<&str> = inner.split(',').collect();
         if parts.len() == 4 {
             let vals: Option<Vec<f32>> = parts
                 .iter()
-                .map(|s| s.trim().trim_end_matches('%').parse::<f32>().ok().map(|v| {
-                    if s.trim().ends_with('%') {
-                        v / 100.0
-                    } else {
-                        v
-                    }
-                }))
+                .map(|s| {
+                    s.trim().trim_end_matches('%').parse::<f32>().ok().map(|v| {
+                        if s.trim().ends_with('%') {
+                            v / 100.0
+                        } else {
+                            v
+                        }
+                    })
+                })
                 .collect();
             if let Some(v) = vals {
-                let (c, m, y, k) = (v[0].clamp(0.0, 1.0), v[1].clamp(0.0, 1.0), v[2].clamp(0.0, 1.0), v[3].clamp(0.0, 1.0));
+                let (c, m, y, k) = (
+                    v[0].clamp(0.0, 1.0),
+                    v[1].clamp(0.0, 1.0),
+                    v[2].clamp(0.0, 1.0),
+                    v[3].clamp(0.0, 1.0),
+                );
                 // Naive preview-only conversion (matches `petunia_design_color`).
-                return [1.0 - (c + k).min(1.0), 1.0 - (m + k).min(1.0), 1.0 - (y + k).min(1.0)];
+                return [
+                    1.0 - (c + k).min(1.0),
+                    1.0 - (m + k).min(1.0),
+                    1.0 - (y + k).min(1.0),
+                ];
             }
         }
     }

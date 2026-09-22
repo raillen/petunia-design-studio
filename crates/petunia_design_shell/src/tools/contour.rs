@@ -7,7 +7,9 @@ use petunia_design_geometry::GPoint;
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Operational mode for corner and contour manipulation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,8 +79,8 @@ impl ContourTool {
                     // Corner drags use raw distance with right/down-positive
                     // sign (no radial convention applies to radii).
                     let (ddx, ddy) = (p1.x - p0.x, p1.y - p0.y);
-                    let drag_dist = (ddx * ddx + ddy * ddy).sqrt()
-                        * if ddx + ddy >= 0.0 { 1.0 } else { -1.0 };
+                    let drag_dist =
+                        (ddx * ddx + ddy * ddy).sqrt() * if ddx + ddy >= 0.0 { 1.0 } else { -1.0 };
                     match self.mode {
                         ContourMode::Contour => {
                             // Outward-from-center convention per object:
@@ -94,22 +96,25 @@ impl ContourTool {
                             for id in selected {
                                 if let Some(session) = bridge.session() {
                                     if let Some(obj) = session.find_object(id) {
-                                        if let Some(petunia_design_document::ShapeKind::Rectangle {
-                                            corner_radii,
-                                        }) = obj.shape
+                                        if let Some(
+                                            petunia_design_document::ShapeKind::Rectangle {
+                                                corner_radii,
+                                            },
+                                        ) = obj.shape
                                         {
                                             // Physical clamp from bounds (Table B).
-                                            let new_r =
-                                                petunia_design_geometry::step_corner_radius(
-                                                    corner_radii[0],
-                                                    drag_dist,
-                                                    obj.bounds,
-                                                );
+                                            let new_r = petunia_design_geometry::step_corner_radius(
+                                                corner_radii[0],
+                                                drag_dist,
+                                                obj.bounds,
+                                            );
                                             let c = bridge.set_shape(
                                                 id,
-                                                Some(petunia_design_document::ShapeKind::Rectangle {
-                                                    corner_radii: [new_r; 4],
-                                                }),
+                                                Some(
+                                                    petunia_design_document::ShapeKind::Rectangle {
+                                                        corner_radii: [new_r; 4],
+                                                    },
+                                                ),
                                             )?;
                                             combined.extend(c);
                                             continue;
@@ -131,8 +136,6 @@ impl ContourTool {
             }
         }
     }
-
-
 
     /// Resolves overlays (none or preview).
     #[must_use]

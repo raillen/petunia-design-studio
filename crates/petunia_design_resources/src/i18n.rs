@@ -122,6 +122,52 @@ impl LocalizationService {
         service
     }
 
+    /// Creates a localization service holding the core strings **and** the
+    /// canonical shell/menu catalog (08.2, 15.G).
+    ///
+    /// This is the service a shell should use: the surface registry labels are
+    /// `ptnd.text.*` ids, and this is what turns them into user-visible text in
+    /// both release locales.
+    #[must_use]
+    pub fn with_shell_catalog() -> Self {
+        let mut service = Self::with_defaults();
+        let mut en = service
+            .catalogs
+            .get(&Locale::EnUs)
+            .cloned()
+            .unwrap_or_else(|| LocaleCatalog::new(Locale::EnUs));
+        let mut pt = service
+            .catalogs
+            .get(&Locale::PtBr)
+            .cloned()
+            .unwrap_or_else(|| LocaleCatalog::new(Locale::PtBr));
+        for row in crate::shell_strings::SHELL_STRINGS {
+            en.insert(TextId::new(row.id), row.en);
+            pt.insert(TextId::new(row.id), row.pt);
+        }
+        service.register_catalog(Locale::EnUs, en);
+        service.register_catalog(Locale::PtBr, pt);
+        service
+    }
+
+    /// Resolves a `ptnd.text.*` shell id, falling back like [`Self::get`].
+    #[must_use]
+    pub fn text(&self, id: &str, locale: &Locale) -> String {
+        self.get(&TextId::new(id), locale)
+    }
+
+    /// All catalog entries for a locale, for coverage audits.
+    #[must_use]
+    pub fn ids(&self, locale: &Locale) -> Vec<TextId> {
+        let mut ids: Vec<TextId> = self
+            .catalogs
+            .get(locale)
+            .map(|catalog| catalog.messages.keys().cloned().collect())
+            .unwrap_or_default();
+        ids.sort();
+        ids
+    }
+
     /// Registers or updates a catalog for a locale.
     pub fn register_catalog(&mut self, locale: Locale, catalog: LocaleCatalog) {
         self.catalogs.insert(locale, catalog);
@@ -248,6 +294,36 @@ mod tests {
         let test_id = TextId::new("ptnd.nonexistent");
         let resolved = service.get(&test_id, &Locale::EnUs);
         assert_eq!(resolved, "[missing: ptnd.nonexistent]");
+    }
+
+    #[test]
+    fn shell_catalog_resolves_registry_text_ids_in_both_locales() {
+        let service = LocalizationService::with_shell_catalog();
+        for row in crate::shell_strings::SHELL_STRINGS {
+            assert_eq!(service.text(row.id, &Locale::EnUs), row.en);
+            assert_eq!(service.text(row.id, &Locale::PtBr), row.pt);
+        }
+        // Core strings survive the shell overlay.
+        assert_eq!(service.text(ID_ACTION_SAVE, &Locale::EnUs), "Save");
+        assert_eq!(service.text(ID_ACTION_SAVE, &Locale::PtBr), "Salvar");
+        // An unknown id is a visible placeholder, never an empty label.
+        assert_eq!(
+            service.text("ptnd.text.unknown", &Locale::EnUs),
+            "[missing: ptnd.text.unknown]"
+        );
+    }
+
+    #[test]
+    fn catalog_ids_are_sorted_and_non_empty() {
+        let service = LocalizationService::with_shell_catalog();
+        let en = service.ids(&Locale::EnUs);
+        assert!(en.len() >= crate::shell_strings::SHELL_STRINGS.len());
+        let pt = service.ids(&Locale::PtBr);
+        assert_eq!(
+            en.len(),
+            pt.len(),
+            "en-US and pt-BR catalogs must stay in lockstep (12.6)"
+        );
     }
 
     #[test]

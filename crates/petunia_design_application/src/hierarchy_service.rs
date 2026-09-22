@@ -5,7 +5,7 @@
 //! the selection to the new container.
 
 use petunia_design_document::ContainerRole;
-use petunia_design_foundation::{PetuniaError, ObjectId, SurfaceId};
+use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
 
 use super::commands::Command;
 

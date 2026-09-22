@@ -2,8 +2,8 @@
 
 use petunia_design_geometry::{GPoint, GRect};
 
-use petunia_design_application::view_camera::ViewportCamera;
 use super::snapping::SnapGuideVisual;
+use petunia_design_application::view_camera::ViewportCamera;
 
 /// Handle affordance kind on a selection bounding box.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

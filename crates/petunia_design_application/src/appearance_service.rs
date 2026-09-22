@@ -4,8 +4,8 @@
 //! never touch documents. Callers submit through the command lane.
 
 use petunia_design_document::{
-    AppearanceStack, BlendMode, DocumentObject, EffectItem, FillItem, GradientStop,
-    LinearGradient, Paint, RadialGradient, StrokeItem,
+    AppearanceStack, BlendMode, DocumentObject, EffectItem, FillItem, GradientStop, LinearGradient,
+    Paint, RadialGradient, StrokeItem,
 };
 use petunia_design_foundation::ObjectId;
 

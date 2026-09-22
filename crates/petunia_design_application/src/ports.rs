@@ -4,7 +4,7 @@
 //! never imports UI toolkit types.
 
 use petunia_design_document::ChangeSet;
-use petunia_design_foundation::{PetuniaError, ObjectId, SurfaceId};
+use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
 
 use super::view_models::{
     ActionStateMap, DocumentSummary, LayersPresentationModel, PropertiesPresentationModel,

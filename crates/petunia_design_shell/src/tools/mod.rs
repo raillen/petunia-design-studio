@@ -21,16 +21,16 @@ pub mod view;
 pub use artboard::ArtboardTool;
 pub use contour::{ContourMode, ContourTool};
 pub use gradient::{GradientTool, GradientToolMode};
-pub use petunia_design_application::interaction::{
-    NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers,
-};
 pub use knife::{KnifeMode, KnifeTool};
-pub use petunia_design_application::tools::ToolKind;
 pub use manager::ToolManager;
 pub use measure::{MeasureTool, MeasurementReadout};
 pub use node::NodeTool;
 pub use pen::{NodeType, PenAnchor, PenPhase, PenTool};
 pub use pencil::PencilTool;
+pub use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers,
+};
+pub use petunia_design_application::tools::ToolKind;
 pub use photo::{PhotoTool, PhotoToolKind};
 pub use picker::{PickerMode, PickerTool};
 pub use point_transform::PointTransformTool;

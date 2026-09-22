@@ -6,7 +6,9 @@ use petunia_design_foundation::PetuniaError;
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Operational mode for the picker tool.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

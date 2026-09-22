@@ -7,7 +7,9 @@ use petunia_design_geometry::GPoint;
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Measurement readout data (shared primitive, Table B).
 pub use petunia_design_geometry::measure::MeasurementReadout;

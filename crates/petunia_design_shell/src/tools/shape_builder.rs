@@ -8,7 +8,9 @@ use petunia_design_geometry::GPoint;
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Operational mode for region construction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

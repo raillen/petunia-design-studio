@@ -1,6 +1,7 @@
 import { Button, CheckBox, LineEdit, Slider, ScrollView } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 import { Badge, BadgeVariant } from "slintcn/components/badge.slint";
+import { Tooltip, TooltipSide } from "slintcn/components/tooltip.slint";
 import { Tokens } from "tokens.slint";
 
 export struct LayerRowItem {
@@ -19,6 +20,76 @@ export struct PaletteItem {
     id: string,
     label: string,
     hint: string,
+}
+
+// One registry-driven menu entry (15.G). `token` is the opaque activation
+// handle; the shell never composes an action id or a payload in the UI.
+export struct MenuItemEntry {
+    token: string,
+    label: string,
+    shortcut: string,
+    enabled: bool,
+    disabled_reason: string,
+}
+
+// One submenu: a titled group of entries.
+export struct MenuGroupEntry {
+    label: string,
+    items: [MenuItemEntry],
+}
+
+// One row of a family popup. A row is either a plain item or a submenu handle.
+// Kept flat (flags plus an index into the family's groups) so the UI needs no
+// recursive type: the registry is what knows the tree, never the toolkit.
+export struct MenuRowEntry {
+    is_group: bool,
+    label: string,
+    token: string,
+    shortcut: string,
+    enabled: bool,
+    disabled_reason: string,
+    group_index: int,
+}
+
+// One top-level menu family: ordered rows plus the groups they may open.
+export struct MenuFamilyEntry {
+    label: string,
+    rows: [MenuRowEntry],
+    groups: [MenuGroupEntry],
+}
+
+// One persona the switcher offers (15.G). The shell renders what the registry
+// declares instead of two hand-written tabs.
+export struct PersonaEntry {
+    id: string,
+    label: string,
+    hint: string,
+}
+
+// One entry of the centred shell control cluster (08.2). `kind` is "icon",
+// "readout" or "divider"; a divider is a placeable item, not a gap the UI
+// decided to draw.
+export struct ShellControlEntry {
+    id: string,
+    kind: string,
+    tooltip: string,
+    enabled: bool,
+}
+
+// One entry of the canonical context toolbar (08.23), already scoped to the
+// active tool by the shell. `kind` is "tool_badge", "transform_readout",
+// "color_swatches", "command", "divider" or "spacer": the bar paints the list
+// it is handed and declares no control of its own, so a control that does not
+// apply to this tool is absent rather than drawn doing nothing.
+export struct ContextToolbarEntry {
+    id: string,
+    kind: string,
+    label: string,
+    tooltip: string,
+    // Second tooltip, for the one entry that renders two things (fill/stroke).
+    tooltip_alt: string,
+    enabled: bool,
+    disabled_reason: string,
 }
 
 export struct HistoryRowItem {
@@ -68,25 +139,52 @@ export struct CanvasObjectItem {
 component StudioIconButton inherits Rectangle {
     in property <Icon> icon;
     in property <bool> active: false;
+    // Localized tooltip, resolved from the registry by the shell. Empty means
+    // "no tooltip", never a blank bubble.
     in property <string> tooltip: "";
+    in property <bool> enabled: true;
     callback clicked;
 
-    width: 32px;
-    height: 32px;
-    border-radius: 4px;
-    background: active ? Tokens.accent-selection-soft : (touch.has-hover ? Tokens.overlay-hover : transparent);
-    border-width: active ? 1px : 0px;
+    width: Tokens.icon-button-size;
+    height: Tokens.icon-button-size;
+    border-radius: Tokens.radius-micro;
+    background: active ? Tokens.accent-selection-soft : (touch.has-hover && root.enabled ? Tokens.overlay-hover : transparent);
+    border-width: active ? Tokens.border-width : Tokens.space-0;
     border-color: Tokens.accent-bloom;
 
-    IconDisplay {
-        icon: root.icon;
-        size: 16px;
-        stroke: root.active ? Tokens.accent-bloom-hover : (touch.has-hover ? Tokens.text-primary : Tokens.text-tertiary);
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
+    // The tooltip wraps the glyph so hovering the button reveals the catalog
+    // text. Before this the `tooltip` property was set everywhere and drawn
+    // nowhere: every icon button carried a hint the user could not read.
+    //
+    // `Tooltip` routes its children through a layout, so the glyph is centred
+    // by a layout of its own: arithmetic x/y is not allowed inside it.
+    Tooltip {
+        text: root.tooltip;
+        side: TooltipSide.bottom;
+        width: parent.width;
+        height: parent.height;
+        x: 0;
+        y: 0;
+
+        Rectangle {
+            horizontal-stretch: 1;
+
+            HorizontalLayout {
+                alignment: center;
+
+                IconDisplay {
+                    icon: root.icon;
+                    size: Tokens.icon-inline-size;
+                    stroke: !root.enabled ? Tokens.text-disabled
+                            : root.active ? Tokens.accent-bloom-hover
+                            : (touch.has-hover ? Tokens.text-primary : Tokens.text-tertiary);
+                }
+            }
+        }
     }
 
     touch := TouchArea {
+        enabled: root.enabled;
         clicked => { root.clicked(); }
     }
 }
@@ -97,16 +195,16 @@ component StudioToolButton inherits Rectangle {
     in property <string> shortcut: "";
     callback clicked;
 
-    width: 36px;
-    height: 36px;
-    border-radius: 6px;
+    width: Tokens.tool-button-size;
+    height: Tokens.tool-button-size;
+    border-radius: Tokens.radius-control;
     background: active ? Tokens.accent-faint : (touch.has-hover ? Tokens.overlay-hover : transparent);
-    border-width: active ? 1px : 0px;
+    border-width: active ? Tokens.border-width : Tokens.space-0;
     border-color: Tokens.accent-bloom;
 
     IconDisplay {
         icon: root.icon;
-        size: 18px;
+        size: Tokens.icon-tool-rail-size;
         stroke: root.active ? Tokens.accent-bloom-hover : (touch.has-hover ? Tokens.text-primary : Tokens.text-tertiary);
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
@@ -117,57 +215,590 @@ component StudioToolButton inherits Rectangle {
     }
 }
 
-component StudioMenuButton inherits Rectangle {
+// One menu bar family title. It reports its own laid-out `x` so the popup can
+// be rendered as a top-level overlay instead of a child that later siblings
+// would paint over.
+component StudioMenuFamilyButton inherits Rectangle {
     in property <string> label;
-    callback clicked;
+    in property <bool> open: false;
+    callback toggled(length);
 
-    height: 24px;
-    border-radius: 4px;
-    background: touch.has-hover ? Tokens.overlay-hover : transparent;
+    height: Tokens.menu-row-height;
+    width: menu_label.preferred-width + Tokens.space-2 * 2;
+    border-radius: Tokens.radius-micro;
+    background: (touch.has-hover || open) ? Tokens.overlay-hover : transparent;
 
-    HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
+    menu_label := Text {
+        x: Tokens.space-2;
+        width: parent.width - Tokens.space-2 * 2;
+        height: parent.height;
+        text: root.label;
+        font-size: Tokens.small-size;
+        color: (touch.has-hover || root.open) ? Tokens.text-primary : Tokens.text-secondary;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    touch := TouchArea {
+        clicked => { root.toggled(root.x); }
+    }
+}
+
+// A submenu branch: the same visual language as the family popup, offset to the
+// side of the row that owns it.
+component StudioSubmenuPanel inherits Rectangle {
+    in property <[MenuItemEntry]> items;
+    callback item_activated(string);
+
+    preferred-width: max(content-layout.preferred-width, Tokens.menu-popup-min-width);
+    preferred-height: content-layout.preferred-height;
+    width: self.preferred-width;
+    height: self.preferred-height;
+    background: Tokens.surface-panel-raised;
+    border-radius: Tokens.radius-popover;
+    border-width: Tokens.border-width;
+    border-color: Tokens.border-strong;
+    drop-shadow-blur: Tokens.shadow-popover-blur;
+    drop-shadow-color: Tokens.shadow-popover;
+
+    content-layout := VerticalLayout {
+        x: Tokens.space-1;
+        y: Tokens.space-1;
+        spacing: Tokens.border-width;
+
+        for item in root.items : Rectangle {
+            height: Tokens.menu-row-height;
+            border-radius: Tokens.radius-micro;
+            background: (item.enabled && sub_touch.has-hover) ? Tokens.accent-faint : transparent;
+
+            Tooltip {
+                text: (!item.enabled && item.disabled_reason != "") ? item.disabled_reason : "";
+                side: TooltipSide.right;
+                width: parent.width;
+                height: parent.height;
+                x: 0;
+                y: 0;
+
+                HorizontalLayout {
+                    padding-left: Tokens.space-2;
+                    padding-right: Tokens.space-2;
+                    spacing: Tokens.space-2;
+                    alignment: center;
+
+                    Text {
+                        text: item.label;
+                        font-size: Tokens.small-size;
+                        color: item.enabled ? Tokens.text-primary : Tokens.text-tertiary;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        horizontal-alignment: left;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        width: Tokens.menu-trailing-column;
+                        text: item.shortcut;
+                        font-size: Tokens.caption-size;
+                        color: Tokens.text-tertiary;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            sub_touch := TouchArea {
+                enabled: item.enabled;
+                clicked => { root.item_activated(item.token); }
+            }
+        }
+    }
+}
+
+// The dropdown for whichever family is open. Rendered last in the window so it
+// layers above the whole shell, and dismissed by the scrim behind it.
+component StudioMenuPopup inherits Rectangle {
+    in property <[MenuRowEntry]> rows;
+    in property <[MenuGroupEntry]> groups;
+    in-out property <int> open_group_row: -1;
+    callback item_activated(string);
+
+    // The dropdown is exactly as wide as its widest option plus the shortcut
+    // column, so a two-item menu is not padded to the width of the longest
+    // menu in the bar.
+    preferred-width: max(content-layout.preferred-width, Tokens.menu-popup-min-width);
+    preferred-height: content-layout.preferred-height;
+    width: self.preferred-width;
+    height: self.preferred-height;
+    background: Tokens.surface-panel-raised;
+    border-radius: Tokens.radius-popover;
+    border-width: Tokens.border-width;
+    border-color: Tokens.border-strong;
+    drop-shadow-blur: Tokens.shadow-popover-blur;
+    drop-shadow-color: Tokens.shadow-popover;
+
+    content-layout := VerticalLayout {
+        x: Tokens.space-1;
+        y: Tokens.space-1;
+        spacing: Tokens.border-width;
+
+        for row_index in (root.rows.length) : Rectangle {
+            height: Tokens.menu-row-height;
+            border-radius: Tokens.radius-micro;
+            background: (row_touch.has-hover
+                         && (root.rows[row_index].is_group || root.rows[row_index].enabled))
+                        ? Tokens.accent-faint : transparent;
+
+            // The row is the tooltip trigger. A blocked item still explains
+            // itself (15.F §2), but as a hover bubble rather than a warning
+            // line: the item is already visibly disabled, and the reason is an
+            // explanation, not a column. Only the shortcut is trailing text.
+            Tooltip {
+                text: ((!root.rows[row_index].is_group && !root.rows[row_index].enabled)
+                       && root.rows[row_index].disabled_reason != "")
+                      ? root.rows[row_index].disabled_reason : "";
+                side: TooltipSide.right;
+                width: parent.width;
+                height: parent.height;
+                x: 0;
+                y: 0;
+
+                HorizontalLayout {
+                    padding-left: Tokens.space-2;
+                    padding-right: Tokens.space-2;
+                    spacing: Tokens.space-2;
+                    alignment: center;
+
+                    Text {
+                        text: root.rows[row_index].label;
+                        font-size: Tokens.small-size;
+                        color: (root.rows[row_index].is_group || root.rows[row_index].enabled)
+                               ? Tokens.text-primary : Tokens.text-tertiary;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        horizontal-alignment: left;
+                        overflow: elide;
+                    }
+
+                    // A submenu row advertises the branch it opens.
+                    if root.rows[row_index].is_group : IconDisplay {
+                        icon: IconSet.ChevronRight;
+                        size: Tokens.icon-inline-size;
+                        stroke: Tokens.text-tertiary;
+                        y: (parent.height - self.height) / 2;
+                    }
+
+                    if !root.rows[row_index].is_group : Text {
+                        width: Tokens.menu-trailing-column;
+                        text: root.rows[row_index].shortcut;
+                        font-size: Tokens.caption-size;
+                        color: Tokens.text-tertiary;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            row_touch := TouchArea {
+                enabled: root.rows[row_index].is_group || root.rows[row_index].enabled;
+                clicked => {
+                    if (root.rows[row_index].is_group) {
+                        root.open_group_row = root.open_group_row == row_index ? -1 : row_index;
+                    } else {
+                        root.item_activated(root.rows[row_index].token);
+                    }
+                }
+                // Hovering a branch opens it; hovering a leaf closes whatever
+                // branch was open, so two submenus are never open at once.
+                changed has-hover => {
+                    if (self.has-hover) {
+                        root.open_group_row = root.rows[row_index].is_group ? row_index : -1;
+                    }
+                }
+            }
+
+            // The branch itself: a second panel beside its row. Declared inside
+            // the row so it tracks the row's own y without extra arithmetic.
+            if root.rows[row_index].is_group && root.open_group_row == row_index : StudioSubmenuPanel {
+                x: parent.width + Tokens.space-half;
+                y: 0px;
+                items: root.groups[root.rows[row_index].group_index].items;
+                item_activated(token) => { root.item_activated(token); }
+            }
+        }
+    }
+}
+
+// One canonical context-toolbar entry (08.23). Everything it shows arrives in
+// `entry`: the bar owns no label, no order and no tooltip of its own. A blocked
+// command stays visible and explains itself on hover, which is why the tooltip
+// switches to the reason when the control is disabled (15.F §2).
+component ContextToolbarItem inherits Rectangle {
+    in property <ContextToolbarEntry> entry;
+    in property <Icon> icon;
+    in property <length> prop_x: 0px;
+    in property <length> prop_y: 0px;
+    in property <length> prop_w: 0px;
+    in property <length> prop_h: 0px;
+    in property <float> prop_rot: 0;
+    callback activated(string);
+    callback swatch_clicked(color);
+
+    // The flexible gap that keeps the trailing group on the right edge is an
+    // entry like any other, so the user can move or drop it.
+    horizontal-stretch: entry.kind == "spacer" ? 1 : 0;
+    // Width per kind. Text-carrying entries size to a hidden measurement of the
+    // label (the same technique the tooltip bubble uses); the readout is a fixed
+    // slot so live numbers cannot resize the bar while dragging.
+    width: entry.kind == "spacer" ? 1px
+         : entry.kind == "divider" ? Tokens.border-width
+         : entry.kind == "tool_badge" ? badge_width
+         : entry.kind == "transform_readout" ? Tokens.hud-readout-width
+         : entry.kind == "color_swatches" ? (Tokens.icon-toolbar-size * 2 + Tokens.space-optical)
+         : Tokens.icon-toolbar-size;
+    height: entry.kind == "divider" ? Tokens.divider-inline-height : Tokens.icon-toolbar-size;
+
+    // Hidden measurement of the badge label: the pill hugs its text instead of
+    // reserving a width picked by hand.
+    property <length> badge_width: badge_measure.preferred-width
+                                   + Tokens.icon-inline-size
+                                   + Tokens.space-optical
+                                   + (Tokens.space-2 * 2);
+    badge_measure := Text {
+        visible: false;
+        text: root.entry.label;
+        font-size: Tokens.caption-size;
+        font-weight: 700;
+    }
+
+    if entry.kind == "divider" : Rectangle {
+        width: parent.width;
+        height: Tokens.divider-inline-height;
+        y: (parent.height - self.height) / 2;
+        background: Tokens.border-subtle;
+    }
+
+    // The active tool: glyph plus its catalog name.
+    if entry.kind == "tool_badge" : Rectangle {
+        width: parent.width;
+        height: parent.height;
+        border-radius: Tokens.radius-control;
+        background: Tokens.surface-panel;
+        border-width: Tokens.border-width;
+        border-color: Tokens.border-subtle;
+
+        HorizontalLayout {
+            padding-left: Tokens.space-2;
+            padding-right: Tokens.space-2;
+            spacing: Tokens.space-optical;
+            alignment: center;
+
+            IconDisplay {
+                icon: root.icon;
+                size: Tokens.icon-inline-size;
+                stroke: Tokens.accent-bloom-hover;
+            }
+
+            Text {
+                text: root.entry.label;
+                font-size: Tokens.caption-size;
+                font-weight: 700;
+                color: Tokens.text-primary;
+                vertical-alignment: center;
+            }
+        }
+
+        Tooltip {
+            text: root.entry.tooltip;
+            side: TooltipSide.bottom;
+            width: parent.width;
+            height: parent.height;
+            x: 0;
+            y: 0;
+        }
+    }
+
+    // The selection transform readout: numbers the shell does not ship, because
+    // they are live session state.
+    if entry.kind == "transform_readout" : HorizontalLayout {
+        spacing: Tokens.space-optical;
         alignment: center;
+
+        Text { text: "X: " + Math.round(root.prop_x / 1px) + " pt"; font-size: Tokens.caption-size; color: Tokens.text-tertiary; vertical-alignment: center; }
+        Text { text: "Y: " + Math.round(root.prop_y / 1px) + " pt"; font-size: Tokens.caption-size; color: Tokens.text-tertiary; vertical-alignment: center; }
+        Text { text: "W: " + Math.round(root.prop_w / 1px) + " pt"; font-size: Tokens.caption-size; color: Tokens.text-tertiary; vertical-alignment: center; }
+        Text { text: "H: " + Math.round(root.prop_h / 1px) + " pt"; font-size: Tokens.caption-size; color: Tokens.text-tertiary; vertical-alignment: center; }
+        Text { text: "R: " + Math.round(root.prop_rot) + "°"; font-size: Tokens.caption-size; color: Tokens.text-tertiary; vertical-alignment: center; }
+    }
+
+    // Fill and stroke swatches. The colours are theme tokens, and the two names
+    // are catalog strings.
+    if entry.kind == "color_swatches" : HorizontalLayout {
+        spacing: Tokens.space-optical;
+        alignment: center;
+
+        // `Tooltip` routes its children through a layout, so each swatch is
+        // centred by a layout of its own rather than by arithmetic.
+        Tooltip {
+            text: root.entry.tooltip;
+            side: TooltipSide.bottom;
+            width: Tokens.icon-toolbar-size;
+            height: Tokens.icon-toolbar-size;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                HorizontalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: Tokens.icon-toolbar-size;
+                        height: Tokens.icon-toolbar-size;
+                        border-radius: Tokens.radius-micro;
+                        background: Tokens.accent-bloom;
+                        border-width: Tokens.border-width;
+                        border-color: Tokens.accent-bloom-hover;
+                        TouchArea { clicked => { root.swatch_clicked(Tokens.accent-bloom); } }
+                    }
+                }
+            }
+        }
+
+        Tooltip {
+            text: root.entry.tooltip_alt;
+            side: TooltipSide.bottom;
+            width: Tokens.icon-toolbar-size;
+            height: Tokens.icon-toolbar-size;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                HorizontalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: Tokens.icon-toolbar-size;
+                        height: Tokens.icon-toolbar-size;
+                        border-radius: Tokens.radius-micro;
+                        background: Tokens.accent-bloom-pressed;
+                        border-width: Tokens.border-width;
+                        border-color: Tokens.accent-bloom-hover;
+                        TouchArea { clicked => { root.swatch_clicked(Tokens.accent-bloom-pressed); } }
+                    }
+                }
+            }
+        }
+    }
+
+    if entry.kind == "command" : StudioIconButton {
+        icon: root.icon;
+        tooltip: root.entry.enabled ? root.entry.tooltip : root.entry.disabled_reason;
+        enabled: root.entry.enabled;
+        clicked => { root.activated(root.entry.id); }
+    }
+}
+
+// One item of the centred shell control cluster (08.2). `kind` is "icon",
+// "readout" or "divider": the cluster paints what the ordered list contains
+// instead of deciding for itself what belongs in the bar.
+component ShellControlItem inherits Rectangle {
+    in property <string> id;
+    in property <string> kind;
+    in property <string> tooltip;
+    in property <bool> enabled: true;
+    in property <int> zoom_pct: 100;
+    // Whether the levels popup this readout owns is open, so the box can show
+    // its own state.
+    in property <bool> popup_open: false;
+    callback activated(string);
+    // A readout reports where it sits inside the cluster, so the levels popup
+    // can be anchored under it. Same trick the menu family buttons use for
+    // their dropdowns: geometry is reported at click time, never guessed.
+    callback readout_clicked(length);
+
+    // The toolkit owns its icon vocabulary, so the id-to-glyph map lives here,
+    // next to the other icon map, while the registry decides which controls
+    // exist, in what order, and what they are called.
+    pure function icon_for(id: string) -> Icon {
+        if (id == "ptnd.surface.shell.undo") { return IconSet.Undo2; }
+        if (id == "ptnd.surface.shell.redo") { return IconSet.Redo2; }
+        if (id == "ptnd.surface.shell.zoom_out") { return IconSet.Minus; }
+        if (id == "ptnd.surface.shell.zoom_in") { return IconSet.Plus; }
+        if (id == "ptnd.surface.shell.fit") { return IconSet.Maximize2; }
+        return IconSet.MousePointer2;
+    }
+
+    height: kind == "divider" ? Tokens.icon-inline-size : Tokens.icon-button-size;
+    width: kind == "divider" ? Tokens.border-width
+         : kind == "readout" ? Tokens.shell-readout-width
+         : Tokens.icon-button-size;
+    // No background of its own: the cluster is a row of controls, not a card.
+    // The zoom readout is a fixed-width slot so live numbers never resize the
+    // bar while the user drags an object.
+    background: transparent;
+
+    if kind == "divider" : Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: Tokens.border-subtle;
+    }
+
+    // The zoom value is a control, not a label (08.2): clicking it opens the
+    // level list, which is the same registry list View offers. Its width stays
+    // token-fixed so a live number never resizes the bar.
+    if kind == "readout" : Rectangle {
+        width: parent.width;
+        height: parent.height;
+        border-radius: Tokens.radius-micro;
+        background: (readout_touch.has-hover || root.popup_open) ? Tokens.overlay-hover : transparent;
+        border-width: root.popup_open ? Tokens.border-width : Tokens.space-0;
+        border-color: Tokens.border-strong;
+
+        Tooltip {
+            text: root.tooltip;
+            side: TooltipSide.bottom;
+            width: parent.width;
+            height: parent.height;
+            x: 0;
+            y: 0;
+
+            Rectangle {
+                horizontal-stretch: 1;
+
+                HorizontalLayout {
+                    padding-left: Tokens.space-1;
+                    padding-right: Tokens.space-1;
+                    spacing: Tokens.space-half;
+                    alignment: center;
+
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.zoom_pct + "%";
+                        font-size: Tokens.caption-size;
+                        color: root.popup_open ? Tokens.text-primary : Tokens.text-secondary;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+
+                    IconDisplay {
+                        icon: IconSet.ChevronDown;
+                        size: Tokens.menu-chevron-size;
+                        stroke: root.popup_open ? Tokens.text-primary : Tokens.text-tertiary;
+                    }
+                }
+            }
+        }
+
+        readout_touch := TouchArea {
+            clicked => { root.readout_clicked(root.x); }
+        }
+    }
+
+    if kind == "icon" : StudioIconButton {
+        icon: root.icon_for(root.id);
+        tooltip: root.tooltip;
+        enabled: root.enabled;
+        clicked => { root.activated(root.id); }
+    }
+}
+
+// The centred cluster: view history, then the zoom controls with the readout
+// between them. Centred on the window, not on the leftover space between the
+// menus and the personas, which is what the eye reads as "centred" (08.2).
+//
+// It paints no chrome: the controls sit directly on the persona row. The pill
+// background and border that used to wrap them made undo/redo/zoom look like
+// one big button, which is exactly what was wrong with them.
+component ShellControlCluster inherits Rectangle {
+    in property <[ShellControlEntry]> controls;
+    in property <int> zoom_pct: 100;
+    in property <bool> zoom_popup_open: false;
+    callback activated(string);
+    // The readout box reports its absolute left edge: the popup is a top-level
+    // overlay, so it needs window coordinates, not cluster-local ones.
+    callback readout_toggled(length);
+
+    height: Tokens.icon-button-size;
+    width: content.preferred-width;
+    background: transparent;
+
+    content := HorizontalLayout {
+        padding: Tokens.space-0;
+        spacing: Tokens.space-half;
+        alignment: center;
+
+        for control_index in (root.controls.length) : ShellControlItem {
+            id: root.controls[control_index].id;
+            kind: root.controls[control_index].kind;
+            tooltip: root.controls[control_index].tooltip;
+            enabled: root.controls[control_index].enabled;
+            zoom_pct: root.zoom_pct;
+            popup_open: root.zoom_popup_open;
+            activated(id) => { root.activated(id); }
+            readout_clicked(x) => { root.readout_toggled(root.x + x); }
+        }
+    }
+}
+
+// The snap toggle — the single control that stays in the tab strip, pinned to
+// its extreme right edge (08.2). Its label comes from the catalog.
+component StudioSnapToggle inherits Rectangle {
+    in property <bool> active: false;
+    in property <string> label: "";
+    callback toggled(bool);
+
+    height: Tokens.icon-button-size;
+    width: content.preferred-width;
+    border-radius: Tokens.radius-control;
+    background: root.active ? Tokens.accent-faint : Tokens.surface-panel;
+    border-width: root.active ? Tokens.border-width : Tokens.space-0;
+    border-color: Tokens.accent-bloom;
+
+    content := HorizontalLayout {
+        padding-left: Tokens.space-2;
+        padding-right: Tokens.space-2;
+        spacing: Tokens.space-optical;
+        alignment: center;
+
+        IconDisplay {
+            icon: IconSet.Lock;
+            size: Tokens.icon-inline-size;
+            stroke: root.active ? Tokens.accent-bloom-hover : Tokens.text-disabled;
+        }
+
         Text {
             text: root.label;
-            font-size: 12px;
-            color: touch.has-hover ? Tokens.text-primary : Tokens.text-secondary;
+            font-size: Tokens.caption-size;
+            font-weight: 500;
+            color: root.active ? Tokens.accent-bloom-hover : Tokens.text-tertiary;
             vertical-alignment: center;
         }
     }
 
-    touch := TouchArea {
-        clicked => { root.clicked(); }
+    touch_area := TouchArea {
+        clicked => { root.toggled(!root.active); }
     }
 }
 
+// A persona segment. Text only, with no leading glyph: the two segments are a
+// compact switcher, and a leading icon plus an icon gap added ~28 px per
+// segment, which is what made them read as oversized pills. The label is the
+// whole control now, so its width is the text plus the token padding.
 component StudioPersonaTab inherits Rectangle {
     in property <string> label;
-    in property <Icon> icon;
     in property <bool> active: false;
     callback clicked;
 
-    height: 24px;
-    border-radius: 4px;
+    height: Tokens.persona-tab-height;
+    border-radius: Tokens.radius-micro;
     background: active ? Tokens.accent-bloom : (touch.has-hover ? Tokens.overlay-hover : transparent);
 
     HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 5px;
+        padding-left: Tokens.persona-tab-padding;
+        padding-right: Tokens.persona-tab-padding;
         alignment: center;
-
-        IconDisplay {
-            icon: root.icon;
-            size: 13px;
-            stroke: root.active ? Tokens.text-primary : (touch.has-hover ? Tokens.text-primary : Tokens.text-tertiary);
-            y: (parent.height - self.height) / 2;
-        }
 
         Text {
             text: root.label;
-            font-size: 11px;
+            font-size: Tokens.caption-size;
             font-weight: root.active ? 600 : 500;
             color: root.active ? Tokens.text-primary : Tokens.text-tertiary;
             vertical-alignment: center;
@@ -186,42 +817,42 @@ component StudioTabItem inherits Rectangle {
     callback clicked;
     callback close_clicked;
 
-    height: 30px;
-    border-radius: 4px;
+    height: Tokens.tab-strip-height;
+    border-radius: Tokens.radius-micro;
     background: active ? Tokens.surface-panel : Tokens.surface-workspace;
-    border-width: active ? 1px : 0px;
+    border-width: active ? Tokens.border-width : Tokens.space-0;
     border-color: Tokens.border-subtle;
 
     HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 8px;
-        spacing: 6px;
+        padding-left: Tokens.space-2;
+        padding-right: Tokens.space-2;
+        spacing: Tokens.space-optical;
         alignment: center;
 
         IconDisplay {
             icon: IconSet.FileCode;
-            size: 13px;
+            size: Tokens.icon-inline-size;
             stroke: root.active ? Tokens.accent-bloom-hover : Tokens.text-disabled;
             y: (parent.height - self.height) / 2;
         }
 
         Text {
             text: root.title + (root.is_dirty ? " •" : "");
-            font-size: 12px;
+            font-size: Tokens.small-size;
             color: root.active ? Tokens.text-primary : Tokens.text-secondary;
             font-weight: root.active ? 600 : 400;
             vertical-alignment: center;
         }
 
         Rectangle {
-            width: 16px;
-            height: 16px;
-            border-radius: 3px;
+            width: Tokens.layer-disclosure-size;
+            height: Tokens.layer-disclosure-size;
+            border-radius: Tokens.radius-micro;
             background: close_touch.has-hover ? Tokens.status-error : transparent;
 
             IconDisplay {
                 icon: IconSet.X;
-                size: 10px;
+                size: Tokens.icon-inline-size;
                 stroke: close_touch.has-hover ? Tokens.status-error : Tokens.text-disabled;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
@@ -239,15 +870,17 @@ component StudioTabItem inherits Rectangle {
 }
 
 export component MainWindow inherits Window {
-    title: "Petunia Design Studio";
+    // The window title is the catalog's brand string, pushed from the shell;
+    // the .slint carries no product name of its own.
+    title: root.window_title;
     preferred-width: 1440px;
     preferred-height: 900px;
     background: Tokens.surface-workspace;
 
     forward-focus: root_fs;
     root_fs := FocusScope {
-        width: 0px;
-        height: 0px;
+        width: Tokens.space-0;
+        height: Tokens.space-0;
         key-pressed(event) => {
             // Arrow Keys Nudge
             if (event.text == Key.UpArrow) {
@@ -273,9 +906,17 @@ export component MainWindow inherits Window {
                 return accept;
             }
 
-            // Escape closes the command palette first
+            // Escape closes the command palette first, then any open menu.
             if (event.text == Key.Escape && root.palette_open) {
                 root.close_palette();
+                return accept;
+            }
+            if (event.text == Key.Escape && root.open_menu_index >= 0) {
+                root.menu_closed();
+                return accept;
+            }
+            if (event.text == Key.Escape && root.zoom_popup_open) {
+                root.zoom_popup_open = false;
                 return accept;
             }
 
@@ -336,8 +977,9 @@ export component MainWindow inherits Window {
     }
 
     // View state
+    in property <string> window_title: "";
     in-out property <string> active_tool_name: "Select";
-    in-out property <int> active_persona: 0; // 0: Design, 1: Photo
+    in-out property <int> active_persona: 0; // index into `personas`
     in-out property <string> document_title: "Showcase Project.aub";
     in-out property <int> zoom_pct: 100;
     in-out property <bool> snap_enabled: true;
@@ -409,7 +1051,8 @@ export component MainWindow inherits Window {
 
     // Callbacks
     callback select_tool(string);
-    callback switch_persona(int);
+    callback switch_persona(string);
+    callback shell_control_activated(string);
     callback undo_clicked();
     callback redo_clicked();
     callback zoom_in_clicked();
@@ -469,6 +1112,91 @@ export component MainWindow inherits Window {
     callback select_all_clicked();
     callback cycle_selection_clicked(bool);
 
+    // Menu bar (15.G): filled from the registry, never hand-written here.
+    in property <[MenuFamilyEntry]> menu_families: [];
+    in property <[PersonaEntry]> personas: [];
+    in property <[ShellControlEntry]> shell_controls: [];
+    // Canonical context toolbar (08.23), already scoped to the active tool by
+    // the shell. The bar renders this list and nothing else.
+    in property <[ContextToolbarEntry]> context_toolbar: [];
+    // A toolbar entry was activated. The id travels back verbatim: the shell
+    // resolves it to an action or a token, never this file.
+    callback context_toolbar_activated(string);
+    // Label of the one control that stays in the tab strip, from the catalog.
+    in property <string> snap_label: "";
+    in-out property <int> open_menu_index: -1;
+    // Which submenu row of the open family is expanded, -1 for none.
+    in-out property <int> open_group_row: -1;
+    // Left edge of the open family, in window coordinates, so the popup can be
+    // a top-level overlay (see SECTION 7).
+    in-out property <length> open_menu_x: 0px;
+    callback menu_family_toggled(int, length);
+    callback menu_item_activated(string);
+    callback menu_closed();
+    // Zoom box (08.2). The readout is a control: clicking it opens the popup
+    // below, whose rows are the same registry levels the View submenu shows.
+    // The UI owns only the open state; a chosen level travels back as a token,
+    // so the Action lane stays the single path to the camera.
+    in-out property <bool> zoom_popup_open: false;
+    // Left edge of the zoom popup in window coordinates, reported by the box.
+    in-out property <length> zoom_popup_x: 0px;
+    in property <[MenuRowEntry]> zoom_rows: [];
+    // Zoom levels never form submenus, so this stays empty and the popup's
+    // group row stays -1: the popup component is shared with the menus, which
+    // is why the property exists at all.
+    in property <[MenuGroupEntry]> zoom_groups: [];
+    in-out property <int> zoom_group_row: -1;
+    callback zoom_level_activated(string);
+
+    // Glyph per context-toolbar entry. The toolkit owns its icon vocabulary, so
+    // the id-to-glyph map lives here while the registry decides which entries
+    // exist, in what order, and what they are called. The badge follows the
+    // active tool, which is why it resolves from the tool's own name.
+    pure function context_toolbar_icon(tool_name: string, id: string) -> Icon {
+        if (id == "ptnd.ctb.tool_badge") {
+            if (tool_name == "Node") { return IconSet.Pointer; }
+            if (tool_name == "Pen") { return IconSet.PenTool; }
+            if (tool_name == "Pencil") { return IconSet.Pencil; }
+            if (tool_name == "Rectangle") { return IconSet.Square; }
+            if (tool_name == "Ellipse") { return IconSet.Circle; }
+            if (tool_name == "Star") { return IconSet.Star; }
+            if (tool_name == "Polygon") { return IconSet.Pentagon; }
+            if (tool_name == "Text") { return IconSet.Type; }
+            if (tool_name == "Scissors") { return IconSet.Scissors; }
+            if (tool_name == "Zoom") { return IconSet.ZoomIn; }
+            if (tool_name == "Hand") { return IconSet.Hand; }
+            if (tool_name == "Gradient") { return IconSet.PaintBucket; }
+            if (tool_name == "ColorPicker") { return IconSet.Pipette; }
+            if (tool_name == "Corner") { return IconSet.Spline; }
+            if (tool_name == "Knife") { return IconSet.Slice; }
+            if (tool_name == "Artboard") { return IconSet.Crop; }
+            if (tool_name == "PointTransform") { return IconSet.Move; }
+            return IconSet.MousePointer2;
+        }
+        if (id == "ptnd.ctb.convert_to_curves") { return IconSet.PenTool; }
+        if (id == "ptnd.ctb.bake_corners") { return IconSet.Maximize2; }
+        if (id == "ptnd.ctb.boolean.union") { return IconSet.Combine; }
+        if (id == "ptnd.ctb.boolean.difference") { return IconSet.Minus; }
+        if (id == "ptnd.ctb.boolean.intersection") { return IconSet.Square; }
+        if (id == "ptnd.ctb.boolean.exclusion") { return IconSet.Circle; }
+        if (id == "ptnd.ctb.align.left") { return IconSet.AlignLeft; }
+        if (id == "ptnd.ctb.align.center") { return IconSet.AlignCenterHorizontal; }
+        if (id == "ptnd.ctb.align.right") { return IconSet.AlignRight; }
+        if (id == "ptnd.ctb.align.top") { return IconSet.AlignStartVertical; }
+        if (id == "ptnd.ctb.align.middle") { return IconSet.AlignCenterVertical; }
+        if (id == "ptnd.ctb.align.bottom") { return IconSet.AlignEndVertical; }
+        if (id == "ptnd.ctb.export") { return IconSet.FileCode; }
+        if (id == "ptnd.ctb.delete") { return IconSet.Trash; }
+        return IconSet.Square;
+    }
+
+    // Shell chrome titles, resolved from the string catalog (09.16). The UI
+    // references TextIds; the strings live in `petunia_design_resources`.
+    in property <string> title_panel_layers: "Layers";
+    in property <string> title_panel_properties: "Properties";
+    in property <string> title_panel_history: "History";
+    in property <string> title_panel_data_merge: "Data Merge";
+
     // Export Flow Callbacks & Properties
     in-out property <bool> export_dialog_open: false;
     // Command Palette (Ctrl+K) — semantic entry point (08.2)
@@ -488,102 +1216,120 @@ export component MainWindow inherits Window {
     callback do_export_clicked();
 
     VerticalLayout {
-        padding: 0px;
-        spacing: 0px;
+        padding: Tokens.space-0;
+        spacing: Tokens.space-0;
 
         // -------------------------------------------------------------
         // SECTION 1: STUDIO MENU BAR & PERSONA SWITCHER (08.2)
         // -------------------------------------------------------------
         Rectangle {
-            height: 32px;
+            height: Tokens.persona-row-height;
             background: Tokens.surface-chrome;
 
             HorizontalLayout {
-                padding-left: 8px;
-                padding-right: 10px;
-                spacing: 4px;
+                padding-left: Tokens.space-2;
+                padding-right: Tokens.space-2;
+                spacing: Tokens.space-1;
 
-                // Brand Badge
-                HorizontalLayout {
-                    spacing: 6px;
-                    alignment: center;
-                    padding-right: 8px;
-                    Rectangle {
-                        width: 18px;
-                        height: 18px;
-                        border-radius: 4px;
-                        background: Tokens.accent-bloom;
-                        Text {
-                            text: "A";
-                            color: Tokens.text-primary;
-                            font-size: 11px;
-                            font-weight: 800;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-                    Text {
-                        text: "Petunia Design Studio";
-                        color: Tokens.text-primary;
-                        font-weight: 700;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                    }
+                // Brand mark slot. A reserved square for the product's
+                // symbolic icon, with no wordmark: the bar carries no text of
+                // its own, so the menus start where the eye expects them.
+                Rectangle {
+                    width: Tokens.brand-mark-size;
+                    height: Tokens.brand-mark-size;
+                    border-radius: Tokens.radius-micro;
+                    background: Tokens.surface-chrome-strong;
+                    border-width: Tokens.border-width;
+                    border-color: Tokens.border-subtle;
+                    y: (parent.height - self.height) / 2;
                 }
 
-                // Studio Menus
-                StudioMenuButton { label: "Arquivo"; clicked => { root.new_doc_clicked(); } }
-                StudioMenuButton { label: "Exportar"; clicked => { root.open_export_dialog_clicked(); } }
-                StudioMenuButton { label: "Editar"; clicked => { root.duplicate_selected_clicked(); } }
-                StudioMenuButton { label: "Camada"; clicked => { root.convert_to_curves_clicked(); } }
-                StudioMenuButton { label: "Selecionar"; clicked => { root.tab_changed(0); } }
-                StudioMenuButton { label: "Documento"; clicked => { root.fit_canvas_clicked(); } }
-                StudioMenuButton { label: "Exibir"; clicked => { root.zoom_in_clicked(); } }
+                // Studio Menus — generated from the surface registry (15.G).
+                // This bar owns no label and no action id: both arrive from
+                // `PetuniaDesignGuiBridge::query_menu_bar()`, so a wired action
+                // cannot be missing here and an unwired one cannot appear as
+                // functional.
+                for family_index in (root.menu_families.length) : StudioMenuFamilyButton {
+                    label: root.menu_families[family_index].label;
+                    open: root.open_menu_index == family_index;
+                    toggled(x) => {
+                        // One popup owns the pointer at a time.
+                        root.zoom_popup_open = false;
+                        root.menu_family_toggled(family_index, x);
+                    }
+                }
 
                 // Spacer
                 Rectangle { horizontal-stretch: 1; }
 
-                // Persona Switcher (Design vs Photo) (08.2)
+                // Persona Switcher (08.2). Every tab comes from the registry
+                // and switches by registered id, so a new persona shows up here
+                // as soon as it is declared, with its own catalog label.
                 Rectangle {
-                    height: 26px;
-                    border-radius: 5px;
+                    height: Tokens.persona-tab-height + Tokens.space-1;
+                    border-radius: Tokens.radius-control;
                     background: Tokens.surface-chrome-strong;
-                    border-width: 1px;
+                    border-width: Tokens.border-width;
                     border-color: Tokens.border-subtle;
 
                     HorizontalLayout {
-                        padding: 2px;
-                        spacing: 2px;
-                        StudioPersonaTab {
-                            label: "Design Persona";
-                            icon: IconSet.PenTool;
-                            active: root.active_persona == 0;
-                            clicked => { root.active_persona = 0; root.switch_persona(0); }
-                        }
-                        StudioPersonaTab {
-                            label: "Photo Persona";
-                            icon: IconSet.Crop;
-                            active: root.active_persona == 1;
-                            clicked => { root.active_persona = 1; root.switch_persona(1); }
+                        padding-left: Tokens.space-1;
+                        padding-right: Tokens.space-1;
+                        padding-top: Tokens.space-half;
+                        padding-bottom: Tokens.space-half;
+                        spacing: Tokens.persona-segment-gap;
+                        for persona_index in (root.personas.length) : StudioPersonaTab {
+                            label: root.personas[persona_index].label;
+                            active: root.active_persona == persona_index;
+                            clicked => {
+                                root.active_persona = persona_index;
+                                root.switch_persona(root.personas[persona_index].id);
+                            }
                         }
                     }
                 }
             }
+
+            // Centred control cluster (08.2): view history and the zoom group
+            // belong to the shell, so they live in this row, centred on the
+            // window. Declared as a sibling of the row's layout and placed by
+            // absolute x, so "centred" means centred on the window and not on
+            // the leftover space between the menus and the personas.
+            //
+            // Below the breakpoint it steps out of the way rather than
+            // colliding with the menus; the same actions stay reachable from
+            // Edit, View and the keyboard, and the status bar still reports the
+            // zoom, so nothing becomes unreachable.
+            if root.width > Tokens.shell-cluster-breakpoint : ShellControlCluster {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                controls: root.shell_controls;
+                zoom_pct: root.zoom_pct;
+                zoom_popup_open: root.zoom_popup_open;
+                activated(id) => { root.shell_control_activated(id); }
+                readout_toggled(x) => {
+                    root.menu_closed();
+                    root.zoom_popup_x = x;
+                    root.zoom_popup_open = !root.zoom_popup_open;
+                }
+            }
         }
 
-        Rectangle { height: 1px; background: Tokens.border-subtle; }
+        Rectangle { height: Tokens.border-width; background: Tokens.border-subtle; }
 
         // -------------------------------------------------------------
         // SECTION 2: DOCUMENT TAB STRIP (08.2)
         // -------------------------------------------------------------
         Rectangle {
-            height: 32px;
+            height: Tokens.tab-strip-height + Tokens.space-1;
             background: Tokens.surface-chrome-strong;
 
             HorizontalLayout {
-                padding-left: 8px;
-                padding-right: 12px;
-                spacing: 4px;
+                padding-left: Tokens.space-2;
+                // Snap sits in the extreme right corner of the strip (08.2), so
+                // the trailing padding is one step, not a comfortable gutter.
+                padding-right: Tokens.space-1;
+                spacing: Tokens.space-1;
 
                 // Document Tab
                 StudioTabItem {
@@ -596,15 +1342,15 @@ export component MainWindow inherits Window {
 
                 // New tab button
                 Rectangle {
-                    width: 24px;
-                    height: 24px;
-                    border-radius: 4px;
+                    width: Tokens.icon-button-size;
+                    height: Tokens.icon-button-size;
+                    border-radius: Tokens.radius-control;
                     background: touch_new_tab.has-hover ? Tokens.overlay-hover : transparent;
                     y: (parent.height - self.height) / 2;
 
                     IconDisplay {
                         icon: IconSet.Plus;
-                        size: 12px;
+                        size: Tokens.icon-inline-size;
                         stroke: Tokens.text-tertiary;
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
@@ -617,295 +1363,70 @@ export component MainWindow inherits Window {
 
                 Rectangle { horizontal-stretch: 1; }
 
-                // Quick Viewport & Snapping controls
-                HorizontalLayout {
-                    spacing: 4px;
-                    alignment: center;
-
-                    StudioIconButton {
-                        icon: IconSet.Undo2;
-                        tooltip: "Desfazer (Ctrl+Z)";
-                        clicked => { root.undo_clicked(); }
-                    }
-                    StudioIconButton {
-                        icon: IconSet.Redo2;
-                        tooltip: "Refazer (Ctrl+Y)";
-                        clicked => { root.redo_clicked(); }
-                    }
-
-                    Rectangle { width: 1px; height: 16px; background: Tokens.border-subtle; y: 8px; }
-
-                    StudioIconButton {
-                        icon: IconSet.Minus;
-                        tooltip: "Reduzir Zoom";
-                        clicked => { root.zoom_out_clicked(); }
-                    }
-
-                    Rectangle {
-                        height: 24px;
-                        border-radius: 4px;
-                        background: Tokens.surface-panel;
-                        HorizontalLayout {
-                            padding-left: 8px;
-                            padding-right: 8px;
-                            Text {
-                                text: root.zoom_pct + "%";
-                                font-size: 11px;
-                                color: Tokens.text-secondary;
-                                font-weight: 600;
-                                vertical-alignment: center;
-                                horizontal-alignment: center;
-                            }
-                        }
-                    }
-
-                    StudioIconButton {
-                        icon: IconSet.Plus;
-                        tooltip: "Aumentar Zoom";
-                        clicked => { root.zoom_in_clicked(); }
-                    }
-                    StudioIconButton {
-                        icon: IconSet.Maximize2;
-                        tooltip: "Ajustar à Tela";
-                        clicked => { root.fit_canvas_clicked(); }
-                    }
-
-                    Rectangle { width: 1px; height: 16px; background: Tokens.border-subtle; y: 8px; }
-
-                    // Snap toggle
-                    Rectangle {
-                        height: 24px;
-                        border-radius: 4px;
-                        background: root.snap_enabled ? Tokens.accent-faint : Tokens.surface-panel;
-                        border-width: root.snap_enabled ? 1px : 0px;
-                        border-color: Tokens.accent-bloom;
-
-                        HorizontalLayout {
-                            padding-left: 8px;
-                            padding-right: 8px;
-                            spacing: 4px;
-                            alignment: center;
-
-                            IconDisplay {
-                                icon: IconSet.Lock;
-                                size: 11px;
-                                stroke: root.snap_enabled ? Tokens.accent-bloom-hover : Tokens.text-disabled;
-                                y: (parent.height - self.height) / 2;
-                            }
-
-                            Text {
-                                text: "Snap";
-                                font-size: 11px;
-                                font-weight: 500;
-                                color: root.snap_enabled ? Tokens.accent-bloom-hover : Tokens.text-tertiary;
-                                vertical-alignment: center;
-                            }
-                        }
-
-                        TouchArea {
-                            clicked => {
-                                root.snap_enabled = !root.snap_enabled;
-                                root.snap_toggled(root.snap_enabled);
-                            }
-                        }
+                // Snap is the one control that stays here — pinned to the
+                // extreme right edge of the strip (08.2). Undo/redo and the
+                // zoom cluster moved to the centred menu bar.
+                StudioSnapToggle {
+                    active: root.snap_enabled;
+                    label: root.snap_label;
+                    toggled(active) => {
+                        root.snap_enabled = active;
+                        root.snap_toggled(active);
                     }
                 }
             }
         }
 
-        Rectangle { height: 1px; background: Tokens.border-subtle; }
+        Rectangle { height: Tokens.border-width; background: Tokens.border-subtle; }
 
         // -------------------------------------------------------------
         // SECTION 3: CANONICAL CONTEXT TOOLBAR (08.23)
         // -------------------------------------------------------------
         Rectangle {
-            height: 38px;
+            height: Tokens.context-toolbar-height;
             background: Tokens.surface-panel;
 
             HorizontalLayout {
-                padding-left: 12px;
-                padding-right: 12px;
-                spacing: 8px;
+                padding-left: Tokens.toolbar-padding-horizontal;
+                padding-right: Tokens.toolbar-padding-horizontal;
+                spacing: Tokens.space-2;
                 alignment: center;
 
-                // Active tool indicator badge
-                Rectangle {
-                    height: 24px;
-                    border-radius: 4px;
-                    background: Tokens.surface-control;
-                    border-width: 1px;
-                    border-color: Tokens.border-strong;
-
-                    HorizontalLayout {
-                        padding-left: 8px;
-                        padding-right: 8px;
-                        spacing: 6px;
-                        alignment: center;
-
-                        IconDisplay {
-                            icon: root.active_tool_name == "Node" ? IconSet.Pointer :
-                                  root.active_tool_name == "Pen" ? IconSet.PenTool :
-                                  root.active_tool_name == "Pencil" ? IconSet.Pencil :
-                                  root.active_tool_name == "Rectangle" ? IconSet.Square :
-                                  root.active_tool_name == "Ellipse" ? IconSet.Circle :
-                                  root.active_tool_name == "Star" ? IconSet.Star :
-                                  root.active_tool_name == "Text" ? IconSet.Type :
-                                  root.active_tool_name == "Scissors" ? IconSet.Scissors :
-                                  root.active_tool_name == "Zoom" ? IconSet.ZoomIn : IconSet.MousePointer2;
-                            size: 13px;
-                            stroke: Tokens.accent-bloom-hover;
-                            y: (parent.height - self.height) / 2;
-                        }
-
-                        Text {
-                            text: root.active_tool_name;
-                            font-size: 11px;
-                            font-weight: 700;
-                            color: Tokens.text-primary;
-                            vertical-alignment: center;
-                        }
-                    }
-                }
-
-                Rectangle { width: 1px; height: 18px; background: Tokens.border-subtle; y: 10px; }
-
-                // Selection Transform HUD Numeric Readout (08.23, 10.1)
-                if root.has_selection : HorizontalLayout {
-                    spacing: 6px;
-                    alignment: center;
-
-                    Text { text: "X: " + Math.round(root.prop_x / 1px) + " pt"; font-size: 11px; color: Tokens.text-tertiary; vertical-alignment: center; }
-                    Text { text: "Y: " + Math.round(root.prop_y / 1px) + " pt"; font-size: 11px; color: Tokens.text-tertiary; vertical-alignment: center; }
-                    Text { text: "W: " + Math.round(root.prop_w / 1px) + " pt"; font-size: 11px; color: Tokens.text-tertiary; vertical-alignment: center; }
-                    Text { text: "H: " + Math.round(root.prop_h / 1px) + " pt"; font-size: 11px; color: Tokens.text-tertiary; vertical-alignment: center; }
-                    Text { text: "R: " + Math.round(root.prop_rot) + "°"; font-size: 11px; color: Tokens.text-tertiary; vertical-alignment: center; }
-                }
-
-                Rectangle { width: 1px; height: 18px; background: Tokens.border-subtle; y: 10px; }
-
-                // Quick Fill & Stroke Swatches
-                HorizontalLayout {
-                    spacing: 6px;
-                    alignment: center;
-
-                    Text { text: "Fill:"; font-size: 11px; color: Tokens.text-disabled; vertical-alignment: center; }
-                    Rectangle {
-                        width: 18px;
-                        height: 18px;
-                        border-radius: 3px;
-                        background: Tokens.accent-bloom;
-                        border-width: 1px;
-                        border-color: Tokens.accent-bloom-hover;
-                        TouchArea { clicked => { root.set_selected_color(Tokens.accent-bloom); } }
-                    }
-
-                    Text { text: "Stroke:"; font-size: 11px; color: Tokens.text-disabled; vertical-alignment: center; }
-                    Rectangle {
-                        width: 18px;
-                        height: 18px;
-                        border-radius: 3px;
-                        background: Tokens.accent-bloom-pressed;
-                        border-width: 1px;
-                        border-color: Tokens.accent-bloom-hover;
-                        TouchArea { clicked => { root.set_selected_color(Tokens.accent-bloom-pressed); } }
-                    }
-                }
-
-                Rectangle { width: 1px; height: 18px; background: Tokens.border-subtle; y: 10px; }
-
-                // Curve operations
-                StudioIconButton {
-                    icon: IconSet.PenTool;
-                    tooltip: "Converter em Curvas (Ctrl+Return)";
-                    clicked => { root.convert_to_curves_clicked(); }
-                }
-                StudioIconButton {
-                    icon: IconSet.Maximize2;
-                    tooltip: "Bake Cantos";
-                    clicked => { root.bake_corners_clicked(); }
-                }
-
-                Rectangle { width: 1px; height: 18px; background: Tokens.border-subtle; y: 10px; }
-
-                // Boolean Operations (10.3)
-                HorizontalLayout {
-                    spacing: 2px;
-                    alignment: center;
-
-                    StudioIconButton {
-                        icon: IconSet.Combine;
-                        tooltip: "União (Boolean Union)";
-                        clicked => { root.boolean_union_clicked(); }
-                    }
-                    StudioIconButton {
-                        icon: IconSet.Minus;
-                        tooltip: "Subtração (Boolean Subtract)";
-                        clicked => { root.boolean_subtract_clicked(); }
-                    }
-                    StudioIconButton {
-                        icon: IconSet.Square;
-                        tooltip: "Intersecção (Boolean Intersect)";
-                        clicked => { root.boolean_intersect_clicked(); }
-                    }
-                    StudioIconButton {
-                        icon: IconSet.Circle;
-                        tooltip: "Exclusão / Xor";
-                        clicked => { root.boolean_xor_clicked(); }
-                    }
-                }
-
-                Rectangle { width: 1px; height: 18px; background: Tokens.border-subtle; y: 10px; }
-
-                // Alignments (10.1)
-                HorizontalLayout {
-                    spacing: 2px;
-                    alignment: center;
-
-                    StudioIconButton { icon: IconSet.AlignLeft; tooltip: "Alinhar à Esquerda"; clicked => { root.align_objects_clicked("Left"); } }
-                    StudioIconButton { icon: IconSet.AlignCenterHorizontal; tooltip: "Alinhar ao Centro H"; clicked => { root.align_objects_clicked("Center"); } }
-                    StudioIconButton { icon: IconSet.AlignRight; tooltip: "Alinhar à Direita"; clicked => { root.align_objects_clicked("Right"); } }
-                    StudioIconButton { icon: IconSet.AlignStartVertical; tooltip: "Alinhar ao Topo"; clicked => { root.align_objects_clicked("Top"); } }
-                    StudioIconButton { icon: IconSet.AlignCenterVertical; tooltip: "Alinhar ao Meio V"; clicked => { root.align_objects_clicked("Middle"); } }
-                    StudioIconButton { icon: IconSet.AlignEndVertical; tooltip: "Alinhar à Base"; clicked => { root.align_objects_clicked("Bottom"); } }
-                }
-
-                Rectangle { horizontal-stretch: 1; }
-
-                // Export quick action
-                StudioIconButton {
-                    icon: IconSet.FileCode;
-                    tooltip: "Exportar Documento (Ctrl+E)";
-                    clicked => { root.open_export_dialog_clicked(); }
-                }
-
-                // Delete quick action
-                StudioIconButton {
-                    icon: IconSet.Trash;
-                    tooltip: "Excluir Seleção (Delete)";
-                    clicked => { root.delete_selected_clicked(); }
+                // The bar is the list the shell scoped to the active tool
+                // (08.23). This file holds no control, no label, no order and no
+                // tooltip of its own: an entry that does not apply to this tool
+                // is not here at all, and one that applies but cannot run is
+                // disabled and explains itself on hover.
+                for entry_index in (root.context_toolbar.length) : ContextToolbarItem {
+                    entry: root.context_toolbar[entry_index];
+                    icon: root.context_toolbar_icon(root.active_tool_name, root.context_toolbar[entry_index].id);
+                    prop_x: root.prop_x;
+                    prop_y: root.prop_y;
+                    prop_w: root.prop_w;
+                    prop_h: root.prop_h;
+                    prop_rot: root.prop_rot;
+                    activated(id) => { root.context_toolbar_activated(id); }
+                    swatch_clicked(color) => { root.set_selected_color(color); }
                 }
             }
         }
 
-        Rectangle { height: 1px; background: Tokens.border-subtle; }
+        Rectangle { height: Tokens.border-width; background: Tokens.border-subtle; }
 
         // -------------------------------------------------------------
         // SECTION 4: MAIN WORKSPACE (TOOL RAIL + CANVAS + DOCK)
         // -------------------------------------------------------------
         HorizontalLayout {
-            spacing: 0px;
+            spacing: Tokens.space-0;
 
-            // 4.1 CANONICAL LEFT TOOL RAIL (48px) (08.7, 08.24)
+            // 4.1 CANONICAL LEFT TOOL RAIL (08.7, 08.24)
             Rectangle {
-                width: 48px;
+                width: Tokens.tool-rail-width;
                 background: Tokens.surface-chrome;
 
                 VerticalLayout {
-                    padding-top: 6px;
-                    padding-bottom: 6px;
-                    padding-left: 6px;
-                    padding-right: 6px;
-                    spacing: 4px;
+                    padding: Tokens.tool-rail-padding;
+                    spacing: Tokens.tool-button-gap;
                     alignment: start;
 
                     // Group 1: Selection
@@ -935,7 +1456,7 @@ export component MainWindow inherits Window {
                     }
 
                     // Divider
-                    Rectangle { height: 1px; background: Tokens.border-subtle; }
+                    Rectangle { height: Tokens.border-width; background: Tokens.border-subtle; }
 
                     // Group 2: Vector Drawing
                     StudioToolButton {
@@ -976,7 +1497,7 @@ export component MainWindow inherits Window {
                     }
 
                     // Divider
-                    Rectangle { height: 1px; background: Tokens.border-subtle; }
+                    Rectangle { height: Tokens.border-width; background: Tokens.border-subtle; }
 
                     // Group 3: Typography & Content
                     StudioToolButton {
@@ -999,7 +1520,7 @@ export component MainWindow inherits Window {
                     }
 
                     // Divider
-                    Rectangle { height: 1px; background: Tokens.border-subtle; }
+                    Rectangle { height: Tokens.border-width; background: Tokens.border-subtle; }
 
                     // Group 4: Vector Editing
                     StudioToolButton {
@@ -1028,7 +1549,7 @@ export component MainWindow inherits Window {
                     }
 
                     // Divider
-                    Rectangle { height: 1px; background: Tokens.border-subtle; }
+                    Rectangle { height: Tokens.border-width; background: Tokens.border-subtle; }
 
                     // Group 5: Viewport Navigation
                     StudioToolButton {
@@ -1046,11 +1567,11 @@ export component MainWindow inherits Window {
                 }
             }
 
-            Rectangle { width: 1px; background: Tokens.surface-control; }
+            Rectangle { width: Tokens.border-width; background: Tokens.surface-control; }
 
             // 4.1b RULER COLUMN (Affinity chrome, document coords)
             VerticalLayout {
-                spacing: 0px;
+                spacing: Tokens.space-0;
                 Rectangle { width: 22px; height: 18px; background: Tokens.surface-chrome-strong; }
                 Rectangle {
                     width: 22px;
@@ -1060,17 +1581,17 @@ export component MainWindow inherits Window {
                     for i in 90 : Rectangle {
                         y: i * 10px;
                         width: 22px;
-                        height: 1px;
+                        height: Tokens.border-width;
                         background: transparent;
                         Rectangle {
                             x: 22px - (Math.mod(i, 10) == 0 ? 10px : (Math.mod(i, 5) == 0 ? 6px : 3px));
                             width: (Math.mod(i, 10) == 0 ? 10px : (Math.mod(i, 5) == 0 ? 6px : 3px));
-                            height: 1px;
+                            height: Tokens.border-width;
                             background: Tokens.border-strong;
                         }
                         if Math.mod(i * 10 - Math.round(root.artboard_y / 1px), 100) == 0 && i * 10 >= Math.round(root.artboard_y / 1px) : Text {
                             text: (i * 10 - Math.round(root.artboard_y / 1px)) + "";
-                            font-size: 8px;
+                            font-size: Tokens.caption-size;
                             color: Tokens.text-disabled;
                             x: 1px;
                             y: i * 10px - 9px;
@@ -1081,7 +1602,7 @@ export component MainWindow inherits Window {
 
             // 4.1c CANVAS COLUMN with horizontal ruler
             VerticalLayout {
-                spacing: 0px;
+                spacing: Tokens.space-0;
                 horizontal-stretch: 1;
 
                 Rectangle {
@@ -1091,17 +1612,17 @@ export component MainWindow inherits Window {
                     for i in 130 : Rectangle {
                         x: i * 10px;
                         height: 18px;
-                        width: 1px;
+                        width: Tokens.border-width;
                         background: transparent;
                         Rectangle {
                             y: 18px - (Math.mod(i, 10) == 0 ? 10px : (Math.mod(i, 5) == 0 ? 6px : 3px));
-                            width: 1px;
+                            width: Tokens.border-width;
                             height: (Math.mod(i, 10) == 0 ? 10px : (Math.mod(i, 5) == 0 ? 6px : 3px));
                             background: Tokens.border-strong;
                         }
                         if Math.mod(i * 10 - Math.round(root.artboard_x / 1px), 100) == 0 && i * 10 >= Math.round(root.artboard_x / 1px) : Text {
                             text: (i * 10 - Math.round(root.artboard_x / 1px)) + "";
-                            font-size: 8px;
+                            font-size: Tokens.caption-size;
                             color: Tokens.text-disabled;
                             x: i * 10px + 2px;
                             y: 1px;
@@ -1122,7 +1643,7 @@ export component MainWindow inherits Window {
                     width: root.artboard_w;
                     height: root.artboard_h;
                     background: Tokens.scrim;
-                    border-radius: 4px;
+                    border-radius: Tokens.radius-micro;
                 }
 
                 // Magenta Bleed Guideline (08.27, 10.7)
@@ -1131,7 +1652,7 @@ export component MainWindow inherits Window {
                     y: root.artboard_y - root.bleed_margin;
                     width: root.artboard_w + (root.bleed_margin * 2);
                     height: root.artboard_h + (root.bleed_margin * 2);
-                    border-width: 1px;
+                    border-width: Tokens.border-width;
                     border-color: Tokens.studio-photo;
                 }
 
@@ -1149,7 +1670,7 @@ export component MainWindow inherits Window {
                         y: root.margin_inset;
                         width: parent.width - (root.margin_inset * 2);
                         height: parent.height - (root.margin_inset * 2);
-                        border-width: 1px;
+                        border-width: Tokens.border-width;
                         border-color: Tokens.studio-design;
                     }
 
@@ -1157,7 +1678,7 @@ export component MainWindow inherits Window {
                     Rectangle {
                         x: root.guide_x;
                         y: 0px;
-                        width: 1px;
+                        width: Tokens.border-width;
                         height: parent.height;
                         background: Tokens.studio-design;
                     }
@@ -1225,18 +1746,18 @@ export component MainWindow inherits Window {
                             border-color: Tokens.accent-bloom;
 
                             // 8 Resize Handles
-                            Rectangle { x: -4px; y: -4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
-                            Rectangle { x: (parent.width - 8px) / 2; y: -4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
-                            Rectangle { x: parent.width - 4px; y: -4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
-                            Rectangle { x: parent.width - 4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
-                            Rectangle { x: parent.width - 4px; y: parent.height - 4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
-                            Rectangle { x: (parent.width - 8px) / 2; y: parent.height - 4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
-                            Rectangle { x: -4px; y: parent.height - 4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
-                            Rectangle { x: -4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: Tokens.text-primary; border-width: 1px; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: -4px; y: -4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: Tokens.border-width; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: (parent.width - 8px) / 2; y: -4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: Tokens.border-width; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: parent.width - 4px; y: -4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: Tokens.border-width; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: parent.width - 4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: Tokens.text-primary; border-width: Tokens.border-width; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: parent.width - 4px; y: parent.height - 4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: Tokens.border-width; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: (parent.width - 8px) / 2; y: parent.height - 4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: Tokens.border-width; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: -4px; y: parent.height - 4px; width: 8px; height: 8px; background: Tokens.text-primary; border-width: Tokens.border-width; border-color: Tokens.accent-bloom-pressed; }
+                            Rectangle { x: -4px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; background: Tokens.text-primary; border-width: Tokens.border-width; border-color: Tokens.accent-bloom-pressed; }
 
                             // Top Rotation Pin Stem & Handle
-                            Rectangle { x: (parent.width - 1px) / 2; y: -20px; width: 1px; height: 16px; background: Tokens.accent-bloom; }
-                            Rectangle { x: (parent.width - 8px) / 2; y: -24px; width: 8px; height: 8px; border-radius: 4px; background: Tokens.accent-bloom; border-width: 1px; border-color: Tokens.text-primary; }
+                            Rectangle { x: (parent.width - 1px) / 2; y: -20px; width: Tokens.border-width; height: 16px; background: Tokens.accent-bloom; }
+                            Rectangle { x: (parent.width - 8px) / 2; y: -24px; width: 8px; height: 8px; border-radius: Tokens.radius-micro; background: Tokens.accent-bloom; border-width: Tokens.border-width; border-color: Tokens.text-primary; }
 
                             // Dimensions Readout HUD
                             Rectangle {
@@ -1244,14 +1765,14 @@ export component MainWindow inherits Window {
                                 y: parent.height + 8px;
                                 width: 130px;
                                 height: 20px;
-                                border-radius: 4px;
+                                border-radius: Tokens.radius-micro;
                                 background: Tokens.surface-panel;
-                                border-width: 1px;
+                                border-width: Tokens.border-width;
                                 border-color: Tokens.accent-bloom;
 
                                 Text {
                                     text: Math.round(obj.w / 1px) + " × " + Math.round(obj.h / 1px) + " pt";
-                                    font-size: 10px;
+                                    font-size: Tokens.caption-size;
                                     color: Tokens.accent-bloom-hover;
                                     font-weight: 600;
                                     horizontal-alignment: center;
@@ -1268,7 +1789,7 @@ export component MainWindow inherits Window {
                         width: root.preview_w;
                         height: root.preview_h;
                         background: Tokens.accent-faint;
-                        border-width: 1px;
+                        border-width: Tokens.border-width;
                         border-color: Tokens.accent-bloom;
                     }
                 }
@@ -1302,85 +1823,86 @@ export component MainWindow inherits Window {
 
             } // end canvas column VerticalLayout
 
-            Rectangle { width: 1px; background: Tokens.surface-control; }
+            Rectangle { width: Tokens.border-width; background: Tokens.surface-control; }
 
-            // 4.3 RIGHT STUDIO DOCK (320px) (08.3, 08.25)
+            // 4.3 RIGHT STUDIO DOCK (08.35 §panels: default 304 px)
             Rectangle {
-                width: 320px;
+                width: Tokens.right-dock-default-width;
                 background: Tokens.surface-chrome;
 
                 VerticalLayout {
-                    padding: 0px;
-                    spacing: 0px;
+                    padding: Tokens.space-0;
+                    spacing: Tokens.space-0;
 
-                    // Studio Dock Tabs Header
+                    // Studio Dock Tabs Header — panel tab row 32 px plus the
+                    // 4 px row padding, matching the chrome-row convention.
                     Rectangle {
-                        height: 36px;
+                        height: Tokens.panel-tab-height + Tokens.space-1;
                         background: Tokens.surface-chrome;
 
                         HorizontalLayout {
-                            padding-left: 6px;
-                            padding-right: 6px;
-                            spacing: 4px;
+                            padding-left: Tokens.space-1;
+                            padding-right: Tokens.space-1;
+                            spacing: Tokens.space-1;
                             alignment: center;
 
                             Rectangle {
-                                height: 28px;
-                                border-radius: 4px;
+                                height: Tokens.panel-tab-height;
+                                border-radius: Tokens.radius-micro;
                                 background: root.active_tab_index == 0 ? Tokens.surface-control : transparent;
                                 HorizontalLayout {
-                                    padding-left: 10px; padding-right: 10px; spacing: 4px; alignment: center;
-                                    IconDisplay { icon: IconSet.Layers; size: 12px; stroke: root.active_tab_index == 0 ? Tokens.accent-bloom-hover : Tokens.text-disabled; y: 8px; }
-                                    Text { text: "Camadas"; font-size: 12px; color: root.active_tab_index == 0 ? Tokens.text-primary : Tokens.text-tertiary; font-weight: root.active_tab_index == 0 ? 600 : 400; vertical-alignment: center; }
+                                    padding-left: Tokens.space-2; padding-right: Tokens.space-2; spacing: Tokens.space-1; alignment: center;
+                                    IconDisplay { icon: IconSet.Layers; size: Tokens.icon-inline-size; stroke: root.active_tab_index == 0 ? Tokens.accent-bloom-hover : Tokens.text-disabled; y: Tokens.space-2; }
+                                    Text { text: root.title_panel_layers; font-size: Tokens.small-size; color: root.active_tab_index == 0 ? Tokens.text-primary : Tokens.text-tertiary; font-weight: root.active_tab_index == 0 ? 600 : 400; vertical-alignment: center; }
                                 }
                                 TouchArea { clicked => { root.active_tab_index = 0; root.tab_changed(0); } }
                             }
 
                             Rectangle {
-                                height: 28px;
-                                border-radius: 4px;
+                                height: Tokens.panel-tab-height;
+                                border-radius: Tokens.radius-micro;
                                 background: root.active_tab_index == 1 ? Tokens.surface-control : transparent;
                                 HorizontalLayout {
-                                    padding-left: 10px; padding-right: 10px; spacing: 4px; alignment: center;
-                                    IconDisplay { icon: IconSet.Sliders; size: 12px; stroke: root.active_tab_index == 1 ? Tokens.accent-bloom-hover : Tokens.text-disabled; y: 8px; }
-                                    Text { text: "Propriedades"; font-size: 12px; color: root.active_tab_index == 1 ? Tokens.text-primary : Tokens.text-tertiary; font-weight: root.active_tab_index == 1 ? 600 : 400; vertical-alignment: center; }
+                                    padding-left: Tokens.space-2; padding-right: Tokens.space-2; spacing: Tokens.space-1; alignment: center;
+                                    IconDisplay { icon: IconSet.Sliders; size: Tokens.icon-inline-size; stroke: root.active_tab_index == 1 ? Tokens.accent-bloom-hover : Tokens.text-disabled; y: Tokens.space-2; }
+                                    Text { text: root.title_panel_properties; font-size: Tokens.small-size; color: root.active_tab_index == 1 ? Tokens.text-primary : Tokens.text-tertiary; font-weight: root.active_tab_index == 1 ? 600 : 400; vertical-alignment: center; }
                                 }
                                 TouchArea { clicked => { root.active_tab_index = 1; root.tab_changed(1); } }
                             }
 
                             Rectangle {
-                                height: 28px;
-                                border-radius: 4px;
+                                height: Tokens.panel-tab-height;
+                                border-radius: Tokens.radius-micro;
                                 background: root.active_tab_index == 2 ? Tokens.surface-control : transparent;
                                 HorizontalLayout {
-                                    padding-left: 10px; padding-right: 10px; spacing: 4px; alignment: center;
-                                    IconDisplay { icon: IconSet.Undo2; size: 12px; stroke: root.active_tab_index == 2 ? Tokens.accent-bloom-hover : Tokens.text-disabled; y: 8px; }
-                                    Text { text: "Histórico"; font-size: 12px; color: root.active_tab_index == 2 ? Tokens.text-primary : Tokens.text-tertiary; font-weight: root.active_tab_index == 2 ? 600 : 400; vertical-alignment: center; }
+                                    padding-left: Tokens.space-2; padding-right: Tokens.space-2; spacing: Tokens.space-1; alignment: center;
+                                    IconDisplay { icon: IconSet.Undo2; size: Tokens.icon-inline-size; stroke: root.active_tab_index == 2 ? Tokens.accent-bloom-hover : Tokens.text-disabled; y: Tokens.space-2; }
+                                    Text { text: root.title_panel_history; font-size: Tokens.small-size; color: root.active_tab_index == 2 ? Tokens.text-primary : Tokens.text-tertiary; font-weight: root.active_tab_index == 2 ? 600 : 400; vertical-alignment: center; }
                                 }
                                 TouchArea { clicked => { root.active_tab_index = 2; root.tab_changed(2); } }
                             }
                         }
                     }
 
-                    Rectangle { height: 1px; background: Tokens.border-subtle; }
+                    Rectangle { height: Tokens.border-width; background: Tokens.border-subtle; }
 
                     // TAB 0: LAYERS PANEL
                     if root.active_tab_index == 0 : VerticalLayout {
-                        padding: 10px;
-                        spacing: 8px;
+                        padding: Tokens.panel-padding;
+                        spacing: Tokens.space-2;
 
                         HorizontalLayout {
                             alignment: space-between;
                             Text {
-                                text: "Hierarquia de Objetos";
-                                font-size: 13px;
+                                text: root.title_panel_layers;
+                                font-size: Tokens.panel-title-size;
                                 font-weight: 700;
                                 color: Tokens.text-primary;
                                 vertical-alignment: center;
                             }
                             Text {
                                 text: root.layer_rows.length + " itens";
-                                font-size: 11px;
+                                font-size: Tokens.caption-size;
                                 color: Tokens.text-disabled;
                                 vertical-alignment: center;
                             }
@@ -1388,21 +1910,21 @@ export component MainWindow inherits Window {
 
                         // Artboard row item
                         Rectangle {
-                            height: 28px;
-                            border-radius: 4px;
+                            height: Tokens.layer-row-height;
+                            border-radius: Tokens.radius-micro;
                             background: Tokens.surface-panel-raised;
                             HorizontalLayout {
-                                padding-left: 8px;
-                                padding-right: 8px;
-                                spacing: 6px;
-                                IconDisplay { icon: IconSet.FileCode; size: 13px; stroke: Tokens.accent-bloom-hover; y: 8px; }
-                                Text { text: "📄 Main Artboard [800 × 600]"; font-size: 12px; color: Tokens.accent-bloom-hover; font-weight: 600; vertical-alignment: center; }
+                                padding-left: Tokens.space-2;
+                                padding-right: Tokens.space-2;
+                                spacing: Tokens.space-optical;
+                                IconDisplay { icon: IconSet.FileCode; size: Tokens.icon-inline-size; stroke: Tokens.accent-bloom-hover; y: (parent.height - self.height) / 2; }
+                                Text { text: "📄 Main Artboard [800 × 600]"; font-size: Tokens.small-size; color: Tokens.accent-bloom-hover; font-weight: 600; vertical-alignment: center; }
                             }
                         }
 
                         // Hierarchy Actions Toolbar (10.5)
                         HorizontalLayout {
-                            spacing: 4px;
+                            spacing: Tokens.space-1;
                             Button { text: "Agrupar"; clicked => { root.group_selected_clicked(); } }
                             Button { text: "Desagrupar"; clicked => { root.ungroup_selected_clicked(); } }
                             Button { text: "Máscara"; clicked => { root.create_clip_mask_clicked(); } }
@@ -1413,18 +1935,18 @@ export component MainWindow inherits Window {
                         ScrollView {
                             height: 380px;
                             VerticalLayout {
-                                spacing: 4px;
+                                spacing: Tokens.space-1;
                                 for item[idx] in root.layer_rows : Rectangle {
-                                    height: 34px;
-                                    border-radius: 4px;
+                                    height: Tokens.layer-row-height;
+                                    border-radius: Tokens.radius-micro;
                                     background: item.selected ? Tokens.accent-selection-soft : Tokens.surface-panel;
-                                    border-width: item.selected ? 1px : 0px;
+                                    border-width: item.selected ? Tokens.border-width : Tokens.space-0;
                                     border-color: Tokens.accent-bloom;
 
                                     HorizontalLayout {
-                                        padding-left: 8px;
-                                        padding-right: 8px;
-                                        spacing: 6px;
+                                        padding-left: Tokens.space-2;
+                                        padding-right: Tokens.space-2;
+                                        spacing: Tokens.space-optical;
                                         alignment: center;
 
                                         // Hierarchy nesting indentation
@@ -1435,7 +1957,7 @@ export component MainWindow inherits Window {
                                         // Mask clipping indicator
                                         if item.is_clipped : Text {
                                             text: "⤷";
-                                            font-size: 11px;
+                                            font-size: Tokens.caption-size;
                                             color: Tokens.accent-bloom;
                                             vertical-alignment: center;
                                         }
@@ -1447,7 +1969,7 @@ export component MainWindow inherits Window {
                                                   item.kind == "Ellipse" ? IconSet.Circle :
                                                   item.kind == "Text" ? IconSet.Type :
                                                   item.kind == "Star" ? IconSet.Star : IconSet.Square;
-                                            size: 13px;
+                                            size: Tokens.icon-inline-size;
                                             stroke: item.is_clip_mask ? Tokens.accent-bloom :
                                                     item.is_container ? Tokens.studio-design :
                                                     item.selected ? Tokens.accent-bloom-hover : Tokens.text-tertiary;
@@ -1459,11 +1981,11 @@ export component MainWindow inherits Window {
                                             horizontal-stretch: 1;
                                             clicked => { root.select_layer_by_index(idx); }
                                             HorizontalLayout {
-                                                spacing: 4px;
+                                                spacing: Tokens.space-1;
                                                 alignment: start;
                                                 Text {
                                                     text: item.name;
-                                                    font-size: 12px;
+                                                    font-size: Tokens.small-size;
                                                     font-weight: item.selected ? 600 : 400;
                                                     color: item.selected ? Tokens.text-primary : Tokens.text-secondary;
                                                     vertical-alignment: center;
@@ -1472,24 +1994,24 @@ export component MainWindow inherits Window {
                                                 }
                                                 if item.is_clip_mask : Rectangle {
                                                     height: 16px;
-                                                    border-radius: 3px;
+                                                    border-radius: Tokens.radius-micro;
                                                     background: Tokens.accent-faint;
-                                                    border-width: 1px;
+                                                    border-width: Tokens.border-width;
                                                     border-color: Tokens.accent-bloom;
                                                     HorizontalLayout {
-                                                        padding-left: 4px; padding-right: 4px;
-                                                        Text { text: "MÁSCARA"; font-size: 9px; font-weight: 700; color: Tokens.accent-bloom; vertical-alignment: center; }
+                                                        padding-left: Tokens.space-1; padding-right: Tokens.space-1;
+                                                        Text { text: "MÁSCARA"; font-size: Tokens.caption-size; font-weight: 700; color: Tokens.accent-bloom; vertical-alignment: center; }
                                                     }
                                                 }
                                                 if item.is_container : Rectangle {
                                                     height: 16px;
-                                                    border-radius: 3px;
+                                                    border-radius: Tokens.radius-micro;
                                                     background: Tokens.accent-faint;
-                                                    border-width: 1px;
+                                                    border-width: Tokens.border-width;
                                                     border-color: Tokens.studio-design;
                                                     HorizontalLayout {
-                                                        padding-left: 4px; padding-right: 4px;
-                                                        Text { text: "GRUPO"; font-size: 9px; font-weight: 700; color: Tokens.studio-design; vertical-alignment: center; }
+                                                        padding-left: Tokens.space-1; padding-right: Tokens.space-1;
+                                                        Text { text: "GRUPO"; font-size: Tokens.caption-size; font-weight: 700; color: Tokens.studio-design; vertical-alignment: center; }
                                                     }
                                                 }
                                             }
@@ -1497,13 +2019,13 @@ export component MainWindow inherits Window {
 
                                         // Visibility toggle button
                                         Rectangle {
-                                            width: 22px;
-                                            height: 22px;
-                                            border-radius: 3px;
+                                            width: Tokens.layer-tool-hit-size;
+                                            height: Tokens.layer-tool-hit-size;
+                                            border-radius: Tokens.radius-micro;
                                             background: touch_vis.has-hover ? Tokens.overlay-hover : transparent;
                                             IconDisplay {
                                                 icon: item.visible ? IconSet.Eye : IconSet.EyeOff;
-                                                size: 13px;
+                                                size: Tokens.icon-inline-size;
                                                 stroke: item.visible ? Tokens.text-tertiary : Tokens.text-disabled;
                                                 x: (parent.width - self.width) / 2;
                                                 y: (parent.height - self.height) / 2;
@@ -1513,13 +2035,13 @@ export component MainWindow inherits Window {
 
                                         // Lock toggle button
                                         Rectangle {
-                                            width: 22px;
-                                            height: 22px;
-                                            border-radius: 3px;
+                                            width: Tokens.layer-tool-hit-size;
+                                            height: Tokens.layer-tool-hit-size;
+                                            border-radius: Tokens.radius-micro;
                                             background: touch_lock.has-hover ? Tokens.overlay-hover : transparent;
                                             IconDisplay {
                                                 icon: item.locked ? IconSet.Lock : IconSet.LockOpen;
-                                                size: 13px;
+                                                size: Tokens.icon-inline-size;
                                                 stroke: item.locked ? Tokens.status-warning : Tokens.text-disabled;
                                                 x: (parent.width - self.width) / 2;
                                                 y: (parent.height - self.height) / 2;
@@ -1529,21 +2051,21 @@ export component MainWindow inherits Window {
 
                                         // Reorder Up
                                         Rectangle {
-                                            width: 18px;
-                                            height: 22px;
-                                            border-radius: 3px;
+                                            width: Tokens.layer-tool-hit-size;
+                                            height: Tokens.layer-tool-hit-size;
+                                            border-radius: Tokens.radius-micro;
                                             background: touch_up.has-hover ? Tokens.overlay-hover : transparent;
-                                            IconDisplay { icon: IconSet.ChevronFirst; size: 11px; stroke: Tokens.text-disabled; x: 4px; y: 6px; }
+                                            IconDisplay { icon: IconSet.ChevronFirst; size: Tokens.icon-inline-size; stroke: Tokens.text-disabled; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                                             touch_up := TouchArea { clicked => { root.reorder_layer_up(idx); } }
                                         }
 
                                         // Reorder Down
                                         Rectangle {
-                                            width: 18px;
-                                            height: 22px;
-                                            border-radius: 3px;
+                                            width: Tokens.layer-tool-hit-size;
+                                            height: Tokens.layer-tool-hit-size;
+                                            border-radius: Tokens.radius-micro;
                                             background: touch_dn.has-hover ? Tokens.overlay-hover : transparent;
-                                            IconDisplay { icon: IconSet.ChevronLast; size: 11px; stroke: Tokens.text-disabled; x: 4px; y: 6px; }
+                                            IconDisplay { icon: IconSet.ChevronLast; size: Tokens.icon-inline-size; stroke: Tokens.text-disabled; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                                             touch_dn := TouchArea { clicked => { root.reorder_layer_down(idx); } }
                                         }
                                     }
@@ -1552,9 +2074,9 @@ export component MainWindow inherits Window {
                         }
 
                         // Layer Actions Footer
-                        Rectangle { height: 1px; background: Tokens.border-subtle; }
+                        Rectangle { height: Tokens.border-width; background: Tokens.border-subtle; }
                         HorizontalLayout {
-                            spacing: 6px;
+                            spacing: Tokens.space-optical;
                             Button { text: "+ Retângulo"; clicked => { root.add_rectangle_clicked(); } }
                             Button { text: "+ Elipse"; clicked => { root.add_circle_clicked(); } }
                             Button { text: "+ Texto"; clicked => { root.add_text_clicked(); } }
@@ -1564,38 +2086,38 @@ export component MainWindow inherits Window {
                     // TAB 1: PROPERTIES INSPECTOR (08.25)
                     if root.active_tab_index == 1 : ScrollView {
                         VerticalLayout {
-                            padding: 10px;
-                            spacing: 12px;
+                            padding: Tokens.panel-padding;
+                            spacing: Tokens.space-3;
 
                             // Transform Group
                             Rectangle {
                                 background: Tokens.surface-panel;
-                                border-radius: 6px;
-                                border-width: 1px;
+                                border-radius: Tokens.radius-control;
+                                border-width: Tokens.border-width;
                                 border-color: Tokens.border-subtle;
 
                                 VerticalLayout {
-                                    padding: 10px;
-                                    spacing: 8px;
+                                    padding: Tokens.panel-padding;
+                                    spacing: Tokens.space-2;
 
-                                    Text { text: "TRANSFORMAÇÃO"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
+                                    Text { text: "TRANSFORMAÇÃO"; font-size: Tokens.caption-size; font-weight: 700; color: Tokens.text-tertiary; }
 
                                     HorizontalLayout {
-                                        spacing: 8px;
+                                        spacing: Tokens.space-2;
                                         VerticalLayout {
-                                            spacing: 2px;
-                                            Text { text: "X (pt)"; font-size: 10px; color: Tokens.text-disabled; }
+                                            spacing: Tokens.space-half;
+                                            Text { text: "X (pt)"; font-size: Tokens.caption-size; color: Tokens.text-disabled; }
                                             LineEdit {
-                                                height: 26px;
+                                                height: Tokens.property-field-compact;
                                                 text: "" + Math.round(root.prop_x / 1px);
                                                 accepted(t) => { root.commit_prop_x(t); }
                                             }
                                         }
                                         VerticalLayout {
-                                            spacing: 2px;
-                                            Text { text: "Y (pt)"; font-size: 10px; color: Tokens.text-disabled; }
+                                            spacing: Tokens.space-half;
+                                            Text { text: "Y (pt)"; font-size: Tokens.caption-size; color: Tokens.text-disabled; }
                                             LineEdit {
-                                                height: 26px;
+                                                height: Tokens.property-field-compact;
                                                 text: "" + Math.round(root.prop_y / 1px);
                                                 accepted(t) => { root.commit_prop_y(t); }
                                             }
@@ -1603,21 +2125,21 @@ export component MainWindow inherits Window {
                                     }
 
                                     HorizontalLayout {
-                                        spacing: 8px;
+                                        spacing: Tokens.space-2;
                                         VerticalLayout {
-                                            spacing: 2px;
-                                            Text { text: "Largura (W)"; font-size: 10px; color: Tokens.text-disabled; }
+                                            spacing: Tokens.space-half;
+                                            Text { text: "Largura (W)"; font-size: Tokens.caption-size; color: Tokens.text-disabled; }
                                             LineEdit {
-                                                height: 26px;
+                                                height: Tokens.property-field-compact;
                                                 text: "" + Math.round(root.prop_w / 1px);
                                                 accepted(t) => { root.commit_prop_w(t); }
                                             }
                                         }
                                         VerticalLayout {
-                                            spacing: 2px;
-                                            Text { text: "Altura (H)"; font-size: 10px; color: Tokens.text-disabled; }
+                                            spacing: Tokens.space-half;
+                                            Text { text: "Altura (H)"; font-size: Tokens.caption-size; color: Tokens.text-disabled; }
                                             LineEdit {
-                                                height: 26px;
+                                                height: Tokens.property-field-compact;
                                                 text: "" + Math.round(root.prop_h / 1px);
                                                 accepted(t) => { root.commit_prop_h(t); }
                                             }
@@ -1625,21 +2147,21 @@ export component MainWindow inherits Window {
                                     }
 
                                     HorizontalLayout {
-                                        spacing: 8px;
+                                        spacing: Tokens.space-2;
                                         VerticalLayout {
-                                            spacing: 2px;
-                                            Text { text: "Rotação (°)"; font-size: 10px; color: Tokens.text-disabled; }
+                                            spacing: Tokens.space-half;
+                                            Text { text: "Rotação (°)"; font-size: Tokens.caption-size; color: Tokens.text-disabled; }
                                             LineEdit {
-                                                height: 26px;
+                                                height: Tokens.property-field-compact;
                                                 text: "" + Math.round(root.prop_rot);
                                                 accepted(t) => { root.commit_prop_rot(t); }
                                             }
                                         }
                                         VerticalLayout {
-                                            spacing: 2px;
-                                            Text { text: "Traço (pt)"; font-size: 10px; color: Tokens.text-disabled; }
+                                            spacing: Tokens.space-half;
+                                            Text { text: "Traço (pt)"; font-size: Tokens.caption-size; color: Tokens.text-disabled; }
                                             LineEdit {
-                                                height: 26px;
+                                                height: Tokens.property-field-compact;
                                                 text: "" + Math.round(root.prop_stroke_width * 10) / 10;
                                                 accepted(t) => {
                                                     // parse via opacity-style float commit
@@ -1654,32 +2176,32 @@ export component MainWindow inherits Window {
                             // Appearance & Colors Group (10.4)
                             Rectangle {
                                 background: Tokens.surface-panel;
-                                border-radius: 6px;
-                                border-width: 1px;
+                                border-radius: Tokens.radius-control;
+                                border-width: Tokens.border-width;
                                 border-color: Tokens.border-subtle;
 
                                 VerticalLayout {
-                                    padding: 10px;
-                                    spacing: 10px;
+                                    padding: Tokens.panel-padding;
+                                    spacing: Tokens.space-2;
 
                                     // 1. Swatches & Solid Colors
-                                    Text { text: "PREENCHIMENTO (SWATCHES)"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
+                                    Text { text: "PREENCHIMENTO (SWATCHES)"; font-size: Tokens.caption-size; font-weight: 700; color: Tokens.text-tertiary; }
 
                                     HorizontalLayout {
-                                        spacing: 6px;
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.accent-bloom; TouchArea { clicked => { root.set_selected_color(Tokens.accent-bloom); } } }
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.status-warning; TouchArea { clicked => { root.set_selected_color(Tokens.status-warning); } } }
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.status-error; TouchArea { clicked => { root.set_selected_color(Tokens.status-error); } } }
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.status-success; TouchArea { clicked => { root.set_selected_color(Tokens.status-success); } } }
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.accent-bloom; TouchArea { clicked => { root.set_selected_color(Tokens.accent-bloom); } } }
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.text-primary; TouchArea { clicked => { root.set_selected_color(Tokens.text-primary); } } }
-                                        Rectangle { width: 24px; height: 24px; border-radius: 4px; background: Tokens.surface-chrome-strong; border-width: 1px; border-color: Tokens.border-strong; TouchArea { clicked => { root.set_selected_color(Tokens.surface-chrome-strong); } } }
+                                        spacing: Tokens.space-optical;
+                                        Rectangle { width: 24px; height: 24px; border-radius: Tokens.radius-micro; background: Tokens.accent-bloom; TouchArea { clicked => { root.set_selected_color(Tokens.accent-bloom); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: Tokens.radius-micro; background: Tokens.status-warning; TouchArea { clicked => { root.set_selected_color(Tokens.status-warning); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: Tokens.radius-micro; background: Tokens.status-error; TouchArea { clicked => { root.set_selected_color(Tokens.status-error); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: Tokens.radius-micro; background: Tokens.status-success; TouchArea { clicked => { root.set_selected_color(Tokens.status-success); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: Tokens.radius-micro; background: Tokens.accent-bloom; TouchArea { clicked => { root.set_selected_color(Tokens.accent-bloom); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: Tokens.radius-micro; background: Tokens.text-primary; TouchArea { clicked => { root.set_selected_color(Tokens.text-primary); } } }
+                                        Rectangle { width: 24px; height: 24px; border-radius: Tokens.radius-micro; background: Tokens.surface-chrome-strong; border-width: Tokens.border-width; border-color: Tokens.border-strong; TouchArea { clicked => { root.set_selected_color(Tokens.surface-chrome-strong); } } }
                                     }
 
                                     // 2. Gradients & Paint Styles
-                                    Text { text: "ESTILO DE PINTURA & GRADIENTES"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
+                                    Text { text: "ESTILO DE PINTURA & GRADIENTES"; font-size: Tokens.caption-size; font-weight: 700; color: Tokens.text-tertiary; }
                                     HorizontalLayout {
-                                        spacing: 6px;
+                                        spacing: Tokens.space-optical;
                                         Button { text: "Sólido"; clicked => { root.set_gradient_clicked("solid"); } }
                                         Button { text: "Grad Linear"; clicked => { root.set_gradient_clicked("linear"); } }
                                         Button { text: "Grad Radial"; clicked => { root.set_gradient_clicked("radial"); } }
@@ -1688,34 +2210,34 @@ export component MainWindow inherits Window {
                                     // 3. Blend Modes (16 W3C Modes)
                                     HorizontalLayout {
                                         alignment: space-between;
-                                        Text { text: "MODO DE MESCLAGEM:"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; vertical-alignment: center; }
+                                        Text { text: "MODO DE MESCLAGEM:"; font-size: Tokens.caption-size; font-weight: 700; color: Tokens.text-tertiary; vertical-alignment: center; }
                                         Rectangle {
                                             height: 20px;
-                                            border-radius: 4px;
+                                            border-radius: Tokens.radius-micro;
                                             background: Tokens.accent-faint;
-                                            border-width: 1px;
+                                            border-width: Tokens.border-width;
                                             border-color: Tokens.accent-bloom;
                                             HorizontalLayout {
-                                                padding-left: 6px; padding-right: 6px;
-                                                Text { text: root.prop_blend_mode; font-size: 11px; font-weight: 700; color: Tokens.accent-bloom-hover; vertical-alignment: center; }
+                                                padding-left: Tokens.space-optical; padding-right: Tokens.space-optical;
+                                                Text { text: root.prop_blend_mode; font-size: Tokens.caption-size; font-weight: 700; color: Tokens.accent-bloom-hover; vertical-alignment: center; }
                                             }
                                         }
                                     }
                                     HorizontalLayout {
-                                        spacing: 4px;
+                                        spacing: Tokens.space-1;
                                         Button { text: "Normal"; clicked => { root.set_blend_mode_clicked("Normal"); } }
                                         Button { text: "Multiplicar"; clicked => { root.set_blend_mode_clicked("Multiply"); } }
                                         Button { text: "Tela"; clicked => { root.set_blend_mode_clicked("Screen"); } }
                                     }
                                     HorizontalLayout {
-                                        spacing: 4px;
+                                        spacing: Tokens.space-1;
                                         Button { text: "Sobrepor"; clicked => { root.set_blend_mode_clicked("Overlay"); } }
                                         Button { text: "Diferença"; clicked => { root.set_blend_mode_clicked("Difference"); } }
                                         Button { text: "Escurecer"; clicked => { root.set_blend_mode_clicked("Darken"); } }
                                     }
 
                                     // 4. Opacity Slider
-                                    Text { text: "OPACIDADE GERAL: " + Math.round(root.selected_opacity) + "%"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
+                                    Text { text: "OPACIDADE GERAL: " + Math.round(root.selected_opacity) + "%"; font-size: Tokens.caption-size; font-weight: 700; color: Tokens.text-tertiary; }
                                     Slider {
                                         value: root.selected_opacity;
                                         minimum: 0.0;
@@ -1726,57 +2248,57 @@ export component MainWindow inherits Window {
                                         }
                                     }
 
-                                    Rectangle { height: 1px; background: Tokens.border-subtle; }
+                                    Rectangle { height: Tokens.border-width; background: Tokens.border-subtle; }
 
                                     // 5. Multiple Fills Stack
                                     HorizontalLayout {
                                         alignment: space-between;
-                                        Text { text: "PREENCHIMENTOS (" + root.prop_fills.length + ")"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; vertical-alignment: center; }
+                                        Text { text: "PREENCHIMENTOS (" + root.prop_fills.length + ")"; font-size: Tokens.caption-size; font-weight: 700; color: Tokens.text-tertiary; vertical-alignment: center; }
                                         Button { text: "+ Preenchimento"; clicked => { root.add_fill_clicked(); } }
                                     }
                                     for fill in root.prop_fills : Rectangle {
-                                        height: 28px;
-                                        border-radius: 4px;
+                                        height: Tokens.property-row-height;
+                                        border-radius: Tokens.radius-micro;
                                         background: Tokens.surface-chrome-strong;
                                         HorizontalLayout {
-                                            padding-left: 8px;
-                                            padding-right: 8px;
-                                            spacing: 6px;
+                                            padding-left: Tokens.space-2;
+                                            padding-right: Tokens.space-2;
+                                            spacing: Tokens.space-optical;
                                             alignment: center;
-                                            IconDisplay { icon: IconSet.Palette; size: 12px; stroke: Tokens.accent-bloom-hover; y: 8px; }
-                                            Text { text: "Fill #" + fill.id + " [" + fill.paint_type + "]"; font-size: 11px; color: Tokens.text-secondary; vertical-alignment: center; horizontal-stretch: 1; }
-                                            Text { text: fill.opacity_pct + "%"; font-size: 10px; color: Tokens.text-disabled; vertical-alignment: center; }
+                                            IconDisplay { icon: IconSet.Palette; size: Tokens.icon-inline-size; stroke: Tokens.accent-bloom-hover; y: (parent.height - self.height) / 2; }
+                                            Text { text: "Fill #" + fill.id + " [" + fill.paint_type + "]"; font-size: Tokens.caption-size; color: Tokens.text-secondary; vertical-alignment: center; horizontal-stretch: 1; }
+                                            Text { text: fill.opacity_pct + "%"; font-size: Tokens.caption-size; color: Tokens.text-disabled; vertical-alignment: center; }
                                             Rectangle {
-                                                width: 18px; height: 18px; border-radius: 3px; background: touch_rf.has-hover ? Tokens.status-error : transparent;
-                                                IconDisplay { icon: IconSet.Trash; size: 10px; stroke: Tokens.status-error; x: 4px; y: 4px; }
+                                                width: 18px; height: 18px; border-radius: Tokens.radius-micro; background: touch_rf.has-hover ? Tokens.status-error : transparent;
+                                                IconDisplay { icon: IconSet.Trash; size: Tokens.icon-inline-size; stroke: Tokens.status-error; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                                                 touch_rf := TouchArea { clicked => { root.remove_fill_clicked(fill.id); } }
                                             }
                                         }
                                     }
 
-                                    Rectangle { height: 1px; background: Tokens.border-subtle; }
+                                    Rectangle { height: Tokens.border-width; background: Tokens.border-subtle; }
 
                                     // 6. Multiple Strokes Stack
                                     HorizontalLayout {
                                         alignment: space-between;
-                                        Text { text: "TRAÇADOS (" + root.prop_strokes.length + ")"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; vertical-alignment: center; }
+                                        Text { text: "TRAÇADOS (" + root.prop_strokes.length + ")"; font-size: Tokens.caption-size; font-weight: 700; color: Tokens.text-tertiary; vertical-alignment: center; }
                                         Button { text: "+ Traçado"; clicked => { root.add_stroke_clicked(); } }
                                     }
                                     for stroke in root.prop_strokes : Rectangle {
-                                        height: 28px;
-                                        border-radius: 4px;
+                                        height: Tokens.property-row-height;
+                                        border-radius: Tokens.radius-micro;
                                         background: Tokens.surface-chrome-strong;
                                         HorizontalLayout {
-                                            padding-left: 8px;
-                                            padding-right: 8px;
-                                            spacing: 6px;
+                                            padding-left: Tokens.space-2;
+                                            padding-right: Tokens.space-2;
+                                            spacing: Tokens.space-optical;
                                             alignment: center;
-                                            IconDisplay { icon: IconSet.Pen; size: 12px; stroke: Tokens.accent-bloom; y: 8px; }
-                                            Text { text: "Traço #" + stroke.id + " (" + Math.round(stroke.width_pt) + " pt)"; font-size: 11px; color: Tokens.text-secondary; vertical-alignment: center; horizontal-stretch: 1; }
-                                            Text { text: stroke.opacity_pct + "%"; font-size: 10px; color: Tokens.text-disabled; vertical-alignment: center; }
+                                            IconDisplay { icon: IconSet.Pen; size: Tokens.icon-inline-size; stroke: Tokens.accent-bloom; y: (parent.height - self.height) / 2; }
+                                            Text { text: "Traço #" + stroke.id + " (" + Math.round(stroke.width_pt) + " pt)"; font-size: Tokens.caption-size; color: Tokens.text-secondary; vertical-alignment: center; horizontal-stretch: 1; }
+                                            Text { text: stroke.opacity_pct + "%"; font-size: Tokens.caption-size; color: Tokens.text-disabled; vertical-alignment: center; }
                                             Rectangle {
-                                                width: 18px; height: 18px; border-radius: 3px; background: touch_rs.has-hover ? Tokens.status-error : transparent;
-                                                IconDisplay { icon: IconSet.Trash; size: 10px; stroke: Tokens.status-error; x: 4px; y: 4px; }
+                                                width: 18px; height: 18px; border-radius: Tokens.radius-micro; background: touch_rs.has-hover ? Tokens.status-error : transparent;
+                                                IconDisplay { icon: IconSet.Trash; size: Tokens.icon-inline-size; stroke: Tokens.status-error; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
                                                 touch_rs := TouchArea { clicked => { root.remove_stroke_clicked(stroke.id); } }
                                             }
                                         }
@@ -1787,23 +2309,23 @@ export component MainWindow inherits Window {
                             // Pathfinder & Booleans
                             Rectangle {
                                 background: Tokens.surface-panel;
-                                border-radius: 6px;
-                                border-width: 1px;
+                                border-radius: Tokens.radius-control;
+                                border-width: Tokens.border-width;
                                 border-color: Tokens.border-subtle;
 
                                 VerticalLayout {
-                                    padding: 10px;
-                                    spacing: 8px;
+                                    padding: Tokens.panel-padding;
+                                    spacing: Tokens.space-2;
 
-                                    Text { text: "BOOLEANOS & PATHFINDER (10.3)"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
+                                    Text { text: "BOOLEANOS & PATHFINDER (10.3)"; font-size: Tokens.caption-size; font-weight: 700; color: Tokens.text-tertiary; }
 
                                     HorizontalLayout {
-                                        spacing: 6px;
+                                        spacing: Tokens.space-optical;
                                         Button { text: "⋃ Unir"; clicked => { root.boolean_union_clicked(); } }
                                         Button { text: "− Subtrair"; clicked => { root.boolean_subtract_clicked(); } }
                                     }
                                     HorizontalLayout {
-                                        spacing: 6px;
+                                        spacing: Tokens.space-optical;
                                         Button { text: "⋂ Interseção"; clicked => { root.boolean_intersect_clicked(); } }
                                         Button { text: "⨁ Exclusão"; clicked => { root.boolean_xor_clicked(); } }
                                     }
@@ -1813,30 +2335,30 @@ export component MainWindow inherits Window {
                             // Alignment & Distribution
                             Rectangle {
                                 background: Tokens.surface-panel;
-                                border-radius: 6px;
-                                border-width: 1px;
+                                border-radius: Tokens.radius-control;
+                                border-width: Tokens.border-width;
                                 border-color: Tokens.border-subtle;
 
                                 VerticalLayout {
-                                    padding: 10px;
-                                    spacing: 8px;
+                                    padding: Tokens.panel-padding;
+                                    spacing: Tokens.space-2;
 
-                                    Text { text: "ALINHAMENTO & DISTRIBUIÇÃO (10.1)"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
+                                    Text { text: "ALINHAMENTO & DISTRIBUIÇÃO (10.1)"; font-size: Tokens.caption-size; font-weight: 700; color: Tokens.text-tertiary; }
 
                                     HorizontalLayout {
-                                        spacing: 4px;
+                                        spacing: Tokens.space-1;
                                         Button { text: "Esq"; clicked => { root.align_objects_clicked("Left"); } }
                                         Button { text: "Centro"; clicked => { root.align_objects_clicked("Center"); } }
                                         Button { text: "Dir"; clicked => { root.align_objects_clicked("Right"); } }
                                     }
                                     HorizontalLayout {
-                                        spacing: 4px;
+                                        spacing: Tokens.space-1;
                                         Button { text: "Topo"; clicked => { root.align_objects_clicked("Top"); } }
                                         Button { text: "Meio"; clicked => { root.align_objects_clicked("Middle"); } }
                                         Button { text: "Base"; clicked => { root.align_objects_clicked("Bottom"); } }
                                     }
                                     HorizontalLayout {
-                                        spacing: 4px;
+                                        spacing: Tokens.space-1;
                                         Button { text: "Distribuir H"; clicked => { root.distribute_objects_clicked("Horizontal"); } }
                                         Button { text: "Distribuir V"; clicked => { root.distribute_objects_clicked("Vertical"); } }
                                     }
@@ -1847,32 +2369,32 @@ export component MainWindow inherits Window {
 
                     // TAB 2: HISTORY PANEL
                     if root.active_tab_index == 2 : VerticalLayout {
-                        padding: 10px;
-                        spacing: 8px;
+                        padding: Tokens.panel-padding;
+                        spacing: Tokens.space-2;
 
-                        Text { text: "Histórico de Ações (Undo/Redo)"; font-size: 13px; font-weight: 700; color: Tokens.text-primary; }
+                        Text { text: "Histórico de Ações (Undo/Redo)"; font-size: Tokens.body-size; font-weight: 700; color: Tokens.text-primary; }
 
                         ScrollView {
                             height: 420px;
                             VerticalLayout {
-                                spacing: 4px;
+                                spacing: Tokens.space-1;
                                 for item in root.history_rows : Rectangle {
-                                    height: 28px;
-                                    border-radius: 4px;
+                                    height: Tokens.property-row-height;
+                                    border-radius: Tokens.radius-micro;
                                     background: Tokens.surface-panel;
                                     HorizontalLayout {
-                                        padding-left: 8px;
-                                        padding-right: 8px;
-                                        spacing: 6px;
-                                        Text { text: "#" + item.index; font-size: 11px; color: Tokens.accent-bloom-hover; font-weight: 600; vertical-alignment: center; }
-                                        Text { text: item.description; font-size: 12px; color: Tokens.text-secondary; vertical-alignment: center; overflow: elide; }
+                                        padding-left: Tokens.space-2;
+                                        padding-right: Tokens.space-2;
+                                        spacing: Tokens.space-optical;
+                                        Text { text: "#" + item.index; font-size: Tokens.caption-size; color: Tokens.accent-bloom-hover; font-weight: 600; vertical-alignment: center; }
+                                        Text { text: item.description; font-size: Tokens.small-size; color: Tokens.text-secondary; vertical-alignment: center; overflow: elide; }
                                     }
                                 }
                             }
                         }
 
                         HorizontalLayout {
-                            spacing: 6px;
+                            spacing: Tokens.space-optical;
                             Button { text: "Desfazer (Undo)"; clicked => { root.undo_clicked(); } }
                             Button { text: "Refazer (Redo)"; clicked => { root.redo_clicked(); } }
                         }
@@ -1881,26 +2403,26 @@ export component MainWindow inherits Window {
             }
         }
 
-        Rectangle { height: 1px; background: Tokens.surface-panel-raised; }
+        Rectangle { height: Tokens.border-width; background: Tokens.surface-panel-raised; }
 
         // -------------------------------------------------------------
         // SECTION 5: CANONICAL STATUS BAR (08.2, 08.23)
         // -------------------------------------------------------------
         Rectangle {
-            height: 24px;
+            height: Tokens.status-bar-height;
             background: Tokens.surface-chrome-strong;
 
             HorizontalLayout {
-                padding-left: 12px;
-                padding-right: 12px;
-                spacing: 12px;
+                padding-left: Tokens.space-3;
+                padding-right: Tokens.space-3;
+                spacing: Tokens.space-3;
                 alignment: center;
 
                 // Tool Intent & Modifiers Guide
-                IconDisplay { icon: IconSet.Info; size: 12px; stroke: Tokens.accent-bloom-hover; y: (parent.height - self.height) / 2; }
+                IconDisplay { icon: IconSet.Info; size: Tokens.icon-inline-size; stroke: Tokens.accent-bloom-hover; y: (parent.height - self.height) / 2; }
                 Text {
                     text: root.status_hint;
-                    font-size: 11px;
+                    font-size: Tokens.caption-size;
                     color: Tokens.text-tertiary;
                     vertical-alignment: center;
                 }
@@ -1910,18 +2432,18 @@ export component MainWindow inherits Window {
                 // Cursor coordinates
                 Text {
                     text: root.status_coords;
-                    font-size: 11px;
+                    font-size: Tokens.caption-size;
                     color: Tokens.accent-bloom-hover;
                     font-weight: 500;
                     vertical-alignment: center;
                 }
 
-                Rectangle { width: 1px; height: 12px; background: Tokens.border-subtle; y: 6px; }
+                Rectangle { width: Tokens.border-width; height: 12px; background: Tokens.border-subtle; y: (parent.height - self.height) / 2; }
 
                 // Selection status
                 Text {
                     text: (root.has_selection ? "1 objeto selecionado" : "Nenhum objeto selecionado") + "  |  Zoom: " + root.zoom_pct + "%  |  Snap: " + (root.snap_enabled ? "Ativo" : "Inativo");
-                    font-size: 11px;
+                    font-size: Tokens.caption-size;
                     color: Tokens.text-disabled;
                     vertical-alignment: center;
                 }
@@ -1946,34 +2468,35 @@ export component MainWindow inherits Window {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             background: Tokens.surface-panel;
-            border-radius: 8px;
-            border-width: 1px;
+            border-radius: Tokens.radius-dialog;
+            border-width: Tokens.border-width;
             border-color: Tokens.border-strong;
 
             VerticalLayout {
-                padding: 20px;
-                spacing: 14px;
+                padding: Tokens.dialog-padding;
+                spacing: Tokens.space-3;
 
                 // Header
                 HorizontalLayout {
                     alignment: space-between;
                     Text {
                         text: "Exportar Documento / Prancheta";
-                        font-size: 15px;
+                        font-size: Tokens.dialog-section-size;
                         font-weight: 700;
                         color: Tokens.text-primary;
                         vertical-alignment: center;
                     }
                     Rectangle {
-                        width: 24px;
-                        height: 24px;
-                        border-radius: 4px;
+                        width: Tokens.icon-button-size;
+                        height: Tokens.icon-button-size;
+                        border-radius: Tokens.radius-control;
                         background: touch_close_exp.has-hover ? Tokens.overlay-pressed : transparent;
                         IconDisplay {
                             icon: IconSet.X;
-                            size: 14px;
+                            size: Tokens.icon-inline-size;
                             stroke: Tokens.text-tertiary;
-                            x: 5px; y: 5px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
                         }
                         touch_close_exp := TouchArea {
                             clicked => { root.close_export_dialog_clicked(); }
@@ -1981,20 +2504,20 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                Rectangle { height: 1px; background: Tokens.border-subtle; }
+                Rectangle { height: Tokens.border-width; background: Tokens.border-subtle; }
 
                 // Format selection
-                Text { text: "FORMATO DE EXPORTAÇÃO:"; font-size: 11px; font-weight: 700; color: Tokens.text-tertiary; }
+                Text { text: "FORMATO DE EXPORTAÇÃO:"; font-size: Tokens.caption-size; font-weight: 700; color: Tokens.text-tertiary; }
                 HorizontalLayout {
-                    spacing: 8px;
+                    spacing: Tokens.space-2;
                     Rectangle {
-                        height: 36px;
+                        height: Tokens.dialog-action-height;
                         horizontal-stretch: 1;
-                        border-radius: 4px;
+                        border-radius: Tokens.radius-control;
                         background: root.export_format == "png" ? Tokens.accent-bloom : Tokens.surface-control;
                         Text {
                             text: "PNG (Raster)";
-                            font-size: 12px;
+                            font-size: Tokens.small-size;
                             font-weight: 600;
                             color: root.export_format == "png" ? Tokens.text-primary : Tokens.text-secondary;
                             vertical-alignment: center;
@@ -2003,13 +2526,13 @@ export component MainWindow inherits Window {
                         TouchArea { clicked => { root.set_export_format("png"); } }
                     }
                     Rectangle {
-                        height: 36px;
+                        height: Tokens.dialog-action-height;
                         horizontal-stretch: 1;
-                        border-radius: 4px;
+                        border-radius: Tokens.radius-control;
                         background: root.export_format == "svg" ? Tokens.accent-bloom : Tokens.surface-control;
                         Text {
                             text: "SVG (Vetorial)";
-                            font-size: 12px;
+                            font-size: Tokens.small-size;
                             font-weight: 600;
                             color: root.export_format == "svg" ? Tokens.text-primary : Tokens.text-secondary;
                             vertical-alignment: center;
@@ -2018,13 +2541,13 @@ export component MainWindow inherits Window {
                         TouchArea { clicked => { root.set_export_format("svg"); } }
                     }
                     Rectangle {
-                        height: 36px;
+                        height: Tokens.dialog-action-height;
                         horizontal-stretch: 1;
-                        border-radius: 4px;
+                        border-radius: Tokens.radius-control;
                         background: root.export_format == "pdf" ? Tokens.accent-bloom : Tokens.surface-control;
                         Text {
                             text: "PDF (Krilla)";
-                            font-size: 12px;
+                            font-size: Tokens.small-size;
                             font-weight: 600;
                             color: root.export_format == "pdf" ? Tokens.text-primary : Tokens.text-secondary;
                             vertical-alignment: center;
@@ -2037,24 +2560,24 @@ export component MainWindow inherits Window {
                 // Format Details box
                 Rectangle {
                     height: 64px;
-                    border-radius: 4px;
+                    border-radius: Tokens.radius-micro;
                     background: Tokens.surface-chrome-strong;
-                    border-width: 1px;
+                    border-width: Tokens.border-width;
                     border-color: Tokens.surface-control;
                     HorizontalLayout {
-                        padding: 10px;
-                        spacing: 10px;
+                        padding: Tokens.panel-padding;
+                        spacing: Tokens.space-2;
                         IconDisplay {
                             icon: IconSet.Info;
-                            size: 16px;
+                            size: Tokens.icon-inline-size;
                             stroke: Tokens.accent-bloom;
-                            y: 4px;
+                            y: (parent.height - self.height) / 2;
                         }
                         Text {
                             text: root.export_format == "png" ? "Renderiza todos os objetos da prancheta para imagem raster em 72 DPI (PNG-24 com canal Alfa)." :
                                   root.export_format == "svg" ? "Gera código SVG W3C puro preservando caminhos vetoriais, estilos e geometria sem perda." :
                                   "Gera PDF vetorial multipágina com motor Krilla 0.8 de alta fidelidade com preflight.";
-                            font-size: 11px;
+                            font-size: Tokens.caption-size;
                             color: Tokens.text-tertiary;
                             vertical-alignment: center;
                             wrap: word-wrap;
@@ -2066,7 +2589,7 @@ export component MainWindow inherits Window {
                 // Status feedback
                 if root.export_status_message != "" : Text {
                     text: root.export_status_message;
-                    font-size: 11px;
+                    font-size: Tokens.caption-size;
                     font-weight: 600;
                     color: Tokens.status-success;
                     horizontal-alignment: center;
@@ -2076,7 +2599,7 @@ export component MainWindow inherits Window {
 
                 // Footer Buttons
                 HorizontalLayout {
-                    spacing: 10px;
+                    spacing: Tokens.space-2;
                     alignment: end;
 
                     Button {
@@ -2112,16 +2635,16 @@ export component MainWindow inherits Window {
             x: (parent.width - self.width) / 2;
             y: 90px;
             background: Tokens.surface-panel;
-            border-radius: 8px;
-            border-width: 1px;
+            border-radius: Tokens.radius-dialog;
+            border-width: Tokens.border-width;
             border-color: Tokens.accent-bloom;
 
             VerticalLayout {
-                padding: 12px;
-                spacing: 8px;
+                padding: Tokens.space-3;
+                spacing: Tokens.space-2;
 
                 LineEdit {
-                    height: 32px;
+                    height: Tokens.panel-search-row-height;
                     placeholder-text: "Digite um comando… (Esc fecha)";
                     text: root.palette_query;
                     edited(t) => {
@@ -2136,20 +2659,20 @@ export component MainWindow inherits Window {
                 ScrollView {
                     vertical-stretch: 1;
                     VerticalLayout {
-                        spacing: 2px;
+                        spacing: Tokens.space-half;
                         for item in root.palette_items : Rectangle {
-                            height: 30px;
-                            border-radius: 4px;
+                            height: Tokens.property-row-height;
+                            border-radius: Tokens.radius-micro;
                             background: touch_pal.has-hover ? Tokens.accent-faint : transparent;
 
                             HorizontalLayout {
-                                padding-left: 10px;
-                                padding-right: 10px;
-                                spacing: 8px;
+                                padding-left: Tokens.space-2;
+                                padding-right: Tokens.space-2;
+                                spacing: Tokens.space-2;
                                 alignment: center;
                                 Text {
                                     text: item.label;
-                                    font-size: 12px;
+                                    font-size: Tokens.small-size;
                                     color: Tokens.text-primary;
                                     vertical-alignment: center;
                                     horizontal-stretch: 1;
@@ -2157,7 +2680,7 @@ export component MainWindow inherits Window {
                                 }
                                 Text {
                                     text: item.hint;
-                                    font-size: 10px;
+                                    font-size: Tokens.caption-size;
                                     color: Tokens.text-disabled;
                                     vertical-alignment: center;
                                 }
@@ -2170,6 +2693,65 @@ export component MainWindow inherits Window {
                     }
                 }
             }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // SECTION 7: MENU POPUP OVERLAY (15.G)
+    // -------------------------------------------------------------
+    // Declared last so it layers above the whole shell (a popup declared
+    // inside the bar would be painted over by the tab strip and canvas).
+    // The scrim comes first, which is what dismisses the menu on any click
+    // outside of it.
+    if root.open_menu_index >= 0 && root.open_menu_index < root.menu_families.length : Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+
+        TouchArea {
+            clicked => { root.menu_closed(); }
+        }
+    }
+
+    if root.open_menu_index >= 0 && root.open_menu_index < root.menu_families.length : StudioMenuPopup {
+        x: root.open_menu_x;
+        y: Tokens.persona-row-height + Tokens.space-half;
+        rows: root.menu_families[root.open_menu_index].rows;
+        groups: root.menu_families[root.open_menu_index].groups;
+        open_group_row <=> root.open_group_row;
+        item_activated(token) => {
+            root.menu_item_activated(token);
+            root.menu_closed();
+        }
+    }
+
+    // The zoom-levels popup (08.2) uses the same overlay discipline as a menu:
+    // a scrim that dismisses on any outside click, then the popup itself. A
+    // control declared inside the persona row would otherwise be painted under
+    // the tab strip and the canvas.
+    if root.zoom_popup_open : Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+
+        TouchArea {
+            clicked => { root.zoom_popup_open = false; }
+        }
+    }
+
+    if root.zoom_popup_open : StudioMenuPopup {
+        x: root.zoom_popup_x;
+        y: Tokens.persona-row-height + Tokens.space-half;
+        rows: root.zoom_rows;
+        groups: root.zoom_groups;
+        open_group_row <=> root.zoom_group_row;
+        item_activated(token) => {
+            root.zoom_popup_open = false;
+            root.zoom_level_activated(token);
         }
     }
 }

@@ -155,11 +155,7 @@ pub fn scale_factor_around(p0: GPoint, p1: GPoint, pivot: GPoint) -> Option<f64>
 
 /// Scales `[x, y, w, h]` bounds by `k` about `pivot` (Table B).
 #[must_use]
-pub fn scale_bounds_about(
-    bounds: [f64; 4],
-    pivot: GPoint,
-    k: f64,
-) -> Option<[f64; 4]> {
+pub fn scale_bounds_about(bounds: [f64; 4], pivot: GPoint, k: f64) -> Option<[f64; 4]> {
     if !k.is_finite() || k <= 1e-9 {
         return None;
     }

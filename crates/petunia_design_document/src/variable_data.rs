@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use petunia_design_foundation::{PetuniaError, ObjectId};
+use petunia_design_foundation::{ObjectId, PetuniaError};
 use serde::{Deserialize, Serialize};
 
 use crate::document_object::DocumentObject;

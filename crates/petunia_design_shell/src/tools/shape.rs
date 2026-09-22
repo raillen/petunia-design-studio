@@ -7,7 +7,9 @@ use petunia_design_geometry::{GPoint, GRect};
 use crate::bridge::*;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Supported parametric shape variants (10.3).
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -1,16 +1,19 @@
 # Handoff — Petunia Design Studio
 
 Documento de retomada. Escrito para continuar o trabalho em outra máquina
-sem perder contexto. Última atualização: commit `252eead`.
+sem perder contexto. Última atualização: árvore de trabalho sobre `e90a6c9`
+(**nada commitado ainda**).
 
 ---
 
 ## 1. Estado em uma linha
 
-O rebranding Aubrieta → Petunia Design Studio, o formato `.PTND` e a migração
-de namespace estão **prontos e testados**. O pipeline de ações
-(Action → Command → DocumentMutator → ChangeSet) tem **57 ações resolvíveis**.
-A UI Slint ainda **não está ligada a esse pipeline** — esse é o próximo salto.
+O rebranding Aubrieta → Petunia, o formato `.PTND`, a migração de namespace e
+agora **a ligação da UI Slint ao pipeline de ações** estão prontos e testados:
+menu bar rail gerado do registry, command palette, `file.export` com pipeline
+real e a geometria canônica (08.35) aplicada site-a-site. Faltam
+**file.place** (bloqueado por modelo), docking/painéis e i18n das strings
+de chrome.
 
 ---
 
@@ -21,16 +24,20 @@ A UI Slint ainda **não está ligada a esse pipeline** — esse é o próximo sa
 | Repositório | `git@github.com:raillen/petunia-design-studio.git` |
 | Branch de trabalho | `refactor/petunia-design-studio` |
 | Base | `dad0904` (branch `slint_ui`) |
-| HEAD | `252eead` |
-| Commits desta sessão | 12 |
+| HEAD | `e90a6c9` |
+| Alterações | **75 arquivos, +2665 / −1571, nenhum commit** |
+
+> `cargo fmt --all` foi executado: parte do diff é só formatação. Os arquivos
+> novos (sem formatação prévia) são:
+> `export_service.rs`, `menus.rs`, `shell_strings.rs`, `shell/menu/`,
+> `tests/menu_test.rs`.
 
 ---
 
 ## 3. Hardware: leia isto antes de compilar
 
 A máquina anterior tinha **5,5 GB de RAM**, o que fazia o *link* do binário de
-teste do app Slint morrer com `ld: signal 9 [Killed]` (OOM). Isso bloqueava
-toda validação da UI.
+teste do app Slint morrer com `ld: signal 9 [Killed]` (OOM).
 
 **Solução que funcionou** (linkou em 21 min):
 
@@ -39,189 +46,176 @@ CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test -p petunia-desig
 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test -p petunia-design
 ```
 
-Resultado: `tests::slint_app_smoke_test_headless ... ok`
-
-Numa máquina com 16 GB+ provavelmente não é necessário, mas manter o hábito de
-`-j 1` em builds do app Slint evita picos.
+Nesta máquina (30 GB) não é necessário: o app compila e testa direto. Manter o
+hábito de `-j 1` em builds do app Slint evita picos em máquinas pequenas.
 
 > **Nota:** o alvo de build está em `~/.cargo-targets/aubrieta/`, não em
-> `target/`. Confira `CARGO_TARGET_DIR` ou `.cargo/config.toml`.
+> `target/`. Confira `CARGO_TARGET_DIR` ou `.cargo/config.toml` (o nome do
+> diretório ainda é o antigo — inofensivo, mas vale renomear um dia).
 
 ---
 
 ## 4. Como validar (comandos exatos)
 
 ```bash
-# Testes de todo o workspace, exceto o app (rápido, ~2 min)
-cargo test --workspace --exclude petunia-design
+# Gate completo: fmt --check + clippy -D warnings + testes + arquitetura
+cargo run -p xtask -- verify
 
-# App Slint (ver seção 3 para as variáveis de ambiente)
-CARGO_PROFILE_DEV_DEBUG=0 cargo test -p petunia-design
+# Gauntlet P00 (testes + arch + CLI conformance + fixtures + docs)
+cargo run -p xtask -- gauntlet
 
-# Lint
-cargo clippy --workspace --all-targets
-
-# Guardrail arquitetural (crates de domínio não importam toolkit de UI)
-cargo run -p xtask -- arch
+# Só o app Slint
+cargo test -p petunia-design
 ```
 
-**Estado na última execução:**
+**Estado na última execução (esta sessão):**
 
 | Gate | Resultado |
 |---|---|
-| `cargo test --workspace --exclude petunia-design` | **231 passed / 0 failed** |
-| `cargo test -p petunia-design` | **1 passed / 0 failed** |
+| `cargo run -p xtask -- verify` | **verde** (fmt, clippy, testes, arch) |
+| `cargo test --workspace` | **297 passed / 0 failed** |
+| `cargo test -p petunia-design` | **4 passed / 0 failed** |
 | `cargo clippy --workspace --all-targets` | **0 warnings** |
-| `cargo run -p xtask -- arch` | **0 arestas proibidas** |
+| `cargo run -p xtask -- gauntlet` | **P00 slice green**, 0 arestas proibidas |
 
 ---
 
-## 5. O que foi feito nesta sessão (12 commits)
+## 5. O que foi feito nesta sessão
 
-### `149ce10` — Identidade, formato, namespace
+### 5.1 Menu bar dirigido pelo registry (15.G)
 
-- 16 crates `aubrieta_*` → `petunia_design_*`; apps `aubrieta-slint` →
-  `petunia-design`, `aubrieta-cli` → `petunia-design-cli`.
-- Tipos: `AubrietaError` → `PetuniaError`, `AubrietaGuiBridge` →
-  `PetuniaDesignGuiBridge`, `AubrietaShell` → `PetuniaShell`,
-  `AubrietaPackage` → `PtndPackage`, `AubrietaSlintState` → `PetuniaSlintState`.
-- **Formato `.PTND`** em `crates/petunia_design_io/src/package.rs`:
-  - `MEDIA_TYPE = "application/vnd.petunia-design-studio.project+zip"`
-  - `NATIVE_SUFFIX = "ptnd"`, `NATIVE_EXTENSION = "PTND"`,
-    `NATIVE_EXTENSION_DISPLAY = ".PTND"`
-  - `LEGACY_SUFFIXES = ["aubrieta", "aubri"]` — **somente leitura**
-  - `PackageFormat { Ptnd, Legacy }` com `requires_save_as()`
-  - `OpenedPackage { document, format }`
-  - `check_writable_suffix()` recusa legado; `check_readable_suffix()` aceita
-- **Namespace `ptnd.*`** em `crates/petunia_design_foundation/src/namespace.rs`:
-  - `normalize_legacy_namespace()` — `aubrieta.*` → `ptnd.*`
-  - `normalize_action_id()` — `ptnd.<domínio>.*` → `ptnd.action.<domínio>.*`
-  - Ligados em `resolve_color_to_rgb`, `DocumentSession::dispatch_action`,
-    `Document::from_json`
-- API Lua: global `ptnd` canônico + alias `aubrieta` somente leitura.
+A UI owns nenhum rótulo e nenhum action id. Ambos chegam de
+`PetuniaDesignGuiBridge::query_menu_bar()`:
 
-### `8dcb0f7` — Tokens Slint + surface registry
-
-- `apps/petunia-design/ui/tokens.slint` — paleta canônica do doc `08.35`
-  (surfaces, borders, texto, accent Bloom, studio.design/photo, status,
-  geometria, raios, spacing, tipografia, focus).
-- 276 literais de cor migrados no `app.slint`. Cores de *artwork* continuam
-  literais — exceção explícita do contrato.
-- `crates/petunia_design_application/src/surfaces.rs` — registry
-  machine-readable do doc `15.G`: 108 superfícies com
-  `id / kind / scope / status / label / action / shortcut`.
-
-### `20887c0` → `252eead` — Reconciliação e implementação de ações
-
-O registry **super-declarava** 17 superfícies como funcionais. A auditoria
-contra o inventário real (extraído do código, não escrito à mão) revelou três
-problemas estruturais:
-
-1. **Constante não é comportamento.** `LIVE_ACTIONS` extraía de
-   `actions.rs`, mas uma constante pode existir sem nunca ser despachada.
-   Agora só conta *caminho de resolução*: braços de `dispatch_action`, a tabela
-   `ToolKind::action_id`, e braços do host em `gui_bridge.rs`.
-2. **Entradas `kind = Action` escapavam da verificação** (tinham
-   `action: None`). Agora o próprio `id` precisa resolver.
-3. **`ptnd.action.*` era só aspiração.** O código usava `ptnd.<domínio>.*`.
-   Migrado para a gramática canônica com shim de leitura.
-
-Ações implementadas e despachadas nesta sessão:
-
-| Ação | Arquivo |
+| Arquivo | Papel |
 |---|---|
-| `view.zoom_in` / `zoom_out` / `zoom_100` / `fit_surface` | `session.rs` |
-| `view.toggle_rulers` / `toggle_snapping` | `session.rs` |
-| `file.save` / `file.save_as` | `session.rs` |
-| `file.new` / `file.open` | `gui_bridge.rs` (substituem a sessão) |
-| `edit.undo` / `edit.redo` | `session.rs` |
-| `edit.duplicate` | `session.rs` |
-| `object.hide` / `object.lock` | `session.rs` |
-| `object.arrange.front` / `arrange.back` | `session.rs` |
-| `object.group` / `object.ungroup` | `session.rs` |
+| `crates/petunia_design_application/src/menus.rs` | Modelo de menu derivado do registry: famílias, itens, `enabled` + `disabled_reason` |
+| `crates/petunia_design_shell/src/menu/mod.rs` | Apresentação (labels resolvidos) para a UI |
+| `crates/petunia_design_resources/src/shell_strings.rs` | Catálogo `TextId` → en-US + pt-BR de tudo o que o registry referencia |
+| `crates/petunia_design_shell/tests/menu_test.rs` | Prova que toda ação *wired* é acionável e toda bloqueada sai desabilitada com motivo |
 
-### Mudança arquitetural: `ViewportCamera`
+Regra derivada (15.F §2 "no fake UI"): **ação declarada e não ligada não
+desaparece nem mente — aparece desabilitada com a razão.** É o caso de
+`file.place`.
 
-Estava em `petunia_design_shell::canvas::camera` apesar de ser geometria pura.
-Isso impedia que `ptnd.action.view.*` existisse — o shell não pode ser chamado
-pela camada de aplicação. Movida para
-`petunia_design_application::view_camera` com um wrapper `ViewState`
-(câmera + réguas + snapping). O shell apenas re-exporta.
+### 5.2 Command palette (Ctrl+K)
+
+Overlay Slint + índice de comandos. Os itens oferecidos são **exatamente** os
+itens de menu habilitados (`command_palette_offers_exactly_the_enabled_menu_items`),
+então a paleta não pode divergir do menu.
+
+### 5.3 `file.export` — pipeline real
+
+`crates/petunia_design_application/src/export_service.rs`: documento →
+SVG / PDF / PNG, com bytes de verdade. O diálogo de exportação da UI está
+ligado a ele (o smoke test do app verifica que os três formatos produzem
+bytes).
+
+### 5.4 Geometria canônica aplicada (08.35)
+
+Os tokens existiam desde `8dcb0f7` mas **não eram usados**. Nesta sessão o
+mapeamento foi feito site-a-site por **nome de componente** (o handoff antigo
+avisava: `28px` serve a três rows diferentes, então o valor não identifica o
+token):
+
+| Site | Token |
+|---|---|
+| barra de menus | `persona-row-height` (40, porque hospeda o controle de persona) |
+| tabs de documento | `tab-strip-height + space-1` |
+| context toolbar | `context-toolbar-height` |
+| tool rail | `tool-rail-width`, `tool-rail-padding`, `tool-button-size` |
+| dock direito | `right-dock-default-width` |
+| rows de painel | `panel-tab-height`, `layer-row-height`, `property-row-height` |
+| campos numéricos | `property-field-compact` |
+| alvos eye/lock/reorder | `layer-tool-hit-size` (28) |
+| status bar | `status-bar-height` |
+| ícones | `icon-inline-size` (16) / `icon-toolbar-size` (18) |
+| tipografia | `caption-size` / `small-size` / `body-size` / `dialog-section-size` |
+| spacing/padding | `space-0..space-10`, `space-half`, `space-optical` |
+| raios | `radius-micro` / `radius-control` / `radius-popover` / `radius-dialog` |
+
+Corrigido de passagem: o controle de persona (34 px) **estourava** a barra de
+menus (32 px).
+
+**O que continua literal, de propósito** — documentado no fim de
+`ui/tokens.slint`: geometria de documento (artboard, objetos, réguas, handles),
+extensões de janela/diálogo, e micro-geometria sem métrica canônica (swatch de
+24, chip de 20, micro tag de 16, hairline de 18). Inventar token para essas
+seria fabricar contrato.
+
+### 5.5 Testes novos que tornam o contrato verificável
+
+Em `apps/petunia-design/src/main.rs` (`mod tests`):
+
+1. `ui_references_only_declared_tokens` — todo `Tokens.x` usado existe em
+   `tokens.slint` (nenhum token fantasma).
+2. `ui_color_literals_are_confined_to_document_artwork` — hex bruto só dentro
+   do bloco de artwork (08.21).
+3. `ui_shell_rows_use_their_canonical_geometry_tokens` — os rows que o handoff
+   chamava de ambíguos usam o token nomeado.
 
 ---
 
-## 6. Bugs reais encontrados e corrigidos
+## 6. Bugs e armadilhas encontrados
 
-Vale ler — foram todos encontrados pelos próprios testes, não por inspeção.
-
-1. **`with_native_extension` devolvia caminho legado inalterado.**
-   Efeito: `Save As` num projeto `.aubrieta` era recusado pelo
-   `save_package`. O usuário ficava **sem conseguir salvar**. Agora o sufixo é
-   atualizado no lugar (`Old.aubrieta` → `Old.PTND`) e o arquivo original
-   permanece intocado.
-
-2. **Gerador de IDs só conhecia identidades que ele mesmo emitira.**
-   Duplicar um objeto criado pela lane de comando retornava um ID já existente.
-   Corrigido com `IdGenerator::observe` + reconciliação a cada commit
-   (`observe_document_identities`).
-
-3. **`arrange` confiava em `active_surface`.** Uma sessão pode ter seleção sem
-   superfície ativa, e a ação silenciosamente não fazia nada. Agora a
-   superfície é derivada do objeto, e seleções multi-superfície são rejeitadas
-   em vez de meio-arranjadas.
-
-### Suposições minhas derrubadas pelos testes
-
-- Sessão nova **não** tem superfície (`DocumentSession::new`).
-- `current_revision` é contador **monotônico**; undo/redo o avançam. Comparar
-  revisões não prova round-trip — compare estado do documento.
-- `ptnd.action.surface.create` e `ptnd.action.object.create` são constantes
-  **sem** braço de dispatch.
-- `ungroup` **remove** o container vazio (comportamento correto do mutator).
-- O registry tinha ids divergentes (`arrange_front` vs `arrange.front`).
+- **Controle de persona estourava a linha.** A barra tinha 32 px e o controle
+  34 px. Resolvido com a linha = `persona-row-height` (40), que é o valor
+  canônico da linha de persona.
+- **Substituição global quebra em ordem.** Trocar `font-size: 11px;` antes de
+  `size: 11px;` importa: a segunda string é substring da primeira. O mesmo vale
+  para `border-radius: 3px` vs. os blocos que a citavam como contexto.
+- **`cargo fmt --all` era obrigatório.** O `xtask verify` roda
+  `fmt --check`; a árvore vinha não formatada da sessão anterior.
+- Suposições antigas que continuam válidas: sessão nova não tem superfície;
+  `current_revision` é monotônico (undo/redo o avançam); `ungroup` remove o
+  container vazio.
 
 ---
 
 ## 7. O que falta implementar
 
-### Ações declaradas sem comportamento (3 de 57)
+### Ações declaradas sem comportamento (1 de 65)
 
 | Ação | Bloqueio real |
 |---|---|
-| `file.export` | pipeline de export (PDF/PNG/SVG) inexistente |
-| `file.place` | importer de assets ausente |
-| `view.command_palette` | overlay Slint + índice de comandos |
+| `file.place` | **`ShapeKind` não tem variante de imagem.** Não existe onde um asset colocado viver. Desabilitada com motivo, não é bug de wiring. |
 
-O gap canônico está em `DECLARED_NOT_LIVE`, em `surfaces.rs`, e é verificado
-por teste — não pode voltar a crescer silenciosamente.
+Fecharam nesta sessão: `file.export`, `view.command_palette`.
+(`object.offset_path` e `object.slice_path` continuam em `DECLARED_NOT_LIVE`.)
 
-### Blocos grandes — nenhuma seção de `15.F` tocada
+### Blocos grandes — nenhuma seção de `15.F` fechada
 
 | Área | Estado | Observação |
 |---|---|---|
-| Menu bar real vindo do registry | ausente | **maior salto de valor**: sem isso as 57 ações wired não são acionáveis pelo usuário |
-| Geometria da shell | tokens criados, **não aplicados** | ambíguo por valor: `28px` serve a `menu-row-height`, `panel-section-header` e `layer-row-height`. Exige mapeamento site-a-site por nome de componente |
+| Menu bar vindo do registry | **feito** | 65 caminhos de resolução despacháveis |
+| Command palette | **feito** | |
+| `file.export` | **feito** | SVG/PDF/PNG com bytes reais |
+| Geometria da shell | **feito** | mapeamento site-a-site acima |
+| i18n EN + pt-BR das strings de chrome | **parcial** | menu e paleta vêm do catálogo; tooltips, botões de painel e textos do diálogo de export continuam literais em `app.slint` |
 | Docking real / splitter / dock inferior | ausente | |
 | Painéis Cor / Swatches / Assets / Navigator | ausentes | |
+| `file.place` (imagem como objeto) | bloqueado | falta variante de imagem no `ShapeKind` + importer |
 | Acessibilidade (`08.36`) | não iniciada | |
-| i18n EN + pt-BR sincronizado | não iniciada | |
-| Conformidade visual Slint de `15.F` | **desbloqueada** | ver seção 3 |
-| Refatoração dos 58 docs | não iniciada | inventário em `.prumo/artifacts/DOCUMENTATION_INVENTORY.md` |
+| Conformidade visual Slint de `15.F` | parcial | precisa de QA visual com a app rodando |
+| Refatoração dos docs legados | não iniciada | `docs/` (raiz, GPUI/Aubrieta) vs `petunia-design-studio/` (normativo, Slint/Petunia) coexistem |
+| `PROJECT_STATE.md` | **desatualizado** | ainda diz "Aubrieta", aponta `docs/` como normativo e conta 179 testes |
 | Performance / RAM / VRAM | não iniciada | |
 | Security corpus / fuzz | não iniciada | |
 
-**Cobertura: ~5,5% das 220 seções de `15.F`.**
+Números do registry hoje: **113 superfícies** (79 `Wired`, 8 `Disabled`,
+26 `Absent`) e **65 caminhos de ação despacháveis**.
 
 ---
 
 ## 8. Ordem sugerida para retomar
 
-1. **Menu bar dirigido pelo registry.** As 57 ações existem mas o usuário não
-   alcança nenhuma. O registry já tem `label` (TextId) e `shortcut` por
-   entrada — dá para gerar o menu a partir dele e ganhar um teste que prova
-   que toda ação wired é acionável.
-2. **Geometria da shell**, identificando cada barra por nome de componente.
-3. **`file.export`** — maior bloco restante de ações declaradas.
+1. **i18n das strings de chrome.** É o maior gap *visível* que sobrou e o
+   encanamento já existe (`shell_strings.rs` + `LocalizationService::with_shell_catalog`).
+   Cada string literal de `app.slint` vira um `TextId` + `in property <string>`
+   preenchido no `sync_ui_from_shell`.
+2. **`file.place`**: adicionar variante de imagem ao `ShapeKind`, importer de
+   asset e um nó de imagem no render. Sai daí também o painel Assets.
+3. **Docking real + painéis restantes** (Cor, Swatches, Assets, Navigator).
 
 ---
 
@@ -229,17 +223,21 @@ por teste — não pode voltar a crescer silenciosamente.
 
 | Arquivo | Papel |
 |---|---|
-| `crates/petunia_design_application/src/surfaces.rs` | **Registry `15.G`.** 108 superfícies. Onde ver o que falta: 39 `Absent` com razão, 5 `Disabled`, 64 `Wired` |
-| `crates/petunia_design_foundation/src/namespace.rs` | Mapas de leitura legada (`aubrieta.*`, `ptnd.<domínio>.*`) |
-| `crates/petunia_design_io/src/package.rs` | Política `.PTND` / legado, `OpenedPackage`, `PackageFormat` |
+| `crates/petunia_design_application/src/surfaces.rs` | **Registry `15.G`.** 113 superfícies, `LIVE_ACTIONS`, `DECLARED_NOT_LIVE`. Onde ver o que falta |
+| `crates/petunia_design_application/src/menus.rs` | Modelo de menu derivado do registry (`enabled` + `disabled_reason`) |
+| `crates/petunia_design_application/src/export_service.rs` | Pipeline SVG/PDF/PNG do `file.export` |
 | `crates/petunia_design_application/src/session.rs` | `dispatch_action` — a maioria das ações |
-| `crates/petunia_design_shell/src/bridge/gui_bridge.rs` | Ações que substituem a sessão (`file.new`, `file.open`) |
 | `crates/petunia_design_application/src/view_camera.rs` | `ViewportCamera` + `ViewState` |
-| `apps/petunia-design/ui/tokens.slint` | Paleta e geometria canônicas (`08.35`) |
-| `apps/petunia-design/ui/app.slint` | UI Slint (~2100 linhas) |
-| `.prumo/artifacts/REPOSITORY_INVENTORY.md` | Inventário do repo |
-| `.prumo/artifacts/DOCUMENTATION_INVENTORY.md` | Inventário dos 126 docs |
-| `petunia-design-studio/` | 126 docs normativos; série **15.A–15.H** é o contrato |
+| `crates/petunia_design_application/src/view_models.rs` | View-models (DTOs) para o shell |
+| `crates/petunia_design_shell/src/bridge/gui_bridge.rs` | `query_menu_bar()`, ações que substituem a sessão |
+| `crates/petunia_design_shell/src/menu/mod.rs` | Apresentação do menu |
+| `crates/petunia_design_resources/src/shell_strings.rs` | Catálogo `TextId` en-US + pt-BR |
+| `crates/petunia_design_resources/src/i18n.rs` | `LocalizationService`, `with_shell_catalog()` |
+| `apps/petunia-design/ui/tokens.slint` | Paleta + geometria canônicas (08.35) e a política do que fica literal |
+| `apps/petunia-design/ui/app.slint` | UI Slint (~2300 linhas) |
+| `apps/petunia-design/src/main.rs` | Wiring + testes de contrato de token |
+| `petunia-design-studio/` | **Docs normativos**; série **15.A–15.H** é o contrato |
+| `.prumo/artifacts/` | Inventários de repositório e de documentação |
 
 ---
 

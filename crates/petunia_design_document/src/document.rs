@@ -1,6 +1,6 @@
 //! Document and surface: one tree, stable IDs, JSON persistence.
 
-use petunia_design_foundation::{PetuniaError, ObjectId, SurfaceId, NATIVE_SCHEMA_VERSION};
+use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId, NATIVE_SCHEMA_VERSION};
 use serde::{Deserialize, Serialize};
 
 use crate::document_object::DocumentObject;
@@ -335,10 +335,7 @@ impl Default for Document {
 }
 
 /// Rewrites one paint's persisted color tokens to the current namespace.
-fn normalize_paint(
-    paint: &mut crate::appearance::Paint,
-    normalized: &impl Fn(&str) -> String,
-) {
+fn normalize_paint(paint: &mut crate::appearance::Paint, normalized: &impl Fn(&str) -> String) {
     use crate::appearance::Paint;
     match paint {
         Paint::None => {}

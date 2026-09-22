@@ -1,9 +1,10 @@
+use petunia_design_application::view_camera::ViewState;
 use petunia_design_document::ChangeSet;
 use petunia_design_foundation::PetuniaError;
 use petunia_design_geometry::{GPoint, GRect};
 
 use crate::bridge::{
-    PetuniaDesignGuiBridge, DataMergePresentationModel, DialogRequest, LayersPresentationModel,
+    DataMergePresentationModel, DialogRequest, LayersPresentationModel, PetuniaDesignGuiBridge,
     PropertiesPresentationModel, SessionSnapshot,
 };
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
@@ -18,8 +19,10 @@ use crate::tools::{NormalizedPointerEvent, ToolKind, ToolManager};
 pub struct PetuniaShell {
     /// Semantic bridge to document session and core logic.
     pub bridge: PetuniaDesignGuiBridge,
-    /// Viewport camera managing pan, zoom, and coordinate projections.
-    pub camera: ViewportCamera,
+    /// Camera used only while **no document is open**. Once a session exists,
+    /// the authoritative camera is `session.view.camera` (15.B) and this value
+    /// is just the last local edit kept for the sessionless window.
+    viewport: ViewportCamera,
     /// Snapping service for magnetic alignment.
     pub snap: SnapEngine,
     /// Tool manager coordinating interactive drawing/transform tools.
@@ -48,7 +51,7 @@ impl PetuniaShell {
     pub fn new(viewport_width: f64, viewport_height: f64) -> Self {
         Self {
             bridge: PetuniaDesignGuiBridge::new(),
-            camera: ViewportCamera::new(viewport_width, viewport_height),
+            viewport: ViewportCamera::new(viewport_width, viewport_height),
             snap: SnapEngine::new(),
             tools: ToolManager::new(),
             layers_panel: LayersPanelController::new(),
@@ -62,25 +65,57 @@ impl PetuniaShell {
     /// Initializes a new empty document.
     pub fn new_document(&mut self, title: impl Into<String>) -> Result<(), PetuniaError> {
         self.bridge.new_document(title)?;
-        self.camera.reset_100();
+        let mut camera = self.view_camera();
+        camera.reset_100();
+        self.set_view_camera(camera);
         Ok(())
     }
 
+    /// The authoritative viewport camera.
+    ///
+    /// View state is session-owned (15.B): the shell asks the session for the
+    /// camera instead of keeping a second copy. That is what makes
+    /// `ptnd.action.view.*` and interactive pan/zoom act on the same camera
+    /// instead of two that drift apart.
+    #[must_use]
+    pub fn view_camera(&self) -> ViewportCamera {
+        self.bridge.session().map_or_else(
+            || self.viewport.clone(),
+            |session| session.view.camera.clone(),
+        )
+    }
+
+    /// Replaces the session camera, keeping the sessionless fallback in step.
+    pub fn set_view_camera(&mut self, camera: ViewportCamera) {
+        self.viewport = camera.clone();
+        if let Some(view) = self.bridge.view_state_mut() {
+            view.camera = camera;
+        }
+    }
+
+    /// Mutable access to the session's full view state (rulers, snapping, palette).
+    pub fn view_state_mut(&mut self) -> Option<&mut ViewState> {
+        self.bridge.view_state_mut()
+    }
+
     /// Dispatches a normalized pointer event through active tool and snapping engine.
-    /// View-tool navigation is applied to the owned camera afterwards.
+    /// View-tool navigation is applied to the session camera afterwards.
     pub fn handle_pointer_event(
         &mut self,
         event: &NormalizedPointerEvent,
     ) -> Result<ChangeSet, PetuniaError> {
+        let camera = self.view_camera();
         let changes =
             self.tools
-                .on_pointer_event(event, &mut self.bridge, &self.camera, &mut self.snap)?;
+                .on_pointer_event(event, &mut self.bridge, &camera, &mut self.snap)?;
         if let Some(action) = self.tools.take_camera_action() {
             use crate::tools::CameraAction;
+            let mut camera = self.view_camera();
             match action {
-                CameraAction::Pan { dx, dy } => self.camera.pan(dx, dy),
-                CameraAction::Zoom { focus, factor } => self.camera.zoom_at(focus, factor),
+                CameraAction::Pan { dx, dy } => camera.pan(dx, dy),
+                CameraAction::Zoom { focus, factor } => camera.zoom_at(focus, factor),
             }
+            self.set_view_camera(camera);
         }
         Ok(changes)
     }
@@ -98,27 +133,31 @@ impl PetuniaShell {
 
     /// Triggers pointer-centered zoom in viewport.
     pub fn zoom_at(&mut self, screen_focus: GPoint, factor: f64) {
-        self.camera.zoom_at(screen_focus, factor);
+        let mut camera = self.view_camera();
+        camera.zoom_at(screen_focus, factor);
+        self.set_view_camera(camera);
     }
 
     /// Pans the canvas by delta screen pixels.
     pub fn pan(&mut self, dx: f64, dy: f64) {
-        self.camera.pan(dx, dy);
+        let mut camera = self.view_camera();
+        camera.pan(dx, dy);
+        self.set_view_camera(camera);
     }
 
     /// Fits the active surface or bounds into viewport.
     pub fn fit_surface(&mut self, surface_bounds: GRect) {
-        self.camera.fit_rect(surface_bounds, 40.0);
+        let mut camera = self.view_camera();
+        camera.fit_rect(surface_bounds, 40.0);
+        self.set_view_camera(camera);
     }
 
     /// Collects all active visual overlays (handles, guides, pen curve previews).
     pub fn overlays(&mut self) -> CanvasOverlays {
-        let mut ov = self.tools.overlays(&self.camera, &self.bridge);
+        let camera = self.view_camera();
+        let mut ov = self.tools.overlays(&camera, &self.bridge);
         // Include snap guides if any
-        ov.snap_guides = self
-            .snap
-            .snap_point(GPoint::ORIGIN, &self.camera, &[])
-            .guides;
+        ov.snap_guides = self.snap.snap_point(GPoint::ORIGIN, &camera, &[]).guides;
         ov
     }
 

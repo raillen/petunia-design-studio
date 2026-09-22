@@ -7,7 +7,9 @@ use petunia_design_geometry::GPoint;
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Interactive tool for arbitrary transformations around a user-defined anchor point (10.1).
 #[derive(Clone, Debug, Default)]
@@ -77,16 +79,11 @@ impl PointTransformTool {
                     let mut cmds = Vec::new();
 
                     for id in selected {
-                        let obj = bridge
-                            .session()
-                            .and_then(|s| s.find_object(id))
-                            .cloned();
+                        let obj = bridge.session().and_then(|s| s.find_object(id)).cloned();
 
                         if let Some(o) = obj {
                             let next_bounds = match (o.bounds, scale) {
-                                (Some(b), Some(k))
-                                    if (k - 1.0).abs() > f64::EPSILON =>
-                                {
+                                (Some(b), Some(k)) if (k - 1.0).abs() > f64::EPSILON => {
                                     petunia_design_geometry::scale_bounds_about(b, pivot, k)
                                 }
                                 _ => o.bounds,

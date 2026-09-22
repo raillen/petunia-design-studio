@@ -8,7 +8,9 @@ use petunia_design_geometry::GPoint;
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Mode for the gradient tool (10.4).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,8 +101,7 @@ impl GradientTool {
                             // and undoably (documented gesture).
                             let mut cmds = Vec::new();
                             for id in selected {
-                                if let Some(cmd) =
-                                    apply_transparency_drag(bridge, id, p0.y - p1.y)
+                                if let Some(cmd) = apply_transparency_drag(bridge, id, p0.y - p1.y)
                                 {
                                     cmds.push(cmd);
                                 }
@@ -117,7 +118,6 @@ impl GradientTool {
             }
         }
     }
-
 
     /// Resolves overlays showing the gradient vector line.
     #[must_use]
@@ -139,10 +139,7 @@ fn apply_fill_vector(
     end: [f64; 2],
 ) -> Option<petunia_design_document::AppearanceStack> {
     use petunia_design_document::{GradientStop, LinearGradient, Paint};
-    let stack = bridge
-        .session()?
-        .find_object(id)?
-        .effective_appearance();
+    let stack = bridge.session()?.find_object(id)?.effective_appearance();
     let paint = match stack.primary_fill().map(|f| f.paint.clone()) {
         Some(Paint::LinearGradient(mut g)) => {
             g.start = start;
@@ -167,9 +164,7 @@ fn apply_fill_vector(
             ],
         )),
     };
-    Some(petunia_design_application::appearance_service::with_primary_gradient(
-        stack, paint,
-    ))
+    Some(petunia_design_application::appearance_service::with_primary_gradient(stack, paint))
 }
 
 /// Adjusts whole-stack opacity by vertical drag distance (200pt = full
@@ -180,16 +175,10 @@ fn apply_transparency_drag(
     id: petunia_design_foundation::ObjectId,
     dy: f64,
 ) -> Option<Command> {
-    let stack = bridge
-        .session()?
-        .find_object(id)?
-        .effective_appearance();
+    let stack = bridge.session()?.find_object(id)?.effective_appearance();
     let next = (stack.opacity + dy / 200.0).clamp(0.0, 1.0);
     if (next - stack.opacity).abs() <= f64::EPSILON {
         return None;
     }
-    Some(Command::SetStackOpacity {
-        id,
-        opacity: next,
-    })
+    Some(Command::SetStackOpacity { id, opacity: next })
 }

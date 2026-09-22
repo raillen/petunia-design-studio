@@ -57,7 +57,9 @@ export component Tooltip inherits Rectangle {
         visible: false;
     }
 
-    property <bool> trigger-hovered: trigger-area.has-hover;
+    // A trigger with no text has nothing to say, so it must not open an empty
+    // bubble: an optional tooltip has to be safe to leave unset.
+    property <bool> trigger-hovered: trigger-area.has-hover && root.text != "";
     changed trigger-hovered => {
         if (self.trigger-hovered) { popup.show(); }
         else                       { popup.close(); }

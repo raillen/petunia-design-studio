@@ -1,7 +1,7 @@
 //! Node editing and direct path manipulation tool (10.2).
 
 use petunia_design_document::{ChangeSet, ShapeKind};
-use petunia_design_foundation::{PetuniaError, ObjectId};
+use petunia_design_foundation::{ObjectId, PetuniaError};
 use petunia_design_geometry::{GPoint, GRect, PathVerb};
 
 use crate::bridge::PetuniaDesignGuiBridge;
@@ -9,7 +9,9 @@ use crate::canvas::{
     CanvasOverlays, SelectionHandle, SelectionHandleKind, SnapEngine, ViewportCamera,
 };
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Direct selection and node editing tool (10.2).
 #[derive(Clone, Debug, Default)]
@@ -175,7 +177,11 @@ impl NodeTool {
 
     /// Resolves overlays for the Node tool (node handle points).
     #[must_use]
-    pub fn overlays(&self, camera: &ViewportCamera, bridge: &PetuniaDesignGuiBridge) -> CanvasOverlays {
+    pub fn overlays(
+        &self,
+        camera: &ViewportCamera,
+        bridge: &PetuniaDesignGuiBridge,
+    ) -> CanvasOverlays {
         let mut overlays = CanvasOverlays::default();
         let sel_ids = bridge.selection().selected_ids;
         for &id in &sel_ids {

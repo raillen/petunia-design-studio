@@ -213,10 +213,7 @@ fn bridge_property_edits_and_layers_presentation() {
     assert_eq!(layers.rows.len(), 1);
     assert_eq!(layers.rows[0].id, obj_id);
     assert!(layers.rows[0].is_selected);
-    assert_eq!(
-        layers.rows[0].fill_token.as_deref(),
-        Some("ptnd.teal/600")
-    );
+    assert_eq!(layers.rows[0].fill_token.as_deref(), Some("ptnd.teal/600"));
 }
 
 #[test]
@@ -269,7 +266,10 @@ fn file_new_replaces_the_session_through_the_action_lane() {
 
     let snap = bridge.snapshot();
     assert_eq!(snap.title, "Untitled");
-    assert_eq!(snap.total_objects, 0, "file.new must discard the old document");
+    assert_eq!(
+        snap.total_objects, 0,
+        "file.new must discard the old document"
+    );
     assert_eq!(snap.surface_count, 1, "the new session keeps its canvas");
 }
 

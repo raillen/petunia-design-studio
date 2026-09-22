@@ -119,11 +119,7 @@ pub fn parse_path_d(d: &str) -> Result<GPath, PetuniaError> {
                         GPoint::new(current.x + x, current.y + y),
                     )
                 } else {
-                    (
-                        GPoint::new(x1, y1),
-                        GPoint::new(x2, y2),
-                        GPoint::new(x, y),
-                    )
+                    (GPoint::new(x1, y1), GPoint::new(x2, y2), GPoint::new(x, y))
                 };
                 path.push(PathVerb::CubicTo(c1, c2, pt))
                     .map_err(PetuniaError::invalid_input)?;
@@ -246,7 +242,9 @@ fn export_object_svg(
                 0.0,
                 0.0,
             );
-            notes.push("text exported as bounds rect (glyph outlining requires font shaping)".to_string());
+            notes.push(
+                "text exported as bounds rect (glyph outlining requires font shaping)".to_string(),
+            );
         } else {
             return format!(
                 r#"    <!-- {} skipped: no outline and no bounds -->"#,
@@ -305,8 +303,7 @@ fn export_object_svg(
             notes.push("stroke alignment exported as centered".to_string());
         }
         if !entry.dash_array.is_empty() {
-            let dashes: Vec<String> =
-                entry.dash_array.iter().map(|v| format!("{v:.2}")).collect();
+            let dashes: Vec<String> = entry.dash_array.iter().map(|v| format!("{v:.2}")).collect();
             stroke_attr.push_str(&format!(r#" stroke-dasharray="{}""#, dashes.join(" ")));
         }
     }
@@ -322,7 +319,10 @@ fn export_object_svg(
         notes.push(format!("{kind} effect omitted"));
     }
     if eff.blend_mode != petunia_design_document::BlendMode::Normal {
-        notes.push(format!("blend mode {:?} exported as normal", eff.blend_mode));
+        notes.push(format!(
+            "blend mode {:?} exported as normal",
+            eff.blend_mode
+        ));
     }
 
     let mut attrs = format!(
@@ -357,7 +357,11 @@ fn export_object_svg(
 
     let mut out = format!("    <path {attrs}/>");
     if !notes.is_empty() {
-        out.push_str(&format!("<!-- {}: {} -->", escape_xml(&obj.name), notes.join("; ")));
+        out.push_str(&format!(
+            "<!-- {}: {} -->",
+            escape_xml(&obj.name),
+            notes.join("; ")
+        ));
     }
     out
 }

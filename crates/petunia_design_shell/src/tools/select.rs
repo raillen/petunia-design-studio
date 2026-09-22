@@ -2,7 +2,7 @@
 
 use petunia_design_application::Command;
 use petunia_design_document::ChangeSet;
-use petunia_design_foundation::{PetuniaError, ObjectId};
+use petunia_design_foundation::{ObjectId, PetuniaError};
 use petunia_design_geometry::{GPoint, GRect};
 
 use crate::bridge::*;
@@ -11,7 +11,9 @@ use crate::canvas::{
     SnapEngine, ViewportCamera,
 };
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Internal state machine for the selection tool.
 #[derive(Clone, Debug, PartialEq)]
@@ -266,7 +268,10 @@ impl SelectTool {
                                             } else {
                                                 doc_marquee
                                                     .intersection(GRect::new(
-                                                        ox, oy, ox + ow, oy + oh,
+                                                        ox,
+                                                        oy,
+                                                        ox + ow,
+                                                        oy + oh,
                                                     ))
                                                     .is_some()
                                             };
@@ -337,10 +342,11 @@ impl SelectTool {
                                 surface: surface_id,
                                 id: new_id,
                                 name,
-                                shape: shape
-                                    .unwrap_or(petunia_design_document::ShapeKind::Rectangle {
+                                shape: shape.unwrap_or(
+                                    petunia_design_document::ShapeKind::Rectangle {
                                         corner_radii: [0.0; 4],
-                                    }),
+                                    },
+                                ),
                                 bounds: Some([x + dx, y + dy, w, h]),
                                 fill,
                                 stroke,
@@ -397,14 +403,10 @@ impl SelectTool {
                     // Rotation drag: angle delta around the combined center,
                     // added to each object's own rotation (never zeroed).
                     let [bx, by, bw, bh] = initial_bounds;
-                    let center =
-                        petunia_design_geometry::GPoint::new(bx + bw / 2.0, by + bh / 2.0);
-                    let delta = petunia_design_geometry::pivot_angle_delta(
-                        start_doc,
-                        current_doc,
-                        center,
-                    )
-                    .unwrap_or(0.0);
+                    let center = petunia_design_geometry::GPoint::new(bx + bw / 2.0, by + bh / 2.0);
+                    let delta =
+                        petunia_design_geometry::pivot_angle_delta(start_doc, current_doc, center)
+                            .unwrap_or(0.0);
                     let cmds = initial_objects
                         .into_iter()
                         .filter_map(|(id, bounds, rot)| {
@@ -426,8 +428,7 @@ impl SelectTool {
                 // object proportionally, preserving sizes and rotations.
                 let dx = current_doc.x - start_doc.x;
                 let dy = current_doc.y - start_doc.y;
-                let (nx, ny, nw, nh) =
-                    calculate_resized_bounds(handle, initial_bounds, dx, dy);
+                let (nx, ny, nw, nh) = calculate_resized_bounds(handle, initial_bounds, dx, dy);
                 let [ibx, iby, ibw, ibh] = initial_bounds;
                 let sx = if ibw.abs() > f64::EPSILON {
                     nw / ibw
@@ -500,7 +501,11 @@ impl SelectTool {
 
     /// Resolves visual overlay descriptors for the selection tool.
     #[must_use]
-    pub fn overlays(&self, camera: &ViewportCamera, bridge: &PetuniaDesignGuiBridge) -> CanvasOverlays {
+    pub fn overlays(
+        &self,
+        camera: &ViewportCamera,
+        bridge: &PetuniaDesignGuiBridge,
+    ) -> CanvasOverlays {
         let mut overlays = CanvasOverlays::default();
 
         match &self.state {
@@ -550,9 +555,7 @@ pub fn calculate_resized_bounds(
             Some(petunia_design_geometry::ResizeHandle::BottomRight)
         }
         SelectionHandleKind::Bottom => Some(petunia_design_geometry::ResizeHandle::Bottom),
-        SelectionHandleKind::BottomLeft => {
-            Some(petunia_design_geometry::ResizeHandle::BottomLeft)
-        }
+        SelectionHandleKind::BottomLeft => Some(petunia_design_geometry::ResizeHandle::BottomLeft),
         SelectionHandleKind::Left => Some(petunia_design_geometry::ResizeHandle::Left),
         SelectionHandleKind::Rotation => None,
     };

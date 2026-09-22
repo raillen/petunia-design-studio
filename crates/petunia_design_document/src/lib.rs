@@ -16,13 +16,15 @@ pub mod surface_metadata;
 pub mod variable_data;
 
 pub use appearance::{
-    AppearanceStack, BlendMode, EffectItem, EffectKind, FillItem, GradientStop, LinearGradient,
-    Paint, RadialGradient, StrokeAlignment, StrokeCap, StrokeItem, StrokeJoin,
-    resolve_color_to_rgb,
+    resolve_color_to_rgb, AppearanceStack, BlendMode, EffectItem, EffectKind, FillItem,
+    GradientStop, LinearGradient, Paint, RadialGradient, StrokeAlignment, StrokeCap, StrokeItem,
+    StrokeJoin,
 };
 pub use changeset::{Change, ChangeSet};
 pub use document::{Document, Surface};
-pub use document_object::{AlignmentMode, ArrangePosition, DistributionAxis, DocumentObject, ShapeKind};
+pub use document_object::{
+    AlignmentMode, ArrangePosition, DistributionAxis, DocumentObject, ShapeKind,
+};
 pub use hierarchy::{ContainerRole, HierarchyValidation, MaskMode};
 pub use mutator::DocumentMutator;
 pub use surface_metadata::{Bleed, Guide, GuideOrientation, Margins};

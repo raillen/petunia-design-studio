@@ -12,11 +12,11 @@
 
 use petunia_design_application::CommandRequest;
 use petunia_design_document::{ChangeSet, Document};
-use petunia_design_foundation::{PetuniaError, ObjectId};
+use petunia_design_foundation::{ObjectId, PetuniaError};
 
 use crate::bridge::{
-    ActionStateMap, PetuniaDesignGuiBridge, DialogRequest, HistoryPresentationModel,
-    LayersPresentationModel, PropertiesPresentationModel, SessionSnapshot,
+    ActionStateMap, DialogRequest, HistoryPresentationModel, LayersPresentationModel,
+    PetuniaDesignGuiBridge, PropertiesPresentationModel, SessionSnapshot,
 };
 
 /// Toolkit-free mock GUI adapter exercising canonical application contracts headlessly.
