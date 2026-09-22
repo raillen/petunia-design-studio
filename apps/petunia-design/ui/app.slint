@@ -341,6 +341,9 @@ export component MainWindow inherits Window {
     in-out property <string> document_title: "Showcase Project.aub";
     in-out property <int> zoom_pct: 100;
     in-out property <bool> snap_enabled: true;
+    // Select marquee rule backing the settings option (Batch 1):
+    // "Directional" (auto por direção) | "Intersect" (ao sobrepor) | "Contained" (objeto inteiro).
+    in-out property <string> marquee_rule: "Directional";
     in-out property <string> status_coords: "Doc: X: 120.0 pt  Y: 180.0 pt";
     in-out property <string> status_hint: "Select: Clique para selecionar, arraste para mover | Shift: Multi-seleção | Alt: Duplicar";
     in-out property <int> active_tab_index: 0; // 0: Camadas, 1: Propriedades, 2: Histórico, 3: Dados
@@ -420,6 +423,7 @@ export component MainWindow inherits Window {
     callback save_doc_clicked();
     callback place_image_clicked();
     callback snap_toggled(bool);
+    callback marquee_rule_changed(string);
     callback tab_changed(int);
     callback canvas_dragged(length, length);
     callback canvas_pointer_down(length, length);
@@ -764,6 +768,62 @@ export component MainWindow inherits Window {
                             color: Tokens.text-primary;
                             vertical-alignment: center;
                         }
+                    }
+                }
+
+                Rectangle { width: 1px; height: 18px; background: Tokens.border-subtle; y: 10px; }
+
+                // Select marquee rule (Batch 1 — settings option, contextual):
+                // Auto = direcional | Sobrepor = intersect | Completa = contained.
+                HorizontalLayout {
+                    spacing: 2px;
+                    alignment: center;
+
+                    Text { text: "Seleção:"; font-size: 11px; color: Tokens.text-disabled; vertical-alignment: center; }
+
+                    Rectangle {
+                        height: 22px;
+                        border-radius: 4px;
+                        background: root.marquee_rule == "Intersect" ? Tokens.accent-faint : transparent;
+                        border-width: 1px;
+                        border-color: root.marquee_rule == "Intersect" ? Tokens.accent-bloom-hover : transparent;
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            alignment: center;
+                            Text { text: "Sobrepor"; font-size: 11px; color: root.marquee_rule == "Intersect" ? Tokens.accent-bloom-hover : Tokens.text-tertiary; vertical-alignment: center; }
+                        }
+                        TouchArea { clicked => { root.marquee_rule = "Intersect"; root.marquee_rule_changed("Intersect"); } }
+                    }
+
+                    Rectangle {
+                        height: 22px;
+                        border-radius: 4px;
+                        background: root.marquee_rule == "Contained" ? Tokens.accent-faint : transparent;
+                        border-width: 1px;
+                        border-color: root.marquee_rule == "Contained" ? Tokens.accent-bloom-hover : transparent;
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            alignment: center;
+                            Text { text: "Completa"; font-size: 11px; color: root.marquee_rule == "Contained" ? Tokens.accent-bloom-hover : Tokens.text-tertiary; vertical-alignment: center; }
+                        }
+                        TouchArea { clicked => { root.marquee_rule = "Contained"; root.marquee_rule_changed("Contained"); } }
+                    }
+
+                    Rectangle {
+                        height: 22px;
+                        border-radius: 4px;
+                        background: root.marquee_rule == "Directional" ? Tokens.accent-faint : transparent;
+                        border-width: 1px;
+                        border-color: root.marquee_rule == "Directional" ? Tokens.accent-bloom-hover : transparent;
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            alignment: center;
+                            Text { text: "Auto"; font-size: 11px; color: root.marquee_rule == "Directional" ? Tokens.accent-bloom-hover : Tokens.text-tertiary; vertical-alignment: center; }
+                        }
+                        TouchArea { clicked => { root.marquee_rule = "Directional"; root.marquee_rule_changed("Directional"); } }
                     }
                 }
 

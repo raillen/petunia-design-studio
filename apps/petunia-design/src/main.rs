@@ -21,6 +21,7 @@ use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers,
 };
 use petunia_design_application::tools::ToolKind;
+use petunia_design_shell::tools::MarqueeSelectRule;
 use petunia_design_shell::bridge::{
     DataMergePresentationModel, HistoryPresentationModel, LayersPresentationModel,
     PropertiesPresentationModel,
@@ -691,6 +692,14 @@ fn run_palette_command(state: &mut PetuniaSlintState, id: &str) -> bool {
 fn sync_ui_from_shell(window: &MainWindow, state: &PetuniaSlintState) {
     let tool_str = format!("{:?}", state.shell.active_tool());
     window.set_active_tool_name(tool_str.into());
+
+    // Batch 1: keep the contextual marquee-rule control in sync with the tool.
+    let rule_str = match state.shell.tools.select_tool().marquee_rule() {
+        MarqueeSelectRule::Intersect => "Intersect",
+        MarqueeSelectRule::Contained => "Contained",
+        MarqueeSelectRule::Directional => "Directional",
+    };
+    window.set_marquee_rule(rule_str.into());
 
     let zoom_pct = (state.shell.camera.zoom * 100.0).round() as i32;
     window.set_zoom_pct(zoom_pct);
@@ -1397,6 +1406,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = state_clone.borrow_mut();
             st.shell.snap.config.grid_enabled = enabled;
             st.shell.snap.config.guides_enabled = enabled;
+        });
+    }
+
+    // Batch 1: Select marquee rule backing the settings option
+    // (Sobrepor = Intersect, Completa = Contained, Auto = Directional).
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        main_window.on_marquee_rule_changed(move |rule_name| {
+            let rule = match rule_name.as_str() {
+                "Intersect" => MarqueeSelectRule::Intersect,
+                "Contained" => MarqueeSelectRule::Contained,
+                _ => MarqueeSelectRule::Directional,
+            };
+            let mut st = state_clone.borrow_mut();
+            st.shell.tools.set_select_marquee_rule(rule);
+            if let Some(win) = win_weak.upgrade() {
+                sync_ui_from_shell(&win, &st);
+            }
         });
     }
 
