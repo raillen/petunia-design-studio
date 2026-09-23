@@ -404,6 +404,256 @@ pub fn entry(id: &str) -> Option<&'static ToolbarEntry> {
     CONTEXT_TOOLBAR.iter().find(|candidate| candidate.id == id)
 }
 
+/// One user-placed slot in the context toolbar.
+///
+/// The catalog (`CONTEXT_TOOLBAR`) stays the source of which entries exist.
+/// This is only order and visibility: a slot names a catalog id, and a divider
+/// the user inserts is a first-class slot with no catalog id.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolbarSlot {
+    /// Catalog entry id, or empty for a user-inserted divider.
+    pub id: String,
+    /// Whether the slot is shown. A hidden slot stays in the layout so the
+    /// user can put it back without losing its place.
+    pub visible: bool,
+}
+
+impl ToolbarSlot {
+    /// A visible catalog slot.
+    #[must_use]
+    pub fn shown(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            visible: true,
+        }
+    }
+
+    /// A user-inserted divider. It has no catalog id, which is how the layout
+    /// tells it apart from a declared entry.
+    #[must_use]
+    pub fn divider() -> Self {
+        Self {
+            id: String::new(),
+            visible: true,
+        }
+    }
+
+    /// True when this slot is a user-inserted divider.
+    #[must_use]
+    pub fn is_divider(&self) -> bool {
+        self.id.is_empty()
+    }
+}
+
+/// User order and visibility of the context toolbar.
+///
+/// Default is the catalog order, every entry visible. Mutations never invent
+/// an id the catalog does not know, and they never drop the spacer: the bar
+/// has one flexible gap, and losing it would pin the trailing group to the
+/// left.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolbarLayout {
+    /// Slots in display order.
+    pub slots: Vec<ToolbarSlot>,
+}
+
+impl Default for ToolbarLayout {
+    fn default() -> Self {
+        Self::canonical()
+    }
+}
+
+impl ToolbarLayout {
+    /// The catalog order, every entry visible.
+    #[must_use]
+    pub fn canonical() -> Self {
+        Self {
+            slots: CONTEXT_TOOLBAR
+                .iter()
+                .map(|entry| ToolbarSlot::shown(entry.id))
+                .collect(),
+        }
+    }
+
+    /// Drops unknown ids and appends catalog entries the layout is missing, so
+    /// a saved layout from an older catalog still renders every current entry.
+    #[must_use]
+    pub fn reconciled(mut self) -> Self {
+        self.slots
+            .retain(|slot| slot.is_divider() || entry(&slot.id).is_some());
+        for declared in CONTEXT_TOOLBAR {
+            if !self.slots.iter().any(|slot| slot.id == declared.id) {
+                self.slots.push(ToolbarSlot::shown(declared.id));
+            }
+        }
+        if !self.slots.iter().any(|slot| slot.id == "ptnd.ctb.spacer") {
+            self.slots.push(ToolbarSlot::shown("ptnd.ctb.spacer"));
+        }
+        self
+    }
+
+    /// Hides or shows the slot at `index`. The spacer stays visible: it is the
+    /// bar's geometry, not a command the user can turn off.
+    pub fn set_slot_visible(&mut self, index: usize, visible: bool) -> bool {
+        let Some(slot) = self.slots.get(index) else {
+            return false;
+        };
+        if slot.id == "ptnd.ctb.spacer" {
+            return false;
+        }
+        self.slots[index].visible = visible;
+        true
+    }
+
+    /// Hides or shows one catalog entry. The spacer stays visible: it is the
+    /// bar's geometry, not a command the user can turn off.
+    pub fn set_visible(&mut self, id: &str, visible: bool) -> bool {
+        if id == "ptnd.ctb.spacer" {
+            return false;
+        }
+        let Some(slot) = self.slots.iter_mut().find(|slot| slot.id == id) else {
+            return false;
+        };
+        slot.visible = visible;
+        true
+    }
+
+    /// Moves a slot one place toward the start (`delta` negative) or the end.
+    pub fn move_slot(&mut self, index: usize, delta: i32) -> bool {
+        let Some(target) = index.checked_add_signed(delta as isize) else {
+            return false;
+        };
+        if index >= self.slots.len() || target >= self.slots.len() {
+            return false;
+        }
+        let slot = self.slots.remove(index);
+        self.slots.insert(target, slot);
+        true
+    }
+
+    /// Inserts a user divider after `index`. `None` appends.
+    pub fn insert_divider(&mut self, after: Option<usize>) {
+        let slot = ToolbarSlot::divider();
+        match after {
+            Some(index) if index < self.slots.len() => self.slots.insert(index + 1, slot),
+            _ => self.slots.push(slot),
+        }
+    }
+
+    /// Removes a user-inserted divider. A catalog entry cannot be removed this
+    /// way: hiding it is the operation that takes it off the bar.
+    pub fn remove_divider(&mut self, index: usize) -> bool {
+        if self.slots.get(index).is_some_and(ToolbarSlot::is_divider) {
+            self.slots.remove(index);
+            return true;
+        }
+        false
+    }
+}
+
+/// Resolves the toolbar for the active tool, in the user's layout order.
+///
+/// Hidden slots and entries that do not apply to this tool are absent. A user
+/// divider is present whenever the surrounding group is, so a divider the user
+/// placed between two vector commands does not appear while a raster tool is
+/// active.
+#[must_use]
+pub fn present_layout(
+    layout: &ToolbarLayout,
+    service: &LocalizationService,
+    locale: &Locale,
+    ctx: &ActionContext,
+    tool: ToolKind,
+    has_selection: bool,
+) -> Vec<ToolbarItemPresentation> {
+    let mut presented = Vec::new();
+    for slot in &layout.slots {
+        if !slot.visible {
+            continue;
+        }
+        if slot.is_divider() {
+            presented.push(ToolbarItemPresentation {
+                id: format!("ptnd.ctb.user_divider.{}", presented.len()),
+                kind: ToolbarEntryKind::Divider,
+                label: String::new(),
+                tooltip: String::new(),
+                tooltip_alt: String::new(),
+                enabled: true,
+                disabled_reason: String::new(),
+            });
+            continue;
+        }
+        let Some(declared) = entry(&slot.id) else {
+            continue;
+        };
+        if !scope_matches(declared.scope, tool, has_selection) {
+            continue;
+        }
+        presented.push(present_entry(declared, service, locale, ctx, tool));
+    }
+    presented
+}
+
+/// One catalog entry as the customization dialog shows it: label, kind and
+/// whether the user currently shows it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolbarCatalogRow {
+    /// Catalog id, or empty for a user divider.
+    pub id: String,
+    /// Localized label. Empty for a divider.
+    pub label: String,
+    /// Rendering kind, same vocabulary as [`ToolbarEntryKind`].
+    pub kind: ToolbarEntryKind,
+    /// Whether the slot is currently shown.
+    pub visible: bool,
+    /// Whether the user may hide it. The spacer may not.
+    pub can_hide: bool,
+}
+
+/// The layout as the customization dialog edits it.
+///
+/// Every slot is listed, hidden ones included, so the user can put an entry
+/// back. Labels come from the same catalog the bar uses.
+#[must_use]
+pub fn present_catalog(
+    layout: &ToolbarLayout,
+    service: &LocalizationService,
+    locale: &Locale,
+) -> Vec<ToolbarCatalogRow> {
+    let ctx = ActionContext::default();
+    layout
+        .slots
+        .iter()
+        .map(|slot| {
+            if slot.is_divider() {
+                return ToolbarCatalogRow {
+                    id: String::new(),
+                    label: service.text("ptnd.text.shell.divider", locale),
+                    kind: ToolbarEntryKind::Divider,
+                    visible: slot.visible,
+                    can_hide: true,
+                };
+            }
+            let declared = entry(&slot.id);
+            let kind = declared.map_or(ToolbarEntryKind::Command, |entry| entry.kind);
+            let label = match kind {
+                ToolbarEntryKind::Divider => service.text("ptnd.text.shell.divider", locale),
+                ToolbarEntryKind::Spacer => service.text("ptnd.text.shell.spacer", locale),
+                _ => declared.map_or_else(String::new, |entry| {
+                    present_entry(entry, service, locale, &ctx, ToolKind::Select).label
+                }),
+            };
+            ToolbarCatalogRow {
+                id: slot.id.clone(),
+                label,
+                kind,
+                visible: slot.visible,
+                can_hide: slot.id != "ptnd.ctb.spacer",
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -653,5 +903,28 @@ mod tests {
             );
         }
         assert!(entry("ptnd.ctb.nope").is_none());
+    }
+
+    #[test]
+    fn layout_hides_reorders_and_keeps_the_spacer() {
+        let mut layout = ToolbarLayout::canonical();
+        assert!(layout.set_visible("ptnd.ctb.delete", false));
+        assert!(!layout.set_visible("ptnd.ctb.spacer", false));
+        assert!(layout.move_slot(0, 1));
+        layout.insert_divider(Some(0));
+        assert!(layout.slots[1].is_divider());
+        assert!(layout.remove_divider(1));
+        assert!(!layout.remove_divider(0));
+
+        let hidden = present_layout(
+            &layout,
+            &service(),
+            &Locale::PtBr,
+            &context(),
+            ToolKind::Select,
+            false,
+        );
+        assert!(hidden.iter().all(|item| item.id != "ptnd.ctb.delete"));
+        assert!(hidden.iter().any(|item| item.id == "ptnd.ctb.spacer"));
     }
 }

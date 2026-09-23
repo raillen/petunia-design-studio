@@ -1593,6 +1593,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "freya-testing"
+version = "0.5.0-rc.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec53823362903048f6a1c985dd3edb89e0c5da43316783c0f128e5d1904f65bc"
+dependencies = [
+ "accesskit",
+ "freya-clipboard",
+ "freya-components",
+ "freya-core",
+ "freya-engine",
+ "futures-channel",
+ "ragnarok",
+ "torin",
+]
+
+[[package]]
 name = "freya-winit"
 version = "0.5.0-rc.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3149,6 +3165,7 @@ name = "petunia-design"
 version = "0.1.0"
 dependencies = [
  "freya",
+ "freya-testing",
  "petunia_design_application",
  "petunia_design_color",
  "petunia_design_document",

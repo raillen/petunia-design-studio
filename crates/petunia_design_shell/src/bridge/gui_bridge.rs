@@ -48,6 +48,9 @@ pub struct PetuniaDesignGuiBridge {
     /// Persona the shell is in (15.G). Always a registered persona id: the
     /// shell switches by id, never by a UI-local index.
     active_persona: &'static str,
+    /// User order and visibility of the context toolbar. The catalog stays the
+    /// source of which entries exist; this only arranges them.
+    toolbar_layout: context_toolbar::ToolbarLayout,
 }
 
 impl Default for PetuniaDesignGuiBridge {
@@ -85,6 +88,7 @@ impl PetuniaDesignGuiBridge {
             localization: LocalizationService::with_shell_catalog(),
             locale: Locale::EnUs,
             active_persona: petunia_design_application::surfaces::PERSONA_VECTOR,
+            toolbar_layout: context_toolbar::ToolbarLayout::canonical(),
         }
     }
 
@@ -207,13 +211,53 @@ impl PetuniaDesignGuiBridge {
         tool: ToolKind,
         has_selection: bool,
     ) -> Vec<context_toolbar::ToolbarItemPresentation> {
-        context_toolbar::present_context_toolbar(
+        context_toolbar::present_layout(
+            &self.toolbar_layout,
             &self.localization,
             &self.locale,
             &self.action_context(),
             tool,
             has_selection,
         )
+    }
+
+    /// The context toolbar as the customization dialog edits it: every slot,
+    /// hidden ones included, with catalog labels.
+    #[must_use]
+    pub fn query_toolbar_catalog(&self) -> Vec<context_toolbar::ToolbarCatalogRow> {
+        context_toolbar::present_catalog(&self.toolbar_layout, &self.localization, &self.locale)
+    }
+
+    /// Shows or hides one catalog entry. Returns false when the id is unknown
+    /// or the entry may not be hidden (the spacer).
+    pub fn toolbar_set_visible(&mut self, id: &str, visible: bool) -> bool {
+        self.toolbar_layout.set_visible(id, visible)
+    }
+
+    /// Shows or hides the slot at `index`. User dividers share an empty id, so
+    /// the dialog addresses them by place, not by id.
+    pub fn toolbar_set_slot_visible(&mut self, index: usize, visible: bool) -> bool {
+        self.toolbar_layout.set_slot_visible(index, visible)
+    }
+
+    /// Moves one slot by `delta` places. Negative moves toward the start.
+    pub fn toolbar_move(&mut self, index: usize, delta: i32) -> bool {
+        self.toolbar_layout.move_slot(index, delta)
+    }
+
+    /// Inserts a user divider after `after`. `None` appends.
+    pub fn toolbar_insert_divider(&mut self, after: Option<usize>) {
+        self.toolbar_layout.insert_divider(after);
+    }
+
+    /// Removes a user-inserted divider. A catalog entry cannot be removed.
+    pub fn toolbar_remove_divider(&mut self, index: usize) -> bool {
+        self.toolbar_layout.remove_divider(index)
+    }
+
+    /// Restores the catalog order, every entry visible.
+    pub fn toolbar_reset(&mut self) {
+        self.toolbar_layout = context_toolbar::ToolbarLayout::canonical();
     }
 
     /// Initializes a new empty document session with default surface (A1).

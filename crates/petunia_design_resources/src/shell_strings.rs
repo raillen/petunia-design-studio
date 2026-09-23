@@ -337,8 +337,19 @@ pub const SHELL_STRINGS: &[ShellString] = &[
         "Context toolbar",
         "Barra de contexto",
     ),
+    entry(
+        "ptnd.text.shell.customize",
+        "Customize toolbar",
+        "Personalizar barra",
+    ),
     entry("ptnd.text.shell.divider", "Divider", "Divisor"),
     entry("ptnd.text.shell.export", "Export", "Exportar"),
+    entry(
+        "ptnd.text.shell.move_down",
+        "Move down",
+        "Mover para baixo",
+    ),
+    entry("ptnd.text.shell.move_up", "Move up", "Mover para cima"),
     entry("ptnd.text.shell.overflow", "More actions", "Mais ações"),
     entry(
         "ptnd.text.shell.palette",
@@ -347,6 +358,15 @@ pub const SHELL_STRINGS: &[ShellString] = &[
     ),
     entry("ptnd.text.shell.persona", "Persona", "Persona"),
     entry("ptnd.text.shell.redo", "Redo", "Refazer"),
+    entry("ptnd.text.shell.remove", "Remove", "Remover"),
+    entry(
+        "ptnd.text.shell.reset_toolbar",
+        "Reset toolbar",
+        "Restaurar barra",
+    ),
+    entry("ptnd.text.shell.snap_off", "Off", "Desligado"),
+    entry("ptnd.text.shell.snap_on", "On", "Ligado"),
+    entry("ptnd.text.shell.spacer", "Flexible space", "Espaço flexível"),
     entry(
         "ptnd.text.shell.status_bar",
         "Status bar",
