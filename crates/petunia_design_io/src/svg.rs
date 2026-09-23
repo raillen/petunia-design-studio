@@ -234,7 +234,7 @@ fn export_object_svg(
         .map(|f| f.opacity)
         .or_else(|| eff.primary_stroke().map(|s| s.opacity))
         .unwrap_or(1.0);
-    let total_opacity = (eff.opacity * entry_opacity).clamp(0.0, 1.0);
+    let total_opacity = (obj.sampled_opacity() * entry_opacity).clamp(0.0, 1.0);
 
     // Outline; un-outlinable shapes (text) fall back to their bounds rect.
     let mut outline = obj.evaluated_path();

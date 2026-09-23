@@ -1827,7 +1827,10 @@ fn contour_drag_sets_live_modifier_with_one_undo() {
     // Live modifier set; base geometry untouched.
     let mods = bridge.modifiers(id);
     assert_eq!(mods.len(), 1);
-    let petunia_design_document::ModifierKind::ContourOffset { distance, .. } = &mods[0].kind;
+    let petunia_design_document::ModifierKind::ContourOffset { distance, .. } = &mods[0].kind
+    else {
+        panic!("expected contour");
+    };
     assert!((distance - 40.0).abs() < 1e-6, "got {distance}");
     let obj = bridge
         .session()
@@ -3182,4 +3185,181 @@ fn builder_click_empty_is_noop() {
     );
 
     assert_eq!(bridge.snapshot().total_objects, 2);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn transparency_drag(
+    tool: &mut GradientTool,
+    bridge: &mut PetuniaDesignGuiBridge,
+    camera: &ViewportCamera,
+    snap: &mut SnapEngine,
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+) {
+    let plain = SemanticModifiers::default();
+    gradient_drag(tool, bridge, camera, snap, x0, y0, x1, y1, plain);
+}
+
+#[test]
+fn transparency_drag_sets_live_mask_not_opacity() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Transparency Live").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    let mut tool = GradientTool::new(GradientToolMode::Transparency);
+
+    transparency_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        0.0,
+        50.0,
+        200.0,
+        50.0,
+    );
+
+    // Live entry exists; base opacity untouched.
+    let mods = bridge.modifiers(id);
+    assert_eq!(mods.len(), 1);
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    assert!((obj.opacity - 1.0).abs() < 1e-9);
+    match &mods[0].kind {
+        petunia_design_document::ModifierKind::TransparentGradient { start, end, stops } => {
+            assert_eq!((*start, *end), ([0.0, 50.0], [200.0, 50.0]));
+            assert_eq!(stops.len(), 2);
+        }
+        _ => panic!("expected transparency"),
+    }
+    // Mask samples: opaque at start, transparent at end.
+    assert!(
+        (obj.sampled_opacity() - 0.5).abs() < 1e-6,
+        "center must average"
+    );
+    let mask_start = petunia_design_document::evaluate_opacity_at(&mods, GPoint::new(0.0, 50.0));
+    let mask_end = petunia_design_document::evaluate_opacity_at(&mods, GPoint::new(200.0, 50.0));
+    assert!((mask_start - 1.0).abs() < 1e-9);
+    assert!(mask_end.abs() < 1e-9);
+
+    // One undo clears the live mask.
+    bridge.undo().unwrap();
+    assert!(bridge.modifiers(id).is_empty());
+}
+
+#[test]
+fn transparency_bake_flattens_to_base_opacity() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Transparency Bake").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    let mut tool = GradientTool::new(GradientToolMode::Transparency);
+    transparency_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        0.0,
+        50.0,
+        200.0,
+        50.0,
+    );
+
+    bridge.bake_transparency(id).unwrap();
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    assert!(bridge.modifiers(id).is_empty());
+    // Bounds center (100, 50) sits at t=0.5 → opacity 0.5.
+    assert!((obj.opacity - 0.5).abs() < 1e-6, "got {}", obj.opacity);
+}
+
+#[test]
+fn modifier_chain_api_disables_removes_reorders() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Chain API").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    // Stack two live entries: contour then transparency.
+    bridge.offset_path(id, 10.0).unwrap();
+    let mut tool = GradientTool::new(GradientToolMode::Transparency);
+    transparency_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        0.0,
+        0.0,
+        200.0,
+        0.0,
+    );
+    assert_eq!(bridge.modifiers(id).len(), 2);
+
+    // Disable the contour: evaluated outline returns to base.
+    let contour_id = bridge.modifiers(id)[0].id;
+    bridge.set_modifier_enabled(id, contour_id, false).unwrap();
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    assert_eq!(obj.evaluated_bounds(), obj.bounds);
+
+    // Re-enable, then remove the transparency entry.
+    bridge.set_modifier_enabled(id, contour_id, true).unwrap();
+    let transparent_id = bridge.modifiers(id)[1].id;
+    bridge.remove_modifier(id, transparent_id).unwrap();
+    assert_eq!(bridge.modifiers(id).len(), 1);
+
+    // Reorder of a single entry is a NoOp (no history entry, F-22)…
+    bridge.move_modifier_to_front(id, contour_id).unwrap();
+    assert_eq!(bridge.modifiers(id).len(), 1);
+    // …so undo reverts the remove above, restoring both entries.
+    bridge.undo().unwrap();
+    assert_eq!(bridge.modifiers(id).len(), 2);
+}
+
+#[test]
+fn contour_and_transparency_coexist_independently() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Coexist").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    bridge.offset_path(id, 10.0).unwrap();
+    let mut tool = GradientTool::new(GradientToolMode::Transparency);
+    transparency_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        0.0,
+        0.0,
+        200.0,
+        0.0,
+    );
+
+    // Geometry follows contour; opacity follows transparency; neither leaks.
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    let eval = obj.evaluated_bounds().unwrap();
+    assert!((eval[2] - 220.0).abs() < 2.0, "got {eval:?}");
+    assert_eq!(obj.bounds, Some([0.0, 0.0, 200.0, 100.0]));
 }

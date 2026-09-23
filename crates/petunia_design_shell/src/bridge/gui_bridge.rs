@@ -430,6 +430,107 @@ impl PetuniaDesignGuiBridge {
         self.submit_command(CommandRequest::new(Command::BakeContour { id }))
     }
 
+    /// Bakes live transparency gradients into base opacity (explicit, 09.31).
+    pub fn bake_transparency(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::BakeTransparency { id }))
+    }
+
+    /// Sets a live transparency gradient vector (09.31, replaces the
+    /// whole-stack opacity proxy). Default stops run opaque to transparent.
+    /// Zero-length vectors clear the entry. Base geometry is never touched.
+    pub fn set_transparency_vector(
+        &mut self,
+        id: ObjectId,
+        start: [f64; 2],
+        end: [f64; 2],
+    ) -> Result<ChangeSet, PetuniaError> {
+        use petunia_design_document::{ModifierItem, ModifierKind, OpacityStop};
+        let next = {
+            let session = self.session_req_mut()?;
+            let obj = session.document().find_object(id).ok_or_else(|| {
+                PetuniaError::invalid_input(format!("object `{id}` does not exist"))
+            })?;
+            let mut next = obj.modifiers.clone();
+            let degenerate = (end[0] - start[0]).hypot(end[1] - start[1]) < 1e-9;
+            next.retain(|m| !matches!(m.kind, ModifierKind::TransparentGradient { .. }));
+            if !degenerate {
+                let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+                next.push(ModifierItem::enabled(
+                    nid,
+                    ModifierKind::TransparentGradient {
+                        start,
+                        end,
+                        stops: vec![OpacityStop::new(0.0, 1.0), OpacityStop::new(1.0, 0.0)],
+                    },
+                ));
+            }
+            next
+        };
+        self.set_modifiers(id, next)
+    }
+
+    /// Enables or disables one chain entry (future modifier-list UI).
+    pub fn set_modifier_enabled(
+        &mut self,
+        id: ObjectId,
+        modifier_id: u32,
+        enabled: bool,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let next = {
+            let session = self.session_req_mut()?;
+            let obj = session.document().find_object(id).ok_or_else(|| {
+                PetuniaError::invalid_input(format!("object `{id}` does not exist"))
+            })?;
+            let mut next = obj.modifiers.clone();
+            if let Some(entry) = next.iter_mut().find(|m| m.id == modifier_id) {
+                entry.enabled = enabled;
+            }
+            next
+        };
+        self.set_modifiers(id, next)
+    }
+
+    /// Removes one chain entry, if present (future modifier-list UI).
+    pub fn remove_modifier(
+        &mut self,
+        id: ObjectId,
+        modifier_id: u32,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let next = {
+            let session = self.session_req_mut()?;
+            let obj = session.document().find_object(id).ok_or_else(|| {
+                PetuniaError::invalid_input(format!("object `{id}` does not exist"))
+            })?;
+            obj.modifiers
+                .iter()
+                .filter(|m| m.id != modifier_id)
+                .cloned()
+                .collect()
+        };
+        self.set_modifiers(id, next)
+    }
+
+    /// Moves one chain entry to the front (evaluated first).
+    pub fn move_modifier_to_front(
+        &mut self,
+        id: ObjectId,
+        modifier_id: u32,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let next = {
+            let session = self.session_req_mut()?;
+            let obj = session.document().find_object(id).ok_or_else(|| {
+                PetuniaError::invalid_input(format!("object `{id}` does not exist"))
+            })?;
+            let mut next = obj.modifiers.clone();
+            if let Some(pos) = next.iter().position(|m| m.id == modifier_id) {
+                let entry = next.remove(pos);
+                next.insert(0, entry);
+            }
+            next
+        };
+        self.set_modifiers(id, next)
+    }
+
     /// Reads an object's live modifier chain.
     #[must_use]
     pub fn modifiers(&self, id: ObjectId) -> Vec<petunia_design_document::ModifierItem> {

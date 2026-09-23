@@ -185,7 +185,7 @@ fn export_object(
         .map(|f| f.opacity)
         .or_else(|| eff.primary_stroke().map(|s| s.opacity))
         .unwrap_or(1.0);
-    let total_opacity = (eff.opacity * entry_opacity).clamp(0.0, 1.0);
+    let total_opacity = (obj.sampled_opacity() * entry_opacity).clamp(0.0, 1.0);
     if total_opacity <= 0.0 {
         return;
     }

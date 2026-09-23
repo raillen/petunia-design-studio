@@ -25,7 +25,7 @@ pub use changeset::{Change, ChangeSet};
 pub use document::{Document, Surface};
 pub use document_object::{AlignmentMode, ArrangePosition, DistributionAxis, DocumentObject, ShapeKind};
 pub use hierarchy::{ContainerRole, HierarchyValidation, MaskMode};
-pub use modifiers::{ModifierItem, ModifierKind, evaluate_modifiers};
+pub use modifiers::{ModifierItem, ModifierKind, OpacityStop, evaluate_modifiers, evaluate_opacity_at};
 pub use mutator::DocumentMutator;
 pub use surface_metadata::{Bleed, Guide, GuideOrientation, Margins};
 pub use variable_data::{

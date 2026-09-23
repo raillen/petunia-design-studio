@@ -73,6 +73,23 @@ Doutrina-mãe: ADR 09.31 (`petunia-design-studio/09 31 — Non-Destructive Editi
   (identidade quebrada) — corrigido com teste.
 - **Overlay:** `region_preview` (doc-space) para highlight de hover/drag.
 | 10 | Transparency como modificador | `TransparentGradient` vira 2º `ModifierKind` (gatilho de revisita do ADR: generaliza identidade/ordem) | Médio-grande, valida a fundação |
+
+## Batch 10 — TransparentGradient, 2º modificador (decisões)
+
+- **Modelo:** `TransparentGradient { start, end, stops: OpacityStop[] }`;
+  avaliação no domínio opacidade (`evaluate_opacity_at`, produto das entradas),
+  geometria intacta. Domínios independentes: contour e transparency coexistem
+  sem vazar um no outro.
+- **Ferramenta:** arrasto define o vetor (Shift 45°), default opaque→transparent;
+  substitui o proxy `SetStackOpacity`. Clique nunca cria.
+- **Render honesto:** sem infra de máscara, export/preview amostram o centro
+  (`sampled_opacity`, documentado); máscara cheia fica futuro.
+- **Bake explícito:** `bake_transparency` achata a amostra central na opacidade
+  base (documentado com perda) + `bake_contour` já existia.
+- **API de cadeia (futura UI de lista):** enable/disable/remove/move-to-front via
+  `SetModifiers`, NoOp sem entrada no histórico (F-22).
+- **Check de revisita do ADR 09.31:** generalização OK (identidade por `id`,
+  ordem = ordem do vec, custo linear); falta só UI de lista/ordem.
 | 11 | Text-on-Path | Handles start/end, fluxo no path | Médio, spec 10.6 V1 |
 | 12 | SmartFill real | Flood de regiões limitadas (face detection — spike antes) | Pesquisa antes |
 | 13 | Seleção raster (epic) | Modelo de máscara + marquee/lasso/brush/flood + ops | Infra nova |

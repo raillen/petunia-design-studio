@@ -214,17 +214,14 @@ impl GradientTool {
                     return bridge.submit_all("Edit gradient", cmds);
                 }
                 GradientToolMode::Transparency => {
-                    // No mask infrastructure exists yet (10.5/10.10):
-                    // vertical drag adjusts whole-stack opacity
-                    // relative to the drag-start value, explicitly
-                    // and undoably (documented gesture).
-                    let mut cmds = Vec::new();
-                    for id in selected {
-                        if let Some(cmd) = apply_transparency_drag(bridge, id, p0.y - p1.y) {
-                            cmds.push(cmd);
-                        }
-                    }
-                    return bridge.submit_all("Adjust transparency", cmds);
+                    // Live transparency vector (09.31): the drag defines the
+                    // mask gradient; nothing flattens until explicit Bake.
+                    let end = if event.modifiers.constrain {
+                        snap_linear_45(p0, p1)
+                    } else {
+                        p1
+                    };
+                    return commit_transparency_vector(bridge, &selected, p0, end);
                 }
             }
         }
@@ -665,18 +662,62 @@ fn remap_stops(
     stops
 }
 
-/// Adjusts whole-stack opacity by vertical drag distance (200pt = full
-/// range), relative to the drag-start value. Returns `None` when the
-/// object is missing.
-fn apply_transparency_drag(
+/// Commits one live transparency vector per selected object in one undo
+/// entry (09.31). Clicks clear nothing and create nothing.
+fn commit_transparency_vector(
+    bridge: &mut PetuniaDesignGuiBridge,
+    selected: &[ObjectId],
+    p0: GPoint,
+    p1: GPoint,
+) -> Result<ChangeSet, PetuniaError> {
+    if p0.distance_to(p1) < 1e-9 {
+        return Ok(ChangeSet::empty());
+    }
+    let mut cmds = Vec::new();
+    for id in selected {
+        let next = transparency_chain_for(bridge, *id, p0, p1)?;
+        let current = bridge.modifiers(*id);
+        if next != current {
+            cmds.push(Command::SetModifiers {
+                id: *id,
+                modifiers: next,
+            });
+        }
+    }
+    if cmds.is_empty() {
+        return Ok(ChangeSet::empty());
+    }
+    bridge.submit_all("Transparency vector", cmds)
+}
+
+/// Chain for one object with the transparency vector applied (upsert).
+/// Distances accumulate like contour: each drag adds to the live entry by
+/// replacing its vector (vectors don't sum, latest drag wins per entry).
+fn transparency_chain_for(
     bridge: &PetuniaDesignGuiBridge,
     id: ObjectId,
-    dy: f64,
-) -> Option<Command> {
-    let stack = bridge.session()?.find_object(id)?.effective_appearance();
-    let next = (stack.opacity + dy / 200.0).clamp(0.0, 1.0);
-    if (next - stack.opacity).abs() <= f64::EPSILON {
-        return None;
+    p0: GPoint,
+    p1: GPoint,
+) -> Result<Vec<petunia_design_document::ModifierItem>, PetuniaError> {
+    use petunia_design_document::{ModifierItem, ModifierKind, OpacityStop};
+    let current = bridge.modifiers(id);
+    if bridge.session().and_then(|s| s.find_object(id)).is_none() {
+        return Err(PetuniaError::invalid_input(format!(
+            "object `{id}` does not exist"
+        )));
     }
-    Some(Command::SetStackOpacity { id, opacity: next })
+    let mut next: Vec<ModifierItem> = current
+        .into_iter()
+        .filter(|m| !matches!(m.kind, ModifierKind::TransparentGradient { .. }))
+        .collect();
+    let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+    next.push(ModifierItem::enabled(
+        nid,
+        ModifierKind::TransparentGradient {
+            start: [p0.x, p0.y],
+            end: [p1.x, p1.y],
+            stops: vec![OpacityStop::new(0.0, 1.0), OpacityStop::new(1.0, 0.0)],
+        },
+    ));
+    Ok(next)
 }

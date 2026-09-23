@@ -405,6 +405,8 @@ fn contour_chain_for(
         .iter()
         .map(|m| match &m.kind {
             ModifierKind::ContourOffset { distance, .. } => *distance,
+            // Transparency lives in another domain; contour drags ignore it.
+            ModifierKind::TransparentGradient { .. } => 0.0,
         })
         .sum();
     let absolute = base_distance + delta;

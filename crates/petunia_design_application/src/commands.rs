@@ -261,6 +261,9 @@ pub enum Command {
     },
     /// Bakes live contour offsets into base geometry (explicit user op, 09.31).
     BakeContour { id: ObjectId },
+    /// Bakes live transparency gradients into base opacity (explicit, 09.31).
+    /// Documented approximation: the center sample flattens the mask.
+    BakeTransparency { id: ObjectId },
     /// Aligns multiple objects relative to their collective bounds (10.1).
     AlignObjects {
         surface: SurfaceId,
@@ -593,6 +596,7 @@ pub fn execute(
         Command::OffsetPath { id, delta } => mutator.offset_path(*id, *delta),
         Command::SetModifiers { id, modifiers } => mutator.set_modifiers(*id, modifiers.clone()),
         Command::BakeContour { id } => mutator.bake_contour(*id),
+        Command::BakeTransparency { id } => mutator.bake_transparency(*id),
         Command::AlignObjects { surface, ids, mode } => mutator.align_objects(*surface, ids, *mode),
         Command::DistributeObjects { surface, ids, axis } => {
             mutator.distribute_objects(*surface, ids, *axis)

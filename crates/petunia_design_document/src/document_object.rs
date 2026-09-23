@@ -177,17 +177,25 @@ impl DocumentObject {
     #[must_use]
     pub fn evaluated_bounds(&self) -> Option<[f64; 4]> {
         if self.modifiers.iter().any(|m| m.enabled) {
-            self.evaluated_path().bounding_box().map(|r| {
-                [
-                    r.x0,
-                    r.y0,
-                    r.width().max(1.0),
-                    r.height().max(1.0),
-                ]
-            })
+            self.evaluated_path()
+                .bounding_box()
+                .map(|r| [r.x0, r.y0, r.width().max(1.0), r.height().max(1.0)])
         } else {
             self.bounds
         }
+    }
+
+    /// Effective opacity for export/preview: base opacity times the live
+    /// transparency mask sampled at the bounds center. Full mask rendering
+    /// stays future work; this documented approximation keeps export honest.
+    #[must_use]
+    pub fn sampled_opacity(&self) -> f64 {
+        let center = self
+            .bounds
+            .map(|[x, y, w, h]| petunia_design_geometry::GPoint::new(x + w / 2.0, y + h / 2.0))
+            .unwrap_or(petunia_design_geometry::GPoint::ORIGIN);
+        (self.opacity * crate::modifiers::evaluate_opacity_at(&self.modifiers, center))
+            .clamp(0.0, 1.0)
     }
 
     /// Hit-tests whether a document point lies within this object's shape or bounds.

@@ -587,6 +587,8 @@ impl<'doc> DocumentMutator<'doc> {
                 crate::modifiers::ModifierKind::ContourOffset { distance: d, .. } => {
                     *d = distance;
                 }
+                // Only contour entries reach here (find filter above).
+                crate::modifiers::ModifierKind::TransparentGradient { .. } => {}
             }
             let _ = (join, cap);
         } else {
@@ -597,6 +599,49 @@ impl<'doc> DocumentMutator<'doc> {
             ));
         }
         Ok(next)
+    }
+
+    /// Bakes live transparency gradients into base opacity (explicit user op).
+    /// Documented approximation: the center sample flattens the mask, like
+    /// export. Transparent entries clear; other modifiers survive.
+    pub fn bake_transparency(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
+        let (sampled, has_transparency) = {
+            let obj = self.document.find_object(id).ok_or_else(|| {
+                PetuniaError::not_found(format!("object `{id}` does not exist"))
+            })?;
+            let has = obj.modifiers.iter().any(|m| {
+                m.enabled
+                    && matches!(
+                        m.kind,
+                        crate::modifiers::ModifierKind::TransparentGradient { .. }
+                    )
+            });
+            (obj.sampled_opacity(), has)
+        };
+        if !has_transparency {
+            return Ok(ChangeSet::empty());
+        }
+        let mut changes = ChangeSet::empty();
+        changes.extend(self.set_opacity(id, sampled)?);
+        let remaining: Vec<crate::modifiers::ModifierItem> = self
+            .document
+            .find_object(id)
+            .map(|o| {
+                o.modifiers
+                    .iter()
+                    .filter(|m| {
+                        !(m.enabled
+                            && matches!(
+                                m.kind,
+                                crate::modifiers::ModifierKind::TransparentGradient { .. }
+                            ))
+                    })
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        changes.extend(self.set_modifiers(id, remaining)?);
+        Ok(changes)
     }
 
     /// Chain with the contour entry removed.
