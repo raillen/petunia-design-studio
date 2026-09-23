@@ -242,8 +242,8 @@ impl TextTool {
                 let s1 = camera.doc_to_screen(p1);
                 overlays.marquee_screen = Some(GRect::new(s0.x, s0.y, s1.x, s1.y));
             } else if let Some((target, _)) = self.pending_path {
-                let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
-                if let Some(span) = span_points(bridge, target, None, exact_tol) {
+                let drag_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom) * 2.0;
+                if let Some(span) = span_points(bridge, target, None, drag_tol) {
                     overlays.text_path_handles = Some(span);
                 }
             }

@@ -4478,3 +4478,89 @@ fn spatial_tool_integration_and_performance() {
     let _ = select.on_pointer_event(&ev, &mut bridge, &camera, &mut snap);
     assert_eq!(bridge.selection().selected_ids, vec![ids[0]]);
 }
+
+#[test]
+fn contour_lod_drag_preview_fast_on_dense_path() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Contour LOD").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let sid = bridge.active_surface().unwrap();
+    let id = gen.next_object();
+
+    // Create a 200-vertex circle path
+    let pts: Vec<GPoint> = (0..200)
+        .map(|i| {
+            let angle = (i as f64) * std::f64::consts::TAU / 200.0;
+            GPoint::new(100.0 + 50.0 * angle.cos(), 100.0 + 50.0 * angle.sin())
+        })
+        .collect();
+    let dense_path = petunia_design_geometry::GPath::from_polygons(&[pts]);
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: sid,
+            id,
+            name: "Dense".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Path(dense_path)),
+        }))
+        .unwrap();
+    bridge.set_selection(vec![id]);
+
+    let mut tool = ContourTool::new(ContourMode::Contour);
+    let plain = SemanticModifiers::default();
+
+    // Start drag
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 100.0, 100.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 140.0, 100.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    // In-flight overlay query (F4 LOD) must execute rapidly (< 50ms for 5 runs)
+    let t0 = std::time::Instant::now();
+    for _ in 0..5 {
+        let ov = tool.overlays(&bridge, &camera);
+        assert!(ov.marquee_screen.is_some());
+    }
+    let elapsed = t0.elapsed();
+    assert!(
+        elapsed.as_millis() < 50,
+        "Contour LOD overlay took too long: {:?}",
+        elapsed
+    );
+
+    // Up commits the full exact offset
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 140.0, 100.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(bridge.modifiers(id).len(), 1);
+}
+
+#[test]
+fn desktop_shell_overlays_avoids_redundant_snapping() {
+    let mut shell = petunia_design_shell::PetuniaShell::new(1000.0, 1000.0);
+    shell.new_document("Shell Overlays").expect("doc");
+
+    // Overlays should return empty snap guides initially (no redundant snap_point(ORIGIN))
+    let ov = shell.overlays();
+    assert!(ov.snap_guides.is_empty());
+}

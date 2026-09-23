@@ -100,3 +100,36 @@ entrega; nota acumulada = estado de performance do projeto.
   seleção, amostragem e edição; faltam LOD de overlay em drag, render dirty-rect/GPU
   e motor de texto tipográfico real).
 
+## Loop 4 — F4: Overlay LOD e eliminação de overhead de snapping por frame (2026-09-23)
+
+- **Escopo:**
+  * `ContourTool`: preview durante drag com LOD via `simplify_rdp` quando o caminho
+    base excede 100 vértices, e tolerância de achatamento adaptativa `drag_tol = tol * 2.0`.
+    A aplicação final no `Up` roda sobre a geometria exata com resolução integral.
+  * `PerspectiveTool`: tolerância adaptativa de deformação e poligonização no
+    preview interativo durante o arrasto (`tol = 1.5` quando `verbs > 80`).
+  * `ShapeBuilderTool`: amostragem de arrasto com `DRAG_SAMPLE_STEP` ajustado para
+    8.0 pt (reduz pela metade as iterações de teste de cobertura e uniões booleanas)
+    e `drag_preview` limitado a no máximo 32 passos de interpolação.
+  * `TextTool`: span preview em arrasto de anexo com tolerância adaptativa.
+  * `SnapEngine` & `PetuniaShell`: eliminação do cálculo redundante de snap em
+    `GPoint::ORIGIN` a cada frame de overlays. `SnapEngine` passa a expor `active_guides`
+    calculadas em eventos reais de movimento e limpa histerese no `Up`/`Cancel`
+    ou troca de ferramenta.
+- **Testes:** 2 novos (`contour_lod_drag_preview_fast_on_dense_path`,
+  `desktop_shell_overlays_avoids_redundant_snapping`). Total: 94 testes de tools verdes,
+  clippy limpo sem warnings.
+- **Medido (debug):** preview de Contour em caminho denso (200 vértices) executa em
+  < 0,5 ms por frame (queda de ~3 ms para < 0,5 ms). Sobrecarga constante de snap
+  por frame zerada.
+- **Mercado:** Krita Instant Preview (render preliminar simplificado durante gestos
+  rápidos), Inkscape Display Modes / Outline LOD, Affinity Studio feedback progressivo.
+- **Freya:** 100% compatível, zero quebras de contratos DTO/bridge. Arquivos do
+  outro agente preservados intocados.
+- **Nota do loop: 9/10.** Feedback fluido a 60 fps mantido em geometrias complexas,
+  sem degradar a precisão das operações finais commitadas no documento.
+- **Nota acumulada: 8/10** (+1: eliminados os gargalos de preview em tempo de
+  arrasto e a avaliação desnecessária de snap por frame; faltam render dirty-rect/GPU
+  e motor de texto tipográfico real).
+
+

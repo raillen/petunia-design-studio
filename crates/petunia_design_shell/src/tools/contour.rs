@@ -288,8 +288,14 @@ impl ContourTool {
     ) -> CanvasOverlays {
         let mut overlays = CanvasOverlays::default();
         if let Some(preview) = self.pending_outline(bridge) {
+            let tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
+            let drag_tol = if self.contour_drag.is_some() {
+                tol * 2.0
+            } else {
+                tol
+            };
             let screen: Vec<GPoint> = preview
-                .to_polygons(0.5)
+                .to_polygons(drag_tol)
                 .into_iter()
                 .flatten()
                 .map(|p| camera.doc_to_screen(p))
@@ -343,7 +349,21 @@ impl ContourTool {
             if base.is_empty() {
                 return None;
             }
-            return petunia_design_geometry::offset_path(&base, delta, self.join, self.cap);
+            // LOD optimization (F4): during active drag over dense paths (>100 verbs),
+            // downsample for interactive preview (Krita Instant Preview / Inkscape LOD).
+            // The full exact offset is computed and committed on pointer release.
+            let path_for_preview = if base.verbs.len() > 100 {
+                let pts: Vec<GPoint> = base.to_polygons(1.0).into_iter().flatten().collect();
+                let simplified = petunia_design_geometry::simplify_rdp(&pts, 1.5);
+                if simplified.len() >= 3 {
+                    petunia_design_geometry::GPath::from_polygons(&[simplified])
+                } else {
+                    base
+                }
+            } else {
+                base
+            };
+            return petunia_design_geometry::offset_path(&path_for_preview, delta, self.join, self.cap);
         }
         None
     }

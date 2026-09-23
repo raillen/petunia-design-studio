@@ -236,8 +236,10 @@ fn pending_outline(bridge: &PetuniaDesignGuiBridge, quad: [GPoint; 4]) -> Option
     if base.is_empty() {
         return None;
     }
-    let warped = petunia_design_geometry::warp_path_to_quad(&base, quad, 0.5)?;
-    let flat: Vec<GPoint> = warped.to_polygons(0.5).into_iter().flatten().collect();
+    // LOD optimization (F4): adaptive tolerance for interactive drag preview
+    let tol = if base.verbs.len() > 80 { 1.5 } else { 0.5 };
+    let warped = petunia_design_geometry::warp_path_to_quad(&base, quad, tol)?;
+    let flat: Vec<GPoint> = warped.to_polygons(tol).into_iter().flatten().collect();
     if flat.len() >= 2 {
         Some(flat)
     } else {

@@ -21,8 +21,8 @@ use petunia_design_application::interaction::{
 
 /// Click-vs-drag threshold in screen pixels.
 const CLICK_THRESHOLD_PX: f64 = 3.0;
-/// Drag sampling step in document points for region collection.
-const DRAG_SAMPLE_STEP: f64 = 4.0;
+/// Drag sampling step in document points for region collection (F4 LOD).
+const DRAG_SAMPLE_STEP: f64 = 8.0;
 /// Flatten tolerance for region booleans (F-21).
 const REGION_TOLERANCE: f64 = 0.5;
 /// Default SmartFill token (matches gradient-tool default precedent).
@@ -307,7 +307,7 @@ fn region_polygons(bridge: &PetuniaDesignGuiBridge, covering: &[ObjectId]) -> Ve
 /// Preview outline for an in-flight drag: merged crossed regions flattened.
 fn drag_preview(bridge: &PetuniaDesignGuiBridge, p0: GPoint, p1: GPoint) -> Option<Vec<GPoint>> {
     let length = p0.distance_to(p1);
-    let steps = ((length / DRAG_SAMPLE_STEP).ceil() as usize).clamp(1, 64);
+    let steps = ((length / DRAG_SAMPLE_STEP).ceil() as usize).clamp(1, 32);
     let mut signatures: Vec<Vec<ObjectId>> = Vec::new();
     for i in 0..=steps {
         let t = (i as f64) / (steps as f64);

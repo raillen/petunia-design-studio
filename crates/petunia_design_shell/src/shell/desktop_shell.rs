@@ -11,6 +11,7 @@ use crate::panels::{
     DataMergePanelController, HistoryPanelController, LayersPanelController,
     PropertiesPanelController,
 };
+use petunia_design_application::PointerPhase;
 use crate::tools::{NormalizedPointerEvent, ToolKind, ToolManager};
 
 /// Complete desktop application shell coordinating canvas, tools, panels, and bridge.
@@ -75,6 +76,9 @@ impl PetuniaShell {
         let changes =
             self.tools
                 .on_pointer_event(event, &mut self.bridge, &self.camera, &mut self.snap)?;
+        if event.phase == PointerPhase::Up || event.phase == PointerPhase::Cancel {
+            self.snap.reset_hysteresis();
+        }
         if let Some(action) = self.tools.take_camera_action() {
             use crate::tools::CameraAction;
             match action {
@@ -87,6 +91,7 @@ impl PetuniaShell {
 
     /// Switches the active editing tool.
     pub fn set_active_tool(&mut self, tool: ToolKind) {
+        self.snap.reset_hysteresis();
         self.tools.set_tool(tool);
     }
 
@@ -114,11 +119,8 @@ impl PetuniaShell {
     /// Collects all active visual overlays (handles, guides, pen curve previews).
     pub fn overlays(&mut self) -> CanvasOverlays {
         let mut ov = self.tools.overlays(&self.camera, &self.bridge);
-        // Include snap guides if any
-        ov.snap_guides = self
-            .snap
-            .snap_point(GPoint::ORIGIN, &self.camera, &[])
-            .guides;
+        // Include active snap guides without redundant calculations (F4 LOD)
+        ov.snap_guides = self.snap.active_guides().to_vec();
         ov
     }
 
