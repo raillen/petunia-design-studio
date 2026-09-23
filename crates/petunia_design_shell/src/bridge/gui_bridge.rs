@@ -262,11 +262,49 @@ impl PetuniaDesignGuiBridge {
         self.session()?.cached_bounds(id)
     }
 
-    /// Hit-test against the memoized evaluated outline (F1).
-    /// Visibility/locking stay at the call site, as with `hit_test` today.
+    /// Hit-test against the memoized evaluated outline (F1 + F2).
+    /// `tol` should come from `zoom_flatten_tol`. Visibility/locking stay
+    /// at the call site, as with `hit_test` today.
     #[must_use]
-    pub fn cached_hit(&self, id: ObjectId, pt: petunia_design_geometry::GPoint) -> bool {
-        self.session().is_some_and(|s| s.cached_hit(id, pt))
+    pub fn cached_hit(
+        &self,
+        id: ObjectId,
+        pt: petunia_design_geometry::GPoint,
+        tol: f64,
+    ) -> bool {
+        self.session().is_some_and(|s| s.cached_hit(id, pt, tol))
+    }
+
+    /// Flattened evaluated outline at `tol`, memoized (F2).
+    #[must_use]
+    pub fn cached_polygons(
+        &self,
+        id: ObjectId,
+        tol: f64,
+    ) -> Option<Vec<Vec<petunia_design_geometry::GPoint>>> {
+        self.session()?.cached_polygons(id, tol)
+    }
+
+    /// Outline sample at fraction `t`, memoized (F2).
+    #[must_use]
+    pub fn cached_sample_at(
+        &self,
+        id: ObjectId,
+        t: f64,
+        tol: f64,
+    ) -> Option<(petunia_design_geometry::GPoint, f64)> {
+        self.session()?.cached_sample_at(id, t, tol)
+    }
+
+    /// Nearest outline fraction, memoized (F2).
+    #[must_use]
+    pub fn cached_nearest_t(
+        &self,
+        id: ObjectId,
+        pt: petunia_design_geometry::GPoint,
+        tol: f64,
+    ) -> Option<f64> {
+        self.session()?.cached_nearest_t(id, pt, tol)
     }
 
     /// Cache entry count (diagnostics and tests).

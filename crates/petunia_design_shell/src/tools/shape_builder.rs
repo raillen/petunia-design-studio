@@ -257,7 +257,9 @@ fn covering_set(bridge: &PetuniaDesignGuiBridge, pt: GPoint) -> Vec<ObjectId> {
         .iter()
         .filter_map(|id| session.find_object(*id))
         .filter(|obj| obj.visible && !obj.locked)
-        .filter(|obj| bridge.cached_hit(obj.id, pt))
+        // Fixed tolerance here (overlays lack camera context); the shared
+        // flatten cache still dedups repeated queries at this tolerance.
+        .filter(|obj| bridge.cached_hit(obj.id, pt, 0.5))
         .map(|obj| obj.id)
         .collect()
 }
@@ -269,10 +271,7 @@ fn region_polygons(bridge: &PetuniaDesignGuiBridge, covering: &[ObjectId]) -> Ve
         return Vec::new();
     };
     let outlines = |id: ObjectId| -> Vec<Vec<GPoint>> {
-        bridge
-            .cached_path(id)
-            .map(|path| path.to_polygons(REGION_TOLERANCE))
-            .unwrap_or_default()
+        bridge.cached_polygons(id, REGION_TOLERANCE).unwrap_or_default()
     };
     // Intersect all covering outlines.
     let mut acc: Option<Vec<Vec<GPoint>>> = None;

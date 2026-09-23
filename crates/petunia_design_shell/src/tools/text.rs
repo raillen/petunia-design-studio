@@ -22,8 +22,6 @@ use petunia_design_application::interaction::{
 const HANDLE_HIT_PX: f64 = 10.0;
 /// Click-vs-drag threshold in screen pixels.
 const CLICK_THRESHOLD_PX: f64 = 3.0;
-/// Flatten tolerance for path placement (F-21).
-const PATH_TOLERANCE: f64 = 0.5;
 
 /// Typography tool mode (10.6).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -163,7 +161,8 @@ impl TextTool {
             self.start_doc = None;
             self.current_doc = None;
             self.pending_path = None;
-            return commit_handle_drag(bridge, id, which, event.doc_pos);
+            let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
+            return commit_handle_drag(bridge, id, which, event.doc_pos, exact_tol);
         }
         let start = self.start_doc.take();
         let current = self.current_doc.take();
@@ -173,13 +172,14 @@ impl TextTool {
         };
         if let Some((target, t0)) = pending {
             // Drag along the path extends the span; a click runs to the end.
+            let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
             let clicked = p0.distance_to(p1) * camera.zoom.max(0.1) <= CLICK_THRESHOLD_PX;
             let t1 = if clicked {
                 1.0
             } else {
-                path_t_at(bridge, target, p1).unwrap_or(t0)
+                path_t_at(bridge, target, p1, exact_tol).unwrap_or(t0)
             };
-            return commit_attached_text(bridge, target, t0, t1, self.mode);
+            return commit_attached_text(bridge, target, t0, t1, self.mode, exact_tol);
         }
         let w = (p1.x - p0.x).abs();
         let h = (p1.y - p0.y).abs();
@@ -242,13 +242,15 @@ impl TextTool {
                 let s1 = camera.doc_to_screen(p1);
                 overlays.marquee_screen = Some(GRect::new(s0.x, s0.y, s1.x, s1.y));
             } else if let Some((target, _)) = self.pending_path {
-                if let Some(span) = span_points(bridge, target, None) {
+                let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
+                if let Some(span) = span_points(bridge, target, None, exact_tol) {
                     overlays.text_path_handles = Some(span);
                 }
             }
         }
         // Committed span handles of the single selected attached text.
-        if let Some(handles) = selected_span_handles(bridge) {
+        let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
+        if let Some(handles) = selected_span_handles(bridge, exact_tol) {
             overlays.text_path_handles = Some(handles);
         }
         overlays
@@ -262,13 +264,14 @@ fn commit_attached_text(
     t0: f64,
     t1: f64,
     mode: TextToolMode,
+    tol: f64,
 ) -> Result<ChangeSet, PetuniaError> {
     let active_surface = bridge
         .session()
         .and_then(|s| s.active_surface())
         .ok_or_else(|| PetuniaError::invalid_input("no active surface for text creation"))?;
     let attachment = TextOnPathAttachment::new(target, t0, t1);
-    let Some(span_bounds) = span_bounds(bridge, target, &attachment) else {
+    let Some(span_bounds) = span_bounds(bridge, target, &attachment, tol) else {
         return Ok(ChangeSet::empty());
     };
     let obj_id = bridge.next_object_id()?;
@@ -301,6 +304,7 @@ fn commit_handle_drag(
     id: ObjectId,
     which: SpanHandle,
     pt: GPoint,
+    tol: f64,
 ) -> Result<ChangeSet, PetuniaError> {
     let (target, mut attachment, text_shape) = {
         let session = bridge
@@ -339,7 +343,7 @@ fn commit_handle_drag(
         )
     };
     let _ = text_shape;
-    let Some(t) = path_t_at(bridge, target, pt) else {
+    let Some(t) = path_t_at(bridge, target, pt, tol) else {
         return Ok(ChangeSet::empty());
     };
     match which {
@@ -347,7 +351,7 @@ fn commit_handle_drag(
         SpanHandle::End => attachment.end = t,
     }
     let attachment = TextOnPathAttachment::new(target, attachment.start, attachment.end);
-    let Some(bounds) = span_bounds(bridge, target, &attachment) else {
+    let Some(bounds) = span_bounds(bridge, target, &attachment, tol) else {
         return Ok(ChangeSet::empty());
     };
     // Rebuild the full text shape with the new attachment.
@@ -503,52 +507,53 @@ fn hit_path(
         if !obj.visible || obj.locked {
             continue;
         }
-        let ShapeKind::Path(path) = obj.shape.as_ref()? else {
+        if !matches!(obj.shape, Some(ShapeKind::Path(_))) {
             continue;
-        };
+        }
         // Fill hit or outline proximity (open strokes have no interior).
+        // Outline queries run on the memoized evaluated path (F1 + F2).
+        let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
         let near = obj.hit_test(pt)
-            || path
-                .to_polygons(PATH_TOLERANCE)
-                .iter()
-                .flat_map(|c| c.windows(2))
-                .any(|w| dist_to_segment(pt, w[0], w[1]) <= tol);
+            || bridge
+                .cached_polygons(obj.id, exact_tol)
+                .is_some_and(|polys| {
+                    polys
+                        .iter()
+                        .flat_map(|c| c.windows(2))
+                        .any(|w| dist_to_segment(pt, w[0], w[1]) <= tol)
+                });
         if near {
-            return path.nearest_t(pt, PATH_TOLERANCE).map(|t| (obj.id, t));
+            return bridge
+                .cached_nearest_t(obj.id, pt, exact_tol)
+                .map(|t| (obj.id, t));
         }
     }
     None
 }
 
 /// Normalized outline fraction of `pt` on `target`'s evaluated outline.
-fn path_t_at(bridge: &PetuniaDesignGuiBridge, target: ObjectId, pt: GPoint) -> Option<f64> {
-    let session = bridge.session()?;
-    let obj = session.find_object(target)?;
-    let path = match obj.shape.as_ref()? {
-        ShapeKind::Path(path) => path.clone(),
-        _ => obj.to_path(),
-    };
-    path.nearest_t(pt, PATH_TOLERANCE)
+fn path_t_at(
+    bridge: &PetuniaDesignGuiBridge,
+    target: ObjectId,
+    pt: GPoint,
+    tol: f64,
+) -> Option<f64> {
+    bridge.cached_nearest_t(target, pt, tol)
 }
 
 /// Start/end handle positions of one attachment in document space.
 fn attachment_handles(
     bridge: &PetuniaDesignGuiBridge,
     attachment: &TextOnPathAttachment,
+    tol: f64,
 ) -> Option<[GPoint; 2]> {
-    let session = bridge.session()?;
-    let target = session.find_object(attachment.target)?;
-    let path = match target.shape.as_ref()? {
-        ShapeKind::Path(path) => path.clone(),
-        _ => target.to_path(),
-    };
-    let (p0, _) = path.sample_at(attachment.start, PATH_TOLERANCE)?;
-    let (p1, _) = path.sample_at(attachment.end, PATH_TOLERANCE)?;
+    let (p0, _) = bridge.cached_sample_at(attachment.target, attachment.start, tol)?;
+    let (p1, _) = bridge.cached_sample_at(attachment.target, attachment.end, tol)?;
     Some([p0, p1])
 }
 
 /// Span handles of the single selected attached text, if exactly one.
-fn selected_span_handles(bridge: &PetuniaDesignGuiBridge) -> Option<Vec<GPoint>> {
+fn selected_span_handles(bridge: &PetuniaDesignGuiBridge, tol: f64) -> Option<Vec<GPoint>> {
     let session = bridge.session()?;
     if session.selection.selected_ids.len() != 1 {
         return None;
@@ -561,7 +566,7 @@ fn selected_span_handles(bridge: &PetuniaDesignGuiBridge) -> Option<Vec<GPoint>>
     else {
         return None;
     };
-    attachment_handles(bridge, attachment).map(|[a, b]| vec![a, b])
+    attachment_handles(bridge, attachment, tol).map(|[a, b]| vec![a, b])
 }
 
 /// Hit-tests span handles of the single selected attached text.
@@ -583,7 +588,8 @@ fn hit_span_handle(
     else {
         return None;
     };
-    let [p0, p1] = attachment_handles(bridge, attachment)?;
+    let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
+    let [p0, p1] = attachment_handles(bridge, attachment, exact_tol)?;
     let tol = HANDLE_HIT_PX / camera.zoom.max(0.1);
     if p0.distance_to(pt) <= tol {
         return Some((id, SpanHandle::Start));
@@ -599,22 +605,18 @@ fn span_points(
     bridge: &PetuniaDesignGuiBridge,
     target: ObjectId,
     attachment: Option<&TextOnPathAttachment>,
+    tol: f64,
 ) -> Option<Vec<GPoint>> {
-    let session = bridge.session()?;
-    let obj = session.find_object(target)?;
-    let path = match obj.shape.as_ref()? {
-        ShapeKind::Path(path) => path.clone(),
-        _ => obj.to_path(),
-    };
     let (a, b) = match attachment {
         Some(att) => (att.start, att.end),
         None => (0.0, 1.0),
     };
+    // One shared flatten serves all 25 samples (F2).
     let steps = 24;
     let mut pts = Vec::with_capacity(steps + 1);
     for i in 0..=steps {
         let t = a + (b - a) * ((i as f64) / (steps as f64));
-        pts.push(path.sample_at(t, PATH_TOLERANCE)?.0);
+        pts.push(bridge.cached_sample_at(target, t, tol)?.0);
     }
     Some(pts)
 }
@@ -624,8 +626,9 @@ fn span_bounds(
     bridge: &PetuniaDesignGuiBridge,
     target: ObjectId,
     attachment: &TextOnPathAttachment,
+    tol: f64,
 ) -> Option<[f64; 4]> {
-    let pts = span_points(bridge, target, Some(attachment))?;
+    let pts = span_points(bridge, target, Some(attachment), tol)?;
     let mut x0 = f64::MAX;
     let mut y0 = f64::MAX;
     let mut x1 = f64::MIN;

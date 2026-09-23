@@ -46,3 +46,26 @@ entrega; nota acumulada = estado de performance do projeto.
   o flatten-por-chamada continua e só a F2 fecha a conta.
 - **Nota acumulada: 5/10** (+1: recomputação de modificadores eliminada nas
   leituras; overlays pesados, índice, LOD, GPU e texto seguem pendentes).
+
+## Loop 2 — F2: tolerância adaptativa + FlattenCache (2026-09-23)
+
+- **Escopo:** `zoom_flatten_tol = clamp(0.5/zoom, 0.05, 4.0)` (Inkscape-like);
+  `GeoCache.flats` por `(ObjectId, tol_bits)`; `cached_polygons/sample/nearest`
+  na sessão + bridge; migrados hit do Select (adaptativa), `covering_set` e
+  `outlines` (0.5 fixo — overlays ali não têm câmera; documentado), e todo o
+  Text-on-Path (span/handles/nearest passam a 1 flatten compartilhado).
+  Propositalmente fora: edição de nós (base), previews pendentes (F4 decide o
+  LOD), export/comandos pontuais.
+- **Testes:** 3 novos (escala da tol, equivalência cached×direto em curva para
+  3 tolerâncias, densidade adaptativa). Suite: 377 verdes, clippy limpo.
+- **Medido (debug):** span 25 amostras 152 µs → 73 µs (**2,1×**); loop de 500
+  hits 17 µs → 0,9 µs por hit (**~19×**). O resíduo agora é walk+clone, não math.
+- **Mercado:** tolerância por zoom = Inkscape (`tile multiplier`/zoom tradeoff);
+  flatten compartilhado = Vello (`strip_generator` achata uma vez por viewport).
+- **Freya:** só adições de API + 1 assinatura estendida (`cached_hit` ganha `tol`,
+  método novo na prática); nada que ela chama mudou de forma.
+- **Nota do loop: 8/10.** Ganho grande onde dói (hit loop), equivalência provada
+  em curva, sem regressão — perde 2 por deixar `covering_set` em tol fixa e por
+  ainda não haver invalidação fina (vem com F5/F6 se preciso).
+- **Nota acumulada: 6/10** (+1: hit-test e span saíram do caminho crítico;
+  faltam índice espacial, LOD de overlay, render e texto real).

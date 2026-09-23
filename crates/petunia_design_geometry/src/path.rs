@@ -10,6 +10,14 @@ fn is_left(a: GPoint, b: GPoint, p: GPoint) -> f64 {
     (b.x - a.x) * (p.y - a.y) - (p.x - a.x) * (b.y - a.y)
 }
 
+/// Flatten tolerance scaled by viewport zoom (GAUNTLET F2, Inkscape-like).
+/// Zoomed-out views need fewer polygon points; zoomed-in views need tighter
+/// error. Clamped so callers never pass degenerate tolerances.
+#[must_use]
+pub fn zoom_flatten_tol(zoom: f64) -> f64 {
+    (0.5 / zoom.max(0.05)).clamp(0.05, 4.0)
+}
+
 /// Single path verb with explicit coordinates.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum PathVerb {

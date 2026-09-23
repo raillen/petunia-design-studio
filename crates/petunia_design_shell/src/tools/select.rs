@@ -739,7 +739,8 @@ impl SelectTool {
                         x + w + tolerance,
                         y + h + tolerance,
                     );
-                    if rect.contains(doc_pos) && bridge.cached_hit(obj.id, doc_pos) {
+                    let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
+                    if rect.contains(doc_pos) && bridge.cached_hit(obj.id, doc_pos, exact_tol) {
                         return Some(obj.id);
                     }
                 }

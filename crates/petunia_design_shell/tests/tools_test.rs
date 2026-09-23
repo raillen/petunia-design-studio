@@ -4173,10 +4173,10 @@ fn geo_cache_memoizes_repeated_reads() {
     // Repeated reads reuse the entry: no growth, identical values.
     for _ in 0..10 {
         assert_eq!(bridge.cached_bounds(id), Some(first));
-        assert!(bridge.cached_hit(id, GPoint::new(20.0, 20.0)));
+        assert!(bridge.cached_hit(id, GPoint::new(20.0, 20.0), 0.5));
     }
     assert_eq!(bridge.geo_cache_len(), 1);
-    assert!(!bridge.cached_hit(id, GPoint::new(500.0, 500.0)));
+    assert!(!bridge.cached_hit(id, GPoint::new(500.0, 500.0), 0.5));
 }
 
 #[test]
@@ -4197,8 +4197,8 @@ fn geo_cache_invalidates_on_mutation_and_undo() {
     // Revision bumped: fresh evaluation, same single entry.
     assert_eq!(bridge.cached_bounds(id), Some([30.0, 30.0, 50.0, 50.0]));
     assert_eq!(bridge.geo_cache_len(), 1);
-    assert!(bridge.cached_hit(id, GPoint::new(40.0, 40.0)));
-    assert!(!bridge.cached_hit(id, GPoint::new(15.0, 15.0)));
+    assert!(bridge.cached_hit(id, GPoint::new(40.0, 40.0), 0.5));
+    assert!(!bridge.cached_hit(id, GPoint::new(15.0, 15.0), 0.5));
 
     bridge.undo().unwrap();
     assert_eq!(bridge.cached_bounds(id), Some([10.0, 10.0, 50.0, 50.0]));
@@ -4237,4 +4237,107 @@ fn geo_cache_prunes_deleted_objects() {
         .unwrap();
     assert_eq!(bridge.geo_cache_len(), 0);
     assert!(bridge.cached_bounds(id).is_none());
+}
+
+#[test]
+fn zoom_flatten_tol_scales_with_zoom() {
+    use petunia_design_geometry::zoom_flatten_tol;
+    assert!((zoom_flatten_tol(1.0) - 0.5).abs() < 1e-9);
+    assert!((zoom_flatten_tol(0.1) - 4.0).abs() < 1e-9);
+    assert!((zoom_flatten_tol(10.0) - 0.05).abs() < 1e-9);
+    assert!((zoom_flatten_tol(1000.0) - 0.05).abs() < 1e-9);
+}
+
+#[test]
+fn cached_sample_and_nearest_match_direct_methods() {
+    use petunia_design_geometry::PathVerb as V;
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Cached Sample").expect("doc");
+    let surface_id = bridge.active_surface().unwrap();
+    let mut gen = IdGenerator::new();
+    let id = gen.next_object();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id,
+            name: "Curve".to_string(),
+        }))
+        .unwrap();
+    let mut path = petunia_design_geometry::GPath::new();
+    path.push(V::MoveTo(GPoint::new(0.0, 0.0))).unwrap();
+    path.push(V::CubicTo(
+        GPoint::new(30.0, 0.0),
+        GPoint::new(70.0, 100.0),
+        GPoint::new(100.0, 100.0),
+    ))
+    .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Path(path.clone())),
+        }))
+        .unwrap();
+    bridge.clear_selection();
+
+    for tol in [0.1, 0.5, 2.0] {
+        for i in 0..=10 {
+            let t = i as f64 / 10.0;
+            let direct = path.sample_at(t, tol).expect("direct");
+            let cached = bridge.cached_sample_at(id, t, tol).expect("cached");
+            assert!((direct.0.x - cached.0.x).abs() < 1e-6, "t={t} tol={tol}");
+            assert!((direct.0.y - cached.0.y).abs() < 1e-6, "t={t} tol={tol}");
+        }
+        let probe = GPoint::new(40.0, 30.0);
+        assert!(
+            (path.nearest_t(probe, tol).unwrap()
+                - bridge.cached_nearest_t(id, probe, tol).unwrap())
+            .abs()
+                < 1e-6
+        );
+        let cached_polys = bridge.cached_polygons(id, tol).expect("polys");
+        assert_eq!(cached_polys, path.to_polygons(tol));
+    }
+}
+
+#[test]
+fn cached_hit_respects_zoom_tolerance() {
+    use petunia_design_geometry::PathVerb as V;
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Cached Hit Tol").expect("doc");
+    let surface_id = bridge.active_surface().unwrap();
+    let mut gen = IdGenerator::new();
+    let id = gen.next_object();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id,
+            name: "Bulge".to_string(),
+        }))
+        .unwrap();
+    // Closed bulging curve: coarse flattening cuts corners vs fine.
+    let mut path = petunia_design_geometry::GPath::new();
+    path.push(V::MoveTo(GPoint::new(0.0, 0.0))).unwrap();
+    path.push(V::CubicTo(
+        GPoint::new(100.0, 0.0),
+        GPoint::new(100.0, 100.0),
+        GPoint::new(0.0, 100.0),
+    ))
+    .unwrap();
+    path.push(V::Close).unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Path(path)),
+        }))
+        .unwrap();
+    bridge.clear_selection();
+
+    let coarse = bridge.cached_polygons(id, 4.0).expect("coarse");
+    let fine = bridge.cached_polygons(id, 0.05).expect("fine");
+    let count = |polys: &Vec<Vec<GPoint>>| polys.iter().map(|p| p.len()).sum::<usize>();
+    assert!(count(&fine) >= count(&coarse), "coarse={} fine={}", count(&coarse), count(&fine));
+    // Deep interior hits at every tolerance.
+    assert!(bridge.cached_hit(id, GPoint::new(20.0, 50.0), 4.0));
+    assert!(bridge.cached_hit(id, GPoint::new(20.0, 50.0), 0.05));
+    assert!(!bridge.cached_hit(id, GPoint::new(500.0, 500.0), 4.0));
 }
