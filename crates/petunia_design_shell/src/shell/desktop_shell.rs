@@ -1,3 +1,4 @@
+use petunia_design_application::interaction::PointerPhase;
 use petunia_design_application::view_camera::ViewState;
 use petunia_design_document::ChangeSet;
 use petunia_design_foundation::PetuniaError;
@@ -72,11 +73,6 @@ impl PetuniaShell {
     }
 
     /// The authoritative viewport camera.
-    ///
-    /// View state is session-owned (15.B): the shell asks the session for the
-    /// camera instead of keeping a second copy. That is what makes
-    /// `ptnd.action.view.*` and interactive pan/zoom act on the same camera
-    /// instead of two that drift apart.
     #[must_use]
     pub fn view_camera(&self) -> ViewportCamera {
         self.bridge.session().map_or_else(
@@ -108,6 +104,9 @@ impl PetuniaShell {
         let changes =
             self.tools
                 .on_pointer_event(event, &mut self.bridge, &camera, &mut self.snap)?;
+        if event.phase == PointerPhase::Up || event.phase == PointerPhase::Cancel {
+            self.snap.reset_hysteresis();
+        }
         if let Some(action) = self.tools.take_camera_action() {
             use crate::tools::CameraAction;
             let mut camera = self.view_camera();
@@ -122,6 +121,7 @@ impl PetuniaShell {
 
     /// Switches the active editing tool.
     pub fn set_active_tool(&mut self, tool: ToolKind) {
+        self.snap.reset_hysteresis();
         self.tools.set_tool(tool);
     }
 
@@ -156,8 +156,7 @@ impl PetuniaShell {
     pub fn overlays(&mut self) -> CanvasOverlays {
         let camera = self.view_camera();
         let mut ov = self.tools.overlays(&camera, &self.bridge);
-        // Include snap guides if any
-        ov.snap_guides = self.snap.snap_point(GPoint::ORIGIN, &camera, &[]).guides;
+        ov.snap_guides = self.snap.active_guides().to_vec();
         ov
     }
 

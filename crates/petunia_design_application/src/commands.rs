@@ -1,7 +1,7 @@
 //! Undoable commands executed through [`petunia_design_document::DocumentMutator`].
 
 use petunia_design_document::{ChangeSet, Document, DocumentMutator, DocumentObject};
-use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
+use petunia_design_foundation::{PetuniaError, ObjectId, SurfaceId};
 
 /// Single undoable command with explicit IDs (no hidden state).
 #[derive(Clone, Debug)]
@@ -199,17 +199,13 @@ pub enum Command {
         source: petunia_design_document::DataSourceDefinition,
     },
     /// Removes a variable data source (10.11).
-    RemoveDataSource {
-        id: petunia_design_document::DataSourceId,
-    },
+    RemoveDataSource { id: petunia_design_document::DataSourceId },
     /// Adds a data binding (10.11).
     AddDataBinding {
         binding: petunia_design_document::DataBinding,
     },
     /// Removes a data binding (10.11).
-    RemoveDataBinding {
-        id: petunia_design_document::BindingId,
-    },
+    RemoveDataBinding { id: petunia_design_document::BindingId },
     /// Materializes variable data records into surfaces (10.11).
     MaterializeDataMerge {
         source_id: petunia_design_document::DataSourceId,
@@ -255,8 +251,26 @@ pub enum Command {
     ConvertToCurves { id: ObjectId },
     /// Bakes corner geometry into an explicit vector path (10.2, 10.3).
     BakeCorners { id: ObjectId },
-    /// Offsets a path or object bounds outward or inward (10.3).
+    /// Offsets an outline, non-destructively (09.31, 10.3).
+    /// Upserts the live `ContourOffset` modifier; base geometry is untouched.
     OffsetPath { id: ObjectId, delta: f64 },
+    /// Sets a live perspective quad, non-destructively (09.31, 10.8).
+    SetPerspective { id: ObjectId, quad: [[f64; 2]; 4] },
+    /// Sets a live rectangular crop, non-destructively (09.31, 08.24).
+    SetCropRect { id: ObjectId, rect: [f64; 4] },
+    /// Replaces an object's live modifier chain (09.31, one undo entry).
+    SetModifiers {
+        id: ObjectId,
+        modifiers: Vec<petunia_design_document::ModifierItem>,
+    },
+    /// Bakes live contour offsets into base geometry (explicit user op, 09.31).
+    BakeContour { id: ObjectId },
+    /// Bakes live transparency gradients into base opacity (explicit, 09.31).
+    /// Documented approximation: the center sample flattens the mask.
+    BakeTransparency { id: ObjectId },
+    /// Bakes all live geometry-domain modifiers (contour, perspective, crop)
+    /// into base geometry (explicit user op, 09.31). Transparency survives.
+    BakeGeometry { id: ObjectId },
     /// Aligns multiple objects relative to their collective bounds (10.1).
     AlignObjects {
         surface: SurfaceId,
@@ -527,21 +541,18 @@ pub fn execute(
                 .clone();
 
             // Explicit flatten tolerance (F-21): part of the operation's
-            // evidence, no longer a magic literal.
-            let tolerance =
-                petunia_design_geometry::GeometryTolerance::default_tolerance().clamped();
-            let subj_path = subject.to_path();
-            let clip_path = clip.to_path();
+            // evidence, no longer a magic literal. Operands read evaluated
+            // (09.31): live modifiers participate without being consumed.
+            let tolerance = petunia_design_geometry::GeometryTolerance::default_tolerance().clamped();
+            let subj_path = subject.evaluated_path();
+            let clip_path = clip.evaluated_path();
 
-            let subj_input = petunia_design_geometry::BooleanInput::new(
-                subj_path.to_polygons(tolerance.flatten),
-            );
-            let clip_input = petunia_design_geometry::BooleanInput::new(
-                clip_path.to_polygons(tolerance.flatten),
-            );
+            let subj_input =
+                petunia_design_geometry::BooleanInput::new(subj_path.to_polygons(tolerance.flatten));
+            let clip_input =
+                petunia_design_geometry::BooleanInput::new(clip_path.to_polygons(tolerance.flatten));
 
-            let result_contours =
-                petunia_design_geometry::boolean_op(&subj_input, &clip_input, *op);
+            let result_contours = petunia_design_geometry::boolean_op(&subj_input, &clip_input, *op);
             let result_path = petunia_design_geometry::GPath::from_polygons(&result_contours);
             let bounds = result_path
                 .bounding_box()
@@ -590,6 +601,12 @@ pub fn execute(
         Command::ConvertToCurves { id } => mutator.convert_to_curves(*id),
         Command::BakeCorners { id } => mutator.bake_corners(*id),
         Command::OffsetPath { id, delta } => mutator.offset_path(*id, *delta),
+        Command::SetPerspective { id, quad } => mutator.set_perspective(*id, *quad),
+        Command::SetCropRect { id, rect } => mutator.set_crop_rect(*id, *rect),
+        Command::SetModifiers { id, modifiers } => mutator.set_modifiers(*id, modifiers.clone()),
+        Command::BakeContour { id } => mutator.bake_contour(*id),
+        Command::BakeTransparency { id } => mutator.bake_transparency(*id),
+        Command::BakeGeometry { id } => mutator.bake_geometry(*id),
         Command::AlignObjects { surface, ids, mode } => mutator.align_objects(*surface, ids, *mode),
         Command::DistributeObjects { surface, ids, axis } => {
             mutator.distribute_objects(*surface, ids, *axis)

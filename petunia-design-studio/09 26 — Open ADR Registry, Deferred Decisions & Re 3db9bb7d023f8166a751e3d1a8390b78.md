@@ -7,6 +7,25 @@
 
 </aside>
 
+# Resolved decision — universal non-destructive editing
+
+**ADRs:**
+[09.31 — Non-Destructive Editing EffectChain ADR](09%2031%20%E2%80%94%20Non-Destructive%20Editing%20EffectChain%20ADR.md)
+([pt-BR mirror](09%2031%20%E2%80%94%20Edi%C3%A7%C3%A3o%20N%C3%A3o-Destrutiva%20EffectChain%20ADR%20pt-BR.md)).
+
+**Status:** `ACCEPTED_V1`.
+
+**Decision:** every transformative edit stores parameters, never results.
+`DocumentObject.modifiers` carries the typed ordered EffectChain (first kind:
+`ContourOffset`); tools edit base geometry via `to_path()`, while render,
+hit-test, selection, booleans, and export read `evaluated_path()` /
+`evaluated_bounds()`. Bake/Expand/Rasterize/Convert-to-Curves stay explicit
+user operations only. Legacy `OffsetPath` upserts the live modifier.
+
+**Revisit trigger:** a second modifier kind must generalize entry identity and
+ordering UI and confirm linear evaluation cost; only measured bottlenecks or a
+format migration requirement may supersede, explicitly.
+
 # Resolved decision — plugin scripting runtime
 
 **ADR:** [09.30 — Plugin Scripting Runtime ADR: Lua vs Python vs JavaScript](09%2030%20%E2%80%94%20Plugin%20Scripting%20Runtime%20ADR%20Lua%20vs%20Python%203db9bb7d023f8129853cc7461081cf62.md)
@@ -30,6 +49,7 @@
 | Rich plugin UI | Native plugin UI is **declarative/semantic** and rendered by Aubrieta controls. Arbitrary GPUI injection is forbidden. A future sandboxed embedded/WebView tier may serve genuinely complex plugin UI. | Real plugin use cases cannot be expressed ergonomically by declarative schemas. |
 | Locale message expression syntax | Adopt **Unicode MessageFormat 2 (MF2)** as the canonical dynamic-message syntax/semantics, behind an Aubrieta localization facade; ICU4X provides locale services where applicable. | Rust runtime implementation changes; catalog syntax should remain stable. |
 | Advanced appearance with multiple fills/strokes | Canonical document model supports an ordered **Appearance Stack from V1**, including multiple fills/strokes/effects. UI may progressively disclose advanced entries. | No architectural revisit expected; only UX/implementation refinement. |
+| Universal non-destructive editing (09.31) | Typed ordered **EffectChain** on every object (`ModifierKind`, first: `ContourOffset`); base-vs-evaluated read doctrine; Bake explicit-only. | Second modifier kind generalizes identity/ordering; measured bottlenecks only. |
 | Master-like reusable layout elements | No Publisher-style Master Pages. Use **Symbols + lightweight SurfaceTemplate/reference composition** for repeating page/surface content and constrained overrides. | Real multi-page workflows prove the lightweight model insufficient. |
 | PDF/X native export | Explicitly outside V1 native scope. Produce professional color-managed PDF + preflight; allow external PDF/X conversion/validation. | Ordinary PDF/CMYK/ICC export is production-stable and native PDF/X provides clear user value. |
 

@@ -1,5 +1,6 @@
 //! Overlay geometry and selection handle hit-testing (08.6, 10.1).
 
+use petunia_design_foundation::ObjectId;
 use petunia_design_geometry::{GPoint, GRect};
 
 use super::snapping::SnapGuideVisual;
@@ -184,6 +185,26 @@ pub fn hit_test_handle_or_border(
     None
 }
 
+/// Gradient overlay kind for the gradient line preview.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GradientOverlayKind {
+    Linear,
+    Radial,
+}
+
+/// Committed gradient line plus stop handles, in screen space.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GradientOverlay {
+    /// Gradient vector start (line start or radial center).
+    pub start: GPoint,
+    /// Gradient vector end (line end or radial edge).
+    pub end: GPoint,
+    /// `(offset, handle position)` per stop.
+    pub stops: Vec<(f64, GPoint)>,
+    /// Geometry kind being previewed.
+    pub kind: GradientOverlayKind,
+}
+
 /// Aggregate canvas overlays currently rendered over artwork.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CanvasOverlays {
@@ -195,4 +216,22 @@ pub struct CanvasOverlays {
     pub snap_guides: Vec<SnapGuideVisual>,
     /// Pen tool provisional path preview points in document space.
     pub pen_preview: Option<Vec<GPoint>>,
+    /// Object currently hovered by the Select tool (click feedback, hover outline).
+    pub hovered_object: Option<ObjectId>,
+    /// Object pressed on pointer-down by the Select tool (click feedback).
+    pub pressed_object: Option<ObjectId>,
+    /// Freehand lasso path in screen space, if a lasso gesture is active.
+    pub lasso_screen: Option<Vec<GPoint>>,
+    /// True while the active marquee/lasso adds to the selection (Shift).
+    pub marquee_additive: bool,
+    /// True while the active marquee/lasso removes from the selection (Alt).
+    pub marquee_subtractive: bool,
+    /// Committed gradient line plus stop handles, if a gradient is selected.
+    pub gradient: Option<GradientOverlay>,
+    /// Pending shape-builder region outline in document space, if any.
+    pub region_preview: Option<Vec<GPoint>>,
+    /// Text-on-path span handles in document space (`[start, end]`), if any.
+    pub text_path_handles: Option<Vec<GPoint>>,
+    /// Committed raster selection mask contours in document space, if any.
+    pub selection_mask: Option<Vec<Vec<GPoint>>>,
 }

@@ -446,6 +446,131 @@ impl PetuniaDesignGuiBridge {
         SelectionPort::select_all(self);
     }
 
+    /// Returns the transient raster selection mask (marching ants, 10.9).
+    #[must_use]
+    pub fn raster_selection(&self) -> petunia_design_application::RasterSelection {
+        self.session()
+            .map(|s| s.raster_selection.clone())
+            .unwrap_or_default()
+    }
+
+    /// Evaluated outline, memoized by session revision (F1).
+    /// Hot loops (hover, overlays, covering) must prefer this over
+    /// `find_object().evaluated_path()`.
+    #[must_use]
+    pub fn cached_path(&self, id: ObjectId) -> Option<petunia_design_geometry::GPath> {
+        self.session()?.cached_path(id)
+    }
+
+    /// Evaluated bounds, memoized by session revision (F1).
+    #[must_use]
+    pub fn cached_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
+        self.session()?.cached_bounds(id)
+    }
+
+    /// Hit-test against the memoized evaluated outline (F1 + F2).
+    /// `tol` should come from `zoom_flatten_tol`. Visibility/locking stay
+    /// at the call site, as with `hit_test` today.
+    #[must_use]
+    pub fn cached_hit(
+        &self,
+        id: ObjectId,
+        pt: petunia_design_geometry::GPoint,
+        tol: f64,
+    ) -> bool {
+        self.session().is_some_and(|s| s.cached_hit(id, pt, tol))
+    }
+
+    /// Flattened evaluated outline at `tol`, memoized (F2).
+    #[must_use]
+    pub fn cached_polygons(
+        &self,
+        id: ObjectId,
+        tol: f64,
+    ) -> Option<Vec<Vec<petunia_design_geometry::GPoint>>> {
+        self.session()?.cached_polygons(id, tol)
+    }
+
+    /// Outline sample at fraction `t`, memoized (F2).
+    #[must_use]
+    pub fn cached_sample_at(
+        &self,
+        id: ObjectId,
+        t: f64,
+        tol: f64,
+    ) -> Option<(petunia_design_geometry::GPoint, f64)> {
+        self.session()?.cached_sample_at(id, t, tol)
+    }
+
+    /// Nearest outline fraction, memoized (F2).
+    #[must_use]
+    pub fn cached_nearest_t(
+        &self,
+        id: ObjectId,
+        pt: petunia_design_geometry::GPoint,
+        tol: f64,
+    ) -> Option<f64> {
+        self.session()?.cached_nearest_t(id, pt, tol)
+    }
+
+    /// Cache entry count (diagnostics and tests).
+    #[must_use]
+    pub fn geo_cache_len(&self) -> usize {
+        self.session().map_or(0, |s| s.geo_cache.borrow().len())
+    }
+
+    /// Combines one shape into the raster mask (session state, no undo).
+    pub fn combine_raster_selection(
+        &mut self,
+        shape: petunia_design_application::SelectionShape,
+        mode: petunia_design_application::SelectionMode,
+    ) {
+        if let Some(session) = self.active_session.as_mut() {
+            session.raster_selection.combine(&shape, mode);
+        }
+    }
+
+    /// Clears the raster mask (Ctrl+D equivalent).
+    pub fn clear_raster_selection(&mut self) {
+        if let Some(session) = self.active_session.as_mut() {
+            session.raster_selection.clear();
+        }
+    }
+
+    /// Inverts the raster mask inside the active surface bounds.
+    /// Empty masks stay empty.
+    pub fn invert_raster_selection(&mut self) {
+        let frame = self.active_session.as_ref().and_then(|s| {
+            let surface_id = s.active_surface()?;
+            let surface = s.surface(surface_id).ok()?;
+            let [x, y, w, h] = surface.bounds();
+            use petunia_design_geometry::GPoint;
+            Some(vec![
+                GPoint::new(x, y),
+                GPoint::new(x + w, y),
+                GPoint::new(x + w, y + h),
+                GPoint::new(x, y + h),
+            ])
+        });
+        if let (Some(session), Some(frame)) = (self.active_session.as_mut(), frame) {
+            session.raster_selection.invert_in(&frame);
+        }
+    }
+
+    /// Grows (positive) or shrinks (negative) the raster mask.
+    pub fn grow_raster_selection(&mut self, delta: f64) {
+        if let Some(session) = self.active_session.as_mut() {
+            session.raster_selection.grow(delta);
+        }
+    }
+
+    /// Sets the raster feather radius (render-time parameter).
+    pub fn set_raster_feather(&mut self, radius: f64) {
+        if let Some(session) = self.active_session.as_mut() {
+            session.raster_selection.set_feather(radius);
+        }
+    }
+
     /// Queries properties view-model.
     #[must_use]
     pub fn query_properties(&self) -> PropertiesPresentationModel {
@@ -571,9 +696,202 @@ impl PetuniaDesignGuiBridge {
         self.submit_command(CommandRequest::new(Command::BakeCorners { id }))
     }
 
-    /// Offsets a path or object bounds outward or inward (10.3).
+    /// Offsets an outline, non-destructively (09.31, 10.3).
+    /// Upserts the live `ContourOffset` modifier; base geometry is untouched.
     pub fn offset_path(&mut self, id: ObjectId, delta: f64) -> Result<ChangeSet, PetuniaError> {
         self.submit_command(CommandRequest::new(Command::OffsetPath { id, delta }))
+    }
+
+    /// Replaces an object's live modifier chain (09.31, one undo entry).
+    pub fn set_modifiers(
+        &mut self,
+        id: ObjectId,
+        modifiers: Vec<petunia_design_document::ModifierItem>,
+    ) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::SetModifiers { id, modifiers }))
+    }
+
+    /// Sets an object's live contour offset with join/cap style (09.31).
+    /// Zero distance removes the entry. Base geometry is never touched.
+    pub fn set_contour_offset(
+        &mut self,
+        id: ObjectId,
+        distance: f64,
+        join: petunia_design_geometry::OffsetJoin,
+        cap: petunia_design_geometry::OffsetCap,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let next = {
+            let session = self.session_req_mut()?;
+            let obj = session.document().find_object(id).ok_or_else(|| {
+                PetuniaError::invalid_input(format!("object `{id}` does not exist"))
+            })?;
+            let mut next = obj.modifiers.clone();
+            if distance.abs() < 1e-9 {
+                next.retain(|m| {
+                    !matches!(
+                        m.kind,
+                        petunia_design_document::ModifierKind::ContourOffset { .. }
+                    )
+                });
+            } else if let Some(entry) = next.iter_mut().find(|m| {
+                matches!(
+                    m.kind,
+                    petunia_design_document::ModifierKind::ContourOffset { .. }
+                )
+            }) {
+                entry.kind = petunia_design_document::ModifierKind::ContourOffset {
+                    distance,
+                    join,
+                    cap,
+                };
+            } else {
+                let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+                next.push(petunia_design_document::ModifierItem::enabled(
+                    nid,
+                    petunia_design_document::ModifierKind::ContourOffset { distance, join, cap },
+                ));
+            }
+            next
+        };
+        self.set_modifiers(id, next)
+    }
+
+    /// Bakes live contour offsets into base geometry (explicit user op, 09.31).
+    pub fn bake_contour(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::BakeContour { id }))
+    }
+
+    /// Bakes live transparency gradients into base opacity (explicit, 09.31).
+    pub fn bake_transparency(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::BakeTransparency { id }))
+    }
+
+    /// Bakes all live geometry-domain modifiers (explicit user op, 09.31).
+    pub fn bake_geometry(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::BakeGeometry { id }))
+    }
+
+    /// Sets a live perspective quad, non-destructively (09.31, 10.8).
+    pub fn set_perspective(
+        &mut self,
+        id: ObjectId,
+        quad: [[f64; 2]; 4],
+    ) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::SetPerspective { id, quad }))
+    }
+
+    /// Sets a live rectangular crop, non-destructively (09.31, 08.24).
+    pub fn set_crop_rect(
+        &mut self,
+        id: ObjectId,
+        rect: [f64; 4],
+    ) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::SetCropRect { id, rect }))
+    }
+
+    /// Sets a live transparency gradient vector (09.31, replaces the
+    /// whole-stack opacity proxy). Default stops run opaque to transparent.
+    /// Zero-length vectors clear the entry. Base geometry is never touched.
+    pub fn set_transparency_vector(
+        &mut self,
+        id: ObjectId,
+        start: [f64; 2],
+        end: [f64; 2],
+    ) -> Result<ChangeSet, PetuniaError> {
+        use petunia_design_document::{ModifierItem, ModifierKind, OpacityStop};
+        let next = {
+            let session = self.session_req_mut()?;
+            let obj = session.document().find_object(id).ok_or_else(|| {
+                PetuniaError::invalid_input(format!("object `{id}` does not exist"))
+            })?;
+            let mut next = obj.modifiers.clone();
+            let degenerate = (end[0] - start[0]).hypot(end[1] - start[1]) < 1e-9;
+            next.retain(|m| !matches!(m.kind, ModifierKind::TransparentGradient { .. }));
+            if !degenerate {
+                let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+                next.push(ModifierItem::enabled(
+                    nid,
+                    ModifierKind::TransparentGradient {
+                        start,
+                        end,
+                        stops: vec![OpacityStop::new(0.0, 1.0), OpacityStop::new(1.0, 0.0)],
+                    },
+                ));
+            }
+            next
+        };
+        self.set_modifiers(id, next)
+    }
+
+    /// Enables or disables one chain entry (future modifier-list UI).
+    pub fn set_modifier_enabled(
+        &mut self,
+        id: ObjectId,
+        modifier_id: u32,
+        enabled: bool,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let next = {
+            let session = self.session_req_mut()?;
+            let obj = session.document().find_object(id).ok_or_else(|| {
+                PetuniaError::invalid_input(format!("object `{id}` does not exist"))
+            })?;
+            let mut next = obj.modifiers.clone();
+            if let Some(entry) = next.iter_mut().find(|m| m.id == modifier_id) {
+                entry.enabled = enabled;
+            }
+            next
+        };
+        self.set_modifiers(id, next)
+    }
+
+    /// Removes one chain entry, if present (future modifier-list UI).
+    pub fn remove_modifier(
+        &mut self,
+        id: ObjectId,
+        modifier_id: u32,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let next = {
+            let session = self.session_req_mut()?;
+            let obj = session.document().find_object(id).ok_or_else(|| {
+                PetuniaError::invalid_input(format!("object `{id}` does not exist"))
+            })?;
+            obj.modifiers
+                .iter()
+                .filter(|m| m.id != modifier_id)
+                .cloned()
+                .collect()
+        };
+        self.set_modifiers(id, next)
+    }
+
+    /// Moves one chain entry to the front (evaluated first).
+    pub fn move_modifier_to_front(
+        &mut self,
+        id: ObjectId,
+        modifier_id: u32,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let next = {
+            let session = self.session_req_mut()?;
+            let obj = session.document().find_object(id).ok_or_else(|| {
+                PetuniaError::invalid_input(format!("object `{id}` does not exist"))
+            })?;
+            let mut next = obj.modifiers.clone();
+            if let Some(pos) = next.iter().position(|m| m.id == modifier_id) {
+                let entry = next.remove(pos);
+                next.insert(0, entry);
+            }
+            next
+        };
+        self.set_modifiers(id, next)
+    }
+
+    /// Reads an object's live modifier chain.
+    #[must_use]
+    pub fn modifiers(&self, id: ObjectId) -> Vec<petunia_design_document::ModifierItem> {
+        self.session()
+            .and_then(|s| s.find_object(id))
+            .map(|o| o.modifiers.clone())
+            .unwrap_or_default()
     }
 
     /// Sets the blend mode of an object (10.4, F-18).

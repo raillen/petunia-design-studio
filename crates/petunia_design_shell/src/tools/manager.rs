@@ -15,6 +15,7 @@ use super::measure::MeasureTool;
 use super::node::NodeTool;
 use super::pen::PenTool;
 use super::pencil::PencilTool;
+use super::perspective::PerspectiveTool;
 use super::photo::{PhotoTool, PhotoToolKind};
 use super::picker::{PickerMode, PickerTool};
 use super::point_transform::PointTransformTool;
@@ -36,6 +37,7 @@ pub struct ToolManager {
     pencil_tool: PencilTool,
     corner_tool: ContourTool,
     contour_tool: ContourTool,
+    perspective_tool: PerspectiveTool,
     knife_tool: KnifeTool,
     scissors_tool: KnifeTool,
     rectangle_tool: ShapeTool,
@@ -84,6 +86,7 @@ impl ToolManager {
             pencil_tool: PencilTool::new(),
             corner_tool: ContourTool::new(ContourMode::Corner),
             contour_tool: ContourTool::new(ContourMode::Contour),
+            perspective_tool: PerspectiveTool::new(),
             knife_tool: KnifeTool::new(KnifeMode::Knife),
             scissors_tool: KnifeTool::new(KnifeMode::Scissors),
             rectangle_tool: ShapeTool::new(ShapeKind::Rectangle),
@@ -133,6 +136,28 @@ impl ToolManager {
         self.set_active_tool(kind);
     }
 
+    /// Borrows the Select tool for settings/gesture configuration.
+    #[must_use]
+    pub fn select_tool(&self) -> &super::select::SelectTool {
+        &self.select_tool
+    }
+
+    /// Mutably borrows the Select tool (gesture mode, marquee rule).
+    pub fn select_tool_mut(&mut self) -> &mut super::select::SelectTool {
+        &mut self.select_tool
+    }
+
+    /// Switches the Select empty-canvas gesture (rectangle vs. lasso).
+    pub fn set_select_gesture_mode(&mut self, mode: super::select::SelectGestureMode) {
+        self.select_tool.set_gesture_mode(mode);
+    }
+
+    /// Sets the Select marquee rule backing the settings menu option
+    /// (overlap vs. fully contained vs. directional).
+    pub fn set_select_marquee_rule(&mut self, rule: super::select::MarqueeSelectRule) {
+        self.select_tool.set_marquee_rule(rule);
+    }
+
     /// Cancels any active gesture in the current tool.
     pub fn cancel_active(&mut self) {
         match self.active_kind {
@@ -143,6 +168,7 @@ impl ToolManager {
             ToolKind::Pencil => self.pencil_tool.cancel(),
             ToolKind::Corner => self.corner_tool.cancel(),
             ToolKind::Contour => self.contour_tool.cancel(),
+            ToolKind::Perspective => self.perspective_tool.cancel(),
             ToolKind::Knife => self.knife_tool.cancel(),
             ToolKind::Scissors => self.scissors_tool.cancel(),
             ToolKind::Rectangle => self.rectangle_tool.cancel(),
@@ -198,6 +224,9 @@ impl ToolManager {
                 .on_pointer_event(event, bridge, camera, snap),
             ToolKind::Contour => self
                 .contour_tool
+                .on_pointer_event(event, bridge, camera, snap),
+            ToolKind::Perspective => self
+                .perspective_tool
                 .on_pointer_event(event, bridge, camera, snap),
             ToolKind::Knife => self
                 .knife_tool
@@ -300,35 +329,36 @@ impl ToolManager {
             ToolKind::Node => self.node_tool.overlays(camera, bridge),
             ToolKind::PointTransform => self.point_transform_tool.overlays(),
             ToolKind::Pencil => self.pencil_tool.overlays(),
-            ToolKind::Corner => self.corner_tool.overlays(),
-            ToolKind::Contour => self.contour_tool.overlays(),
+            ToolKind::Corner => self.corner_tool.overlays(bridge, camera),
+            ToolKind::Contour => self.contour_tool.overlays(bridge, camera),
+            ToolKind::Perspective => self.perspective_tool.overlays(bridge, camera),
             ToolKind::Knife => self.knife_tool.overlays(),
             ToolKind::Scissors => self.scissors_tool.overlays(),
             ToolKind::Rectangle => self.rectangle_tool.overlays(camera),
             ToolKind::Ellipse => self.ellipse_tool.overlays(camera),
             ToolKind::Polygon => self.polygon_tool.overlays(camera),
             ToolKind::Star => self.star_tool.overlays(camera),
-            ToolKind::ShapeBuilder => self.shape_builder_tool.overlays(),
-            ToolKind::VectorFloodFill => self.smart_fill_tool.overlays(),
-            ToolKind::ArtisticText => self.artistic_text_tool.overlays(camera),
-            ToolKind::FrameText => self.frame_text_tool.overlays(camera),
-            ToolKind::Gradient => self.gradient_tool.overlays(),
-            ToolKind::Transparency => self.transparency_tool.overlays(),
+            ToolKind::ShapeBuilder => self.shape_builder_tool.overlays(bridge),
+            ToolKind::VectorFloodFill => self.smart_fill_tool.overlays(bridge),
+            ToolKind::ArtisticText => self.artistic_text_tool.overlays(camera, bridge),
+            ToolKind::FrameText => self.frame_text_tool.overlays(camera, bridge),
+            ToolKind::Gradient => self.gradient_tool.overlays(bridge, camera),
+            ToolKind::Transparency => self.transparency_tool.overlays(bridge, camera),
             ToolKind::ColorPicker => self.color_picker_tool.overlays(),
             ToolKind::StylePicker => self.style_picker_tool.overlays(),
             ToolKind::Artboard => self.artboard_tool.overlays(camera),
             ToolKind::Measure => self.measure_tool.overlays(),
             ToolKind::Zoom => self.zoom_tool.overlays(),
             ToolKind::Hand => self.hand_tool.overlays(),
-            ToolKind::MarqueeRect => self.photo_marquee_rect_tool.overlays(camera),
-            ToolKind::MarqueeEllipse => self.photo_marquee_ellipse_tool.overlays(camera),
-            ToolKind::Lasso => self.photo_lasso_tool.overlays(camera),
-            ToolKind::SelectionBrush => self.photo_selection_brush_tool.overlays(camera),
-            ToolKind::FloodSelect => self.photo_flood_select_tool.overlays(camera),
-            ToolKind::PixelPaintBrush => self.photo_brush_tool.overlays(camera),
-            ToolKind::PixelEraser => self.photo_eraser_tool.overlays(camera),
-            ToolKind::PhotoGradient => self.photo_gradient_tool.overlays(),
-            ToolKind::Crop => self.photo_crop_tool.overlays(camera),
+            ToolKind::MarqueeRect => self.photo_marquee_rect_tool.overlays(camera, bridge),
+            ToolKind::MarqueeEllipse => self.photo_marquee_ellipse_tool.overlays(camera, bridge),
+            ToolKind::Lasso => self.photo_lasso_tool.overlays(camera, bridge),
+            ToolKind::SelectionBrush => self.photo_selection_brush_tool.overlays(camera, bridge),
+            ToolKind::FloodSelect => self.photo_flood_select_tool.overlays(camera, bridge),
+            ToolKind::PixelPaintBrush => self.photo_brush_tool.overlays(camera, bridge),
+            ToolKind::PixelEraser => self.photo_eraser_tool.overlays(camera, bridge),
+            ToolKind::PhotoGradient => self.photo_gradient_tool.overlays(bridge, camera),
+            ToolKind::Crop => self.photo_crop_tool.overlays(camera, bridge),
         }
     }
 }

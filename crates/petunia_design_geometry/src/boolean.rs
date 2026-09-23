@@ -128,7 +128,8 @@ pub fn boolean_op_with_fill(
     overlay_adapter::apply(subject, clip, op, fill_rule)
 }
 
-/// i_overlay adapter. The only module allowed to name `i_overlay` types.
+/// i_overlay adapter. Alongside `offset.rs`, the only modules allowed to name
+/// `i_overlay` types.
 mod overlay_adapter {
     use i_overlay::core::overlay_rule::OverlayRule;
     use i_overlay::float::single::SingleFloatOverlay as _;

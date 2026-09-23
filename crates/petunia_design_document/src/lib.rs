@@ -10,22 +10,22 @@ mod changeset;
 mod document;
 mod document_object;
 pub mod hierarchy;
+pub mod modifiers;
 mod mutator;
 pub mod shape_factory;
 pub mod surface_metadata;
 pub mod variable_data;
 
 pub use appearance::{
-    resolve_color_to_rgb, AppearanceStack, BlendMode, EffectItem, EffectKind, FillItem,
-    GradientStop, LinearGradient, Paint, RadialGradient, StrokeAlignment, StrokeCap, StrokeItem,
-    StrokeJoin,
+    AppearanceStack, BlendMode, EffectItem, EffectKind, FillItem, GradientStop, LinearGradient,
+    Paint, RadialGradient, StrokeAlignment, StrokeCap, StrokeItem, StrokeJoin,
+    resolve_color_to_rgb,
 };
 pub use changeset::{Change, ChangeSet};
 pub use document::{Document, Surface};
-pub use document_object::{
-    AlignmentMode, ArrangePosition, DistributionAxis, DocumentObject, ShapeKind,
-};
+pub use document_object::{AlignmentMode, ArrangePosition, DistributionAxis, DocumentObject, ShapeKind, TextOnPathAttachment};
 pub use hierarchy::{ContainerRole, HierarchyValidation, MaskMode};
+pub use modifiers::{ModifierItem, ModifierKind, OpacityStop, evaluate_modifiers, evaluate_opacity_at};
 pub use mutator::DocumentMutator;
 pub use surface_metadata::{Bleed, Guide, GuideOrientation, Margins};
 pub use variable_data::{

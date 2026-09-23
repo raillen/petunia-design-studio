@@ -1,7 +1,7 @@
 //! The only writer path: UI/Shortcut/Plugin/MCP -> Action -> Command ->
 //! `DocumentMutator` -> `ChangeSet`. Nothing touches storage directly.
 
-use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
+use petunia_design_foundation::{PetuniaError, ObjectId, SurfaceId};
 
 use crate::changeset::{Change, ChangeSet};
 use crate::document::Document;
@@ -86,7 +86,8 @@ impl<'doc> DocumentMutator<'doc> {
                 let mut changes = ChangeSet::empty();
                 // Detach from parent container.
                 if let Some(parent_id) = object.parent {
-                    if let Some(parent) = surface.objects.iter_mut().find(|o| o.id == parent_id) {
+                    if let Some(parent) = surface.objects.iter_mut().find(|o| o.id == parent_id)
+                    {
                         if let Some(p) = parent.children.iter().position(|c| *c == id) {
                             let prev = parent.children.clone();
                             parent.children.remove(p);
@@ -115,7 +116,9 @@ impl<'doc> DocumentMutator<'doc> {
                 }
                 // Children of a removed container become root-level (parent=None).
                 for child_id in object.children.clone() {
-                    if let Some(child) = surface.objects.iter_mut().find(|o| o.id == child_id) {
+                    if let Some(child) =
+                        surface.objects.iter_mut().find(|o| o.id == child_id)
+                    {
                         let prev_parent = child.parent;
                         child.parent = None;
                         changes.push(Change::Reparented {
@@ -350,11 +353,10 @@ impl<'doc> DocumentMutator<'doc> {
 
         let tolerance = petunia_design_geometry::GeometryTolerance::default_tolerance().clamped();
         let subj_input = petunia_design_geometry::BooleanInput::new(
-            subject.to_path().to_polygons(tolerance.flatten),
+            subject.evaluated_path().to_polygons(tolerance.flatten),
         );
-        let clip_input = petunia_design_geometry::BooleanInput::new(
-            clip.to_path().to_polygons(tolerance.flatten),
-        );
+        let clip_input =
+            petunia_design_geometry::BooleanInput::new(clip.evaluated_path().to_polygons(tolerance.flatten));
 
         let pieces = [
             (
@@ -472,63 +474,46 @@ impl<'doc> DocumentMutator<'doc> {
         self.convert_to_curves(id)
     }
 
-    /// Offsets a path or object bounds outward (positive) or inward (negative) (10.3) (F-08).
-    /// Bounds always inflate/deflate. When the shape holds a `Path`, its
-    /// control vertices are scaled about the bounds center by the same
-    /// width/height ratio so curves follow the offset instead of being left
-    /// behind. Degenerate results (w/h < 1.0) are rejected.
-    pub fn offset_path(&mut self, id: ObjectId, delta: f64) -> Result<ChangeSet, PetuniaError> {
-        if !delta.is_finite() {
-            return Err(PetuniaError::invalid_input("offset delta must be finite"));
+    /// Sets an object's live contour offset, non-destructively (09.31).
+    /// Upserts the single `ContourOffset` entry (chain order preserved),
+    /// keeping join/cap when only the distance changes. Zero distance
+    /// removes the entry. Base geometry is never touched.
+    pub fn set_contour_offset(
+        &mut self,
+        id: ObjectId,
+        distance: f64,
+        join: petunia_design_geometry::OffsetJoin,
+        cap: petunia_design_geometry::OffsetCap,
+    ) -> Result<ChangeSet, PetuniaError> {
+        if !distance.is_finite() {
+            return Err(PetuniaError::invalid_input("offset distance must be finite"));
         }
+        let next = if distance.abs() < 1e-9 {
+            self.modifiers_without_contour(id)?
+        } else {
+            self.modifiers_with_contour(id, distance, join, cap)?
+        };
+        self.set_modifiers(id, next)
+    }
+
+    /// Replaces an object's full modifier chain (one undo entry).
+    pub fn set_modifiers(
+        &mut self,
+        id: ObjectId,
+        modifiers: Vec<crate::modifiers::ModifierItem>,
+    ) -> Result<ChangeSet, PetuniaError> {
         for surface in &mut self.document.surfaces {
             if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
-                let b = object.bounds.ok_or_else(|| {
-                    PetuniaError::invalid_input(format!("object `{id}` has no bounds"))
-                })?;
-                if b[2] <= 0.0 || b[3] <= 0.0 {
-                    return Err(PetuniaError::invalid_input(format!(
-                        "object `{id}` has degenerate bounds"
-                    )));
+                let previous = object.modifiers.clone();
+                if previous == modifiers {
+                    return Ok(ChangeSet::empty());
                 }
-                let new_w = b[2] + delta * 2.0;
-                let new_h = b[3] + delta * 2.0;
-                if new_w < 1.0 || new_h < 1.0 {
-                    return Err(PetuniaError::invalid_input(format!(
-                        "offset {delta} collapses object `{id}`"
-                    )));
-                }
-                let previous_bounds = object.bounds;
-                let previous_rotation = object.rotation;
-                let previous_shape = object.shape.clone();
-                let new_b = [b[0] - delta, b[1] - delta, new_w, new_h];
-                // Scale path vertices about the bounds center so geometry tracks bounds.
-                if let Some(crate::ShapeKind::Path(path)) = object.shape.clone() {
-                    let cx = b[0] + b[2] / 2.0;
-                    let cy = b[1] + b[3] / 2.0;
-                    let sx = new_w / b[2];
-                    let sy = new_h / b[3];
-                    let center = petunia_design_geometry::GPoint::new(cx, cy);
-                    let new_path = path.scaled_about(center, sx, sy);
-                    if Self::path_is_finite(&new_path) {
-                        object.shape = Some(crate::ShapeKind::Path(new_path));
-                    }
-                }
-                object.bounds = Some(new_b);
+                object.modifiers = modifiers.clone();
                 let mut changes = ChangeSet::empty();
-                if previous_shape != object.shape {
-                    changes.push(Change::ShapeChanged {
-                        id,
-                        previous: previous_shape,
-                        next: object.shape.clone(),
-                    });
-                }
-                changes.push(Change::BoundsChanged {
+                changes.push(Change::ModifiersChanged {
                     id,
-                    previous_bounds,
-                    next_bounds: Some(new_b),
-                    previous_rotation,
-                    next_rotation: previous_rotation,
+                    previous,
+                    next: modifiers,
                 });
                 return Ok(changes);
             }
@@ -538,21 +523,287 @@ impl<'doc> DocumentMutator<'doc> {
         )))
     }
 
+    /// Bakes live contour offsets into base geometry (explicit user op, 09.31).
+    /// The evaluated outline becomes the base `Path`, contour entries clear,
+    /// bounds follow. Other modifier kinds survive.
+    pub fn bake_contour(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
+        let (evaluated, bounds, has_contour) = {
+            let obj = self.document.find_object(id).ok_or_else(|| {
+                PetuniaError::not_found(format!("object `{id}` does not exist"))
+            })?;
+            let has = obj.modifiers.iter().any(|m| {
+                m.enabled
+                    && matches!(m.kind, crate::modifiers::ModifierKind::ContourOffset { .. })
+            });
+            (obj.evaluated_path(), obj.evaluated_bounds(), has)
+        };
+        if !has_contour {
+            return Ok(ChangeSet::empty());
+        }
+        let mut changes = ChangeSet::empty();
+        changes.extend(self.set_shape(id, Some(crate::ShapeKind::Path(evaluated)))?);
+        let rotation = self
+            .document
+            .find_object(id)
+            .map_or(0.0, |o| o.rotation);
+        changes.extend(self.set_bounds(id, bounds, rotation)?);
+        let remaining: Vec<crate::modifiers::ModifierItem> = self
+            .document
+            .find_object(id)
+            .map(|o| {
+                o.modifiers
+                    .iter()
+                    .filter(|m| {
+                        !(m.enabled
+                            && matches!(
+                                m.kind,
+                                crate::modifiers::ModifierKind::ContourOffset { .. }
+                            ))
+                    })
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        changes.extend(self.set_modifiers(id, remaining)?);
+        Ok(changes)
+    }
+
+    /// Chain with the contour entry upserted (joins/caps preserved on update).
+    fn modifiers_with_contour(
+        &self,
+        id: ObjectId,
+        distance: f64,
+        join: petunia_design_geometry::OffsetJoin,
+        cap: petunia_design_geometry::OffsetCap,
+    ) -> Result<Vec<crate::modifiers::ModifierItem>, PetuniaError> {
+        let obj = self.document.find_object(id).ok_or_else(|| {
+            PetuniaError::not_found(format!("object `{id}` does not exist"))
+        })?;
+        let mut next = obj.modifiers.clone();
+        if let Some(entry) = next.iter_mut().find(|m| {
+            matches!(m.kind, crate::modifiers::ModifierKind::ContourOffset { .. })
+        }) {
+            if let crate::modifiers::ModifierKind::ContourOffset { distance: d, .. } =
+                &mut entry.kind
+            {
+                *d = distance;
+            }
+            let _ = (join, cap);
+        } else {
+            let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+            next.push(crate::modifiers::ModifierItem::enabled(
+                nid,
+                crate::modifiers::ModifierKind::ContourOffset { distance, join, cap },
+            ));
+        }
+        Ok(next)
+    }
+
+    /// Bakes live transparency gradients into base opacity (explicit user op).
+    /// Documented approximation: the center sample flattens the mask, like
+    /// export. Transparent entries clear; other modifiers survive.
+    pub fn bake_transparency(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
+        let (sampled, has_transparency) = {
+            let obj = self.document.find_object(id).ok_or_else(|| {
+                PetuniaError::not_found(format!("object `{id}` does not exist"))
+            })?;
+            let has = obj.modifiers.iter().any(|m| {
+                m.enabled
+                    && matches!(
+                        m.kind,
+                        crate::modifiers::ModifierKind::TransparentGradient { .. }
+                    )
+            });
+            (obj.sampled_opacity(), has)
+        };
+        if !has_transparency {
+            return Ok(ChangeSet::empty());
+        }
+        let mut changes = ChangeSet::empty();
+        changes.extend(self.set_opacity(id, sampled)?);
+        let remaining: Vec<crate::modifiers::ModifierItem> = self
+            .document
+            .find_object(id)
+            .map(|o| {
+                o.modifiers
+                    .iter()
+                    .filter(|m| {
+                        !(m.enabled
+                            && matches!(
+                                m.kind,
+                                crate::modifiers::ModifierKind::TransparentGradient { .. }
+                            ))
+                    })
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        changes.extend(self.set_modifiers(id, remaining)?);
+        Ok(changes)
+    }
+
+    /// Chain with the contour entry removed.
+    fn modifiers_without_contour(
+        &self,
+        id: ObjectId,
+    ) -> Result<Vec<crate::modifiers::ModifierItem>, PetuniaError> {
+        let obj = self.document.find_object(id).ok_or_else(|| {
+            PetuniaError::not_found(format!("object `{id}` does not exist"))
+        })?;
+        Ok(obj
+            .modifiers
+            .iter()
+            .filter(|m| {
+                !matches!(m.kind, crate::modifiers::ModifierKind::ContourOffset { .. })
+            })
+            .cloned()
+            .collect())
+    }
+
+    /// Sets a live perspective quad, non-destructively (09.31, 10.8).
+    /// Upserts the single `Perspective` entry (chain order preserved).
+    /// Degenerate quads are stored but decline at evaluation (warp math).
+    pub fn set_perspective(
+        &mut self,
+        id: ObjectId,
+        quad: [[f64; 2]; 4],
+    ) -> Result<ChangeSet, PetuniaError> {
+        if !quad.iter().flatten().all(|v| v.is_finite()) {
+            return Err(PetuniaError::invalid_input("perspective quad must be finite"));
+        }
+        let obj = self.document.find_object(id).ok_or_else(|| {
+            PetuniaError::not_found(format!("object `{id}` does not exist"))
+        })?;
+        let mut next = obj.modifiers.clone();
+        if let Some(entry) = next.iter_mut().find(|m| {
+            matches!(m.kind, crate::modifiers::ModifierKind::Perspective { .. })
+        }) {
+            if let crate::modifiers::ModifierKind::Perspective { quad: q } = &mut entry.kind {
+                *q = quad;
+            }
+        } else {
+            let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+            next.push(crate::modifiers::ModifierItem::enabled(
+                nid,
+                crate::modifiers::ModifierKind::Perspective { quad },
+            ));
+        }
+        self.set_modifiers(id, next)
+    }
+
+    /// Sets a live rectangular crop, non-destructively (09.31, 08.24).
+    /// Upserts the single `CropRect` entry (chain order preserved).
+    pub fn set_crop_rect(
+        &mut self,
+        id: ObjectId,
+        rect: [f64; 4],
+    ) -> Result<ChangeSet, PetuniaError> {
+        if !rect.iter().all(|v| v.is_finite()) || rect[2] < 1.0 || rect[3] < 1.0 {
+            return Err(PetuniaError::invalid_input(
+                "crop rect must be finite with positive size",
+            ));
+        }
+        let obj = self.document.find_object(id).ok_or_else(|| {
+            PetuniaError::not_found(format!("object `{id}` does not exist"))
+        })?;
+        let mut next = obj.modifiers.clone();
+        if let Some(entry) = next.iter_mut().find(|m| {
+            matches!(m.kind, crate::modifiers::ModifierKind::CropRect { .. })
+        }) {
+            if let crate::modifiers::ModifierKind::CropRect { rect: r } = &mut entry.kind {
+                *r = rect;
+            }
+        } else {
+            let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+            next.push(crate::modifiers::ModifierItem::enabled(
+                nid,
+                crate::modifiers::ModifierKind::CropRect { rect },
+            ));
+        }
+        self.set_modifiers(id, next)
+    }
+
+    /// True for geometry-domain modifiers (baked by [`Self::bake_geometry`]).
+    fn is_geometry_modifier(kind: &crate::modifiers::ModifierKind) -> bool {
+        matches!(
+            kind,
+            crate::modifiers::ModifierKind::ContourOffset { .. }
+                | crate::modifiers::ModifierKind::Perspective { .. }
+                | crate::modifiers::ModifierKind::CropRect { .. }
+        )
+    }
+
+    /// Bakes all live geometry-domain modifiers into base geometry
+    /// (explicit user op, 09.31). The evaluated outline becomes the base
+    /// `Path`, geometry entries clear, bounds follow. Transparency survives.
+    pub fn bake_geometry(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
+        let (evaluated, bounds, has_geometry) = {
+            let obj = self.document.find_object(id).ok_or_else(|| {
+                PetuniaError::not_found(format!("object `{id}` does not exist"))
+            })?;
+            let has = obj
+                .modifiers
+                .iter()
+                .any(|m| m.enabled && Self::is_geometry_modifier(&m.kind));
+            (obj.evaluated_path(), obj.evaluated_bounds(), has)
+        };
+        if !has_geometry {
+            return Ok(ChangeSet::empty());
+        }
+        let mut changes = ChangeSet::empty();
+        changes.extend(self.set_shape(id, Some(crate::ShapeKind::Path(evaluated)))?);
+        let rotation = self
+            .document
+            .find_object(id)
+            .map_or(0.0, |o| o.rotation);
+        changes.extend(self.set_bounds(id, bounds, rotation)?);
+        let remaining: Vec<crate::modifiers::ModifierItem> = self
+            .document
+            .find_object(id)
+            .map(|o| {
+                o.modifiers
+                    .iter()
+                    .filter(|m| !(m.enabled && Self::is_geometry_modifier(&m.kind)))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        changes.extend(self.set_modifiers(id, remaining)?);
+        Ok(changes)
+    }
+
+    /// Offsets a path outline, non-destructively (09.31, 10.3).
+    /// Legacy entry point: upserts the live `ContourOffset` modifier instead
+    /// of rewriting geometry. Use [`Self::bake_contour`] to commit.
+    pub fn offset_path(&mut self, id: ObjectId, delta: f64) -> Result<ChangeSet, PetuniaError> {
+        if !delta.is_finite() {
+            return Err(PetuniaError::invalid_input("offset delta must be finite"));
+        }
+        self.set_contour_offset(
+            id,
+            delta,
+            petunia_design_geometry::OffsetJoin::Round,
+            petunia_design_geometry::OffsetCap::None,
+        )
+    }
     /// Slices a path object at a specific point (10.2) (F-08: Break Path).
     /// Splits the nearest contour into two contours at the projection of
     /// `point`, preserving Bézier verbs by re-emitting the flattened split as
     /// line segments plus the original verbs' structure via `from_polygons`.
     /// Returns the shape change; bounds are recomputed from the result.
-    pub fn slice_path(&mut self, id: ObjectId, point: [f64; 2]) -> Result<ChangeSet, PetuniaError> {
+    pub fn slice_path(
+        &mut self,
+        id: ObjectId,
+        point: [f64; 2],
+    ) -> Result<ChangeSet, PetuniaError> {
         if !point[0].is_finite() || !point[1].is_finite() {
             return Err(PetuniaError::invalid_input("slice point must be finite"));
         }
         // Snapshot shape+bounds without holding a borrow across mutation.
         let (prev_shape, prev_bounds, prev_rot) = {
-            let obj = self
-                .document
-                .find_object(id)
-                .ok_or_else(|| PetuniaError::not_found(format!("object `{id}` does not exist")))?;
+            let obj = self.document.find_object(id).ok_or_else(|| {
+                PetuniaError::not_found(format!("object `{id}` does not exist"))
+            })?;
             (obj.shape.clone(), obj.bounds, obj.rotation)
         };
         let path = match prev_shape.clone() {
@@ -902,27 +1153,11 @@ impl<'doc> DocumentMutator<'doc> {
         )))
     }
 
-    /// True when every coordinate of a path is finite (offset guard).
-    fn path_is_finite(path: &petunia_design_geometry::GPath) -> bool {
-        path.verbs.iter().all(|v| match v {
-            petunia_design_geometry::PathVerb::MoveTo(p)
-            | petunia_design_geometry::PathVerb::LineTo(p) => p.is_finite(),
-            petunia_design_geometry::PathVerb::QuadTo(c, p) => c.is_finite() && p.is_finite(),
-            petunia_design_geometry::PathVerb::CubicTo(c1, c2, p) => {
-                c1.is_finite() && c2.is_finite() && p.is_finite()
-            }
-            petunia_design_geometry::PathVerb::Close => true,
-        })
-    }
-
     /// Loads the editable appearance stack for granular commands (F-18).
     /// Returns `(object_id, stack)`: the effective stack when no explicit
     /// stack exists, so simple UI targets the primary entry without ever
     /// silently deleting secondary entries (10.4).
-    fn editable_stack(
-        &self,
-        id: ObjectId,
-    ) -> Result<crate::appearance::AppearanceStack, PetuniaError> {
+    fn editable_stack(&self, id: ObjectId) -> Result<crate::appearance::AppearanceStack, PetuniaError> {
         self.document
             .find_object(id)
             .map(|o| o.effective_appearance())
@@ -963,13 +1198,9 @@ impl<'doc> DocumentMutator<'doc> {
         opacity: f64,
     ) -> Result<ChangeSet, PetuniaError> {
         let mut stack = self.editable_stack(id)?;
-        let entry = stack
-            .fills
-            .iter_mut()
-            .find(|f| f.id == fill_id)
-            .ok_or_else(|| {
-                PetuniaError::not_found(format!("fill `{fill_id}` not found on object `{id}`"))
-            })?;
+        let entry = stack.fills.iter_mut().find(|f| f.id == fill_id).ok_or_else(|| {
+            PetuniaError::not_found(format!("fill `{fill_id}` not found on object `{id}`"))
+        })?;
         let clamped = opacity.clamp(0.0, 1.0);
         if (entry.opacity - clamped).abs() <= f64::EPSILON {
             return Ok(ChangeSet::empty());
@@ -986,13 +1217,9 @@ impl<'doc> DocumentMutator<'doc> {
         blend_mode: crate::appearance::BlendMode,
     ) -> Result<ChangeSet, PetuniaError> {
         let mut stack = self.editable_stack(id)?;
-        let entry = stack
-            .fills
-            .iter_mut()
-            .find(|f| f.id == fill_id)
-            .ok_or_else(|| {
-                PetuniaError::not_found(format!("fill `{fill_id}` not found on object `{id}`"))
-            })?;
+        let entry = stack.fills.iter_mut().find(|f| f.id == fill_id).ok_or_else(|| {
+            PetuniaError::not_found(format!("fill `{fill_id}` not found on object `{id}`"))
+        })?;
         if entry.blend_mode == blend_mode {
             return Ok(ChangeSet::empty());
         }
@@ -1061,9 +1288,7 @@ impl<'doc> DocumentMutator<'doc> {
         width: f64,
     ) -> Result<ChangeSet, PetuniaError> {
         if !width.is_finite() || width < 0.0 {
-            return Err(PetuniaError::invalid_input(
-                "stroke width must be finite and >= 0",
-            ));
+            return Err(PetuniaError::invalid_input("stroke width must be finite and >= 0"));
         }
         let mut stack = self.editable_stack(id)?;
         let entry = stack
@@ -1303,9 +1528,7 @@ impl<'doc> DocumentMutator<'doc> {
                 )));
             }
             if *id == group_id {
-                return Err(PetuniaError::invalid_input(
-                    "cannot group object into itself",
-                ));
+                return Err(PetuniaError::invalid_input("cannot group object into itself"));
             }
         }
 
@@ -2216,9 +2439,7 @@ impl<'doc> DocumentMutator<'doc> {
                         })?;
                     self.document.surfaces.remove(pos);
                 }
-                Change::ObjectAdded {
-                    surface, object, ..
-                } => {
+                Change::ObjectAdded { surface, object, .. } => {
                     let target = self.document.surface_mut(surface)?;
                     let pos = target
                         .objects
@@ -2380,6 +2601,18 @@ impl<'doc> DocumentMutator<'doc> {
                     // When previous is None (no stack), legacy mirrors keep
                     // whatever Fill/Stroke/Opacity reverts already restored
                     // via their own Change entries (reverse order).
+                }
+                Change::ModifiersChanged { id, previous, .. } => {
+                    let found = self
+                        .document
+                        .surfaces
+                        .iter_mut()
+                        .flat_map(|s| s.objects.iter_mut())
+                        .find(|o| o.id == id)
+                        .ok_or_else(|| {
+                            PetuniaError::not_found(format!("object `{id}` does not exist"))
+                        })?;
+                    found.modifiers = previous.clone();
                 }
                 Change::Reparented {
                     id,

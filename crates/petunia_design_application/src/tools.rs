@@ -27,6 +27,8 @@ pub enum ToolKind {
     Corner,
     /// Live contour outline offset/inset.
     Contour,
+    /// Interactive 4-corner perspective warp (live modifier, 10.8).
+    Perspective,
     /// Interactive vector cut across paths.
     Knife,
     /// Split path at hit point.
@@ -97,6 +99,7 @@ impl ToolKind {
             Self::Pencil => ActionId::TOOL_PENCIL,
             Self::Corner => ActionId::TOOL_CORNER,
             Self::Contour => ActionId::TOOL_CONTOUR,
+            Self::Perspective => ActionId::TOOL_PERSPECTIVE,
             Self::Knife => ActionId::TOOL_KNIFE,
             Self::Scissors => ActionId::TOOL_SCISSORS,
             Self::Rectangle => ActionId::TOOL_RECTANGLE,

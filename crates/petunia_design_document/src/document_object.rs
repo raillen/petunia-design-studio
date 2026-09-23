@@ -65,6 +65,46 @@ pub struct DocumentObject {
     /// Canonical vector shape or text content of this object, if not a container.
     #[serde(default)]
     pub shape: Option<ShapeKind>,
+    /// Ordered live modifier chain (the non-destructive EffectChain, 09.31).
+    /// Empty by default; evaluated on read, never stored as geometry.
+    #[serde(default)]
+    pub modifiers: Vec<crate::modifiers::ModifierItem>,
+}
+
+/// Text-on-path attachment (10.6): flows a text object along another
+/// object's evaluated outline between normalized fractions. The source
+/// path object is never consumed or hidden by the attachment.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TextOnPathAttachment {
+    /// Path object the text follows.
+    pub target: ObjectId,
+    /// Span start as a fraction of outline length in `[0.0, 1.0]`.
+    pub start: f64,
+    /// Span end as a fraction of outline length in `[0.0, 1.0]`.
+    pub end: f64,
+}
+
+impl TextOnPathAttachment {
+    /// Creates a clamped attachment, ordering start before end.
+    #[must_use]
+    pub fn new(target: ObjectId, start: f64, end: f64) -> Self {
+        let (mut a, mut b) = (start.clamp(0.0, 1.0), end.clamp(0.0, 1.0));
+        if b < a {
+            std::mem::swap(&mut a, &mut b);
+        }
+        // Degenerate spans keep a minimal readable length.
+        if (b - a).abs() < 1e-6 {
+            b = (a + 0.01).min(1.0);
+            if (b - a).abs() < 1e-6 {
+                a = (b - 0.01).max(0.0);
+            }
+        }
+        Self {
+            target,
+            start: a,
+            end: b,
+        }
+    }
 }
 
 /// Canonical geometric shape or text content representation.
@@ -88,6 +128,9 @@ pub enum ShapeKind {
         font_size: f64,
         line_height: f64,
         letter_spacing: f64,
+        /// Text-on-path attachment; `None` flows inside bounds as before.
+        #[serde(default)]
+        on_path: Option<TextOnPathAttachment>,
     },
 }
 
@@ -114,6 +157,7 @@ impl DocumentObject {
             clip_mask_id: None,
             mask_mode: crate::hierarchy::MaskMode::Vector,
             shape: None,
+            modifiers: Vec::new(),
         }
     }
 
@@ -122,13 +166,17 @@ impl DocumentObject {
     /// non-square bounds do not distort (F-20). Text has no outline: returns an
     /// empty path so `ConvertToCurves` must reject it explicitly instead of
     /// silently substituting a rectangle.
+    ///
+    /// This is the editable BASE source. Readers that must see live modifiers
+    /// (render, hit-test, selection, booleans, export) use
+    /// [`Self::evaluated_path`] instead. Node editing always targets base.
     #[must_use]
     pub fn to_path(&self) -> petunia_design_geometry::GPath {
         let b = self.bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
         let rect = petunia_design_geometry::GRect::new(b[0], b[1], b[0] + b[2], b[1] + b[3]);
         match &self.shape {
             Some(ShapeKind::Rectangle { corner_radii }) => {
-                petunia_design_geometry::GPath::rect(rect, corner_radii[0], corner_radii[0])
+                petunia_design_geometry::GPath::rect_corners(rect, *corner_radii)
             }
             Some(ShapeKind::Ellipse) => {
                 let rx = b[2] / 2.0;
@@ -158,11 +206,52 @@ impl DocumentObject {
         }
     }
 
+    /// Folds the live modifier chain over the base path (09.31).
+    /// Render, hit-testing, selection, booleans, and export read this;
+    /// editing tools write base. Empty chain returns base unchanged.
+    #[must_use]
+    pub fn evaluated_path(&self) -> petunia_design_geometry::GPath {
+        crate::modifiers::evaluate_modifiers(&self.to_path(), &self.modifiers)
+    }
+
+    /// Bounds of the evaluated outline, falling back to stored base bounds.
+    #[must_use]
+    pub fn evaluated_bounds(&self) -> Option<[f64; 4]> {
+        if self.modifiers.iter().any(|m| m.enabled) {
+            self.evaluated_path()
+                .bounding_box()
+                .map(|r| [r.x0, r.y0, r.width().max(1.0), r.height().max(1.0)])
+        } else {
+            self.bounds
+        }
+    }
+
+    /// Effective opacity for export/preview: base opacity times the live
+    /// transparency mask sampled at the bounds center. Full mask rendering
+    /// stays future work; this documented approximation keeps export honest.
+    #[must_use]
+    pub fn sampled_opacity(&self) -> f64 {
+        let center = self
+            .bounds
+            .map(|[x, y, w, h]| petunia_design_geometry::GPoint::new(x + w / 2.0, y + h / 2.0))
+            .unwrap_or(petunia_design_geometry::GPoint::ORIGIN);
+        (self.opacity * crate::modifiers::evaluate_opacity_at(&self.modifiers, center))
+            .clamp(0.0, 1.0)
+    }
+
     /// Hit-tests whether a document point lies within this object's shape or bounds.
     #[must_use]
     pub fn hit_test(&self, point: petunia_design_geometry::GPoint) -> bool {
         if !self.visible {
             return false;
+        }
+        if self.modifiers.iter().any(|m| m.enabled) {
+            // Live modifiers move the outline: test the evaluated geometry.
+            let evaluated = self.evaluated_path();
+            if evaluated.is_empty() {
+                return false;
+            }
+            return evaluated.contains_point(point, 0.5);
         }
         if let Some(b) = self.bounds {
             if point.x < b[0] || point.x > b[0] + b[2] || point.y < b[1] || point.y > b[1] + b[3] {
@@ -281,4 +370,32 @@ pub enum ArrangePosition {
     Forward,
     /// Move one step toward the back. NoOp when already backmost.
     Backward,
+}
+
+#[cfg(test)]
+mod text_on_path_tests {
+    use super::*;
+
+    #[test]
+    fn attachment_orders_and_clamps() {
+        let att = TextOnPathAttachment::new(ObjectId::new(1), 0.9, 0.2);
+        assert_eq!((att.start, att.end), (0.2, 0.9));
+        let att = TextOnPathAttachment::new(ObjectId::new(1), -5.0, 99.0);
+        assert_eq!((att.start, att.end), (0.0, 1.0));
+    }
+
+    #[test]
+    fn legacy_text_without_on_path_loads() {
+        // v1 payloads predate the field: serde default keeps them readable.
+        let shape: ShapeKind = serde_json::from_value(serde_json::json!({
+            "kind": "Text",
+            "content": "Hi",
+            "font_family": "Inter",
+            "font_size": 14.0,
+            "line_height": 1.3,
+            "letter_spacing": 0.0,
+        }))
+        .expect("legacy text loads");
+        assert!(matches!(shape, ShapeKind::Text { on_path: None, .. }));
+    }
 }

@@ -185,14 +185,29 @@ fn export_object(
         .map(|f| f.opacity)
         .or_else(|| eff.primary_stroke().map(|s| s.opacity))
         .unwrap_or(1.0);
-    let total_opacity = (eff.opacity * entry_opacity).clamp(0.0, 1.0);
+    let total_opacity = (obj.sampled_opacity() * entry_opacity).clamp(0.0, 1.0);
     if total_opacity <= 0.0 {
         return;
     }
 
     // Geometry: canonical outline; legacy grid fallback when unbounded so
     // old headless fixtures keep exporting (F-13).
-    let outline = obj.to_path();
+    let outline = obj.evaluated_path();
+    if matches!(
+        &obj.shape,
+        Some(petunia_design_document::ShapeKind::Text {
+            on_path: Some(_),
+            ..
+        })
+    ) {
+        report.degradations.push(DegradationItem {
+            code: "TEXT_ON_PATH_FLATTENED".to_string(),
+            description: format!(
+                "{label} text-on-path exported along its span bounds (curved glyph layout requires font shaping)"
+            ),
+            grade: FidelityGrade::Approximate,
+        });
+    }
     let mut pb = PathBuilder::new();
     let mut has_geometry = false;
     for verb in &outline.verbs {
@@ -387,7 +402,7 @@ fn export_object(
     let mut clip_guard = false;
     if let Some(mask_id) = obj.clip_mask_id {
         if let Some(mask) = surface.objects().iter().find(|o| o.id == mask_id) {
-            let mask_verbs = mask.to_path().verbs;
+            let mask_verbs = mask.evaluated_path().verbs;
             if mask_verbs.is_empty() {
                 report.degradations.push(DegradationItem {
                     code: "CLIP_MASK_UNOUTLINABLE".to_string(),

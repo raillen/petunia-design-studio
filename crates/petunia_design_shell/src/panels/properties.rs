@@ -195,7 +195,7 @@ fn combined_selection_bounds(
     let mut max_y = f64::NEG_INFINITY;
     let mut any = false;
     for id in ids {
-        if let Some(b) = session.find_object(*id).and_then(|o| o.bounds) {
+        if let Some(b) = session.find_object(*id).and_then(|o| o.evaluated_bounds()) {
             any = true;
             min_x = min_x.min(b[0]);
             min_y = min_y.min(b[1]);

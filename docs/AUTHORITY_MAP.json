@@ -452,6 +452,14 @@
     {
       "path": "docs/Aubrieta Design 3db9bb7d023f811192aff85b2efa8698.md",
       "role": "canonical"
+    },
+    {
+      "path": "petunia-design-studio/09 31 — Non-Destructive Editing EffectChain ADR.md",
+      "role": "canonical"
+    },
+    {
+      "path": "petunia-design-studio/09 31 — Edição Não-Destrutiva EffectChain ADR pt-BR.md",
+      "role": "canonical"
     }
   ],
   "current_version": "0.6.0"

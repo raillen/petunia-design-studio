@@ -84,6 +84,8 @@ pub struct SnapEngine {
     active_snap_x: Option<f64>,
     /// Previously active snap Y candidate for hysteresis.
     active_snap_y: Option<f64>,
+    /// Last evaluated snap guides (for visual overlay without redundant queries).
+    active_guides: Vec<SnapGuideVisual>,
 }
 
 impl SnapEngine {
@@ -93,10 +95,17 @@ impl SnapEngine {
         Self::default()
     }
 
-    /// Clears any hysteresis state (e.g. at the start or end of a gesture).
+    /// Clears any hysteresis state and active guides (e.g. at gesture start/end).
     pub fn reset_hysteresis(&mut self) {
         self.active_snap_x = None;
         self.active_snap_y = None;
+        self.active_guides.clear();
+    }
+
+    /// Currently active visual snap guides.
+    #[must_use]
+    pub fn active_guides(&self) -> &[SnapGuideVisual] {
+        &self.active_guides
     }
 
     /// Evaluates snapping for a moving point against candidates.
@@ -240,6 +249,8 @@ impl SnapEngine {
                 label: Some(format!("{:.1} pt", best_y)),
             });
         }
+
+        self.active_guides = guides.clone();
 
         SnapResult {
             point: GPoint::new(best_x, best_y),
