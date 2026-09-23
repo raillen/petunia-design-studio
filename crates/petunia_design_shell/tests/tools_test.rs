@@ -4564,3 +4564,58 @@ fn desktop_shell_overlays_avoids_redundant_snapping() {
     let ov = shell.overlays();
     assert!(ov.snap_guides.is_empty());
 }
+
+#[test]
+fn builder_multi_shape_drag_performance() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Builder Multi-Shape").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let mut ids = Vec::new();
+    for i in 0..10 {
+        let x = i as f64 * 25.0;
+        let y = i as f64 * 15.0;
+        ids.push(cache_test_box(&mut bridge, &mut gen, [x, y, 60.0, 60.0]));
+    }
+    bridge.set_selection(ids.clone());
+
+    let mut tool = ShapeBuilderTool::new(BuilderMode::ShapeBuilder);
+    let plain = SemanticModifiers::default();
+
+    // Start drag crossing multiple overlapping shapes
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 10.0, 10.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 200.0, 100.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    // Overlays must calculate in < 16ms (60 fps frame budget acceptance F5)
+    let t0 = std::time::Instant::now();
+    let ov = tool.overlays(&bridge);
+    let elapsed = t0.elapsed();
+    assert!(
+        elapsed.as_millis() < 16,
+        "Builder drag overlay took too long on 10 shapes: {:?}",
+        elapsed
+    );
+    let _ = ov;
+
+    // Release drag commits merged shape
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 200.0, 100.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+}

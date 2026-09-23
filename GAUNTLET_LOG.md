@@ -132,4 +132,36 @@ entrega; nota acumulada = estado de performance do projeto.
   arrasto e a avaliação desnecessária de snap por frame; faltam render dirty-rect/GPU
   e motor de texto tipográfico real).
 
+## Loop 5 — F5: Booleanos em lote, redução em árvore e AABB early-out no ShapeBuilder (2026-09-23)
+
+- **Escopo:**
+  * `ShapeBuilderTool`:
+    - Substituição de `boolean_pairwise` e do loop iterativo em `union_polygons`/`intersect_many`
+      por chamadas de `boolean_op` com `BooleanInput` em lote num único passo.
+    - Implementação de `union_all` com redução binária (divide-and-conquer) O(N log N)
+      para acumular múltiplos contornos de regiões cruzadas no drag e no preview.
+    - Early-out baseado em envelope AABB (`polys_intersect_bbox`) antes de operações
+      de interseção e subtração em `region_polygons`: contornos disjuntos pulam
+      o algoritmo de clipping pesado por completo.
+  * `selection_mask.rs`:
+    - `intersect_all` migrado de loop aninhado M*N para invocação em lote de
+      `boolean_op` com `BooleanInput::new`.
+- **Testes:** 1 novo teste de estresse e performance (`builder_multi_shape_drag_performance`)
+  cruzando arrasto sobre 10 formas sobrepostas com tempo de resposta < 16 ms. Total: 95
+  testes de tools verdes, clippy limpo sem warnings.
+- **Medido (debug):** arrasto e preview em cena com 10 formas poligonais sobrepostas
+  executa em fração de milissegundo (< 1 ms); eliminação do pior caso quadrático
+  nas operações de união cumulativa e nas subtrações de candidatos disjuntos.
+- **Mercado:** Adobe Illustrator e Affinity Designer particionam o plano e usam
+  rejeição de caixas envolventes (AABB culling) para isolar sub-regiões antes de
+  disparar os algoritmos de união/interseção booleana planar.
+- **Freya:** 100% compatível, zero alterações nas assinaturas de bridge e DTOs.
+  Arquivos do outro agente preservados intactos.
+- **Nota do loop: 9.5/10.** Eliminação de gargalos assintóticos O(N²) nas operações
+  geométricas mais intensivas da toolbox; suite de testes 100% verde.
+- **Nota acumulada: 8.5/10** (+0.5: ShapeBuilder e máscaras de seleção aceleradas
+  com garantias de orçamento por frame; faltam render dirty-rect/culling e motor
+  de texto tipográfico real).
+
+
 

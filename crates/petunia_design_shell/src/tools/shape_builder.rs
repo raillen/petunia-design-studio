@@ -182,35 +182,20 @@ impl ShapeBuilderTool {
             }
             return Ok(ChangeSet::empty());
         }
+        let mut regions: Vec<Vec<GPoint>> = Vec::new();
+        for signature in &signatures {
+            regions.extend(region_polygons(bridge, signature));
+        }
+        let merged = union_all(&regions);
+        let covering: Vec<ObjectId> = {
+            let mut all = signatures.concat();
+            all.sort();
+            all.dedup();
+            all
+        };
         if subtract {
-            // Union of crossed regions, carved from every covering object.
-            let mut merged: Vec<Vec<GPoint>> = Vec::new();
-            for signature in &signatures {
-                for poly in region_polygons(bridge, signature) {
-                    merged = union_polygons(&merged, &[poly]);
-                }
-            }
-            let covering: Vec<ObjectId> = {
-                let mut all = signatures.concat();
-                all.sort();
-                all.dedup();
-                all
-            };
             subtract_region(bridge, &covering, &merged)
         } else {
-            // Union of crossed regions into one new object.
-            let mut merged: Vec<Vec<GPoint>> = Vec::new();
-            for signature in &signatures {
-                for poly in region_polygons(bridge, signature) {
-                    merged = union_polygons(&merged, &[poly]);
-                }
-            }
-            let covering: Vec<ObjectId> = {
-                let mut all = signatures.concat();
-                all.sort();
-                all.dedup();
-                all
-            };
             create_region(bridge, &covering, &merged, self.mode)
         }
     }
@@ -277,10 +262,22 @@ fn region_polygons(bridge: &PetuniaDesignGuiBridge, covering: &[ObjectId]) -> Ve
     let mut acc: Option<Vec<Vec<GPoint>>> = None;
     for id in covering {
         let polys = outlines(*id);
+        if polys.is_empty() {
+            return Vec::new();
+        }
         acc = Some(match acc {
             None => polys,
-            Some(current) => intersect_many(&current, &polys),
+            Some(current) => {
+                // Bounding box early out (F5): disjoint bounding boxes cannot intersect
+                if !polys_intersect_bbox(&current, &polys) {
+                    return Vec::new();
+                }
+                intersect_many(&current, &polys)
+            }
         });
+        if acc.as_ref().is_some_and(|a| a.is_empty()) {
+            return Vec::new();
+        }
     }
     let Some(mut acc) = acc else {
         return Vec::new();
@@ -292,6 +289,10 @@ fn region_polygons(bridge: &PetuniaDesignGuiBridge, covering: &[ObjectId]) -> Ve
         }
         let other = outlines(id);
         if other.is_empty() {
+            continue;
+        }
+        // Bounding box early out (F5): disjoint other cannot carve anything
+        if !polys_intersect_bbox(&acc, &other) {
             continue;
         }
         acc = difference_many(&acc, &other);
@@ -318,12 +319,11 @@ fn drag_preview(bridge: &PetuniaDesignGuiBridge, p0: GPoint, p1: GPoint) -> Opti
             signatures.push(covering);
         }
     }
-    let mut merged: Vec<Vec<GPoint>> = Vec::new();
+    let mut regions: Vec<Vec<GPoint>> = Vec::new();
     for signature in &signatures {
-        for poly in region_polygons(bridge, signature) {
-            merged = union_polygons(&merged, &[poly]);
-        }
+        regions.extend(region_polygons(bridge, signature));
     }
+    let merged = union_all(&regions);
     let flat: Vec<GPoint> = merged.into_iter().flatten().collect();
     if flat.len() >= 2 {
         Some(flat)
@@ -456,20 +456,83 @@ fn subtract_region(
     bridge.submit_all("Shape builder subtract", cmds)
 }
 
-/// Intersects two polygon sets pairwise, keeping non-degenerate results.
+/// Intersects two polygon sets in ONE overlay call (F5).
 fn intersect_many(a: &[Vec<GPoint>], b: &[Vec<GPoint>]) -> Vec<Vec<GPoint>> {
-    boolean_pairwise(a, b, petunia_design_geometry::BooleanOp::Intersection)
+    use petunia_design_geometry::{BooleanInput, boolean_op};
+    if a.is_empty() || b.is_empty() {
+        return Vec::new();
+    }
+    boolean_op(
+        &BooleanInput::new(a.to_vec()),
+        &BooleanInput::new(b.to_vec()),
+        petunia_design_geometry::BooleanOp::Intersection,
+    )
+    .into_iter()
+    .filter(|contour| contour.len() >= 3 && poly_area(contour).abs() >= 1e-6)
+    .collect()
 }
 
-/// Unions two polygon sets (empty side is the identity).
+/// Unions two polygon sets in ONE overlay call (F5).
 fn union_polygons(a: &[Vec<GPoint>], b: &[Vec<GPoint>]) -> Vec<Vec<GPoint>> {
+    use petunia_design_geometry::{BooleanInput, boolean_op};
     if a.is_empty() {
         return b.to_vec();
     }
     if b.is_empty() {
         return a.to_vec();
     }
-    boolean_pairwise(a, b, petunia_design_geometry::BooleanOp::Union)
+    boolean_op(
+        &BooleanInput::new(a.to_vec()),
+        &BooleanInput::new(b.to_vec()),
+        petunia_design_geometry::BooleanOp::Union,
+    )
+    .into_iter()
+    .filter(|contour| contour.len() >= 3 && poly_area(contour).abs() >= 1e-6)
+    .collect()
+}
+
+/// Unions multiple polygon sets using divide-and-conquer tree reduction (F5).
+fn union_all(polys: &[Vec<GPoint>]) -> Vec<Vec<GPoint>> {
+    if polys.is_empty() {
+        return Vec::new();
+    }
+    if polys.len() == 1 {
+        return polys.to_vec();
+    }
+    let half = polys.len() / 2;
+    let (left, right) = polys.split_at(half);
+    union_polygons(&union_all(left), &union_all(right))
+}
+
+/// True when bounding boxes of two polygon sets overlap (F5 early-out).
+fn polys_intersect_bbox(a: &[Vec<GPoint>], b: &[Vec<GPoint>]) -> bool {
+    let (Some(ba), Some(bb)) = (polys_bbox(a), polys_bbox(b)) else {
+        return false;
+    };
+    ba[0] < bb[2] && ba[2] > bb[0] && ba[1] < bb[3] && ba[3] > bb[1]
+}
+
+/// Computes envelope `[x0, y0, x1, y1]` over polygon set (F5 early-out).
+fn polys_bbox(polys: &[Vec<GPoint>]) -> Option<[f64; 4]> {
+    let mut min_x = f64::MAX;
+    let mut min_y = f64::MAX;
+    let mut max_x = f64::MIN;
+    let mut max_y = f64::MIN;
+    let mut has_points = false;
+    for poly in polys {
+        for p in poly {
+            has_points = true;
+            min_x = min_x.min(p.x);
+            min_y = min_y.min(p.y);
+            max_x = max_x.max(p.x);
+            max_y = max_y.max(p.y);
+        }
+    }
+    if has_points {
+        Some([min_x, min_y, max_x, max_y])
+    } else {
+        None
+    }
 }
 
 /// Subtracts polygon set `b` from `a` in ONE overlay call.
@@ -491,30 +554,6 @@ fn difference_many(a: &[Vec<GPoint>], b: &[Vec<GPoint>]) -> Vec<Vec<GPoint>> {
     .into_iter()
     .filter(|contour| contour.len() >= 3 && poly_area(contour).abs() >= 1e-6)
     .collect()
-}
-
-/// Applies one boolean op to every contour pair, dropping degenerates.
-fn boolean_pairwise(
-    a: &[Vec<GPoint>],
-    b: &[Vec<GPoint>],
-    op: petunia_design_geometry::BooleanOp,
-) -> Vec<Vec<GPoint>> {
-    use petunia_design_geometry::{boolean_op, BooleanInput};
-    let mut out = Vec::new();
-    for subject in a {
-        for clip in b {
-            for contour in boolean_op(
-                &BooleanInput::single(subject.clone()),
-                &BooleanInput::single(clip.clone()),
-                op,
-            ) {
-                if contour.len() >= 3 && poly_area(&contour).abs() >= 1e-6 {
-                    out.push(contour);
-                }
-            }
-        }
-    }
-    out
 }
 
 /// Flood scope: the selection when non-empty, else every visible

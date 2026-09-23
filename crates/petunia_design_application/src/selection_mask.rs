@@ -250,26 +250,19 @@ fn difference_all(a: &[Vec<GPoint>], b: &[Vec<GPoint>]) -> Vec<Vec<GPoint>> {
     .collect()
 }
 
-/// Intersects two contour sets pairwise (distributive, hole-safe).
+/// Intersects two contour sets in one boolean call (distributive, hole-safe, F5).
 fn intersect_all(a: &[Vec<GPoint>], b: &[Vec<GPoint>]) -> Vec<Vec<GPoint>> {
     if a.is_empty() || b.is_empty() {
         return Vec::new();
     }
-    let mut out = Vec::new();
-    for subject in a {
-        for clip in b {
-            out.extend(
-                boolean_op(
-                    &BooleanInput::single(subject.clone()),
-                    &BooleanInput::single(clip.clone()),
-                    BooleanOp::Intersection,
-                )
-                .into_iter()
-                .filter(|c| c.len() >= 3 && contour_area(c).abs() >= MIN_SELECTION_AREA),
-            );
-        }
-    }
-    out
+    boolean_op(
+        &BooleanInput::new(a.to_vec()),
+        &BooleanInput::new(b.to_vec()),
+        BooleanOp::Intersection,
+    )
+    .into_iter()
+    .filter(|c| c.len() >= 3 && contour_area(c).abs() >= MIN_SELECTION_AREA)
+    .collect()
 }
 
 /// Drops degenerate contours.
