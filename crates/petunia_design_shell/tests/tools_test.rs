@@ -4341,3 +4341,140 @@ fn cached_hit_respects_zoom_tolerance() {
     assert!(bridge.cached_hit(id, GPoint::new(20.0, 50.0), 0.05));
     assert!(!bridge.cached_hit(id, GPoint::new(500.0, 500.0), 4.0));
 }
+
+fn spatial_test_scene(
+    bridge: &mut PetuniaDesignGuiBridge,
+    gen: &mut IdGenerator,
+    count: usize,
+) -> Vec<petunia_design_foundation::ObjectId> {
+    let mut ids = Vec::new();
+    for i in 0..count {
+        let x = (i % 20) as f64 * 60.0;
+        let y = (i / 20) as f64 * 60.0;
+        ids.push(cache_test_box(bridge, gen, [x, y, 50.0, 50.0]));
+    }
+    ids
+}
+
+#[test]
+fn spatial_point_query_returns_topmost_first() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Spatial Point").expect("doc");
+    let mut gen = IdGenerator::new();
+    let a = cache_test_box(&mut bridge, &mut gen, [0.0, 0.0, 100.0, 100.0]);
+    let b = cache_test_box(&mut bridge, &mut gen, [50.0, 50.0, 100.0, 100.0]);
+    let session = bridge.session().unwrap();
+
+    // Overlap zone: later (topmost) object first.
+    assert_eq!(
+        session.spatial_candidates_point(GPoint::new(75.0, 75.0), 0.0),
+        vec![b, a]
+    );
+    // Outside everything: empty.
+    assert!(session
+        .spatial_candidates_point(GPoint::new(500.0, 500.0), 0.0)
+        .is_empty());
+    // Tolerance expands the query box: (102, 60) is 2pt past A's edge.
+    assert_eq!(
+        session.spatial_candidates_point(GPoint::new(102.0, 60.0), 5.0),
+        vec![b, a]
+    );
+    assert!(session
+        .spatial_candidates_point(GPoint::new(102.0, 60.0), 1.0)
+        .eq(&vec![b]));
+    assert_eq!(session.spatial_len(), 2);
+}
+
+#[test]
+fn spatial_rect_query_matches_brute_force() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Spatial Rect").expect("doc");
+    let mut gen = IdGenerator::new();
+    let ids = spatial_test_scene(&mut bridge, &mut gen, 60);
+    let session = bridge.session().unwrap();
+
+    let rect = [0.0, 0.0, 200.0, 200.0];
+    let mut indexed = session.spatial_candidates_rect(rect);
+    indexed.sort();
+    let mut brute: Vec<_> = ids
+        .iter()
+        .filter(|id| {
+            session
+                .find_object(**id)
+                .and_then(|o| o.bounds)
+                .is_some_and(|[x, y, w, h]| {
+                    x < rect[2] && x + w > rect[0] && y < rect[3] && y + h > rect[1]
+                })
+        })
+        .copied()
+        .collect();
+    brute.sort();
+    assert_eq!(indexed, brute);
+    assert_eq!(session.spatial_len(), 60);
+}
+
+#[test]
+fn spatial_index_rebuilds_on_mutation() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Spatial Rebuild").expect("doc");
+    let mut gen = IdGenerator::new();
+    let id = cache_test_box(&mut bridge, &mut gen, [0.0, 0.0, 50.0, 50.0]);
+    assert_eq!(
+        bridge.session().unwrap().spatial_candidates_point(GPoint::new(25.0, 25.0), 0.0),
+        vec![id]
+    );
+
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some([300.0, 300.0, 50.0, 50.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    let session = bridge.session().unwrap();
+    assert!(session
+        .spatial_candidates_point(GPoint::new(25.0, 25.0), 0.0)
+        .is_empty());
+    assert_eq!(
+        session.spatial_candidates_point(GPoint::new(325.0, 325.0), 0.0),
+        vec![id]
+    );
+}
+
+#[test]
+fn spatial_tool_integration_and_performance() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Spatial Tools").expect("doc");
+    let mut gen = IdGenerator::new();
+    let ids = spatial_test_scene(&mut bridge, &mut gen, 200);
+
+    // Warm up the spatial index
+    let session = bridge.session().unwrap();
+    assert_eq!(session.spatial_len(), 200);
+
+    // Candidate lookup on 200 objects: must take < 50µs (F3 acceptance)
+    let t0 = std::time::Instant::now();
+    for _ in 0..10 {
+        let _ = session.spatial_candidates_point(GPoint::new(125.0, 65.0), 4.0);
+    }
+    let elapsed = t0.elapsed();
+    assert!(
+        elapsed.as_millis() < 50,
+        "Spatial query took too long: {:?}",
+        elapsed
+    );
+
+    // Select tool click hit-test uses spatial candidates
+    let mut select = SelectTool::new();
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let ev = NormalizedPointerEvent::new(
+        PointerPhase::Down,
+        PointerButton::Primary,
+        GPoint::new(10.0, 10.0),
+        GPoint::new(10.0, 10.0),
+        SemanticModifiers::default(),
+    );
+    let _ = select.on_pointer_event(&ev, &mut bridge, &camera, &mut snap);
+    assert_eq!(bridge.selection().selected_ids, vec![ids[0]]);
+}

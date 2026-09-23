@@ -217,16 +217,22 @@ fn hit_targets_along(
     let Some(session) = bridge.session() else {
         return Vec::new();
     };
-    let Some(surface_id) = session.active_surface() else {
-        return Vec::new();
-    };
-    let Ok(surface) = session.surface(surface_id) else {
-        return Vec::new();
-    };
+    // Candidates come from the active-surface spatial index (F3).
     let length = p0.distance_to(p1);
     let steps = ((length / 2.0).ceil() as usize).clamp(1, 64);
+    // Spatial prefilter (F3): segment bbox over evaluated bounds, then the
+    // exact sampled test only on candidates.
+    let seg = [
+        p0.x.min(p1.x) - tol,
+        p0.y.min(p1.y) - tol,
+        p0.x.max(p1.x) + tol,
+        p0.y.max(p1.y) + tol,
+    ];
     let mut targets = Vec::new();
-    for obj in surface.objects().iter().rev() {
+    for id in session.spatial_candidates_rect(seg) {
+        let Some(obj) = session.find_object(id) else {
+            continue;
+        };
         if !obj.visible || obj.locked || !is_sliceable(&obj.shape) {
             continue;
         }
@@ -353,16 +359,15 @@ fn push_cut_commands(
 /// Topmost sliceable object under `pt`, if any.
 fn hit_object_top(pt: GPoint, tol: f64, bridge: &PetuniaDesignGuiBridge) -> Option<ObjectId> {
     let session = bridge.session()?;
-    let surface_id = session.active_surface()?;
-    let surface = session.surface(surface_id).ok()?;
-    surface
-        .objects()
-        .iter()
-        .rev()
-        .find(|obj| {
-            obj.visible && !obj.locked && is_sliceable(&obj.shape) && near_object(obj, pt, tol)
-        })
-        .map(|obj| obj.id)
+    for id in session.spatial_candidates_point(pt, tol) {
+        let Some(obj) = session.find_object(id) else {
+            continue;
+        };
+        if obj.visible && !obj.locked && is_sliceable(&obj.shape) && near_object(obj, pt, tol) {
+            return Some(id);
+        }
+    }
+    None
 }
 
 /// True on fill hit or within `tol` of the evaluated outline.

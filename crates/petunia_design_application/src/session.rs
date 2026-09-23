@@ -88,6 +88,8 @@ pub struct DocumentSession {
     history: History,
     /// Viewport/window-shared selection session.
     pub selection: SelectionSession,
+    /// R-tree over evaluated bounds, rebuilt lazily per revision (F3).
+    pub spatial: std::cell::RefCell<crate::spatial_index::SpatialIndex>,
     /// Memoized evaluated geometry, keyed by `current_revision` (F1).
     /// Interior-mutable so `&self` readers share it without signature churn.
     pub geo_cache: std::cell::RefCell<crate::geo_cache::GeoCache>,
@@ -136,6 +138,7 @@ impl DocumentSession {
             document,
             history: History::new(0),
             selection: SelectionSession::new(),
+            spatial: std::cell::RefCell::new(crate::spatial_index::SpatialIndex::new()),
             geo_cache: std::cell::RefCell::new(crate::geo_cache::GeoCache::new()),
             raster_selection: crate::selection_mask::RasterSelection::new(),
             view: crate::view_camera::ViewState::default(),
@@ -168,6 +171,7 @@ impl DocumentSession {
             document,
             history: History::new(0),
             selection: SelectionSession::new(),
+            spatial: std::cell::RefCell::new(crate::spatial_index::SpatialIndex::new()),
             geo_cache: std::cell::RefCell::new(crate::geo_cache::GeoCache::new()),
             raster_selection: crate::selection_mask::RasterSelection::new(),
             view: crate::view_camera::ViewState::default(),

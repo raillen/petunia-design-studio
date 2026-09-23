@@ -660,25 +660,30 @@ impl SelectTool {
     ) -> Vec<ObjectId> {
         let mut matched = Vec::new();
         if let Some(session) = bridge.session() {
-            if let Some(surface_id) = session.active_surface() {
-                if let Ok(surface) = session.surface(surface_id) {
-                    for obj in surface.objects() {
-                        if obj.visible && !obj.locked {
-                            if let Some([ox, oy, ow, oh]) = obj.bounds {
-                                let hit = if require_contained {
-                                    ox >= doc_marquee.x0
-                                        && oy >= doc_marquee.y0
-                                        && ox + ow <= doc_marquee.x1
-                                        && oy + oh <= doc_marquee.y1
-                                } else {
-                                    doc_marquee
-                                        .intersection(GRect::new(ox, oy, ox + ow, oy + oh))
-                                        .is_some()
-                                };
-                                if hit {
-                                    matched.push(obj.id);
-                                }
-                            }
+            let rect = [
+                doc_marquee.x0.min(doc_marquee.x1),
+                doc_marquee.y0.min(doc_marquee.y1),
+                doc_marquee.x0.max(doc_marquee.x1),
+                doc_marquee.y0.max(doc_marquee.y1),
+            ];
+            for id in session.spatial_candidates_rect(rect) {
+                let Some(obj) = session.find_object(id) else {
+                    continue;
+                };
+                if obj.visible && !obj.locked {
+                    if let Some([ox, oy, ow, oh]) = obj.bounds {
+                        let hit = if require_contained {
+                            ox >= doc_marquee.x0
+                                && oy >= doc_marquee.y0
+                                && ox + ow <= doc_marquee.x1
+                                && oy + oh <= doc_marquee.y1
+                        } else {
+                            doc_marquee
+                                .intersection(GRect::new(ox, oy, ox + ow, oy + oh))
+                                .is_some()
+                        };
+                        if hit {
+                            matched.push(obj.id);
                         }
                     }
                 }
@@ -696,16 +701,27 @@ impl SelectTool {
     ) -> Vec<ObjectId> {
         let mut matched = Vec::new();
         if let Some(session) = bridge.session() {
-            if let Some(surface_id) = session.active_surface() {
-                if let Ok(surface) = session.surface(surface_id) {
-                    for obj in surface.objects() {
-                        if obj.visible && !obj.locked {
-                            if let Some([ox, oy, ow, oh]) = obj.bounds {
-                                if lasso_hits_rect(polygon_doc, [ox, oy, ow, oh], require_contained)
-                                {
-                                    matched.push(obj.id);
-                                }
-                            }
+            if polygon_doc.is_empty() {
+                return matched;
+            }
+            let mut min_x = polygon_doc[0].x;
+            let mut max_x = polygon_doc[0].x;
+            let mut min_y = polygon_doc[0].y;
+            let mut max_y = polygon_doc[0].y;
+            for pt in &polygon_doc[1..] {
+                min_x = min_x.min(pt.x);
+                max_x = max_x.max(pt.x);
+                min_y = min_y.min(pt.y);
+                max_y = max_y.max(pt.y);
+            }
+            for id in session.spatial_candidates_rect([min_x, min_y, max_x, max_y]) {
+                let Some(obj) = session.find_object(id) else {
+                    continue;
+                };
+                if obj.visible && !obj.locked {
+                    if let Some([ox, oy, ow, oh]) = obj.bounds {
+                        if lasso_hits_rect(polygon_doc, [ox, oy, ow, oh], require_contained) {
+                            matched.push(obj.id);
                         }
                     }
                 }
@@ -722,28 +738,18 @@ impl SelectTool {
         camera: &ViewportCamera,
     ) -> Option<ObjectId> {
         let session = bridge.session()?;
-        let surface_id = session.active_surface()?;
-        let surface = session.surface(surface_id).ok()?;
-
         let tolerance = 4.0 / camera.zoom;
+        let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
 
-        // Search in reverse z-order (topmost first): bbox pre-check
-        // with tolerance, then exact shape hit-test (10.1).
-        // The exact test runs on the memoized evaluated outline (F1).
-        for obj in surface.objects().iter().rev() {
-            if obj.visible && !obj.locked {
-                if let Some([x, y, w, h]) = obj.bounds {
-                    let rect = GRect::new(
-                        x - tolerance,
-                        y - tolerance,
-                        x + w + tolerance,
-                        y + h + tolerance,
-                    );
-                    let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
-                    if rect.contains(doc_pos) && bridge.cached_hit(obj.id, doc_pos, exact_tol) {
-                        return Some(obj.id);
-                    }
-                }
+        // Spatial prefilter (F3) over evaluated bounds, topmost-first, then
+        // the exact test on the memoized outline (F1 + F2). Unlike the old
+        // base-bounds pre-check, warped/inset outlines hit where drawn (09.31).
+        for id in session.spatial_candidates_point(doc_pos, tolerance) {
+            let Some(obj) = session.find_object(id) else {
+                continue;
+            };
+            if obj.visible && !obj.locked && bridge.cached_hit(id, doc_pos, exact_tol) {
+                return Some(id);
             }
         }
         None

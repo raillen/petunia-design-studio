@@ -76,25 +76,18 @@ impl PickerTool {
             None => return Ok(ChangeSet::empty()),
         };
 
-        let active_surface_id = match session.active_surface() {
-            Some(id) => id,
-            None => return Ok(ChangeSet::empty()),
-        };
-
-        let surface = match session.surface(active_surface_id) {
-            Ok(s) => s,
-            Err(_) => return Ok(ChangeSet::empty()),
-        };
-
-        // Hit-test in reverse draw order (topmost first), skipping locked.
-        let hit_object = surface
-            .objects()
-            .iter()
-            .rev()
-            .find(|obj| obj.visible && !obj.locked && obj.hit_test(pt))
-            .cloned();
-
-        let hit = match hit_object {
+        // Hit-test in reverse draw order (topmost first), skipping locked (F3 spatial).
+        let hit = match session
+            .spatial_candidates_point(pt, 0.0)
+            .into_iter()
+            .find_map(|id| {
+                let obj = session.find_object(id)?;
+                if obj.visible && !obj.locked && obj.hit_test(pt) {
+                    Some(obj.clone())
+                } else {
+                    None
+                }
+            }) {
             Some(obj) => obj,
             None => return Ok(ChangeSet::empty()),
         };

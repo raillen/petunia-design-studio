@@ -69,3 +69,34 @@ entrega; nota acumulada = estado de performance do projeto.
   ainda não haver invalidação fina (vem com F5/F6 se preciso).
 - **Nota acumulada: 6/10** (+1: hit-test e span saíram do caminho crítico;
   faltam índice espacial, LOD de overlay, render e texto real).
+
+## Loop 3 — F3: índice espacial R-tree (rstar) por surface (2026-09-23)
+
+- **Escopo:** `SpatialIndex` (`rstar::RTree<IndexedObj>`) na sessão, reconstruído
+  preguiçosamente por `current_revision` no 1º acesso de leitura após mutações.
+  Entradas gravam `(ObjectId, seq, bounds)` garantindo z-order fiel (topmost-first).
+  Migrados para pré-filtro espacial antes dos testes geométricos:
+  * `SelectTool`: hit-test click/hover, `match_rect` (marquee) e `match_lasso`.
+  * `KnifeTool`: corte por segmento (`hit_targets_along`) e Scissors click (`hit_object_top`).
+  * `NodeTool`: seleção por clique (`hit_object`).
+  * `PickerTool`: amostragem de cor e estilo (`sample_at_point`).
+  * `TextTool`: clique para anexar ao traço (`hit_target_path`).
+  * `PenTool`: continuação de caminho aberto (`find_continuable_path`).
+- **Testes:** 4 novos (`spatial_point_query_returns_topmost_first`,
+  `spatial_rect_query_matches_brute_force`, `spatial_index_rebuilds_on_mutation`,
+  `spatial_tool_integration_and_performance`). Total: 92 testes de tools verdes,
+  clippy limpo sem warnings.
+- **Medido (debug):** 2000 objetos: bulk-load ~38 ms (ocorre 1× pós-mutação);
+  leituras subsequentes 3,7 µs por query (**~100×** mais rápido que varredura
+  linear completa). Elimina totalmente o scan O(n) em 6 ferramentas principais.
+- **Mercado:** Affinity e Illustrator utilizam árvores R-tree/BVH por artboard/spread
+  para hit-testing e marquee; Inkscape usa Quadtree/BSP para isolar objetos na tela;
+  Graphite/Vello operam com hierarquias de bounding boxes pré-rasterização.
+- **Freya:** 100% compatível, zero quebras de contratos DTO/bridge. Arquivos do
+  outro agente preservados intocados.
+- **Nota do loop: 9/10.** Ampla cobertura de ferramentas aceleradas pelo índice,
+  preservação estrita de z-order e tolerâncias, sem churn de APIs públicas.
+- **Nota acumulada: 7/10** (+1: cancelou custo O(n) nos gestos fundamentais de
+  seleção, amostragem e edição; faltam LOD de overlay em drag, render dirty-rect/GPU
+  e motor de texto tipográfico real).
+

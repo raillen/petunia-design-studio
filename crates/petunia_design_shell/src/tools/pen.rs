@@ -544,10 +544,12 @@ fn find_open_endpoint(
     threshold_px: f64,
 ) -> Option<(ObjectId, Vec<PenAnchor>, bool)> {
     let session = bridge.session()?;
-    let surface_id = session.active_surface()?;
-    let surface = session.surface(surface_id).ok()?;
-    // Topmost first.
-    for obj in surface.objects().iter().rev() {
+    let tol = threshold_px / camera.zoom.max(0.1);
+    // Topmost first (F3 spatial).
+    for id in session.spatial_candidates_point(pt, tol) {
+        let Some(obj) = session.find_object(id) else {
+            continue;
+        };
         if !obj.visible || obj.locked {
             continue;
         }

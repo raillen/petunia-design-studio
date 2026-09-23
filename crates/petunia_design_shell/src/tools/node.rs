@@ -1218,16 +1218,12 @@ fn prev_endpoint_idx(
 /// Topmost visible object hit by bounds (fallback when no node hits).
 fn hit_object(pt: GPoint, bridge: &PetuniaDesignGuiBridge) -> Option<ObjectId> {
     let session = bridge.session()?;
-    let surface_id = session.active_surface()?;
-    let surface = session.surface(surface_id).ok()?;
-    for obj in surface.objects().iter().rev() {
-        if !obj.visible || obj.locked {
+    for id in session.spatial_candidates_point(pt, 0.0) {
+        let Some(obj) = session.find_object(id) else {
             continue;
-        }
-        if let Some([x, y, w, h]) = obj.bounds {
-            if pt.x >= x && pt.x <= x + w && pt.y >= y && pt.y <= y + h && obj.hit_test(pt) {
-                return Some(obj.id);
-            }
+        };
+        if obj.visible && !obj.locked && obj.hit_test(pt) {
+            return Some(id);
         }
     }
     None

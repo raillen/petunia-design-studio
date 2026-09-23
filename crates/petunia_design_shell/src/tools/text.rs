@@ -500,10 +500,12 @@ fn hit_path(
     camera: &ViewportCamera,
 ) -> Option<(ObjectId, f64)> {
     let session = bridge.session()?;
-    let surface_id = session.active_surface()?;
-    let surface = session.surface(surface_id).ok()?;
     let tol = 8.0 / camera.zoom.max(0.1);
-    for obj in surface.objects().iter().rev() {
+    let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
+    for id in session.spatial_candidates_point(pt, tol) {
+        let Some(obj) = session.find_object(id) else {
+            continue;
+        };
         if !obj.visible || obj.locked {
             continue;
         }
@@ -512,7 +514,6 @@ fn hit_path(
         }
         // Fill hit or outline proximity (open strokes have no interior).
         // Outline queries run on the memoized evaluated path (F1 + F2).
-        let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
         let near = obj.hit_test(pt)
             || bridge
                 .cached_polygons(obj.id, exact_tol)

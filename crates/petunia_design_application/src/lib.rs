@@ -16,6 +16,7 @@ mod history;
 pub mod hierarchy_service;
 pub mod interaction;
 pub mod geo_cache;
+pub mod spatial_index;
 pub mod ports;
 pub mod selection_mask;
 pub mod session;
