@@ -240,7 +240,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.surface.shell.overflow",
         kind: SurfaceKind::Shell,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.shell.overflow",
         action: None,
         shortcut: None,

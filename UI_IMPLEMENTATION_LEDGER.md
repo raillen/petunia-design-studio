@@ -94,7 +94,7 @@ Ordem vertical do `MainWindow` (`app.slint`, `VerticalLayout` raiz):
 | `ptnd.surface.shell.zoom_out` / `zoom_readout` / `zoom_in` / `fit` / `divider` | §1, cluster central | Afastar, **caixa de níveis de zoom**, aproximar, ajustar, divisor | ✅ | O readout é um **controle**: abre o popup com os mesmos níveis do submenu `View ▸ Níveis de zoom` |
 | `ptnd.surface.shell.command_palette` | overlay §6 | `Ctrl+K`, oferta = itens de menu habilitados | ✅ | 🌐 placeholder literal |
 | `ptnd.surface.shell.export` | §3, direita | Abre o diálogo de export | ✅ | — |
-| `ptnd.surface.shell.overflow` | — | — | ⬜ | Não existe. Menu bar não tem "…" para janelas estreitas |
+| `ptnd.surface.shell.overflow` | §1, direita (largura < token `shell-menu-breakpoint` 1080px) | As famílias além das 3 primeiras vão para o menu do botão "Mais ações"; escolher uma abre a família dela | ✅ | `menu_inline_count` vive numa propriedade atualizada no `changed width` (nunca leitura de `root.width` no layout — binding loop) |
 | `ptnd.surface.tabs.document_strip` | §2 | 1 aba fixa | ✅ | 🎭 `clicked => {}` vazio; multi-documento real ausente |
 | `ptnd.surface.tabs.document_close` | §2 | X desenhado no `StudioTabItem` | ⬜ | 🎭 **`close_clicked => {}` vazio** — o X aparece e não faz nada |
 | `ptnd.surface.tabs.document_dirty` | §2 | Indicador "•" | ✅ | 🎭 `is_dirty: true` **hardcoded** — o "•" está sempre aceso |
@@ -387,7 +387,7 @@ painéis, sem reordenar abas, sem dock esquerdo, sem dock inferior.
 
 | Item | Onde está hoje |
 |---|---|
-| **Personalização** (desativar, adicionar, reordenar, agrupar, divisores) | modelo pronto para receber: as entradas já são uma lista declarada com divisores e spacer de primeira classe; falta a `ToolbarLayout` (ordem + visibilidade) no shell, os métodos no bridge e o popover de customização |
+| **Personalização** (desativar, adicionar, reordenar, agrupar, divisores) | ✅ `ToolbarLayout` + `ToolbarSlot` (`context_toolbar.rs`), 6 métodos no bridge (`query_toolbar_catalog`, `toolbar_set_visible/slot_visible`, `toolbar_move`, `toolbar_insert_divider`, `toolbar_remove_divider`, `toolbar_reset`), botão engrenagem (trailing da barra, fora do catálogo) e diálogo de customização em `app.slint` §6b com checkbox/subir/descer/adicionar divisor/reset; strings `ptnd.text.shell.customize/move_up/move_down/reset_toolbar/divider/spacer/remove` no catálogo; teste `layout_hides_reorders_and_keeps_the_spacer` |
 | Distribuir (2), máscara de recorte, lock/hide rápido | existem no registry (menu Objeto/Camada); entram como entradas novas da mesma tabela |
 | Opções da ferramenta ativa (ex.: nº de pontas do Star) | não existe modelo de opções de ferramenta no registry |
 
@@ -597,7 +597,7 @@ Nenhuma linha de engine; só exposição.
 | 4.6 | Busca/filtro de camadas + rename inline | — |
 | 4.7 | `dialog.about` | — |
 | 4.8 | `panel.background_tasks` | — |
-| 4.9 | `surface.shell.overflow` (menu "…" responsivo) | — |
+| 4.9 | `surface.shell.overflow` (menu "…" responsivo) | `ptnd.surface.shell.overflow` agora é `Wired` e tem botão real no §1 |
 | 4.10 | Overlay de progresso de export | — |
 
 ### Onda 5 — Estrutura

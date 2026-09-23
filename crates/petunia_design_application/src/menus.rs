@@ -388,6 +388,10 @@ pub const MENU_BAR: &[MenuFamily] = &[
                     item("ptnd.tool.vector.ellipse", "ptnd.text.tool.ellipse"),
                     item("ptnd.tool.vector.polygon", "ptnd.text.tool.polygon"),
                     item("ptnd.tool.vector.star", "ptnd.text.tool.star"),
+                    item(
+                        "ptnd.tool.vector.shape_builder",
+                        "ptnd.text.tool.shape_builder",
+                    ),
                 ],
             ),
             group(
@@ -399,7 +403,39 @@ pub const MENU_BAR: &[MenuFamily] = &[
                     item("ptnd.tool.vector.node", "ptnd.text.tool.node"),
                     item("ptnd.tool.vector.corner", "ptnd.text.tool.corner"),
                     item("ptnd.tool.vector.knife", "ptnd.text.tool.knife"),
+                    item("ptnd.tool.vector.scissors", "ptnd.text.tool.scissors"),
                     item("ptnd.tool.vector.contour", "ptnd.text.tool.contour"),
+                ],
+            ),
+            group(
+                "ptnd.menu.vector.select",
+                "ptnd.text.menu.select",
+                &[
+                    item("ptnd.tool.vector.move", "ptnd.text.tool.move"),
+                    item(
+                        "ptnd.tool.vector.point_transform",
+                        "ptnd.text.tool.point_transform",
+                    ),
+                    item("ptnd.tool.vector.hand", "ptnd.text.tool.hand"),
+                    item("ptnd.tool.vector.zoom", "ptnd.text.tool.zoom"),
+                    item("ptnd.tool.vector.surface", "ptnd.text.tool.surface"),
+                ],
+            ),
+            group(
+                "ptnd.menu.vector.content",
+                "ptnd.text.tool.artistic_text",
+                &[
+                    item(
+                        "ptnd.tool.vector.artistic_text",
+                        "ptnd.text.tool.artistic_text",
+                    ),
+                    item("ptnd.tool.vector.frame_text", "ptnd.text.tool.frame_text"),
+                    item("ptnd.tool.vector.gradient", "ptnd.text.tool.gradient"),
+                    item("ptnd.tool.vector.eyedropper", "ptnd.text.tool.eyedropper"),
+                    item(
+                        "ptnd.tool.vector.transparency",
+                        "ptnd.text.tool.transparency",
+                    ),
                 ],
             ),
         ],
@@ -418,11 +454,14 @@ pub const MENU_BAR: &[MenuFamily] = &[
                 "ptnd.menu.image.tools",
                 "ptnd.text.panel.transform",
                 &[
+                    item("ptnd.tool.photo.move", "ptnd.text.tool.move"),
                     item("ptnd.tool.photo.crop", "ptnd.text.tool.crop"),
                     item("ptnd.tool.photo.gradient", "ptnd.text.tool.gradient"),
                     item("ptnd.tool.photo.eyedropper", "ptnd.text.tool.eyedropper"),
                     item("ptnd.tool.photo.brush", "ptnd.text.tool.brush"),
                     item("ptnd.tool.photo.eraser", "ptnd.text.tool.eraser"),
+                    item("ptnd.tool.photo.hand", "ptnd.text.tool.hand"),
+                    item("ptnd.tool.photo.zoom", "ptnd.text.tool.zoom"),
                 ],
             ),
         ],

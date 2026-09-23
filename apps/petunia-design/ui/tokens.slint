@@ -98,6 +98,9 @@ export global Tokens {
     // with the menus once the window is too narrow to hold both. Past this
     // width it is dropped rather than overlapped.
     out property <length> shell-cluster-breakpoint: 760px;
+    // Below this width the menu bar keeps the first families inline and parks
+    // the rest in the overflow menu (08.2, 08.14). Overlap is not an option.
+    out property <length> shell-menu-breakpoint: 1080px;
     // Fixed width of the zoom box in the centred control cluster. Wide enough
     // for the highest reachable value (`MAX_ZOOM` 256 → "25600%") plus the
     // chevron, so a live number never resizes the bar.

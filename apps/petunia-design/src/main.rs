@@ -629,6 +629,53 @@ fn push_context_toolbar(win: &MainWindow, st: &PetuniaSlintState) {
         })
         .collect();
     win.set_context_toolbar(Rc::new(VecModel::from(entries)).into());
+    push_toolbar_catalog(win, st);
+}
+
+/// Pushes the customization list and the catalog labels the dialog paints.
+///
+/// The dialog does not invent a string: every button title is a `ptnd.text.*`
+/// resolved here, and every row is a slot the shell already owns.
+fn push_toolbar_catalog(win: &MainWindow, st: &PetuniaSlintState) {
+    let rows: Vec<ToolbarCatalogEntry> = st
+        .shell
+        .bridge
+        .query_toolbar_catalog()
+        .into_iter()
+        .map(|row| {
+            let kind = match row.kind {
+                ToolbarEntryKind::ToolBadge => "tool_badge",
+                ToolbarEntryKind::TransformReadout => "transform_readout",
+                ToolbarEntryKind::ColorSwatches => "color_swatches",
+                ToolbarEntryKind::Command => "command",
+                ToolbarEntryKind::Divider => "divider",
+                ToolbarEntryKind::Spacer => "spacer",
+            };
+            ToolbarCatalogEntry {
+                id: row.id.into(),
+                label: row.label.into(),
+                kind: kind.into(),
+                visible: row.visible,
+                can_hide: row.can_hide,
+            }
+        })
+        .collect();
+    win.set_toolbar_catalog(Rc::new(VecModel::from(rows)).into());
+
+    let text = |id: &str| {
+        st.shell
+            .bridge
+            .localization()
+            .text(id, st.shell.bridge.locale())
+            .into()
+    };
+    win.set_label_overflow(text("ptnd.text.shell.overflow"));
+    win.set_label_customize(text("ptnd.text.shell.customize"));
+    win.set_label_move_up(text("ptnd.text.shell.move_up"));
+    win.set_label_move_down(text("ptnd.text.shell.move_down"));
+    win.set_label_reset(text("ptnd.text.shell.reset_toolbar"));
+    win.set_label_divider(text("ptnd.text.shell.divider"));
+    win.set_label_remove(text("ptnd.text.shell.remove"));
 }
 
 /// Pushes the registered personas.
@@ -1303,6 +1350,82 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 activate_token(&win, &state_clone, token.as_str());
             }
         });
+    }
+
+    // Context-toolbar customization. The dialog echoes indexes; the shell is
+    // the only place that mutates order and visibility.
+    {
+        let state_clone = state.clone();
+        let win_weak = main_window.as_weak();
+        let refresh = {
+            let state_clone = state_clone.clone();
+            let win_weak = win_weak.clone();
+            move || {
+                if let Some(win) = win_weak.upgrade() {
+                    push_context_toolbar(&win, &state_clone.borrow());
+                }
+            }
+        };
+        {
+            let refresh = refresh.clone();
+            let state_clone = state_clone.clone();
+            main_window.on_toolbar_set_visible(move |index, visible| {
+                state_clone
+                    .borrow_mut()
+                    .shell
+                    .bridge
+                    .toolbar_set_slot_visible(index as usize, visible);
+                refresh();
+            });
+        }
+        {
+            let refresh = refresh.clone();
+            let state_clone = state_clone.clone();
+            main_window.on_toolbar_move(move |index, delta| {
+                state_clone
+                    .borrow_mut()
+                    .shell
+                    .bridge
+                    .toolbar_move(index as usize, delta);
+                refresh();
+            });
+        }
+        {
+            let refresh = refresh.clone();
+            let state_clone = state_clone.clone();
+            main_window.on_toolbar_add_divider(move |index| {
+                let after = if index < 0 {
+                    None
+                } else {
+                    Some(index as usize)
+                };
+                state_clone
+                    .borrow_mut()
+                    .shell
+                    .bridge
+                    .toolbar_insert_divider(after);
+                refresh();
+            });
+        }
+        {
+            let refresh = refresh.clone();
+            let state_clone = state_clone.clone();
+            main_window.on_toolbar_remove(move |index| {
+                state_clone
+                    .borrow_mut()
+                    .shell
+                    .bridge
+                    .toolbar_remove_divider(index as usize);
+                refresh();
+            });
+        }
+        {
+            let state_clone = state_clone.clone();
+            main_window.on_toolbar_reset(move || {
+                state_clone.borrow_mut().shell.bridge.toolbar_reset();
+                refresh();
+            });
+        }
     }
 
     // Centred shell control cluster (08.2). A control is a second *view* of the

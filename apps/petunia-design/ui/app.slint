@@ -92,6 +92,17 @@ export struct ContextToolbarEntry {
     disabled_reason: string,
 }
 
+// One slot of the context-toolbar customization dialog. Hidden slots stay in
+// the list so the user can put them back; a divider the user inserted has an
+// empty id.
+export struct ToolbarCatalogEntry {
+    id: string,
+    label: string,
+    kind: string,
+    visible: bool,
+    can_hide: bool,
+}
+
 export struct HistoryRowItem {
     index: int,
     description: string,
@@ -877,6 +888,14 @@ export component MainWindow inherits Window {
     preferred-height: 900px;
     background: Tokens.surface-workspace;
 
+    // Not a binding on `width`: the menu row's preferred width depends on how
+    // many families are inline, so reading `width` there is a binding loop.
+    // The count is updated when the window actually changes size.
+    in-out property <int> menu_inline_count: 99;
+    changed width => {
+        root.menu_inline_count = self.width < Tokens.shell-menu-breakpoint ? 3 : 99;
+    }
+
     forward-focus: root_fs;
     root_fs := FocusScope {
         width: Tokens.space-0;
@@ -1122,6 +1141,29 @@ export component MainWindow inherits Window {
     // A toolbar entry was activated. The id travels back verbatim: the shell
     // resolves it to an action or a token, never this file.
     callback context_toolbar_activated(string);
+    // Customization dialog (08.23). The shell owns order and visibility; this
+    // file only paints the list it is handed and echoes indexes back.
+    in property <[ToolbarCatalogEntry]> toolbar_catalog: [];
+    in-out property <bool> toolbar_customize_open: false;
+    callback toolbar_set_visible(int, bool);
+    callback toolbar_move(int, int);
+    callback toolbar_add_divider(int);
+    callback toolbar_remove(int);
+    callback toolbar_reset();
+    // Catalog labels for chrome this file does not invent.
+    in property <string> label_overflow: "";
+    in property <string> label_customize: "";
+    in property <string> label_move_up: "";
+    in property <string> label_move_down: "";
+    in property <string> label_reset: "";
+    in property <string> label_divider: "";
+    in property <string> label_remove: "";
+    // Families that stay inline. Below the breakpoint the rest park in the
+    // overflow menu (08.2, 08.14) instead of overlapping the personas.
+    in-out property <bool> overflow_open: false;
+    property <int> menu_shown: Math.min(root.menu_families.length, root.menu_inline_count);
+    property <int> menu_overflow_count: root.menu_families.length - root.menu_shown;
+    property <bool> menu_has_overflow: root.menu_overflow_count > 0;
     // Label of the one control that stays in the tab strip, from the catalog.
     in property <string> snap_label: "";
     in-out property <int> open_menu_index: -1;
@@ -1249,13 +1291,27 @@ export component MainWindow inherits Window {
                 // `PetuniaDesignGuiBridge::query_menu_bar()`, so a wired action
                 // cannot be missing here and an unwired one cannot appear as
                 // functional.
-                for family_index in (root.menu_families.length) : StudioMenuFamilyButton {
+                for family_index in (root.menu_shown) : StudioMenuFamilyButton {
                     label: root.menu_families[family_index].label;
                     open: root.open_menu_index == family_index;
                     toggled(x) => {
                         // One popup owns the pointer at a time.
                         root.zoom_popup_open = false;
+                        root.overflow_open = false;
                         root.menu_family_toggled(family_index, x);
+                    }
+                }
+
+                // Overflow (08.2): families that no longer fit stay reachable
+                // from this menu instead of being clipped or overlapped.
+                if root.menu_has_overflow : StudioMenuFamilyButton {
+                    label: root.label_overflow;
+                    open: root.overflow_open;
+                    toggled(x) => {
+                        root.zoom_popup_open = false;
+                        root.menu_closed();
+                        root.open_menu_x = x;
+                        root.overflow_open = !root.overflow_open;
                     }
                 }
 
@@ -1407,6 +1463,14 @@ export component MainWindow inherits Window {
                     prop_rot: root.prop_rot;
                     activated(id) => { root.context_toolbar_activated(id); }
                     swatch_clicked(color) => { root.set_selected_color(color); }
+                }
+
+                // The customize control is chrome of the bar, not a catalog
+                // entry: hiding every command must not hide the way back.
+                StudioIconButton {
+                    icon: IconSet.Sliders;
+                    tooltip: root.label_customize;
+                    clicked => { root.toolbar_customize_open = !root.toolbar_customize_open; }
                 }
             }
         }
@@ -2691,6 +2755,179 @@ export component MainWindow inherits Window {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // SECTION 6b: MENU OVERFLOW + TOOLBAR CUSTOMIZATION
+    // -------------------------------------------------------------
+    if root.overflow_open : Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        TouchArea { clicked => { root.overflow_open = false; } }
+    }
+
+    if root.overflow_open : Rectangle {
+        x: root.open_menu_x;
+        y: Tokens.persona-row-height + Tokens.space-half;
+        width: Tokens.menu-popup-min-width;
+        height: overflow_col.preferred-height + Tokens.space-1;
+        background: Tokens.surface-panel;
+        border-width: Tokens.border-width;
+        border-color: Tokens.border-subtle;
+        border-radius: Tokens.radius-control;
+
+        overflow_col := VerticalLayout {
+            padding: Tokens.space-half;
+            spacing: Tokens.space-0;
+            for family_index in (root.menu_overflow_count) : Rectangle {
+                height: Tokens.menu-row-height;
+                border-radius: Tokens.radius-micro;
+                background: overflow_touch.has-hover ? Tokens.overlay-hover : transparent;
+                property <int> real_index: root.menu_shown + family_index;
+
+                Text {
+                    x: Tokens.space-2;
+                    width: parent.width - Tokens.space-2 * 2;
+                    height: parent.height;
+                    text: root.menu_families[real_index].label;
+                    font-size: Tokens.small-size;
+                    color: Tokens.text-primary;
+                    vertical-alignment: center;
+                }
+
+                overflow_touch := TouchArea {
+                    clicked => {
+                        root.overflow_open = false;
+                        root.menu_family_toggled(real_index, root.open_menu_x);
+                    }
+                }
+            }
+        }
+    }
+
+    if root.toolbar_customize_open : Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        background: Tokens.scrim;
+        TouchArea { clicked => { root.toolbar_customize_open = false; } }
+    }
+
+    if root.toolbar_customize_open : Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: Tokens.persona-row-height + Tokens.context-toolbar-height + Tokens.space-4;
+        width: Tokens.dialog-min-width;
+        height: Math.min(parent.height * 0.7, customize_col.preferred-height + Tokens.dialog-padding * 2);
+        background: Tokens.surface-panel;
+        border-width: Tokens.border-width;
+        border-color: Tokens.border-subtle;
+        border-radius: Tokens.radius-control;
+        clip: true;
+
+        TouchArea {}
+
+        customize_col := VerticalLayout {
+            padding: Tokens.dialog-padding;
+            spacing: Tokens.space-1;
+
+            Text {
+                text: root.label_customize;
+                font-size: Tokens.body-size;
+                font-weight: 700;
+                color: Tokens.text-primary;
+            }
+
+            for slot_index in (root.toolbar_catalog.length) : HorizontalLayout {
+                spacing: Tokens.space-1;
+                height: Tokens.property-row-height;
+
+                Rectangle {
+                    width: Tokens.icon-inline-size;
+                    height: Tokens.icon-inline-size;
+                    border-radius: Tokens.radius-micro;
+                    border-width: Tokens.border-width;
+                    border-color: Tokens.border-strong;
+                    background: root.toolbar_catalog[slot_index].visible ? Tokens.accent-bloom : transparent;
+                    y: (parent.height - self.height) / 2;
+
+                    TouchArea {
+                        enabled: root.toolbar_catalog[slot_index].can_hide;
+                        clicked => {
+                            root.toolbar_set_visible(slot_index, !root.toolbar_catalog[slot_index].visible);
+                        }
+                    }
+                }
+
+                Text {
+                    text: root.toolbar_catalog[slot_index].label;
+                    font-size: Tokens.small-size;
+                    color: root.toolbar_catalog[slot_index].visible ? Tokens.text-primary : Tokens.text-disabled;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+
+                Rectangle {
+                    width: up_label.preferred-width + Tokens.space-2;
+                    height: parent.height;
+                    up_label := Text {
+                        text: root.label_move_up;
+                        font-size: Tokens.caption-size;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                    TouchArea { clicked => { root.toolbar_move(slot_index, -1); } }
+                }
+                Rectangle {
+                    width: down_label.preferred-width + Tokens.space-2;
+                    height: parent.height;
+                    down_label := Text {
+                        text: root.label_move_down;
+                        font-size: Tokens.caption-size;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                    TouchArea { clicked => { root.toolbar_move(slot_index, 1); } }
+                }
+                if root.toolbar_catalog[slot_index].id == "" : Rectangle {
+                    width: remove_label.preferred-width + Tokens.space-2;
+                    height: parent.height;
+                    remove_label := Text {
+                        text: root.label_remove;
+                        font-size: Tokens.caption-size;
+                        color: Tokens.text-secondary;
+                        vertical-alignment: center;
+                    }
+                    TouchArea { clicked => { root.toolbar_remove(slot_index); } }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Tokens.space-2;
+                alignment: end;
+
+                Text {
+                    text: root.label_divider;
+                    font-size: Tokens.small-size;
+                    color: Tokens.text-secondary;
+                    vertical-alignment: center;
+                    TouchArea { clicked => { root.toolbar_add_divider(root.toolbar_catalog.length - 1); } }
+                }
+                Text {
+                    text: root.label_reset;
+                    font-size: Tokens.small-size;
+                    color: Tokens.text-secondary;
+                    vertical-alignment: center;
+                    TouchArea { clicked => { root.toolbar_reset(); } }
                 }
             }
         }
