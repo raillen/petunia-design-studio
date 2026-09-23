@@ -729,6 +729,7 @@ impl SelectTool {
 
         // Search in reverse z-order (topmost first): bbox pre-check
         // with tolerance, then exact shape hit-test (10.1).
+        // The exact test runs on the memoized evaluated outline (F1).
         for obj in surface.objects().iter().rev() {
             if obj.visible && !obj.locked {
                 if let Some([x, y, w, h]) = obj.bounds {
@@ -738,7 +739,7 @@ impl SelectTool {
                         x + w + tolerance,
                         y + h + tolerance,
                     );
-                    if rect.contains(doc_pos) && obj.hit_test(doc_pos) {
+                    if rect.contains(doc_pos) && bridge.cached_hit(obj.id, doc_pos) {
                         return Some(obj.id);
                     }
                 }

@@ -248,6 +248,33 @@ impl PetuniaDesignGuiBridge {
             .unwrap_or_default()
     }
 
+    /// Evaluated outline, memoized by session revision (F1).
+    /// Hot loops (hover, overlays, covering) must prefer this over
+    /// `find_object().evaluated_path()`.
+    #[must_use]
+    pub fn cached_path(&self, id: ObjectId) -> Option<petunia_design_geometry::GPath> {
+        self.session()?.cached_path(id)
+    }
+
+    /// Evaluated bounds, memoized by session revision (F1).
+    #[must_use]
+    pub fn cached_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
+        self.session()?.cached_bounds(id)
+    }
+
+    /// Hit-test against the memoized evaluated outline (F1).
+    /// Visibility/locking stay at the call site, as with `hit_test` today.
+    #[must_use]
+    pub fn cached_hit(&self, id: ObjectId, pt: petunia_design_geometry::GPoint) -> bool {
+        self.session().is_some_and(|s| s.cached_hit(id, pt))
+    }
+
+    /// Cache entry count (diagnostics and tests).
+    #[must_use]
+    pub fn geo_cache_len(&self) -> usize {
+        self.session().map_or(0, |s| s.geo_cache.borrow().len())
+    }
+
     /// Combines one shape into the raster mask (session state, no undo).
     pub fn combine_raster_selection(
         &mut self,

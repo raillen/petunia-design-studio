@@ -15,6 +15,7 @@ pub mod data_merge;
 mod history;
 pub mod hierarchy_service;
 pub mod interaction;
+pub mod geo_cache;
 pub mod ports;
 pub mod selection_mask;
 pub mod session;
@@ -36,6 +37,7 @@ pub use ports::{
     SelectionPort, SurfacePort, VariableDataPort,
 };
 pub use session::{DocumentSession, SelectionSession};
+pub use geo_cache::GeoCache;
 pub use selection_mask::{RasterSelection, SelectionMode, SelectionShape};
 pub use tools::ToolKind;
 pub use transaction::Transaction;

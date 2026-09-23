@@ -4134,3 +4134,107 @@ fn bake_geometry_commits_warp_and_crop_keeping_transparency() {
         petunia_design_document::ModifierKind::TransparentGradient { .. }
     ));
 }
+
+fn cache_test_box(
+    bridge: &mut PetuniaDesignGuiBridge,
+    gen: &mut IdGenerator,
+    bounds: [f64; 4],
+) -> petunia_design_foundation::ObjectId {
+    let surface_id = bridge.active_surface().unwrap();
+    let id = gen.next_object();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id,
+            name: "CacheBox".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some(bounds),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    bridge.clear_selection();
+    id
+}
+
+#[test]
+fn geo_cache_memoizes_repeated_reads() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Geo Cache").expect("doc");
+    let mut gen = IdGenerator::new();
+    let id = cache_test_box(&mut bridge, &mut gen, [10.0, 10.0, 50.0, 50.0]);
+
+    assert_eq!(bridge.geo_cache_len(), 0);
+    let first = bridge.cached_bounds(id).expect("bounds");
+    assert_eq!(bridge.geo_cache_len(), 1);
+    // Repeated reads reuse the entry: no growth, identical values.
+    for _ in 0..10 {
+        assert_eq!(bridge.cached_bounds(id), Some(first));
+        assert!(bridge.cached_hit(id, GPoint::new(20.0, 20.0)));
+    }
+    assert_eq!(bridge.geo_cache_len(), 1);
+    assert!(!bridge.cached_hit(id, GPoint::new(500.0, 500.0)));
+}
+
+#[test]
+fn geo_cache_invalidates_on_mutation_and_undo() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Geo Invalidate").expect("doc");
+    let mut gen = IdGenerator::new();
+    let id = cache_test_box(&mut bridge, &mut gen, [10.0, 10.0, 50.0, 50.0]);
+    assert_eq!(bridge.cached_bounds(id), Some([10.0, 10.0, 50.0, 50.0]));
+
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some([30.0, 30.0, 50.0, 50.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    // Revision bumped: fresh evaluation, same single entry.
+    assert_eq!(bridge.cached_bounds(id), Some([30.0, 30.0, 50.0, 50.0]));
+    assert_eq!(bridge.geo_cache_len(), 1);
+    assert!(bridge.cached_hit(id, GPoint::new(40.0, 40.0)));
+    assert!(!bridge.cached_hit(id, GPoint::new(15.0, 15.0)));
+
+    bridge.undo().unwrap();
+    assert_eq!(bridge.cached_bounds(id), Some([10.0, 10.0, 50.0, 50.0]));
+}
+
+#[test]
+fn geo_cache_matches_direct_evaluation_with_modifiers() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Geo Modifier").expect("doc");
+    let mut gen = IdGenerator::new();
+    let id = cache_test_box(&mut bridge, &mut gen, [0.0, 0.0, 100.0, 100.0]);
+    bridge.offset_path(id, 10.0).unwrap();
+
+    let obj = bridge.session().unwrap().document().find_object(id).unwrap();
+    let direct_path = obj.evaluated_path();
+    let direct_bounds = obj.evaluated_bounds();
+    let cached_path = bridge.cached_path(id).expect("path");
+    assert_eq!(cached_path.verbs, direct_path.verbs);
+    assert_eq!(bridge.cached_bounds(id), direct_bounds);
+    // Evaluated outline grew; base bounds stayed.
+    assert_eq!(obj.bounds, Some([0.0, 0.0, 100.0, 100.0]));
+    assert!((direct_bounds.unwrap()[2] - 120.0).abs() < 2.0);
+}
+
+#[test]
+fn geo_cache_prunes_deleted_objects() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Geo Prune").expect("doc");
+    let mut gen = IdGenerator::new();
+    let id = cache_test_box(&mut bridge, &mut gen, [10.0, 10.0, 50.0, 50.0]);
+    assert!(bridge.cached_bounds(id).is_some());
+    assert_eq!(bridge.geo_cache_len(), 1);
+
+    bridge
+        .submit_command(CommandRequest::new(Command::DeleteObject { id }))
+        .unwrap();
+    assert_eq!(bridge.geo_cache_len(), 0);
+    assert!(bridge.cached_bounds(id).is_none());
+}

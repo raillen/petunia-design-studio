@@ -88,6 +88,9 @@ pub struct DocumentSession {
     history: History,
     /// Viewport/window-shared selection session.
     pub selection: SelectionSession,
+    /// Memoized evaluated geometry, keyed by `current_revision` (F1).
+    /// Interior-mutable so `&self` readers share it without signature churn.
+    pub geo_cache: std::cell::RefCell<crate::geo_cache::GeoCache>,
     /// Transient raster selection mask (marching ants, 10.9).
     /// Session state like object selection: gestures write it directly,
     /// never through undo history.
@@ -133,6 +136,7 @@ impl DocumentSession {
             document,
             history: History::new(0),
             selection: SelectionSession::new(),
+            geo_cache: std::cell::RefCell::new(crate::geo_cache::GeoCache::new()),
             raster_selection: crate::selection_mask::RasterSelection::new(),
             view: crate::view_camera::ViewState::default(),
             id_generator: IdGenerator::with_start(max_id + 1),
@@ -164,6 +168,7 @@ impl DocumentSession {
             document,
             history: History::new(0),
             selection: SelectionSession::new(),
+            geo_cache: std::cell::RefCell::new(crate::geo_cache::GeoCache::new()),
             raster_selection: crate::selection_mask::RasterSelection::new(),
             view: crate::view_camera::ViewState::default(),
             id_generator: IdGenerator::with_start(max_id + 1),
@@ -632,6 +637,7 @@ impl DocumentSession {
             .flat_map(|s| s.objects().iter().map(|o| o.id))
             .collect();
         self.selection.prune_missing(&valid_ids);
+        self.geo_cache.borrow_mut().prune(&valid_ids);
     }
 
     /// Resolves high-level document metrics.
@@ -661,15 +667,13 @@ impl DocumentSession {
         let mut has_bounds = false;
 
         for &id in &self.selection.selected_ids {
-            if let Some(obj) = self.document.find_object(id) {
-                // Selection follows the evaluated outline (09.31).
-                if let Some([x, y, w, h]) = obj.evaluated_bounds() {
-                    has_bounds = true;
-                    min_x = min_x.min(x);
-                    min_y = min_y.min(y);
-                    max_x = max_x.max(x + w);
-                    max_y = max_y.max(y + h);
-                }
+            // Evaluated outline, memoized by revision (F1).
+            if let Some([x, y, w, h]) = self.cached_bounds(id) {
+                has_bounds = true;
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x + w);
+                max_y = max_y.max(y + h);
             }
         }
 
