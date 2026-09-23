@@ -145,6 +145,87 @@ impl GPath {
         kurbo_adapter::flatten_to_polygons(self, tolerance)
     }
 
+    /// Arc-length of the flattened outline within `tolerance` (F-21).
+    /// Used by text-on-path placement; curve-exact length stays POST_V1.
+    #[must_use]
+    pub fn outline_length(&self, tolerance: f64) -> f64 {
+        self.to_polygons(tolerance.max(0.001))
+            .iter()
+            .map(|contour| {
+                contour
+                    .windows(2)
+                    .map(|w| w[0].distance_to(w[1]))
+                    .sum::<f64>()
+            })
+            .sum()
+    }
+
+    /// Samples the outline at normalized fraction `t` in `[0.0, 1.0]`.
+    /// Returns `(point, tangent_angle_radians)` walking subpaths in order.
+    /// `None` on empty outlines.
+    #[must_use]
+    pub fn sample_at(&self, t: f64, tolerance: f64) -> Option<(GPoint, f64)> {
+        let contours = self.to_polygons(tolerance.max(0.001));
+        let total: f64 = contours
+            .iter()
+            .map(|c| c.windows(2).map(|w| w[0].distance_to(w[1])).sum::<f64>())
+            .sum();
+        if total < 1e-9 {
+            // Degenerate (single point or empty): report the first point.
+            let pt = contours.iter().flatten().next().copied()?;
+            return Some((pt, 0.0));
+        }
+        let mut target = t.clamp(0.0, 1.0) * total;
+        for contour in &contours {
+            for w in contour.windows(2) {
+                let seg = w[0].distance_to(w[1]);
+                if target <= seg {
+                    let f = if seg < 1e-12 { 0.0 } else { target / seg };
+                    let pt = GPoint::new(
+                        w[0].x + (w[1].x - w[0].x) * f,
+                        w[0].y + (w[1].y - w[0].y) * f,
+                    );
+                    return Some((pt, (w[1].y - w[0].y).atan2(w[1].x - w[0].x)));
+                }
+                target -= seg;
+            }
+            // Gap between subpaths consumes no length; continue into next.
+        }
+        let last = contours.iter().flatten().next_back().copied()?;
+        Some((last, 0.0))
+    }
+
+    /// Normalized fraction `t` of the outline point nearest `pt`.
+    /// Returns `None` on empty outlines.
+    #[must_use]
+    pub fn nearest_t(&self, pt: GPoint, tolerance: f64) -> Option<f64> {
+        let contours = self.to_polygons(tolerance.max(0.001));
+        let total: f64 = contours
+            .iter()
+            .map(|c| c.windows(2).map(|w| w[0].distance_to(w[1])).sum::<f64>())
+            .sum();
+        if total < 1e-9 {
+            return None;
+        }
+        let mut best = (f64::INFINITY, 0.0);
+        let mut acc = 0.0;
+        for contour in &contours {
+            for w in contour.windows(2) {
+                let (abx, aby) = (w[1].x - w[0].x, w[1].y - w[0].y);
+                let len2 = (abx * abx + aby * aby).max(1e-12);
+                let f = (((pt.x - w[0].x) * abx + (pt.y - w[0].y) * aby) / len2).clamp(0.0, 1.0);
+                let proj = GPoint::new(w[0].x + abx * f, w[0].y + aby * f);
+                let d = proj.distance_to(pt);
+                if d < best.0 {
+                    let seg = abx.hypot(aby);
+                    best = (d, (acc + seg * f) / total);
+                }
+                acc += abx.hypot(aby);
+            }
+        }
+        Some(best.1.clamp(0.0, 1.0))
+    }
+
     /// Creates a rectangle path, with optional corner radii.
     #[must_use]
     pub fn rect(rect: GRect, rx: f64, ry: f64) -> Self {
@@ -601,6 +682,26 @@ mod tests {
         let moved = triangle().transformed(GAffine::translate(10.0, 0.0));
         let bounds = moved.bounding_box().expect("bounds");
         assert_eq!(bounds, GRect::new(10.0, 0.0, 14.0, 3.0));
+    }
+
+    #[test]
+    fn sample_at_walks_line_by_fraction() {
+        let line = GPath::line(GPoint::new(0.0, 0.0), GPoint::new(100.0, 0.0));
+        let (p0, a0) = line.sample_at(0.0, 0.5).expect("sample");
+        let (p1, a1) = line.sample_at(1.0, 0.5).expect("sample");
+        let (mid, _) = line.sample_at(0.5, 0.5).expect("sample");
+        assert!((p0.x).abs() < 1e-6 && (p1.x - 100.0).abs() < 1e-6);
+        assert!((mid.x - 50.0).abs() < 1e-6);
+        assert!(a0.abs() < 1e-9 && a1.abs() < 1e-9);
+        assert!((line.outline_length(0.5) - 100.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn nearest_t_roundtrips_on_line() {
+        let line = GPath::line(GPoint::new(0.0, 0.0), GPoint::new(100.0, 0.0));
+        let t = line.nearest_t(GPoint::new(30.0, 4.0), 0.5).expect("t");
+        assert!((t - 0.3).abs() < 1e-6, "got {t}");
+        assert!(GPath::new().nearest_t(GPoint::ORIGIN, 0.5).is_none());
     }
 
     #[test]

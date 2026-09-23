@@ -91,6 +91,20 @@ Doutrina-mãe: ADR 09.31 (`petunia-design-studio/09 31 — Non-Destructive Editi
 - **Check de revisita do ADR 09.31:** generalização OK (identidade por `id`,
   ordem = ordem do vec, custo linear); falta só UI de lista/ordem.
 | 11 | Text-on-Path | Handles start/end, fluxo no path | Médio, spec 10.6 V1 |
+
+## Batch 11 — Text-on-Path (decisões)
+
+- **Modelo:** `ShapeKind::Text.on_path: Option<TextOnPathAttachment { target, start, end }>`
+  (`serde default`: arquivos v1 abrem). Sem `ToolKind` novo — a Text tool cria ao
+  clicar/arrastar sobre um path (Illustrator). O path nunca é consumido.
+- **Geometria:** `GPath::{outline_length, sample_at, nearest_t}` por comprimento
+  de arco achatado (F-21; exato-em-curva POST_V1). Span degenerado ganha mínimo 0.01.
+- **Gestos:** clique cria start=t..1.0; drag define start..end; handles arrastam
+  com 1 undo; Alt-clique/detach volta a reto. Bounds do texto = span.
+- **Export honesto:** SVG emite `<text><textPath href="#target">` (referência por id,
+  path d embutido em comentário); PDF registra `TEXT_ON_PATH_FLATTENED` e cai no
+  fluxo de bounds. Preview curvo de glifos (shaping) fica futuro.
+- **Regressão:** clique longe do path continua criando headline 160×32.
 | 12 | SmartFill real | Flood de regiões limitadas (face detection — spike antes) | Pesquisa antes |
 | 13 | Seleção raster (epic) | Modelo de máscara + marquee/lasso/brush/flood + ops | Infra nova |
 | 14 | Warp/Perspective (epic) | 3º modificador, 10.8 V1_REQUIRED | Infra + matemática |

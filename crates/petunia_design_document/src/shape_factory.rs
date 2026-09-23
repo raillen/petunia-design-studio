@@ -73,6 +73,7 @@ pub fn artistic_text() -> (&'static str, ShapeKind) {
             font_size: DEFAULT_ARTISTIC_FONT_SIZE,
             line_height: DEFAULT_TEXT_LINE_HEIGHT,
             letter_spacing: 0.0,
+            on_path: None,
         },
     )
 }
@@ -88,6 +89,7 @@ pub fn frame_text() -> (&'static str, ShapeKind) {
             font_size: DEFAULT_FRAME_FONT_SIZE,
             line_height: DEFAULT_TEXT_LINE_HEIGHT,
             letter_spacing: 0.0,
+            on_path: None,
         },
     )
 }

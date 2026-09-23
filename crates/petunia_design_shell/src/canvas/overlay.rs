@@ -230,4 +230,6 @@ pub struct CanvasOverlays {
     pub gradient: Option<GradientOverlay>,
     /// Pending shape-builder region outline in document space, if any.
     pub region_preview: Option<Vec<GPoint>>,
+    /// Text-on-path span handles in document space (`[start, end]`), if any.
+    pub text_path_handles: Option<Vec<GPoint>>,
 }

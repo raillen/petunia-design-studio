@@ -71,6 +71,42 @@ pub struct DocumentObject {
     pub modifiers: Vec<crate::modifiers::ModifierItem>,
 }
 
+/// Text-on-path attachment (10.6): flows a text object along another
+/// object's evaluated outline between normalized fractions. The source
+/// path object is never consumed or hidden by the attachment.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TextOnPathAttachment {
+    /// Path object the text follows.
+    pub target: ObjectId,
+    /// Span start as a fraction of outline length in `[0.0, 1.0]`.
+    pub start: f64,
+    /// Span end as a fraction of outline length in `[0.0, 1.0]`.
+    pub end: f64,
+}
+
+impl TextOnPathAttachment {
+    /// Creates a clamped attachment, ordering start before end.
+    #[must_use]
+    pub fn new(target: ObjectId, start: f64, end: f64) -> Self {
+        let (mut a, mut b) = (start.clamp(0.0, 1.0), end.clamp(0.0, 1.0));
+        if b < a {
+            std::mem::swap(&mut a, &mut b);
+        }
+        // Degenerate spans keep a minimal readable length.
+        if (b - a).abs() < 1e-6 {
+            b = (a + 0.01).min(1.0);
+            if (b - a).abs() < 1e-6 {
+                a = (b - 0.01).max(0.0);
+            }
+        }
+        Self {
+            target,
+            start: a,
+            end: b,
+        }
+    }
+}
+
 /// Canonical geometric shape or text content representation.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind")]
@@ -92,6 +128,9 @@ pub enum ShapeKind {
         font_size: f64,
         line_height: f64,
         letter_spacing: f64,
+        /// Text-on-path attachment; `None` flows inside bounds as before.
+        #[serde(default)]
+        on_path: Option<TextOnPathAttachment>,
     },
 }
 
@@ -329,4 +368,32 @@ pub enum ArrangePosition {
     Forward,
     /// Move one step toward the back. NoOp when already backmost.
     Backward,
+}
+
+#[cfg(test)]
+mod text_on_path_tests {
+    use super::*;
+
+    #[test]
+    fn attachment_orders_and_clamps() {
+        let att = TextOnPathAttachment::new(ObjectId::new(1), 0.9, 0.2);
+        assert_eq!((att.start, att.end), (0.2, 0.9));
+        let att = TextOnPathAttachment::new(ObjectId::new(1), -5.0, 99.0);
+        assert_eq!((att.start, att.end), (0.0, 1.0));
+    }
+
+    #[test]
+    fn legacy_text_without_on_path_loads() {
+        // v1 payloads predate the field: serde default keeps them readable.
+        let shape: ShapeKind = serde_json::from_value(serde_json::json!({
+            "kind": "Text",
+            "content": "Hi",
+            "font_family": "Inter",
+            "font_size": 14.0,
+            "line_height": 1.3,
+            "letter_spacing": 0.0,
+        }))
+        .expect("legacy text loads");
+        assert!(matches!(shape, ShapeKind::Text { on_path: None, .. }));
+    }
 }

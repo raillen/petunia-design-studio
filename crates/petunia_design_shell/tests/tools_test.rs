@@ -3363,3 +3363,298 @@ fn contour_and_transparency_coexist_independently() {
     assert!((eval[2] - 220.0).abs() < 2.0, "got {eval:?}");
     assert_eq!(obj.bounds, Some([0.0, 0.0, 200.0, 100.0]));
 }
+
+fn text_path_line(
+    bridge: &mut PetuniaDesignGuiBridge,
+    gen: &mut IdGenerator,
+) -> petunia_design_foundation::ObjectId {
+    use petunia_design_geometry::PathVerb as V;
+    let surface_id = bridge.active_surface().unwrap();
+    let id = gen.next_object();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id,
+            name: "Baseline".to_string(),
+        }))
+        .unwrap();
+    let mut path = petunia_design_geometry::GPath::new();
+    path.push(V::MoveTo(GPoint::new(0.0, 0.0))).unwrap();
+    path.push(V::LineTo(GPoint::new(200.0, 0.0))).unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Path(path)),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some([0.0, 0.0, 200.0, 1.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    bridge.clear_selection();
+    id
+}
+
+fn attached_text(
+    bridge: &PetuniaDesignGuiBridge,
+    id: petunia_design_foundation::ObjectId,
+) -> Option<petunia_design_document::TextOnPathAttachment> {
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    match &obj.shape {
+        Some(petunia_design_document::ShapeKind::Text { on_path, .. }) => *on_path,
+        _ => panic!("expected text"),
+    }
+}
+
+fn text_click(
+    tool: &mut TextTool,
+    bridge: &mut PetuniaDesignGuiBridge,
+    camera: &ViewportCamera,
+    snap: &mut SnapEngine,
+    x: f64,
+    y: f64,
+    modifiers: SemanticModifiers,
+) {
+    let p = GPoint::new(x, y);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p, p, modifiers),
+        bridge,
+        camera,
+        snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Up, PointerButton::Primary, p, p, modifiers),
+        bridge,
+        camera,
+        snap,
+    )
+    .unwrap();
+}
+
+#[test]
+fn text_click_on_path_attaches_with_span_to_end() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Text On Path").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let target = text_path_line(&mut bridge, &mut gen);
+    let mut tool = TextTool::new(TextToolMode::Artistic);
+
+    text_click(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        50.0,
+        0.0,
+        SemanticModifiers::default(),
+    );
+
+    assert_eq!(bridge.snapshot().total_objects, 2);
+    let id = bridge.selection().selected_ids[0];
+    let att = attached_text(&bridge, id).expect("attached");
+    assert_eq!(att.target, target);
+    assert!((att.start - 0.25).abs() < 1e-6, "got {att:?}");
+    assert!((att.end - 1.0).abs() < 1e-6, "got {att:?}");
+    // Target path object survives untouched.
+    let target_obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(target)
+        .unwrap();
+    assert!(matches!(
+        target_obj.shape,
+        Some(petunia_design_document::ShapeKind::Path(_))
+    ));
+}
+
+#[test]
+fn text_drag_along_path_sets_span() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Text Span").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let target = text_path_line(&mut bridge, &mut gen);
+    let mut tool = TextTool::new(TextToolMode::Artistic);
+    let plain = SemanticModifiers::default();
+
+    let p0 = GPoint::new(20.0, 0.0);
+    let p1 = GPoint::new(150.0, 0.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p0, p0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p1, p1, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Up, PointerButton::Primary, p1, p1, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let id = bridge.selection().selected_ids[0];
+    let att = attached_text(&bridge, id).expect("attached");
+    assert_eq!(att.target, target);
+    assert!((att.start - 0.1).abs() < 1e-6, "got {att:?}");
+    assert!((att.end - 0.75).abs() < 1e-6, "got {att:?}");
+}
+
+#[test]
+fn text_handle_drag_moves_start_with_one_undo() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Text Handle").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    text_path_line(&mut bridge, &mut gen);
+    let mut tool = TextTool::new(TextToolMode::Artistic);
+    let plain = SemanticModifiers::default();
+    text_click(&mut tool, &mut bridge, &camera, &mut snap, 50.0, 0.0, plain);
+    let id = bridge.selection().selected_ids[0];
+    assert!(tool.overlays(&camera, &bridge).text_path_handles.is_some());
+
+    // Drag the start handle from x=50 to x=100.
+    let p0 = GPoint::new(50.0, 0.0);
+    let p1 = GPoint::new(100.0, 0.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p0, p0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p1, p1, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Up, PointerButton::Primary, p1, p1, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let att = attached_text(&bridge, id).expect("attached");
+    assert!((att.start - 0.5).abs() < 1e-6, "got {att:?}");
+    bridge.undo().unwrap();
+    let att = attached_text(&bridge, id).expect("attached");
+    assert!((att.start - 0.25).abs() < 1e-6, "got {att:?}");
+}
+
+#[test]
+fn text_alt_click_detaches() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Text Detach").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    text_path_line(&mut bridge, &mut gen);
+    let mut tool = TextTool::new(TextToolMode::Artistic);
+    text_click(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        50.0,
+        0.0,
+        SemanticModifiers::default(),
+    );
+    let id = bridge.selection().selected_ids[0];
+    assert!(attached_text(&bridge, id).is_some());
+
+    // Alt-click the start handle detaches.
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let alt = SemanticModifiers {
+        duplicate: true,
+        ..Default::default()
+    };
+    text_click(&mut tool, &mut bridge, &camera, &mut snap, 50.0, 0.0, alt);
+    assert!(attached_text(&bridge, id).is_none());
+}
+
+#[test]
+fn text_click_empty_still_creates_straight_text() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Text Straight").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    text_path_line(&mut bridge, &mut gen);
+    bridge.clear_selection();
+    let mut tool = TextTool::new(TextToolMode::Artistic);
+
+    // Click far from the path: straight headline, no attachment.
+    text_click(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        400.0,
+        400.0,
+        SemanticModifiers::default(),
+    );
+
+    assert_eq!(bridge.snapshot().total_objects, 2);
+    let id = bridge.selection().selected_ids[0];
+    assert!(attached_text(&bridge, id).is_none());
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    assert_eq!(obj.bounds, Some([400.0, 400.0, 160.0, 32.0]));
+}
+
+#[test]
+fn text_on_path_svg_uses_textpath_href() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Text SVG").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let target = text_path_line(&mut bridge, &mut gen);
+    let mut tool = TextTool::new(TextToolMode::Artistic);
+    text_click(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        50.0,
+        0.0,
+        SemanticModifiers::default(),
+    );
+
+    let svg = petunia_design_io::export_document_svg(bridge.session().unwrap().document());
+    assert!(svg.contains("<textPath"), "missing textPath:\n{svg}");
+    assert!(
+        svg.contains(&format!("href=\"#{target}\"")),
+        "missing href:\n{svg}"
+    );
+}

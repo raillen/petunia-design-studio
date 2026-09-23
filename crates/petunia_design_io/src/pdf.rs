@@ -193,6 +193,21 @@ fn export_object(
     // Geometry: canonical outline; legacy grid fallback when unbounded so
     // old headless fixtures keep exporting (F-13).
     let outline = obj.evaluated_path();
+    if matches!(
+        &obj.shape,
+        Some(petunia_design_document::ShapeKind::Text {
+            on_path: Some(_),
+            ..
+        })
+    ) {
+        report.degradations.push(DegradationItem {
+            code: "TEXT_ON_PATH_FLATTENED".to_string(),
+            description: format!(
+                "{label} text-on-path exported along its span bounds (curved glyph layout requires font shaping)"
+            ),
+            grade: FidelityGrade::Approximate,
+        });
+    }
     let mut pb = PathBuilder::new();
     let mut has_geometry = false;
     for verb in &outline.verbs {

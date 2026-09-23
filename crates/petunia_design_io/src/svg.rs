@@ -237,6 +237,17 @@ fn export_object_svg(
     let total_opacity = (obj.sampled_opacity() * entry_opacity).clamp(0.0, 1.0);
 
     // Outline; un-outlinable shapes (text) fall back to their bounds rect.
+    // Attached text-on-path exports as <text><textPath> below instead.
+    let is_text_on_path = matches!(
+        &obj.shape,
+        Some(petunia_design_document::ShapeKind::Text {
+            on_path: Some(_),
+            ..
+        })
+    );
+    if is_text_on_path {
+        return export_text_on_path_svg(surface, obj);
+    }
     let mut outline = obj.evaluated_path();
     let mut notes: Vec<String> = Vec::new();
     if outline.verbs.is_empty() {
@@ -360,6 +371,54 @@ fn export_object_svg(
         out.push_str(&format!("<!-- {}: {} -->", escape_xml(&obj.name), notes.join("; ")));
     }
     out
+}
+
+/// Exports attached text-on-path as `<text><textPath href="#target">`.
+/// The target keeps its own `<path>` element (exported separately), so the
+/// reference resolves by id. Glyph shaping stays future work: content rides
+/// the evaluated outline between `start` and `end` fractions.
+fn export_text_on_path_svg(
+    surface: &petunia_design_document::Surface,
+    obj: &petunia_design_document::DocumentObject,
+) -> String {
+    let (content, font_family, font_size, attachment) = match &obj.shape {
+        Some(petunia_design_document::ShapeKind::Text {
+            content,
+            font_family,
+            font_size,
+            on_path: Some(attachment),
+            ..
+        }) => (content, font_family, font_size, attachment),
+        _ => return String::new(),
+    };
+    let target_d = surface
+        .objects()
+        .iter()
+        .find(|o| o.id == attachment.target)
+        .map(|t| export_path_d(&t.evaluated_path()))
+        .unwrap_or_default();
+    let fill = obj
+        .effective_appearance()
+        .primary_fill()
+        .map(|f| match &f.paint {
+            petunia_design_document::Paint::Solid(token) => svg_color(token),
+            _ => "currentColor".to_string(),
+        })
+        .unwrap_or_else(|| "currentColor".to_string());
+    // SVG 2 href with xlink fallback for older renderers.
+    format!(
+        "    <text font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\"><textPath href=\"#{}\" xlink:href=\"#{}\" startOffset=\"{:.1}%\" side=\"left\"><!-- path d=\"{}\" span {:.3}..{:.3} -->{}</textPath></text>",
+        escape_xml(font_family),
+        font_size,
+        fill,
+        attachment.target,
+        attachment.target,
+        attachment.start * 100.0,
+        target_d,
+        attachment.start,
+        attachment.end,
+        escape_xml(content),
+    )
 }
 
 /// Resolves a color token/literal to an SVG `#rrggbb` paint string.
