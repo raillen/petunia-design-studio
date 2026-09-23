@@ -232,4 +232,6 @@ pub struct CanvasOverlays {
     pub region_preview: Option<Vec<GPoint>>,
     /// Text-on-path span handles in document space (`[start, end]`), if any.
     pub text_path_handles: Option<Vec<GPoint>>,
+    /// Committed raster selection mask contours in document space, if any.
+    pub selection_mask: Option<Vec<Vec<GPoint>>>,
 }

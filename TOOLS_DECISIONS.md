@@ -119,7 +119,21 @@ Doutrina-mãe: ADR 09.31 (`petunia-design-studio/09 31 — Non-Destructive Editi
   cada passo precisa ver a forma inteira). Vale para subtração de região toda.
 - **SmartFill drag** inunda no release (semântica de clique); Alt sobre vazio = NoOp.
 | 12 | SmartFill flood real | Face de espaço negativo via frame−união | Feito batch 12 |
-| 13 | Seleção raster (epic) | Modelo de máscara + marquee/lasso/brush/flood + ops | Infra nova |
+| 13 | Seleção raster (epic) | Máscara de contornos + marquee/lasso/modos | Feito batch 13 (flood/brush futuros) |
+
+## Batch 13 — Seleção raster: máscara de contornos (decisões)
+
+- **Modelo:** `RasterSelection { contours, feather }` em `application::selection_mask`,
+  estado transiente de sessão (como seleção de objetos: sem undo, sem ChangeSet).
+  Contenção even-odd sobre contornos flat — mesma convenção de furos dos booleanos.
+- **Motor:** marquee rect/ellipse/lasso commitam de verdade; modos via Shift/Alt
+  (Replace/Add/Subtract/Intersect, convenção Photoshop); clique limpa (Replace).
+  Invert dentro dos bounds da surface; Grow/Shrink pelo offset real (Miter);
+  feather é parâmetro de render, nunca geometria.
+- **Overlay:** `selection_mask` (doc-space) alimenta marching ants futuras.
+- **Fora (futuros documentados, exigem pixel-layers no documento):**
+  FloodSelect/SelectionBrush (amostragem de pixels), Brush/Eraser (pintura),
+  feather renderizado, Refine/QuickMask/Straighten.
 | 14 | Warp/Perspective (epic) | 3º modificador, 10.8 V1_REQUIRED | Infra + matemática |
 | — | Photo paint/retouch, Vector Brush, Place Image, Vector Crop, Stroke Width, Line | Batches avulsos por demanda | Pequenos-médios |
 

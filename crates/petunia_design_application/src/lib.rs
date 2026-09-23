@@ -16,6 +16,7 @@ mod history;
 pub mod hierarchy_service;
 pub mod interaction;
 pub mod ports;
+pub mod selection_mask;
 pub mod session;
 pub mod surfaces;
 pub mod view_camera;
@@ -35,6 +36,7 @@ pub use ports::{
     SelectionPort, SurfacePort, VariableDataPort,
 };
 pub use session::{DocumentSession, SelectionSession};
+pub use selection_mask::{RasterSelection, SelectionMode, SelectionShape};
 pub use tools::ToolKind;
 pub use transaction::Transaction;
 pub use view_models::{

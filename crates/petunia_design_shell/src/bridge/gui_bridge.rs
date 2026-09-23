@@ -240,6 +240,66 @@ impl PetuniaDesignGuiBridge {
         SelectionPort::select_all(self);
     }
 
+    /// Returns the transient raster selection mask (marching ants, 10.9).
+    #[must_use]
+    pub fn raster_selection(&self) -> petunia_design_application::RasterSelection {
+        self.session()
+            .map(|s| s.raster_selection.clone())
+            .unwrap_or_default()
+    }
+
+    /// Combines one shape into the raster mask (session state, no undo).
+    pub fn combine_raster_selection(
+        &mut self,
+        shape: petunia_design_application::SelectionShape,
+        mode: petunia_design_application::SelectionMode,
+    ) {
+        if let Some(session) = self.active_session.as_mut() {
+            session.raster_selection.combine(&shape, mode);
+        }
+    }
+
+    /// Clears the raster mask (Ctrl+D equivalent).
+    pub fn clear_raster_selection(&mut self) {
+        if let Some(session) = self.active_session.as_mut() {
+            session.raster_selection.clear();
+        }
+    }
+
+    /// Inverts the raster mask inside the active surface bounds.
+    /// Empty masks stay empty.
+    pub fn invert_raster_selection(&mut self) {
+        let frame = self.active_session.as_ref().and_then(|s| {
+            let surface_id = s.active_surface()?;
+            let surface = s.surface(surface_id).ok()?;
+            let [x, y, w, h] = surface.bounds();
+            use petunia_design_geometry::GPoint;
+            Some(vec![
+                GPoint::new(x, y),
+                GPoint::new(x + w, y),
+                GPoint::new(x + w, y + h),
+                GPoint::new(x, y + h),
+            ])
+        });
+        if let (Some(session), Some(frame)) = (self.active_session.as_mut(), frame) {
+            session.raster_selection.invert_in(&frame);
+        }
+    }
+
+    /// Grows (positive) or shrinks (negative) the raster mask.
+    pub fn grow_raster_selection(&mut self, delta: f64) {
+        if let Some(session) = self.active_session.as_mut() {
+            session.raster_selection.grow(delta);
+        }
+    }
+
+    /// Sets the raster feather radius (render-time parameter).
+    pub fn set_raster_feather(&mut self, radius: f64) {
+        if let Some(session) = self.active_session.as_mut() {
+            session.raster_selection.set_feather(radius);
+        }
+    }
+
     /// Queries properties view-model.
     #[must_use]
     pub fn query_properties(&self) -> PropertiesPresentationModel {

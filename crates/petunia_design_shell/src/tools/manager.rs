@@ -342,15 +342,15 @@ impl ToolManager {
             ToolKind::Measure => self.measure_tool.overlays(),
             ToolKind::Zoom => self.zoom_tool.overlays(),
             ToolKind::Hand => self.hand_tool.overlays(),
-            ToolKind::MarqueeRect => self.photo_marquee_rect_tool.overlays(camera),
-            ToolKind::MarqueeEllipse => self.photo_marquee_ellipse_tool.overlays(camera),
-            ToolKind::Lasso => self.photo_lasso_tool.overlays(camera),
-            ToolKind::SelectionBrush => self.photo_selection_brush_tool.overlays(camera),
-            ToolKind::FloodSelect => self.photo_flood_select_tool.overlays(camera),
-            ToolKind::PixelPaintBrush => self.photo_brush_tool.overlays(camera),
-            ToolKind::PixelEraser => self.photo_eraser_tool.overlays(camera),
+            ToolKind::MarqueeRect => self.photo_marquee_rect_tool.overlays(camera, bridge),
+            ToolKind::MarqueeEllipse => self.photo_marquee_ellipse_tool.overlays(camera, bridge),
+            ToolKind::Lasso => self.photo_lasso_tool.overlays(camera, bridge),
+            ToolKind::SelectionBrush => self.photo_selection_brush_tool.overlays(camera, bridge),
+            ToolKind::FloodSelect => self.photo_flood_select_tool.overlays(camera, bridge),
+            ToolKind::PixelPaintBrush => self.photo_brush_tool.overlays(camera, bridge),
+            ToolKind::PixelEraser => self.photo_eraser_tool.overlays(camera, bridge),
             ToolKind::PhotoGradient => self.photo_gradient_tool.overlays(bridge, camera),
-            ToolKind::Crop => self.photo_crop_tool.overlays(camera),
+            ToolKind::Crop => self.photo_crop_tool.overlays(camera, bridge),
         }
     }
 }

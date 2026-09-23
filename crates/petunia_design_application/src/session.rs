@@ -88,6 +88,10 @@ pub struct DocumentSession {
     history: History,
     /// Viewport/window-shared selection session.
     pub selection: SelectionSession,
+    /// Transient raster selection mask (marching ants, 10.9).
+    /// Session state like object selection: gestures write it directly,
+    /// never through undo history.
+    pub raster_selection: crate::selection_mask::RasterSelection,
     /// Non-document view state (camera, rulers, snapping). Lives here so view
     /// actions travel the same Action lane as document actions (15.B).
     pub view: crate::view_camera::ViewState,
@@ -129,6 +133,7 @@ impl DocumentSession {
             document,
             history: History::new(0),
             selection: SelectionSession::new(),
+            raster_selection: crate::selection_mask::RasterSelection::new(),
             view: crate::view_camera::ViewState::default(),
             id_generator: IdGenerator::with_start(max_id + 1),
             title: title.into(),
@@ -159,6 +164,7 @@ impl DocumentSession {
             document,
             history: History::new(0),
             selection: SelectionSession::new(),
+            raster_selection: crate::selection_mask::RasterSelection::new(),
             view: crate::view_camera::ViewState::default(),
             id_generator: IdGenerator::with_start(max_id + 1),
             title: title.into(),

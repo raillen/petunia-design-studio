@@ -3769,3 +3769,184 @@ fn text_on_path_svg_uses_textpath_href() {
         "missing href:\n{svg}"
     );
 }
+
+#[allow(clippy::too_many_arguments)]
+fn photo_drag(
+    tool: &mut PhotoTool,
+    bridge: &mut PetuniaDesignGuiBridge,
+    camera: &ViewportCamera,
+    snap: &mut SnapEngine,
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+    modifiers: SemanticModifiers,
+) {
+    let p0 = GPoint::new(x0, y0);
+    let p1 = GPoint::new(x1, y1);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p0, p0, modifiers),
+        bridge,
+        camera,
+        snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p1, p1, modifiers),
+        bridge,
+        camera,
+        snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Up, PointerButton::Primary, p1, p1, modifiers),
+        bridge,
+        camera,
+        snap,
+    )
+    .unwrap();
+}
+
+#[test]
+fn marquee_rect_commits_mask_without_undo() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Marquee").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PhotoTool::new(PhotoToolKind::MarqueeRect);
+
+    // Session transient state: no new undo entry, no document mutation.
+    // (new_document itself owns the single pre-existing entry.)
+    let undo_before = bridge.can_undo();
+    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 10.0, 10.0, 110.0, 60.0, SemanticModifiers::default());
+    assert_eq!(bridge.can_undo(), undo_before);
+    let mask = bridge.raster_selection();
+    assert!(!mask.is_empty());
+    assert!((mask.signed_area().abs() - 5000.0).abs() < 1.0, "got {}", mask.signed_area());
+    assert!(mask.contains(GPoint::new(60.0, 35.0)));
+    assert!(!mask.contains(GPoint::new(200.0, 200.0)));
+    assert_eq!(bridge.snapshot().total_objects, 0);
+    // Marching-ants overlay exposes the committed contours.
+    assert!(tool.overlays(&camera, &bridge).selection_mask.is_some());
+}
+
+#[test]
+fn marquee_ellipse_covers_center_not_corners() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Ellipse").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PhotoTool::new(PhotoToolKind::MarqueeEllipse);
+
+    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 0.0, 0.0, 100.0, 100.0, SemanticModifiers::default());
+
+    let mask = bridge.raster_selection();
+    assert!(mask.contains(GPoint::new(50.0, 50.0)));
+    assert!(!mask.contains(GPoint::new(5.0, 5.0)));
+}
+
+#[test]
+fn marquee_click_clears_mask() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Clear").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PhotoTool::new(PhotoToolKind::MarqueeRect);
+    let plain = SemanticModifiers::default();
+
+    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 10.0, 10.0, 110.0, 60.0, plain);
+    assert!(!bridge.raster_selection().is_empty());
+    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 500.0, 500.0, 500.0, 500.0, plain);
+    assert!(bridge.raster_selection().is_empty());
+}
+
+#[test]
+fn marquee_shift_adds_and_alt_subtracts() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Modes").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PhotoTool::new(PhotoToolKind::MarqueeRect);
+    let shift = SemanticModifiers {
+        constrain: true,
+        ..Default::default()
+    };
+    let alt = SemanticModifiers {
+        duplicate: true,
+        ..Default::default()
+    };
+
+    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 0.0, 0.0, 100.0, 100.0, SemanticModifiers::default());
+    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 50.0, 50.0, 150.0, 150.0, shift);
+    let added = bridge.raster_selection().signed_area().abs();
+    assert!((added - 17500.0).abs() < 2.0, "got {added}");
+
+    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 0.0, 0.0, 100.0, 100.0, alt);
+    let carved = bridge.raster_selection().signed_area().abs();
+    assert!((carved - 7500.0).abs() < 2.0, "got {carved}");
+    assert!(!bridge.raster_selection().contains(GPoint::new(25.0, 25.0)));
+    assert!(bridge.raster_selection().contains(GPoint::new(125.0, 125.0)));
+}
+
+#[test]
+fn lasso_encloses_polygon_mask() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Lasso").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PhotoTool::new(PhotoToolKind::Lasso);
+    let plain = SemanticModifiers::default();
+
+    let p = GPoint::new(0.0, 0.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p, p, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    for (x, y) in [(100.0, 0.0), (100.0, 100.0), (0.0, 100.0)] {
+        let q = GPoint::new(x, y);
+        tool.on_pointer_event(
+            &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, q, q, plain),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    }
+    let end = GPoint::new(0.0, 100.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Up, PointerButton::Primary, end, end, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let mask = bridge.raster_selection();
+    assert!((mask.signed_area().abs() - 10000.0).abs() < 1.0, "got {}", mask.signed_area());
+    assert!(mask.contains(GPoint::new(50.0, 50.0)));
+}
+
+#[test]
+fn raster_bridge_api_inverts_grows_feathers() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Mask API").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PhotoTool::new(PhotoToolKind::MarqueeRect);
+    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 0.0, 0.0, 10.0, 10.0, SemanticModifiers::default());
+
+    bridge.set_raster_feather(2.5);
+    assert!((bridge.raster_selection().feather - 2.5).abs() < 1e-9);
+
+    bridge.grow_raster_selection(5.0);
+    assert!((bridge.raster_selection().signed_area().abs() - 400.0).abs() < 8.0);
+
+    bridge.invert_raster_selection();
+    assert!(!bridge.raster_selection().contains(GPoint::new(5.0, 5.0)));
+
+    bridge.clear_raster_selection();
+    assert!(bridge.raster_selection().is_empty());
+}
