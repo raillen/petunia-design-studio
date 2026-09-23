@@ -3133,6 +3133,117 @@ fn builder_drag_merges_crossed_regions_keeping_sources() {
 }
 
 #[test]
+fn smartfill_floods_bounded_empty_face() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Flood Frame").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    // Picture frame: four walls, empty 80x80 middle.
+    corner_test_rect(&mut bridge, &mut gen, [0.0, 0.0, 100.0, 10.0]);
+    corner_test_rect(&mut bridge, &mut gen, [0.0, 90.0, 100.0, 10.0]);
+    corner_test_rect(&mut bridge, &mut gen, [0.0, 10.0, 10.0, 80.0]);
+    corner_test_rect(&mut bridge, &mut gen, [90.0, 10.0, 10.0, 80.0]);
+    bridge.clear_selection();
+    let mut tool = ShapeBuilderTool::new(BuilderMode::SmartFill);
+
+    builder_click(&mut tool, &mut bridge, &camera, &mut snap, 50.0, 50.0, SemanticModifiers::default());
+
+    assert_eq!(bridge.snapshot().total_objects, 5);
+    let region = bridge.selection().selected_ids[0];
+    let bounds = object_bounds(&bridge, region);
+    assert!((bounds[0] - 10.0).abs() < 1.0, "got {bounds:?}");
+    assert!((bounds[1] - 10.0).abs() < 1.0, "got {bounds:?}");
+    assert!((bounds[2] - 80.0).abs() < 1.0, "got {bounds:?}");
+    assert!((bounds[3] - 80.0).abs() < 1.0, "got {bounds:?}");
+    // Default SmartFill token, undo removes the flood.
+    let obj = bridge.session().unwrap().document().find_object(region).unwrap();
+    assert!(matches!(
+        obj.effective_appearance().primary_fill().map(|f| f.paint.clone()),
+        Some(petunia_design_document::Paint::Solid(ref t)) if t == "ptnd.blue/500"
+    ));
+    bridge.undo().unwrap();
+    assert_eq!(bridge.snapshot().total_objects, 4);
+}
+
+#[test]
+fn smartfill_unbounded_click_is_noop() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Flood Open").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    corner_test_rect(&mut bridge, &mut gen, [0.0, 0.0, 100.0, 100.0]);
+    bridge.clear_selection();
+    let mut tool = ShapeBuilderTool::new(BuilderMode::SmartFill);
+
+    // Far outside: the face touches the frame (unbounded) → NoOp.
+    builder_click(&mut tool, &mut bridge, &camera, &mut snap, 500.0, 500.0, SemanticModifiers::default());
+
+    assert_eq!(bridge.snapshot().total_objects, 1);
+}
+
+#[test]
+fn smartfill_flood_bounded_by_open_strokes() {
+    use petunia_design_geometry::PathVerb as V;
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Flood Strokes").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    // Box of four open strokes (10pt wide): the bands enclose a pocket.
+    let surface_id = bridge.active_surface().unwrap();
+    let mut gen = IdGenerator::new();
+    for (x0, y0, x1, y1) in [
+        (0.0, 0.0, 100.0, 0.0),
+        (100.0, 0.0, 100.0, 100.0),
+        (100.0, 100.0, 0.0, 100.0),
+        (0.0, 100.0, 0.0, 0.0),
+    ] {
+        let id = gen.next_object();
+        bridge
+            .submit_command(CommandRequest::new(Command::CreateObject {
+                surface: surface_id,
+                id,
+                name: "Wall".to_string(),
+            }))
+            .unwrap();
+        let mut path = petunia_design_geometry::GPath::new();
+        path.push(V::MoveTo(GPoint::new(x0, y0))).unwrap();
+        path.push(V::LineTo(GPoint::new(x1, y1))).unwrap();
+        bridge
+            .submit_command(CommandRequest::new(Command::SetShape {
+                id,
+                shape: Some(petunia_design_document::ShapeKind::Path(path)),
+            }))
+            .unwrap();
+        bridge
+            .submit_command(CommandRequest::new(Command::SetBounds {
+                id,
+                bounds: Some([
+                    x0.min(x1) - 5.0,
+                    y0.min(y1) - 5.0,
+                    (x1 - x0).abs().max(10.0),
+                    (y1 - y0).abs().max(10.0),
+                ]),
+                rotation: 0.0,
+            }))
+            .unwrap();
+        bridge.set_stroke(id, Some("ptnd.gray/900".to_string()), 10.0).unwrap();
+    }
+    bridge.clear_selection();
+    let mut tool = ShapeBuilderTool::new(BuilderMode::SmartFill);
+
+    // Inside the stroked box: open centerlines still bound the face.
+    builder_click(&mut tool, &mut bridge, &camera, &mut snap, 50.0, 50.0, SemanticModifiers::default());
+
+    assert_eq!(bridge.snapshot().total_objects, 5);
+    let region = bridge.selection().selected_ids[0];
+    let bounds = object_bounds(&bridge, region);
+    assert!((bounds[2] - 90.0).abs() < 2.0, "got {bounds:?}");
+    assert!((bounds[3] - 90.0).abs() < 2.0, "got {bounds:?}");
+}
+
+#[test]
 fn smartfill_click_uses_default_fill() {
     let mut bridge = PetuniaDesignGuiBridge::new();
     bridge.new_document("Smart Fill").expect("doc");

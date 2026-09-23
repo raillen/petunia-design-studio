@@ -128,6 +128,8 @@ impl ShapeBuilderTool {
     }
 
     /// Clicks one region: creates it (merge) or carves it out (Alt-subtract).
+    /// SmartFill on empty canvas floods the bounded negative-space face;
+    /// unbounded faces (touching the frame) are a NoOp.
     fn click_region(
         &mut self,
         pt: GPoint,
@@ -136,6 +138,9 @@ impl ShapeBuilderTool {
     ) -> Result<ChangeSet, PetuniaError> {
         let covering = covering_set(bridge, pt);
         if covering.is_empty() {
+            if self.mode == BuilderMode::SmartFill && !subtract {
+                return flood_empty_face(bridge, pt);
+            }
             return Ok(ChangeSet::empty());
         }
         let region = region_polygons(bridge, &covering);
@@ -171,6 +176,10 @@ impl ShapeBuilderTool {
             }
         }
         if signatures.is_empty() {
+            // SmartFill drags flood at the release point (click semantics).
+            if self.mode == BuilderMode::SmartFill && !subtract {
+                return flood_empty_face(bridge, p1);
+            }
             return Ok(ChangeSet::empty());
         }
         if subtract {
@@ -216,7 +225,12 @@ impl ShapeBuilderTool {
         } else if let Some(hover) = self.hover_doc {
             let covering = covering_set(bridge, hover);
             if covering.is_empty() {
-                None
+                // SmartFill previews the flood face on empty canvas.
+                if self.mode == BuilderMode::SmartFill {
+                    flood_face_polygons(bridge, hover).map(|face| face.concat())
+                } else {
+                    None
+                }
             } else {
                 Some(region_polygons(bridge, &covering).concat())
             }
@@ -459,24 +473,25 @@ fn union_polygons(a: &[Vec<GPoint>], b: &[Vec<GPoint>]) -> Vec<Vec<GPoint>> {
     boolean_pairwise(a, b, petunia_design_geometry::BooleanOp::Union)
 }
 
-/// Subtracts polygon set `b` from `a`, sequentially.
+/// Subtracts polygon set `b` from `a` in ONE overlay call.
+/// Per-contour pairwise subtraction would break hole semantics (holes are
+/// sibling contours; each step must see the whole shape at once).
 fn difference_many(a: &[Vec<GPoint>], b: &[Vec<GPoint>]) -> Vec<Vec<GPoint>> {
-    let mut acc = a.to_vec();
-    for clip in b {
-        let mut next = Vec::new();
-        for subject in &acc {
-            next.extend(boolean_pairwise(
-                std::slice::from_ref(subject),
-                std::slice::from_ref(clip),
-                petunia_design_geometry::BooleanOp::Difference,
-            ));
-        }
-        acc = next;
-        if acc.is_empty() {
-            break;
-        }
+    use petunia_design_geometry::{BooleanInput, boolean_op};
+    if a.is_empty() {
+        return Vec::new();
     }
-    acc
+    if b.is_empty() {
+        return a.to_vec();
+    }
+    boolean_op(
+        &BooleanInput::new(a.to_vec()),
+        &BooleanInput::new(b.to_vec()),
+        petunia_design_geometry::BooleanOp::Difference,
+    )
+    .into_iter()
+    .filter(|contour| contour.len() >= 3 && poly_area(contour).abs() >= 1e-6)
+    .collect()
 }
 
 /// Applies one boolean op to every contour pair, dropping degenerates.
@@ -503,6 +518,167 @@ fn boolean_pairwise(
     out
 }
 
+/// Flood scope: the selection when non-empty, else every visible
+/// unlocked object on the active surface (Corel Smart Fill scope).
+fn flood_scope_ids(bridge: &PetuniaDesignGuiBridge) -> Vec<ObjectId> {
+    let Some(session) = bridge.session() else {
+        return Vec::new();
+    };
+    if !session.selection.selected_ids.is_empty() {
+        return session.selection.selected_ids.clone();
+    }
+    let Some(surface_id) = session.active_surface() else {
+        return Vec::new();
+    };
+    let Ok(surface) = session.surface(surface_id) else {
+        return Vec::new();
+    };
+    surface
+        .objects()
+        .iter()
+        .filter(|obj| obj.visible && !obj.locked)
+        .map(|obj| obj.id)
+        .collect()
+}
+
+/// Obstacle polygons for flood: evaluated outlines; open paths buffer by
+/// half stroke width into closed bands so strokes bound faces too.
+fn obstacle_polygons(bridge: &PetuniaDesignGuiBridge, ids: &[ObjectId]) -> Vec<Vec<GPoint>> {
+    use petunia_design_geometry::{OffsetCap, OffsetJoin, offset_path};
+    let Some(session) = bridge.session() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for id in ids {
+        let Some(obj) = session.find_object(*id) else {
+            continue;
+        };
+        if !obj.visible || obj.locked {
+            continue;
+        }
+        let path = match obj.shape.as_ref() {
+            Some(ShapeKind::Path(path)) => path.clone(),
+            Some(_) => obj.to_path(),
+            None => continue,
+        };
+        if path.is_empty() {
+            continue;
+        }
+        if path.verbs.contains(&petunia_design_geometry::PathVerb::Close) {
+            out.extend(path.to_polygons(REGION_TOLERANCE));
+        } else {
+            // Open stroke: band it so it bounds the flood face.
+            let half = (obj.stroke_width.max(1.0)) / 2.0;
+            match offset_path(&path, half, OffsetJoin::Round, OffsetCap::Round) {
+                Some(band) => out.extend(band.to_polygons(REGION_TOLERANCE)),
+                None => out.extend(path.to_polygons(REGION_TOLERANCE)),
+            }
+        }
+    }
+    out.into_iter().filter(|poly| poly.len() >= 3).collect()
+}
+
+/// Floods the bounded negative-space face containing `pt`.
+/// Unbounded faces (touching the frame) are a NoOp: filling infinity
+/// would create garbage, and Corel asks for a closed area too.
+fn flood_empty_face(
+    bridge: &mut PetuniaDesignGuiBridge,
+    pt: GPoint,
+) -> Result<ChangeSet, PetuniaError> {
+    let Some(face) = flood_face_polygons(bridge, pt) else {
+        return Ok(ChangeSet::empty());
+    };
+    create_region(bridge, &[], &face, BuilderMode::SmartFill)
+}
+
+/// Computes the bounded face containing `pt`, if it is enclosed.
+/// Returns the face components, or `None` for unbounded/missing faces.
+fn flood_face_polygons(
+    bridge: &PetuniaDesignGuiBridge,
+    pt: GPoint,
+) -> Option<Vec<Vec<GPoint>>> {
+    let ids = flood_scope_ids(bridge);
+    if ids.is_empty() {
+        return None;
+    }
+    let obstacles = obstacle_polygons(bridge, &ids);
+    if obstacles.is_empty() {
+        return None;
+    }
+    // Frame: obstacle bounds expanded by margin, grown to contain the click.
+    let margin = 50.0;
+    let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for poly in &obstacles {
+        for p in poly {
+            x0 = x0.min(p.x);
+            y0 = y0.min(p.y);
+            x1 = x1.max(p.x);
+            y1 = y1.max(p.y);
+        }
+    }
+    x0 = (x0 - margin).min(pt.x - margin);
+    y0 = (y0 - margin).min(pt.y - margin);
+    x1 = (x1 + margin).max(pt.x + margin);
+    y1 = (y1 + margin).max(pt.y + margin);
+    let frame = vec![
+        GPoint::new(x0, y0),
+        GPoint::new(x1, y0),
+        GPoint::new(x1, y1),
+        GPoint::new(x0, y1),
+    ];
+    let remaining = difference_many(&[frame], &obstacles);
+    if remaining.is_empty() {
+        return None;
+    }
+    // The face containing the click. Difference output is a flat contour
+    // list (holes are siblings, not nested): several contours may contain
+    // the point, so the smallest wins — the outer boundary always contains
+    // its holes geometrically.
+    let face = remaining
+        .into_iter()
+        .filter(|poly| point_in_poly(pt, poly))
+        .min_by(|a, b| {
+            poly_area(a)
+                .abs()
+                .partial_cmp(&poly_area(b).abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })?;
+    if face.len() < 3 || poly_area(&face).abs() < 1e-6 {
+        return None;
+    }
+    // Unbounded faces touch the frame border: refuse to fill infinity.
+    let touches = face.iter().any(|p| {
+        (p.x - x0).abs() < 0.5
+            || (p.x - x1).abs() < 0.5
+            || (p.y - y0).abs() < 0.5
+            || (p.y - y1).abs() < 0.5
+    });
+    if touches {
+        return None;
+    }
+    Some(vec![face])
+}
+
+/// Even-odd point-in-polygon.
+fn point_in_poly(pt: GPoint, poly: &[GPoint]) -> bool {
+    let mut inside = false;
+    let n = poly.len();
+    if n < 3 {
+        return false;
+    }
+    let mut j = n - 1;
+    for i in 0..n {
+        let pi = poly[i];
+        let pj = poly[j];
+        if (pi.y > pt.y) != (pj.y > pt.y)
+            && pt.x < (pj.x - pi.x) * (pt.y - pi.y) / (pj.y - pi.y) + pi.x
+        {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
 /// Shoelace area of one contour.
 fn poly_area(contour: &[GPoint]) -> f64 {
     if contour.len() < 3 {

@@ -105,7 +105,20 @@ Doutrina-mãe: ADR 09.31 (`petunia-design-studio/09 31 — Non-Destructive Editi
   path d embutido em comentário); PDF registra `TEXT_ON_PATH_FLATTENED` e cai no
   fluxo de bounds. Preview curvo de glifos (shaping) fica futuro.
 - **Regressão:** clique longe do path continua criando headline 160×32.
-| 12 | SmartFill real | Flood de regiões limitadas (face detection — spike antes) | Pesquisa antes |
+
+## Batch 12 — SmartFill flood de espaço negativo (decisões)
+
+- **Algoritmo:** `frame − união(obstáculos)` num booleano só; a face que contém
+  o clique (menor área, pois furos são irmãos flat) vira o objeto. Faces que
+  tocam o frame = ilimitadas = NoOp (encher o infinito criaria lixo).
+- **Strokes abertos delimitam:** centerlines viram bandas pelo `offset_path`
+  (meia largura do stroke) antes do booleano — mesma matemática do Contour.
+- **Escopo:** seleção quando não-vazia, senão tudo visível/destravado.
+- **Achado (bug real no batch 9):** `difference_many` par-a-par quebrava
+  semântica de furos; unificado numa chamada (furos são contornos irmãos,
+  cada passo precisa ver a forma inteira). Vale para subtração de região toda.
+- **SmartFill drag** inunda no release (semântica de clique); Alt sobre vazio = NoOp.
+| 12 | SmartFill flood real | Face de espaço negativo via frame−união | Feito batch 12 |
 | 13 | Seleção raster (epic) | Modelo de máscara + marquee/lasso/brush/flood + ops | Infra nova |
 | 14 | Warp/Perspective (epic) | 3º modificador, 10.8 V1_REQUIRED | Infra + matemática |
 | — | Photo paint/retouch, Vector Brush, Place Image, Vector Crop, Stroke Width, Line | Batches avulsos por demanda | Pequenos-médios |
