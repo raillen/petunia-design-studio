@@ -254,6 +254,10 @@ pub enum Command {
     /// Offsets an outline, non-destructively (09.31, 10.3).
     /// Upserts the live `ContourOffset` modifier; base geometry is untouched.
     OffsetPath { id: ObjectId, delta: f64 },
+    /// Sets a live perspective quad, non-destructively (09.31, 10.8).
+    SetPerspective { id: ObjectId, quad: [[f64; 2]; 4] },
+    /// Sets a live rectangular crop, non-destructively (09.31, 08.24).
+    SetCropRect { id: ObjectId, rect: [f64; 4] },
     /// Replaces an object's live modifier chain (09.31, one undo entry).
     SetModifiers {
         id: ObjectId,
@@ -264,6 +268,9 @@ pub enum Command {
     /// Bakes live transparency gradients into base opacity (explicit, 09.31).
     /// Documented approximation: the center sample flattens the mask.
     BakeTransparency { id: ObjectId },
+    /// Bakes all live geometry-domain modifiers (contour, perspective, crop)
+    /// into base geometry (explicit user op, 09.31). Transparency survives.
+    BakeGeometry { id: ObjectId },
     /// Aligns multiple objects relative to their collective bounds (10.1).
     AlignObjects {
         surface: SurfaceId,
@@ -594,9 +601,12 @@ pub fn execute(
         Command::ConvertToCurves { id } => mutator.convert_to_curves(*id),
         Command::BakeCorners { id } => mutator.bake_corners(*id),
         Command::OffsetPath { id, delta } => mutator.offset_path(*id, *delta),
+        Command::SetPerspective { id, quad } => mutator.set_perspective(*id, *quad),
+        Command::SetCropRect { id, rect } => mutator.set_crop_rect(*id, *rect),
         Command::SetModifiers { id, modifiers } => mutator.set_modifiers(*id, modifiers.clone()),
         Command::BakeContour { id } => mutator.bake_contour(*id),
         Command::BakeTransparency { id } => mutator.bake_transparency(*id),
+        Command::BakeGeometry { id } => mutator.bake_geometry(*id),
         Command::AlignObjects { surface, ids, mode } => mutator.align_objects(*surface, ids, *mode),
         Command::DistributeObjects { surface, ids, axis } => {
             mutator.distribute_objects(*surface, ids, *axis)

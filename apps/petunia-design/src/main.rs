@@ -346,6 +346,7 @@ fn tool_cursor_kind(tool: ToolKind) -> &'static str {
         | ToolKind::Polygon
         | ToolKind::Star
         | ToolKind::ShapeBuilder
+        | ToolKind::Perspective
         | ToolKind::VectorFloodFill
         | ToolKind::Contour
         | ToolKind::Corner
@@ -1089,6 +1090,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "Knife" => ToolKind::Knife,
                 "Scissors" => ToolKind::Scissors,
                 "ShapeBuilder" => ToolKind::ShapeBuilder,
+                "Perspective" => ToolKind::Perspective,
                 "Hand" => ToolKind::Hand,
                 "Zoom" => ToolKind::Zoom,
                 _ => ToolKind::Select,
@@ -1111,6 +1113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ToolKind::ColorPicker => "Color Picker: Clique em qualquer elemento para capturar cor de preenchimento.",
                     ToolKind::Knife => "Knife/Scissors: Fatie formas e caminhos vetoriais com uma linha de corte.",
                     ToolKind::ShapeBuilder => "Shape Builder: Combine, una ou subtraia regiões de geometrias sobrepostas.",
+                    ToolKind::Perspective => "Perspective: Arraste os cantos para deformar em perspectiva (modificador vivo).",
                     ToolKind::PointTransform => "Point Transform: Transformações afins livres com ponto de pivô customizado.",
                     ToolKind::Artboard => "Artboard: Redimensione ou crie novas pranchetas de trabalho.",
                     ToolKind::Hand => "Hand: Arraste para navegar pelo espaço infinito da prancheta.",

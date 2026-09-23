@@ -22,6 +22,7 @@ impl ActionId {
     pub const TOOL_PENCIL: &'static str = "ptnd.tool.pencil";
     pub const TOOL_CORNER: &'static str = "ptnd.tool.corner";
     pub const TOOL_CONTOUR: &'static str = "ptnd.tool.contour";
+    pub const TOOL_PERSPECTIVE: &'static str = "ptnd.tool.perspective";
     pub const TOOL_KNIFE: &'static str = "ptnd.tool.knife";
     pub const TOOL_SCISSORS: &'static str = "ptnd.tool.scissors";
     pub const TOOL_RECTANGLE: &'static str = "ptnd.tool.shape.rectangle";

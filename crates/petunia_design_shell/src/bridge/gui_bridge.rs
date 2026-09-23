@@ -495,6 +495,29 @@ impl PetuniaDesignGuiBridge {
         self.submit_command(CommandRequest::new(Command::BakeTransparency { id }))
     }
 
+    /// Bakes all live geometry-domain modifiers (explicit user op, 09.31).
+    pub fn bake_geometry(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::BakeGeometry { id }))
+    }
+
+    /// Sets a live perspective quad, non-destructively (09.31, 10.8).
+    pub fn set_perspective(
+        &mut self,
+        id: ObjectId,
+        quad: [[f64; 2]; 4],
+    ) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::SetPerspective { id, quad }))
+    }
+
+    /// Sets a live rectangular crop, non-destructively (09.31, 08.24).
+    pub fn set_crop_rect(
+        &mut self,
+        id: ObjectId,
+        rect: [f64; 4],
+    ) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::SetCropRect { id, rect }))
+    }
+
     /// Sets a live transparency gradient vector (09.31, replaces the
     /// whole-stack opacity proxy). Default stops run opaque to transparent.
     /// Zero-length vectors clear the entry. Base geometry is never touched.

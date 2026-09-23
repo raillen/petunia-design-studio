@@ -11,7 +11,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use petunia_design_geometry::{offset_path, GPath, GPoint, OffsetCap, OffsetJoin};
+use petunia_design_geometry::{
+    clip_path_to_rect, offset_path, warp_path_to_quad, GPath, GPoint, OffsetCap, OffsetJoin,
+};
 
 fn default_true() -> bool {
     true
@@ -69,6 +71,22 @@ pub enum ModifierKind {
         #[serde(default)]
         stops: Vec<OpacityStop>,
     },
+    /// Live 4-corner perspective warp (third kind, 10.8 baseline).
+    /// Maps the base outline's bounding-box corners onto `quad`
+    /// (`[top-left, top-right, bottom-right, bottom-left]`). Identity quads
+    /// preserve curves; genuine warps flatten at 0.25pt (F-21). Envelope
+    /// meshes stay future work.
+    Perspective {
+        /// Target quad corners in document points.
+        quad: [[f64; 2]; 4],
+    },
+    /// Live rectangular crop (nondestructive vector crop, 08.24).
+    /// Intersects the outline with `rect` (`[x, y, w, h]`); empty results
+    /// keep the previous outline instead of destroying it.
+    CropRect {
+        /// Crop rectangle in document points.
+        rect: [f64; 4],
+    },
 }
 
 /// Single entry in an object's ordered modifier chain.
@@ -117,6 +135,19 @@ pub fn evaluate_modifiers(base: &GPath, modifiers: &[ModifierItem]) -> GPath {
             }
             // Transparency lives in the opacity domain, not geometry.
             ModifierKind::TransparentGradient { .. } => {}
+            ModifierKind::Perspective { quad } => {
+                let corners = quad.map(|[x, y]| GPoint::new(x, y));
+                if let Some(warped) = warp_path_to_quad(&current, corners, 0.25) {
+                    current = warped;
+                }
+            }
+            ModifierKind::CropRect { rect } => {
+                let [x, y, w, h] = *rect;
+                let clip = petunia_design_geometry::GRect::new(x, y, x + w, y + h);
+                if let Some(clipped) = clip_path_to_rect(&current, clip, 0.25) {
+                    current = clipped;
+                }
+            }
         }
     }
     current
@@ -339,5 +370,55 @@ mod tests {
         let mut item = transparency([0.0, 0.0], [100.0, 0.0]);
         item.enabled = false;
         assert!((evaluate_opacity_at(&[item], GPoint::new(100.0, 0.0)) - 1.0).abs() < 1e-9);
+    }
+
+    fn trapezoid() -> ModifierItem {
+        ModifierItem::enabled(
+            1,
+            ModifierKind::Perspective {
+                quad: [[0.0, 0.0], [100.0, 25.0], [100.0, 75.0], [0.0, 100.0]],
+            },
+        )
+    }
+
+    #[test]
+    fn perspective_warps_bounds_toward_quad() {
+        let out = evaluate_modifiers(&rect(), &[trapezoid()]);
+        let bounds = out.bounding_box().expect("bounds");
+        // Right edge pinches to half height; left edge spans full height.
+        assert!((bounds.x0 - 0.0).abs() < 1.0, "got {bounds:?}");
+        assert!((bounds.width() - 100.0).abs() < 1.0, "got {bounds:?}");
+        assert!((bounds.height() - 100.0).abs() < 30.0, "got {bounds:?}");
+    }
+
+    #[test]
+    fn crop_rect_clips_to_window() {
+        let item = ModifierItem::enabled(1, ModifierKind::CropRect {
+            rect: [25.0, 10.0, 50.0, 40.0],
+        });
+        let out = evaluate_modifiers(&rect(), &[item]);
+        let bounds = out.bounding_box().expect("bounds");
+        assert!((bounds.x0 - 25.0).abs() < 1.0, "got {bounds:?}");
+        assert!((bounds.width() - 50.0).abs() < 1.0, "got {bounds:?}");
+        assert!((bounds.height() - 40.0).abs() < 1.0, "got {bounds:?}");
+    }
+
+    #[test]
+    fn crop_outside_keeps_previous_outline() {
+        let item = ModifierItem::enabled(1, ModifierKind::CropRect {
+            rect: [500.0, 500.0, 10.0, 10.0],
+        });
+        let out = evaluate_modifiers(&rect(), &[item]);
+        assert_eq!(out.verbs.len(), rect().verbs.len());
+    }
+
+    #[test]
+    fn warp_and_crop_chain_in_order() {
+        let crop = ModifierItem::enabled(2, ModifierKind::CropRect {
+            rect: [0.0, 0.0, 60.0, 60.0],
+        });
+        let out = evaluate_modifiers(&rect(), &[trapezoid(), crop]);
+        let bounds = out.bounding_box().expect("bounds");
+        assert!(bounds.width() <= 61.0, "got {bounds:?}");
     }
 }

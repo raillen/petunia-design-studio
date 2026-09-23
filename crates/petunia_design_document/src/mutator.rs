@@ -583,12 +583,10 @@ impl<'doc> DocumentMutator<'doc> {
         if let Some(entry) = next.iter_mut().find(|m| {
             matches!(m.kind, crate::modifiers::ModifierKind::ContourOffset { .. })
         }) {
-            match &mut entry.kind {
-                crate::modifiers::ModifierKind::ContourOffset { distance: d, .. } => {
-                    *d = distance;
-                }
-                // Only contour entries reach here (find filter above).
-                crate::modifiers::ModifierKind::TransparentGradient { .. } => {}
+            if let crate::modifiers::ModifierKind::ContourOffset { distance: d, .. } =
+                &mut entry.kind
+            {
+                *d = distance;
             }
             let _ = (join, cap);
         } else {
@@ -660,6 +658,118 @@ impl<'doc> DocumentMutator<'doc> {
             })
             .cloned()
             .collect())
+    }
+
+    /// Sets a live perspective quad, non-destructively (09.31, 10.8).
+    /// Upserts the single `Perspective` entry (chain order preserved).
+    /// Degenerate quads are stored but decline at evaluation (warp math).
+    pub fn set_perspective(
+        &mut self,
+        id: ObjectId,
+        quad: [[f64; 2]; 4],
+    ) -> Result<ChangeSet, PetuniaError> {
+        if !quad.iter().flatten().all(|v| v.is_finite()) {
+            return Err(PetuniaError::invalid_input("perspective quad must be finite"));
+        }
+        let obj = self.document.find_object(id).ok_or_else(|| {
+            PetuniaError::not_found(format!("object `{id}` does not exist"))
+        })?;
+        let mut next = obj.modifiers.clone();
+        if let Some(entry) = next.iter_mut().find(|m| {
+            matches!(m.kind, crate::modifiers::ModifierKind::Perspective { .. })
+        }) {
+            if let crate::modifiers::ModifierKind::Perspective { quad: q } = &mut entry.kind {
+                *q = quad;
+            }
+        } else {
+            let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+            next.push(crate::modifiers::ModifierItem::enabled(
+                nid,
+                crate::modifiers::ModifierKind::Perspective { quad },
+            ));
+        }
+        self.set_modifiers(id, next)
+    }
+
+    /// Sets a live rectangular crop, non-destructively (09.31, 08.24).
+    /// Upserts the single `CropRect` entry (chain order preserved).
+    pub fn set_crop_rect(
+        &mut self,
+        id: ObjectId,
+        rect: [f64; 4],
+    ) -> Result<ChangeSet, PetuniaError> {
+        if !rect.iter().all(|v| v.is_finite()) || rect[2] < 1.0 || rect[3] < 1.0 {
+            return Err(PetuniaError::invalid_input(
+                "crop rect must be finite with positive size",
+            ));
+        }
+        let obj = self.document.find_object(id).ok_or_else(|| {
+            PetuniaError::not_found(format!("object `{id}` does not exist"))
+        })?;
+        let mut next = obj.modifiers.clone();
+        if let Some(entry) = next.iter_mut().find(|m| {
+            matches!(m.kind, crate::modifiers::ModifierKind::CropRect { .. })
+        }) {
+            if let crate::modifiers::ModifierKind::CropRect { rect: r } = &mut entry.kind {
+                *r = rect;
+            }
+        } else {
+            let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+            next.push(crate::modifiers::ModifierItem::enabled(
+                nid,
+                crate::modifiers::ModifierKind::CropRect { rect },
+            ));
+        }
+        self.set_modifiers(id, next)
+    }
+
+    /// True for geometry-domain modifiers (baked by [`Self::bake_geometry`]).
+    fn is_geometry_modifier(kind: &crate::modifiers::ModifierKind) -> bool {
+        matches!(
+            kind,
+            crate::modifiers::ModifierKind::ContourOffset { .. }
+                | crate::modifiers::ModifierKind::Perspective { .. }
+                | crate::modifiers::ModifierKind::CropRect { .. }
+        )
+    }
+
+    /// Bakes all live geometry-domain modifiers into base geometry
+    /// (explicit user op, 09.31). The evaluated outline becomes the base
+    /// `Path`, geometry entries clear, bounds follow. Transparency survives.
+    pub fn bake_geometry(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
+        let (evaluated, bounds, has_geometry) = {
+            let obj = self.document.find_object(id).ok_or_else(|| {
+                PetuniaError::not_found(format!("object `{id}` does not exist"))
+            })?;
+            let has = obj
+                .modifiers
+                .iter()
+                .any(|m| m.enabled && Self::is_geometry_modifier(&m.kind));
+            (obj.evaluated_path(), obj.evaluated_bounds(), has)
+        };
+        if !has_geometry {
+            return Ok(ChangeSet::empty());
+        }
+        let mut changes = ChangeSet::empty();
+        changes.extend(self.set_shape(id, Some(crate::ShapeKind::Path(evaluated)))?);
+        let rotation = self
+            .document
+            .find_object(id)
+            .map_or(0.0, |o| o.rotation);
+        changes.extend(self.set_bounds(id, bounds, rotation)?);
+        let remaining: Vec<crate::modifiers::ModifierItem> = self
+            .document
+            .find_object(id)
+            .map(|o| {
+                o.modifiers
+                    .iter()
+                    .filter(|m| !(m.enabled && Self::is_geometry_modifier(&m.kind)))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        changes.extend(self.set_modifiers(id, remaining)?);
+        Ok(changes)
     }
 
     /// Offsets a path outline, non-destructively (09.31, 10.3).

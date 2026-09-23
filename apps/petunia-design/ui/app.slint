@@ -756,6 +756,7 @@ export component MainWindow inherits Window {
                                   root.active_tool_name == "Star" ? IconSet.Star :
                                   root.active_tool_name == "Text" ? IconSet.Type :
                                   root.active_tool_name == "Scissors" ? IconSet.Scissors :
+                                  root.active_tool_name == "Perspective" ? IconSet.BoxSelect :
                                   root.active_tool_name == "Zoom" ? IconSet.ZoomIn : IconSet.MousePointer2;
                             size: 13px;
                             stroke: Tokens.accent-bloom-hover;
@@ -1091,6 +1092,12 @@ export component MainWindow inherits Window {
                         active: root.active_tool_name == "ShapeBuilder";
                         shortcut: "W";
                         clicked => { root.active_tool_name = "ShapeBuilder"; root.select_tool("ShapeBuilder"); }
+                    }
+                    StudioToolButton {
+                        icon: IconSet.BoxSelect;
+                        active: root.active_tool_name == "Perspective";
+                        shortcut: "";
+                        clicked => { root.active_tool_name = "Perspective"; root.select_tool("Perspective"); }
                     }
 
                     // Divider

@@ -134,7 +134,38 @@ Doutrina-mãe: ADR 09.31 (`petunia-design-studio/09 31 — Non-Destructive Editi
 - **Fora (futuros documentados, exigem pixel-layers no documento):**
   FloodSelect/SelectionBrush (amostragem de pixels), Brush/Eraser (pintura),
   feather renderizado, Refine/QuickMask/Straighten.
-| 14 | Warp/Perspective (epic) | 3º modificador, 10.8 V1_REQUIRED | Infra + matemática |
+| 14 | Warp/Perspective (epic) | 3º modificador + tool, 10.8 V1_REQUIRED | Feito batch 14 (envelope futuro) |
+
+## Batch 14 — Perspective + Crop vetorial (decisões)
+
+- **Perspective = 3º `ModifierKind`** (`quad` TL/TR/BR/BL absoluto). Avaliação por
+  homografia DLT sobre o bbox base: identidade preserva curvas, warp real
+  achata em 0.25pt (F-21, mesma doutrina do inset); quads degenerados e
+  cruzamentos de vanishing (`w≈0`) recusam e preservam o anterior.
+- **ToolKind::Perspective** (`ptnd.tool.perspective`, registry Wired + LIVE_ACTIONS,
+  botão BoxSelect no rail): arrasta 1 canto por vez, 1 undo para a seleção toda;
+  quads absolutos (mover o objeto depois não move o warp — limite V1).
+- **Crop vetorial = 4º modificador** (`CropRect`): interseção para fechados,
+  Liang–Barsky por runs para abertos (strokes aparados, não somem); vazio
+  preserva. Crop tool com seleção = crop vetorial; sem seleção = surface crop.
+- **BakeGeometry** commita contour+perspective+crop e preserva transparency.
+- **Check de revisita do ADR 09.31:** 4 kinds, identidade por `id`, ordem = vec,
+  custo linear — fundação validada; falta só UI de lista/ordem.
+
+## Avulsos V1 — decisões finais
+
+- **Place Image (epic, V1Required mas Absent):** o picker (`on_place_image_clicked`)
+  cria objeto SEM pixels (hollow). Falta `ShapeKind::Image` + armazenamento de
+  recurso + render/export + `file.place` (`DECLARED_NOT_LIVE`). Design: shape com
+  `resource: ResourceId` + dimensões, `import_raster` já decodifica — epic próprio.
+- **Line:** registry `PostV1Candidate/Absent` — confirmado futuro, sem ToolKind.
+- **Stroke Width tool:** exige perfil de largura no modelo (`StrokeItem.width` é
+  escalar) — futuro com Vector Brush, mesma fundação.
+- **Vector Brush:** Post-V1 por escopo (08.24/08.33) — confirmado, sem ToolKind.
+- **Envelope mesh / grid warp (10.8 resto):** futuro sobre a mesma `warp_path`
+  (subdividir + mapear pontos de controle); `Homography` reutilizável.
+- **Registry `shape_builder: Disabled`:** divergente (batch 9 shipou) — nota para
+  o agente de UI; esta worktree não muda status alheio.
 | — | Photo paint/retouch, Vector Brush, Place Image, Vector Crop, Stroke Width, Line | Batches avulsos por demanda | Pequenos-médios |
 
 ## Batch 6 — Knife × Scissors (decisões)

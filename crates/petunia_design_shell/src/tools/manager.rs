@@ -15,6 +15,7 @@ use super::measure::MeasureTool;
 use super::node::NodeTool;
 use super::pen::PenTool;
 use super::pencil::PencilTool;
+use super::perspective::PerspectiveTool;
 use super::photo::{PhotoTool, PhotoToolKind};
 use super::picker::{PickerMode, PickerTool};
 use super::point_transform::PointTransformTool;
@@ -36,6 +37,7 @@ pub struct ToolManager {
     pencil_tool: PencilTool,
     corner_tool: ContourTool,
     contour_tool: ContourTool,
+    perspective_tool: PerspectiveTool,
     knife_tool: KnifeTool,
     scissors_tool: KnifeTool,
     rectangle_tool: ShapeTool,
@@ -84,6 +86,7 @@ impl ToolManager {
             pencil_tool: PencilTool::new(),
             corner_tool: ContourTool::new(ContourMode::Corner),
             contour_tool: ContourTool::new(ContourMode::Contour),
+            perspective_tool: PerspectiveTool::new(),
             knife_tool: KnifeTool::new(KnifeMode::Knife),
             scissors_tool: KnifeTool::new(KnifeMode::Scissors),
             rectangle_tool: ShapeTool::new(ShapeKind::Rectangle),
@@ -165,6 +168,7 @@ impl ToolManager {
             ToolKind::Pencil => self.pencil_tool.cancel(),
             ToolKind::Corner => self.corner_tool.cancel(),
             ToolKind::Contour => self.contour_tool.cancel(),
+            ToolKind::Perspective => self.perspective_tool.cancel(),
             ToolKind::Knife => self.knife_tool.cancel(),
             ToolKind::Scissors => self.scissors_tool.cancel(),
             ToolKind::Rectangle => self.rectangle_tool.cancel(),
@@ -220,6 +224,9 @@ impl ToolManager {
                 .on_pointer_event(event, bridge, camera, snap),
             ToolKind::Contour => self
                 .contour_tool
+                .on_pointer_event(event, bridge, camera, snap),
+            ToolKind::Perspective => self
+                .perspective_tool
                 .on_pointer_event(event, bridge, camera, snap),
             ToolKind::Knife => self
                 .knife_tool
@@ -324,6 +331,7 @@ impl ToolManager {
             ToolKind::Pencil => self.pencil_tool.overlays(),
             ToolKind::Corner => self.corner_tool.overlays(bridge, camera),
             ToolKind::Contour => self.contour_tool.overlays(bridge, camera),
+            ToolKind::Perspective => self.perspective_tool.overlays(bridge, camera),
             ToolKind::Knife => self.knife_tool.overlays(),
             ToolKind::Scissors => self.scissors_tool.overlays(),
             ToolKind::Rectangle => self.rectangle_tool.overlays(camera),

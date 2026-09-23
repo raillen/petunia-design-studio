@@ -146,6 +146,12 @@ impl PhotoTool {
                             return self.commit_lasso(&lasso, event, bridge);
                         }
                         PhotoToolKind::Crop => {
+                            // Vector selection present: nondestructive object
+                            // crop (CropRect modifier, 08.24). Otherwise the
+                            // legacy surface crop applies.
+                            if !bridge.selection().selected_ids.is_empty() {
+                                return self.commit_vector_crop(p0, p1, bridge);
+                            }
                             let active_surface = bridge
                                 .session()
                                 .and_then(|s| s.active_surface())
@@ -246,8 +252,34 @@ impl PhotoTool {
         Ok(ChangeSet::empty())
     }
 
-    fn record_dab(&mut self, pos: GPoint) {
-        let is_eraser = self.kind == PhotoToolKind::Eraser;
+    /// Commits one live CropRect per selected object in one undo entry.
+    /// Degenerate drags (under 1pt) clear nothing and commit nothing.
+    fn commit_vector_crop(
+        &mut self,
+        p0: GPoint,
+        p1: GPoint,
+        bridge: &mut PetuniaDesignGuiBridge,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let x = p0.x.min(p1.x);
+        let y = p0.y.min(p1.y);
+        let (w, h) = ((p1.x - p0.x).abs(), (p1.y - p0.y).abs());
+        if w < 1.0 || h < 1.0 {
+            return Ok(ChangeSet::empty());
+        }
+        let mut cmds = Vec::new();
+        for id in bridge.selection().selected_ids.clone() {
+            cmds.push(petunia_design_application::Command::SetCropRect {
+                id,
+                rect: [x, y, w, h],
+            });
+        }
+        if cmds.is_empty() {
+            return Ok(ChangeSet::empty());
+        }
+        bridge.submit_all("Crop vector", cmds)
+    }
+
+    fn record_dab(&mut self, pos: GPoint) {        let is_eraser = self.kind == PhotoToolKind::Eraser;
         self.dabs.push(if is_eraser {
             BrushDab::eraser_dab(pos.x, pos.y)
         } else {

@@ -3950,3 +3950,187 @@ fn raster_bridge_api_inverts_grows_feathers() {
     bridge.clear_raster_selection();
     assert!(bridge.raster_selection().is_empty());
 }
+
+fn perspective_test_rect(
+    bridge: &mut PetuniaDesignGuiBridge,
+    gen: &mut IdGenerator,
+) -> petunia_design_foundation::ObjectId {
+    let id = corner_test_rect(bridge, gen, [0.0, 0.0, 100.0, 100.0]);
+    bridge.clear_selection();
+    bridge.set_selection(vec![id]);
+    id
+}
+
+#[test]
+fn perspective_drag_moves_corner_with_one_undo() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Perspective").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let id = perspective_test_rect(&mut bridge, &mut gen);
+    let mut tool = PerspectiveTool::new();
+    let plain = SemanticModifiers::default();
+
+    // Grab the top-right corner (100, 0) and pull it down to (100, 25).
+    let p0 = GPoint::new(100.0, 0.0);
+    let p1 = GPoint::new(100.0, 25.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p0, p0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert!(tool.is_active());
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p1, p1, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert!(tool.overlays(&bridge, &camera).handles.len() == 4);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Up, PointerButton::Primary, p1, p1, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    // Live quad stored; base untouched; outline pinched.
+    let mods = bridge.modifiers(id);
+    assert_eq!(mods.len(), 1);
+    let obj = bridge.session().unwrap().document().find_object(id).unwrap();
+    assert!(matches!(
+        obj.shape,
+        Some(petunia_design_document::ShapeKind::Rectangle { .. })
+    ));
+    let eval = obj.evaluated_bounds().unwrap();
+    assert!((eval[1] - 0.0).abs() < 2.0, "got {eval:?}");
+
+    // Exactly one undo entry clears the warp.
+    bridge.undo().unwrap();
+    assert!(bridge.modifiers(id).is_empty());
+}
+
+#[test]
+fn perspective_second_drag_replaces_quad() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Perspective Replace").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let id = perspective_test_rect(&mut bridge, &mut gen);
+    let mut tool = PerspectiveTool::new();
+    let plain = SemanticModifiers::default();
+
+    bridge.set_perspective(id, [[0.0, 0.0], [100.0, 25.0], [100.0, 75.0], [0.0, 100.0]]).unwrap();
+    assert_eq!(bridge.modifiers(id).len(), 1);
+
+    // Drag the bottom-right corner: same entry, new quad (no stacking).
+    let p0 = GPoint::new(100.0, 75.0);
+    let p1 = GPoint::new(100.0, 90.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p0, p0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Up, PointerButton::Primary, p1, p1, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    assert_eq!(bridge.modifiers(id).len(), 1);
+}
+
+#[test]
+fn vector_crop_clips_with_one_undo() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Vector Crop").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let id = perspective_test_rect(&mut bridge, &mut gen);
+    let mut tool = PhotoTool::new(PhotoToolKind::Crop);
+    let plain = SemanticModifiers::default();
+
+    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 25.0, 25.0, 75.0, 75.0, plain);
+
+    // Live crop entry; base untouched; evaluated outline is the window.
+    let mods = bridge.modifiers(id);
+    assert_eq!(mods.len(), 1);
+    let obj = bridge.session().unwrap().document().find_object(id).unwrap();
+    assert!(matches!(
+        obj.shape,
+        Some(petunia_design_document::ShapeKind::Rectangle { .. })
+    ));
+    let eval = obj.evaluated_bounds().unwrap();
+    assert!((eval[2] - 50.0).abs() < 1.0, "got {eval:?}");
+
+    bridge.undo().unwrap();
+    assert!(bridge.modifiers(id).is_empty());
+}
+
+#[test]
+fn surface_crop_still_works_without_selection() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Surface Crop").expect("doc");
+    bridge.clear_selection();
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = PhotoTool::new(PhotoToolKind::Crop);
+
+    photo_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        0.0,
+        0.0,
+        400.0,
+        300.0,
+        SemanticModifiers::default(),
+    );
+
+    assert!(bridge.raster_selection().is_empty());
+    let surface_id = bridge.active_surface().unwrap();
+    let surface = bridge.session().unwrap().surface(surface_id).unwrap();
+    assert_eq!(surface.dimensions, [400.0, 300.0]);
+}
+
+#[test]
+fn bake_geometry_commits_warp_and_crop_keeping_transparency() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Bake Geometry").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let id = perspective_test_rect(&mut bridge, &mut gen);
+
+    bridge.set_perspective(id, [[0.0, 0.0], [100.0, 25.0], [100.0, 75.0], [0.0, 100.0]]).unwrap();
+    bridge.set_crop_rect(id, [0.0, 0.0, 60.0, 100.0]).unwrap();
+    let mut gtool = GradientTool::new(GradientToolMode::Transparency);
+    transparency_drag(&mut gtool, &mut bridge, &camera, &mut snap, 0.0, 0.0, 100.0, 0.0);
+    assert_eq!(bridge.modifiers(id).len(), 3);
+
+    bridge.bake_geometry(id).unwrap();
+    let obj = bridge.session().unwrap().document().find_object(id).unwrap();
+    assert!(matches!(
+        obj.shape,
+        Some(petunia_design_document::ShapeKind::Path(_))
+    ));
+    // Only the transparency entry survives.
+    let mods = bridge.modifiers(id);
+    assert_eq!(mods.len(), 1);
+    assert!(matches!(
+        mods[0].kind,
+        petunia_design_document::ModifierKind::TransparentGradient { .. }
+    ));
+}
