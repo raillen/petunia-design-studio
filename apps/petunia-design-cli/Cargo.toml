@@ -1,0 +1,26 @@
+[package]
+name = "petunia-design-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "petunia-design-cli"
+path = "src/main.rs"
+
+[dependencies]
+petunia_design_foundation = { path = "../../crates/petunia_design_foundation" }
+petunia_design_document = { path = "../../crates/petunia_design_document" }
+petunia_design_application = { path = "../../crates/petunia_design_application" }
+petunia_design_geometry = { path = "../../crates/petunia_design_geometry" }
+petunia_design_color = { path = "../../crates/petunia_design_color" }
+petunia_design_evaluation = { path = "../../crates/petunia_design_evaluation" }
+petunia_design_render = { path = "../../crates/petunia_design_render" }
+petunia_design_text = { path = "../../crates/petunia_design_text" }
+petunia_design_raster = { path = "../../crates/petunia_design_raster" }
+petunia_design_io = { path = "../../crates/petunia_design_io" }
+petunia_design_resources = { path = "../../crates/petunia_design_resources" }
+petunia_design_platform = { path = "../../crates/petunia_design_platform" }
+petunia_design_extension = { path = "../../crates/petunia_design_extension" }
+petunia_design_mcp = { path = "../../crates/petunia_design_mcp" }
+serde_json.workspace = true

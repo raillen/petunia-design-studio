@@ -24,10 +24,11 @@ O núcleo completo, o subsistema de renderização/I/O e a camada de interface d
 12. Exportação Vetorial PDF (`aubrieta_io::pdf`): exportador profissional com `krilla`, suporte sRGB e CMYK nativos, caminhos vetoriais e análise de degradação/preflight.
 13. Importação/Exportação Raster (`aubrieta_io::image_io`): adaptadores para PNG, JPEG, WebP e TIFF com preservação de 8-bit e 16-bit e sniffing defensivo.
 14. Gestão de Cor e Soft-Proofing (`aubrieta_color::proof`): simulação de perfis de prensa (SWOP/FOGRA), detecção de cores fora de gama (out-of-gamut) e políticas de preservação numérica de CMYK.
-15. Ponte de Apresentação e Interatividade (`aubrieta_ui_gpui`):
+15. Ponte de Apresentação e Interatividade (`aubrieta_shell`, ex-`aubrieta_ui_gpui`):
+    - Sessão, portas semânticas e view-models vivem em `aubrieta_application` (`session`, `ports`, `view_models`, `tools::ToolKind`, `interaction`); `DocumentSession` com `document`/`history` privados e lane única de mutação.
     - `AubrietaGuiBridge`: facade unificada implementando portas semânticas (`ActionQueryPort`, `CommandPort`, `PropertyPort`, `DocumentQueryPort`, `SelectionPort`, `InspectionPort`) com isolamento estrito de tipos da GUI do domínio.
     - Viewport & Canvas: `ViewportCamera` com zoom infinito invariante centrado no cursor (0.1% a 25600%) e `SnapEngine` com histerese anti-jitter e guias visuais.
-    - Máquina de Ferramentas: ferramentas interativas `SelectTool` (seleção, marquee, translação, duplicate-drag Alt/Option), `PenTool` (tangentes Bézier e fechamento de curva), `NodeTool` e `ShapeTool` (retângulo, elipse, polígono com restrição 1:1 via Shift).
+    - Máquina de Ferramentas: ferramentas interativas `SelectTool` (seleção, marquee, translação, duplicate-drag Alt/Option), `PenTool` (tangentes Bézier e fechamento de curva), `NodeTool` e `ShapeTool` (retângulo, elipse, polígono com restrição 1:1 via Shift); criação via `application::creation` + `transact` (1 gesto = 1 undo).
     - Painéis Reativos: `LayersPanelController` (visibilidade, lock, reordenação), `PropertiesPanelController` (fill, stroke, opacity, bounds), `HistoryPanelController` (inspeção de undo/redo) e `DataMergePanelController` (fontes CSV/TSV/JSON, bindings tipados, preflight, materialização em lote).
     - Shell Desktop & Harness Headless: `AubrietaShell` e `MockGuiAdapter` com 8 invariantes de conformidade em CI headless.
 16. Funcionalidades Avançadas de Documento (P06):
@@ -35,15 +36,16 @@ O núcleo completo, o subsistema de renderização/I/O e a camada de interface d
     - Hierarquia One-Tree (10.5): agrupamento declarativo, reparenting com preservação de coordenadas no mundo, máscaras de recorte (`CreateClipGroup`/`ReleaseClipGroup`) e prevenção de ciclos cíclicos.
     - Multi-Superfícies e Pranchetas (10.7): sangria (`Bleed`), margens internas (`Margins`), guias horizontais/verticais (`Guide`) e transição atômica de objetos entre pranchetas.
     - Motor de Dados Variáveis (10.11): ingestão de CSV/TSV/JSON, vinculação declarativa de propriedades, formatadores puros e materialização em lote de pranchetas.
-17. Aplicação Desktop Interativa (P07 / `apps/aubrieta-desktop`):
-    - Executável desktop completo com loop de eventos a 60 FPS via `minifb`, tratamento de mouse (clique, arrasto, hover, roda de rolagem), atalhos de teclado (V, A, P, M, E, G, Ctrl+Z, Ctrl+Y, 1-4).
-    - Renderizador 2D com fonte bitmap 8x8 embarcada, barra de menu, barra de ferramentas de contexto, barra de ferramentas lateral, canvas interativo com pranchetas/sangrias/margens/guias e dock com painéis de Camadas, Propriedades, Histórico e Data Merge.
-    - Suporte a execução gráfica nativa e fallback automático para modo de smoke test em ambientes headless/CI.
-18. Pipeline de validação `cargo xtask gauntlet` aprovando **146+ testes** (unitários, integração e proptests), clippy sem advertências e sem arestas proibidas de arquitetura.
-19. Arquitetura de GUIs Desktop (Decisão Homologada Setembro 2026):
-    - `apps/aubrieta-slint`: Shell primária canônica com DSL declarativa, Live Preview instantâneo e aceleração FemtoVG/OpenGL 4.2+.
-    - `apps/aubrieta-egui`: Interface secundária experimental e workbench técnico de diagnóstico e telemetria profunda (60 FPS Glow/OpenGL).
-    - `apps/aubrieta-iced`: Contingência estratégica e reserva arquitetural (The Elm Architecture, licença MIT irrestrita, canvas vetorial nativo).
+17. Aplicação Desktop Interativa (P07 — `apps/aubrieta-desktop` aposentado):
+    - O executável `minifb` foi removido do workspace; slint/egui são as shells suportadas.
+    - Atalhos canônicos da ferramenta (V, A, P, M, E, G, Ctrl+Z, Ctrl+Y, 1-4) e taxonomia `ToolKind` vivem em `aubrieta_application`.
+    - Smoke test headless/CI via `MockGuiAdapter` permanece.
+18. Pipeline de validação `cargo xtask gauntlet` aprovando **179 testes** (unitários, integração e proptests), clippy sem advertências e sem arestas proibidas de arquitetura.
+19. Arquitetura de GUIs Desktop (Decisão Homologada Setembro 2026, revista):
+    - `apps/aubrieta-slint`: Shell primária e única, canônica, com DSL declarativa, Live Preview instantâneo e aceleração FemtoVG/OpenGL 4.2+.
+    - `apps/aubrieta-egui`: **aposentado e removido do workspace**.
+    - `apps/aubrieta-iced`: **aposentado e removido do workspace** (era contingência estratégica).
+    - `apps/aubrieta-desktop` (minifb): **aposentado e removido do workspace**.
     - Descontinuação formal de GPUI, Floem e Xilem do workspace.
 
 ## Matriz de Implementação de Fases

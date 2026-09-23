@@ -15,8 +15,8 @@ Recommended logical layers:
 5. `io`: native format, SVG/PDF/raster import/export;
 6. `extension`: plugin host, MCP, resource packs;
 7. `platform`: OS services;
-8. `ui`: GUI adapters (`aubrieta-slint` primary, `aubrieta-egui` secondary, `aubrieta-iced` contingency), bridge, design system, panels;
-9. `apps`: desktop binary (`aubrieta-desktop`), GUI apps (`aubrieta-slint`, `aubrieta-egui`, `aubrieta-iced`), CLI/headless (`aubrieta-cli`).
+8. `ui`: GUI adapter (`aubrieta-slint`, única interface), toolkit-neutral shell (`aubrieta_shell`: bridge, viewport, tools, panels), design system;
+9. `apps`: GUI app (`aubrieta-slint`), CLI/headless (`aubrieta-cli`). `aubrieta-desktop` (minifb), `aubrieta-iced` e `aubrieta-egui` foram aposentados; a interface primária e única é o Slint; o legado `aubrieta_ui_gpui` foi renomeado para `aubrieta_shell`.
 
 # Dependency rule
 
@@ -26,7 +26,7 @@ Dependencies flow inward/downward toward smaller contracts. `domain` never depen
 
 Canonical crate/binary naming now follows the Aubrieta product identity. If an implementation branch still contains legacy `vd_*` names inherited from VectorVonDoom, treat them as temporary migration aliases and do not expose them as new public APIs.
 
-`aubrieta_ids`, `aubrieta_diagnostics`, `aubrieta_schema`, `aubrieta_resources`, `aubrieta_document`, `aubrieta_color`, `aubrieta_text`, `aubrieta_raster_model`, `aubrieta_geometry`, `aubrieta_actions`, `aubrieta_commands`, `aubrieta_history`, `aubrieta_capabilities`, `aubrieta_jobs`, `aubrieta_evaluation`, `aubrieta_scene`, `aubrieta_vector_engine`, `aubrieta_raster_engine`, `aubrieta_compositor`, `aubrieta_typography`, `aubrieta_color_engine`, `aubrieta_native`, `aubrieta_svg`, `aubrieta_pdf`, `aubrieta_image_io`, `aubrieta_plugin_api`, `aubrieta_plugin_host`, `aubrieta_mcp`, `aubrieta_platform`, `aubrieta_resource_packs`, `aubrieta_i18n`, `aubrieta_config`, `aubrieta_ui_gpui`, `aubrieta-desktop`, `aubrieta-cli`.
+`aubrieta_ids`, `aubrieta_diagnostics`, `aubrieta_schema`, `aubrieta_resources`, `aubrieta_document`, `aubrieta_color`, `aubrieta_text`, `aubrieta_raster_model`, `aubrieta_geometry`, `aubrieta_actions`, `aubrieta_commands`, `aubrieta_history`, `aubrieta_capabilities`, `aubrieta_jobs`, `aubrieta_evaluation`, `aubrieta_scene`, `aubrieta_vector_engine`, `aubrieta_raster_engine`, `aubrieta_compositor`, `aubrieta_typography`, `aubrieta_color_engine`, `aubrieta_native`, `aubrieta_svg`, `aubrieta_pdf`, `aubrieta_image_io`, `aubrieta_plugin_api`, `aubrieta_plugin_host`, `aubrieta_mcp`, `aubrieta_platform`, `aubrieta_resource_packs`, `aubrieta_i18n`, `aubrieta_config`, `aubrieta_shell` (toolkit-neutral shell; formerly `aubrieta_ui_gpui`), `aubrieta-cli`.
 
 This is a **logical map**; combine small crates until independent compilation/ownership/testing justifies separation.
 
@@ -73,9 +73,8 @@ crates/
   aubrieta_extension/        # plugin API/host + Lua binding + optional WASM feature/subcrate
   aubrieta_mcp/              # MCP adapter/protocol surface
   aubrieta_platform/         # typed OS service ports + platform adapters
-  aubrieta_ui_gpui/          # GPUI shell/design system only
+  aubrieta_shell/            # toolkit-neutral shell: bridge, viewport, tools, panels
 apps/
-  aubrieta-desktop/
   aubrieta-cli/
   aubrieta-conformance/
 ```
@@ -119,10 +118,10 @@ CI must reject patterns such as:
 
 - `aubrieta_document -> slint / egui / iced / gui toolkits`;
 - `aubrieta_document -> wgpu/vello`;
-- `aubrieta_geometry -> aubrieta_ui_gpui`;
+- `aubrieta_geometry -> aubrieta_shell`;
 - `aubrieta_color -> krilla`;
 - `aubrieta_plugin_api -> mlua` (semantic API must remain runtime-neutral);
-- `aubrieta_application -> aubrieta_ui_gpui`;
+- `aubrieta_application -> aubrieta_shell`;
 - Design feature crate directly importing Photo feature implementation;
 - one importer directly calling another importer's private parser.
 

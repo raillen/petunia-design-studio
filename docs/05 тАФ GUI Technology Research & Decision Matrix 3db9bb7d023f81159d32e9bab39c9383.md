@@ -27,14 +27,16 @@ Prioridade máxima:
 - **Vantagem Competitiva**: **Live Preview em tempo real** via extensão de editor, permitindo desenhar inspectors, barras de ferramentas e componentes do Design System sem necessidade de recompilar o código Rust a cada ajuste cosmético.
 - **Hardware**: Validado com 100% de estabilidade e fluidez imediata na GPU Intel HD 4000.
 
-### 2. Shell Secundária / Experimental: Egui (`apps/aubrieta-egui`)
-- **Papel**: Workbench de diagnóstico técnico, depuração profunda e ferramentas para desenvolvedores/agentes.
+### 2. Shell Secundária / Experimental: Egui (`apps/aubrieta-egui`) — APOSENTADA
+- **Status**: app removido do workspace; Slint é a interface primária e única.
+- **Papel anterior**: Workbench de diagnóstico técnico, depuração profunda e ferramentas para desenvolvedores/agentes.
 - **Tecnologia**: Immediate-mode via `eframe` configurado com backend `glow` (OpenGL).
 - **Recursos**: Painéis de telemetria em tempo real, visualizador de dirty rects, árvore de inspeção semântica do grafo de nós, métricas de memória de rasterização e injeção de comandos MCP.
 - **Hardware**: Validado a 60 FPS contínuos no driver `crocus` OpenGL 4.2.
 
-### 3. Contingência Estratégica: Iced (`apps/aubrieta-iced`)
-- **Papel**: Salvaguarda de arquitetura e licenciamento de longo prazo.
+### 3. Contingência Estratégica: Iced (`apps/aubrieta-iced`) — APOSENTADA
+- **Status**: app removido do workspace; Slint segue primária, egui como secundária leve pós-V1.
+- **Papel anterior**: Salvaguarda de arquitetura e licenciamento de longo prazo.
 - **Tecnologia**: The Elm Architecture (TEA), 100% Rust fortemente tipado, licença **MIT irrestrita**.
 - **Canvas de 1ª Classe**: Possui o módulo `iced::widget::canvas` nativo para manipulação vetorial direta.
 - **Garantia**: Caso ocorra qualquer impasse futuro quanto ao licenciamento do Slint (GPLv3 / termos comerciais), o Iced é o caminho de transição imediato, pois reflete exatamente o mesmo fluxo `Message -> ActionRequest -> CommandRequest -> ChangeSet` do core do Aubrieta.
@@ -71,4 +73,4 @@ Prioridade máxima:
 Mesmo com a escolha do **Slint** como frontend primário, a regra de ouro do `AGENTS.md` permanece absoluta:
 > **Nenhum tipo de Slint, Egui ou Iced cruza a fronteira para os crates de domínio (`aubrieta_document`, `aubrieta_geometry`, `aubrieta_color`, `aubrieta_text`, `aubrieta_raster`, `aubrieta_render`, `aubrieta_commands`).**
 
-Toda a interação flui exclusivamente via DTOs/view-models e eventos semânticos despachados para a porta central [`AubrietaGuiBridge`](file:///home/raillen/Documentos/Projetos/aubrieta-design/crates/aubrieta_ui_gpui/src/bridge/gui_bridge.rs).
+Toda a interação flui exclusivamente via DTOs/view-models e eventos semânticos despachados para a porta central [`AubrietaGuiBridge`](file:///home/raillen/Documentos/Projetos/aubrieta-design/crates/aubrieta_shell/src/bridge/gui_bridge.rs).

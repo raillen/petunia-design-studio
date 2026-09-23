@@ -80,91 +80,91 @@ fn cmd_architecture(root: &Path) -> i32 {
     // Full 09.22 matrix is enforced as crates are added.
     let rules: &[(&str, &[&str])] = &[
         (
-            "aubrieta_foundation",
+            "petunia_design_foundation",
             &["gpui", "vello", "wgpu", "krilla", "mlua"],
         ),
         (
-            "aubrieta_document",
+            "petunia_design_document",
             &[
                 "gpui",
                 "vello",
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_io",
-                "aubrieta_ui_gpui",
+                "petunia_design_io",
+                "petunia_design_shell",
             ],
         ),
         (
-            "aubrieta_application",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
+            "petunia_design_application",
+            &["gpui", "vello", "wgpu", "krilla", "petunia_design_shell"],
         ),
-        ("aubrieta_jobs", &["gpui", "vello", "wgpu"]),
+        ("petunia_design_jobs", &["gpui", "vello", "wgpu"]),
         (
-            "aubrieta_geometry",
+            "petunia_design_geometry",
             &[
                 "gpui",
                 "vello",
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_ui_gpui",
+                "petunia_design_shell",
             ],
         ),
         (
-            "aubrieta_color",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
+            "petunia_design_color",
+            &["gpui", "vello", "wgpu", "krilla", "petunia_design_shell"],
         ),
         (
-            "aubrieta_evaluation",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
+            "petunia_design_evaluation",
+            &["gpui", "vello", "wgpu", "krilla", "petunia_design_shell"],
         ),
-        ("aubrieta_render", &["gpui", "aubrieta_ui_gpui"]),
-        ("aubrieta_io", &["gpui", "aubrieta_ui_gpui"]),
+        ("petunia_design_render", &["gpui", "petunia_design_shell"]),
+        ("petunia_design_io", &["gpui", "petunia_design_shell"]),
         (
-            "aubrieta_text",
+            "petunia_design_text",
             &[
                 "gpui",
                 "vello",
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_ui_gpui",
+                "petunia_design_shell",
             ],
         ),
         (
-            "aubrieta_raster",
+            "petunia_design_raster",
             &[
                 "gpui",
                 "vello",
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_ui_gpui",
+                "petunia_design_shell",
             ],
         ),
         (
-            "aubrieta_resources",
+            "petunia_design_resources",
             &[
                 "gpui",
                 "vello",
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_ui_gpui",
+                "petunia_design_shell",
             ],
         ),
         (
-            "aubrieta_platform",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
+            "petunia_design_platform",
+            &["gpui", "vello", "wgpu", "krilla", "petunia_design_shell"],
         ),
         (
-            "aubrieta_extension",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
+            "petunia_design_extension",
+            &["gpui", "vello", "wgpu", "krilla", "petunia_design_shell"],
         ),
         (
-            "aubrieta_mcp",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_ui_gpui"],
+            "petunia_design_mcp",
+            &["gpui", "vello", "wgpu", "krilla", "petunia_design_shell"],
         ),
     ];
     let mut failures = 0;
@@ -238,13 +238,13 @@ fn cmd_test(root: &Path) -> i32 {
 /// Headless CLI end-to-end for the P00 slice.
 fn cmd_conformance(root: &Path) -> i32 {
     println!("xtask conformance: headless CLI flow");
-    run_cargo(root, &["run", "-p", "aubrieta-cli"])
+    run_cargo(root, &["run", "-p", "petunia-design-cli"])
 }
 
 /// Fixture presence check (P00: schema + roundtrip covered by unit tests).
 fn cmd_fixtures(root: &Path) -> i32 {
     println!("xtask fixtures: checking tests/trees (P00: unit-level only)");
-    let dir = root.join("crates/aubrieta_document");
+    let dir = root.join("crates/petunia_design_document");
     if !dir.is_dir() {
         eprintln!("fixtures: missing {}", dir.display());
         return 1;

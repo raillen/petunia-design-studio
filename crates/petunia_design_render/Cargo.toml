@@ -1,0 +1,16 @@
+[package]
+name = "petunia_design_render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+petunia_design_foundation = { path = "../petunia_design_foundation" }
+petunia_design_document = { path = "../petunia_design_document" }
+petunia_design_geometry = { path = "../petunia_design_geometry" }
+petunia_design_color = { path = "../petunia_design_color" }
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest = "1"
