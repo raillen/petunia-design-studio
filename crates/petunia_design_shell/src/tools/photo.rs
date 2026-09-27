@@ -2,15 +2,19 @@
 //!
 //! MarqueeRect, MarqueeEllipse, and Lasso commit real masks into the session
 //! raster selection (Replace/Add/Subtract/Intersect via Shift/Alt, Photoshop
-//! convention). FloodSelect, SelectionBrush, Brush, and Eraser stay stubs:
-//! they need pixel layers in the document, which do not exist yet
-//! (TOOLS_DECISIONS Batch 13). Crop commits surface geometry as before.
+//! convention). Crop commits surface geometry or a nondestructive CropRect.
+//!
+//! SelectionBrush, FloodSelect, Brush, and Eraser need pixel layers in the
+//! document, which do not exist yet (TOOLS_DECISIONS Batch 13). They refuse the
+//! gesture at `Down` with `CapabilityUnavailable` rather than accepting a drag
+//! and returning an empty changeset: a tool that silently discards an edit is a
+//! worse defect than a tool that reports it cannot run. Their registry rows are
+//! `Disabled`, so the rail and menus also refuse to activate them.
 
 use petunia_design_application::{SelectionMode, SelectionShape};
 use petunia_design_document::ChangeSet;
 use petunia_design_foundation::PetuniaError;
 use petunia_design_geometry::{GPoint, GRect};
-use petunia_design_raster::brush::BrushDab;
 
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
@@ -54,7 +58,6 @@ pub struct PhotoTool {
     start_doc: Option<GPoint>,
     current_doc: Option<GPoint>,
     lasso_doc: Vec<GPoint>,
-    dabs: Vec<BrushDab>,
 }
 
 impl PhotoTool {
@@ -66,7 +69,6 @@ impl PhotoTool {
             start_doc: None,
             current_doc: None,
             lasso_doc: Vec::new(),
-            dabs: Vec::new(),
         }
     }
 
@@ -81,7 +83,6 @@ impl PhotoTool {
         self.start_doc = None;
         self.current_doc = None;
         self.lasso_doc.clear();
-        self.dabs.clear();
     }
 
     /// True while a gesture is in flight.
@@ -103,15 +104,24 @@ impl PhotoTool {
                 if event.button != PointerButton::Primary {
                     return Ok(ChangeSet::empty());
                 }
+                // Refuse before the gesture starts, so a brush/eraser drag
+                // cannot appear to work and then discard every dab.
+                if matches!(
+                    self.kind,
+                    PhotoToolKind::SelectionBrush
+                        | PhotoToolKind::FloodSelect
+                        | PhotoToolKind::Brush
+                        | PhotoToolKind::Eraser
+                ) {
+                    return Err(PetuniaError::capability_unavailable(format!(
+                        "photo tool `{:?}` has no document pixel layer yet",
+                        self.kind
+                    )));
+                }
                 snap.reset_hysteresis();
                 self.start_doc = Some(event.doc_pos);
                 self.current_doc = Some(event.doc_pos);
                 self.lasso_doc = vec![event.doc_pos];
-                self.dabs.clear();
-
-                if matches!(self.kind, PhotoToolKind::Brush | PhotoToolKind::Eraser) {
-                    self.record_dab(event.doc_pos);
-                }
                 Ok(ChangeSet::empty())
             }
             PointerPhase::Move => {
@@ -123,9 +133,6 @@ impl PhotoTool {
                                 self.lasso_doc.push(event.doc_pos);
                             }
                         }
-                    }
-                    if matches!(self.kind, PhotoToolKind::Brush | PhotoToolKind::Eraser) {
-                        self.record_dab(event.doc_pos);
                     }
                 }
                 Ok(ChangeSet::empty())
@@ -170,14 +177,21 @@ impl PhotoTool {
                                 ),
                             );
                         }
-                        // Pixel sampling/painting needs document pixel layers.
+                        // Pixel sampling/painting needs document pixel layers,
+                        // which do not exist yet. These tools must fail loudly:
+                        // a silent `Ok(ChangeSet::empty())` would report a
+                        // successful edit the document never received.
                         PhotoToolKind::SelectionBrush
                         | PhotoToolKind::FloodSelect
                         | PhotoToolKind::Brush
-                        | PhotoToolKind::Eraser => {}
+                        | PhotoToolKind::Eraser => {
+                            return Err(PetuniaError::capability_unavailable(format!(
+                                "photo tool `{:?}` has no document pixel layer yet",
+                                self.kind
+                            )));
+                        }
                     }
                 }
-                self.dabs.clear();
                 Ok(ChangeSet::empty())
             }
             PointerPhase::Cancel => {
@@ -199,10 +213,8 @@ impl PhotoTool {
         bridge: &mut PetuniaDesignGuiBridge,
         camera: &ViewportCamera,
     ) -> Result<ChangeSet, PetuniaError> {
-        let mode = SelectionMode::from_modifiers(
-            event.modifiers.constrain,
-            event.modifiers.duplicate,
-        );
+        let mode =
+            SelectionMode::from_modifiers(event.modifiers.constrain, event.modifiers.duplicate);
         if p0.distance_to(p1) * camera.zoom.max(0.1) <= CLICK_THRESHOLD_PX {
             if mode == SelectionMode::Replace {
                 bridge.clear_raster_selection();
@@ -236,10 +248,8 @@ impl PhotoTool {
         event: &NormalizedPointerEvent,
         bridge: &mut PetuniaDesignGuiBridge,
     ) -> Result<ChangeSet, PetuniaError> {
-        let mode = SelectionMode::from_modifiers(
-            event.modifiers.constrain,
-            event.modifiers.duplicate,
-        );
+        let mode =
+            SelectionMode::from_modifiers(event.modifiers.constrain, event.modifiers.duplicate);
         let length: f64 = points.windows(2).map(|w| w[0].distance_to(w[1])).sum();
         if points.len() < 3 || length < LASSO_MIN_LENGTH_PX {
             if mode == SelectionMode::Replace {
@@ -247,10 +257,7 @@ impl PhotoTool {
             }
             return Ok(ChangeSet::empty());
         }
-        bridge.combine_raster_selection(
-            SelectionShape::Polygon(points.to_vec()),
-            mode,
-        );
+        bridge.combine_raster_selection(SelectionShape::Polygon(points.to_vec()), mode);
         Ok(ChangeSet::empty())
     }
 
@@ -279,14 +286,6 @@ impl PhotoTool {
             return Ok(ChangeSet::empty());
         }
         bridge.submit_all("Crop vector", cmds)
-    }
-
-    fn record_dab(&mut self, pos: GPoint) {        let is_eraser = self.kind == PhotoToolKind::Eraser;
-        self.dabs.push(if is_eraser {
-            BrushDab::eraser_dab(pos.x, pos.y)
-        } else {
-            BrushDab::paint_dab(pos.x, pos.y)
-        });
     }
 
     /// Resolves overlays: in-flight gesture plus the committed mask outline.

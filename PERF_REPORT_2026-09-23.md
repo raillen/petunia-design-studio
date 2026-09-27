@@ -211,5 +211,70 @@ degeneração graciosa (LOD/outline) + índice espacial + tiles/GPU por último.
   é enxugar gelo; GEGL paraleliza tiles, não flattens redundantes.
 - **Não GPU antes de F1–F6:** Vello sem cache de cena repete o mesmo desperdício no GPU.
 - **Não `unsafe`/SIMD manual:** `fearless_simd` via vello cobre quando chegar lá.
-- **Invalidate certo:** cache sem invalidação correta vira bug fantasma — todo
-  cache proposto ancora em `current_revision`/`ChangeSet`, nunca em tempo.
+## 7. Wave 0 — baseline Freya e limites atuais (2026-09-25)
+
+- O relatório anterior mediu microbenchmarks em debug da geometria e do core; esses números são **históricos** e não constituem baseline do canvas Freya em release.
+- A worktree Freya agora isola o alvo Cargo por worktree, elimina a política paralela `workspace_overlays` e preserva o botão real do mouse no adaptador.
+- A regressão `shell_overlays_include_specialized_tool_preview` prova que um preview de Contour chega ao fluxo público do shell; a regressão `select_stale_preview_disappears_after_external_mutation` prova que uma revisão externa remove o preview transitório do snapshot.
+- A fatia Select + Transform agora publica um DTO `TransformPreview` toolkit-neutral durante arraste efetivo, rejeita gestures obsoletos no `Up`, limpa o estado no `Cancel` e reutiliza a mesma matemática de rotação no preview e no commit.
+- **Evidência funcional:** a suíte completa `tools_test` passou com **102 testes**; o crate `petunia_design_document` passou com **43 testes** (39 unit + 4 property); a regressão estrutural `canvas_snapshot_uses_world_frame_and_rotation` passou; `cargo check -p petunia_design_shell -p petunia-design --bin petunia-design` passou.
+- **Performance medida:** ver §8. Baseline headless/release com fixtures determinísticas em 500/2.000/10.000 objetos. Ainda não medido: pintura, composição, texto, paths Bézier, release rendering com GPU e consumo de memória.
+- **Risco de canvas:** o DTO `CanvasSnapshot` agora carrega frame, transform e AABB mundiais, mas o renderer Freya ainda pinta proxies paramétricos a partir de bounds/fill/shape; paths Bézier, texto, strokes, gradientes, imagens, efeitos, masks complexas e paridade visual ainda não têm prova funcional.
+- **Próximo gate (concluído):** fixtures sintéticas determinísticas e benchmark headless/release para hover, marquee, transform preview, overlay e snapshot do canvas, medindo antes de escolher Vello/wgpu ou declarar budgets de produto.
+
+## 8. Baseline headless/release do canvas Freya (2026-09-25)
+
+Medido com o novo crate `petunia_design_testkit` (`publish = false`), fixtures
+sintéticas determinísticas, `release`, rustc 1.98.1, Linux x86_64, viewport
+4096×4096, 5 warmup + 20 amostras, digest por corpus. Cada cenário reporta
+`operations_per_sample` e `p50_us_per_operation`, porque o custo por evento só
+é comparável depois de normalizar o número de operações da amostra.
+
+| Cenário (p50 µs/op) | 500 objs | 2.000 objs | 10.000 objs | Leitura |
+|---|---|---|---|---|
+| `cache-warm` | 0,079 | 0,088 | 0,092 | custo constante por objeto; memoização funciona |
+| `world-hit` | 0,064 | 0,075 | 0,366 | ~linear; degrada a partir de 10k (candidatos) |
+| `spatial-candidate` | 0,243 | 0,275 | 0,444 | R-tree não evita o flatten exato |
+| `select-hover` | 0,446 | 0,898 | 3,411 | **evento `Move` completo; cresce ~8× de 500→10k** |
+| `transform-preview-event` | 0,070 | 0,070 | 0,070 | preview de 1 objeto é praticamente grátis |
+| `canvas-snapshot` (µs total) | 108 | 445 | 3.159 | **O(n) por frame, sem reaproveitamento** |
+| `select-marquee` (µs total) | 192 | 1.946 | 18.343 | **3 eventos; domina o gesto de seleção** |
+| `input-to-frame` (µs total) | 115 | 477 | 3.448 | `Move` + snapshot = custo de quadro |
+
+### Diagnóstico
+
+1. **O gargalo é o snapshot, não o hit-test.** `world-hit` custa 0,37 µs por
+   objeto em 10k, enquanto `select-hover` custa 3,41 µs por evento. A ordem de
+   grandeza indica que o `Move` paga um passe O(n) além do teste geométrico.
+2. **`canvas-snapshot` é linear e sem cache.** 108 µs → 445 µs → 3.159 ms para
+   500 → 2.000 → 10.000 objetos, ou seja ~0,31 µs por objeto por frame. Ele
+   recalcula a projeção completa a cada quadro, exatamente o antipadrão descrito
+   em §3 (Krita Instant Preview, Inkscape display modes, GEGL tiles).
+3. **`select-marquee` é o pior caso medido.** 18,3 ms para um único gesto de
+   marquee em 10k objetos, acima do orçamento de 16,6 ms de 60 fps, sem contar
+   pintura. O marquee usa só bounds, então o custo vem do número de candidatos
+   testado por evento, não da geometria.
+4. **`transform-preview-event` é constante.** Confirma que o DTO de preview e a
+   validação por revisão introduzidos na fatia Select não são o gargalo; o
+   trabalho caro está na montagem do snapshot da cena.
+5. **O piso de custo por evento é ~0,07 µs.** É o dispatch normalizado mais o
+   guarda de revisão. Qualquer otimização abaixo disso é ruído de medição.
+
+### Decisões
+
+- **Não escolher backend gráfico ainda.** A redução de 3,4 ms para 1,3 ms por quadro
+  vem de cache de snapshot, não de GPU. Vello/wgpu sobre o snapshot linear atual
+  repetiria o desperdício em hardware mais caro.
+- **F6 (dirty-rect + culling) e uma fatia de cache de snapshot sobem para o topo
+  da fila**, acima de F4 e F5, porque o snapshot é o termo dominante medido.
+- **Tolerância adaptativa ao zoom (F2) continua pendente** e passa a ser
+  necessária antes de qualquer afirmação de paridade visual: com 10k objetos o
+  flatten fixo já custa 0,37 µs por objeto só no hit.
+
+### Limites honestos desta evidência
+
+- Corpos sintéticos com `shape` paramétrico; **não** exercita paths Bézier,
+  texto, strokes, gradientes, imagens, efeitos nem masks.
+- Sem medição de memória, sem pintura (o snapshot é headless) e sem composição.
+- Números são de um host específico; servem para comparar esfrias **dentro** deste
+  corpus, não como budget absoluto de produto.

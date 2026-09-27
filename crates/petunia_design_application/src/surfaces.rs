@@ -413,7 +413,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.file.place",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Disabled("ptnd.text.blocked.place_image"),
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.file.place",
         action: None,
         shortcut: None,
@@ -495,10 +495,10 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.edit.preferences",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.edit.preferences",
         action: None,
-        shortcut: None,
+        shortcut: Some("Ctrl+,"),
     },
     // ── Selection actions ───────────────────────────────────────────────────
     SurfaceEntry {
@@ -751,6 +751,15 @@ pub const SURFACES: &[SurfaceEntry] = &[
     },
     // ── Design tools ────────────────────────────────────────────────────────
     SurfaceEntry {
+        id: "ptnd.tool.vector.perspective",
+        kind: SurfaceKind::Tool,
+        scope: SurfaceScope::V1Required,
+        status: SurfaceStatus::Wired,
+        label: "ptnd.text.tool.perspective",
+        action: Some("ptnd.tool.perspective"),
+        shortcut: Some("Q"),
+    },
+    SurfaceEntry {
         id: "ptnd.tool.vector.move",
         kind: SurfaceKind::Tool,
         scope: SurfaceScope::V1Required,
@@ -895,6 +904,15 @@ pub const SURFACES: &[SurfaceEntry] = &[
         shortcut: Some("I"),
     },
     SurfaceEntry {
+        id: "ptnd.tool.vector.style_picker",
+        kind: SurfaceKind::Tool,
+        scope: SurfaceScope::V1Required,
+        status: SurfaceStatus::Wired,
+        label: "ptnd.text.tool.style_picker",
+        action: Some("ptnd.tool.style_picker"),
+        shortcut: None,
+    },
+    SurfaceEntry {
         id: "ptnd.tool.vector.knife",
         kind: SurfaceKind::Tool,
         scope: SurfaceScope::V1Required,
@@ -919,11 +937,8 @@ pub const SURFACES: &[SurfaceEntry] = &[
         status: SurfaceStatus::Wired,
         label: "ptnd.text.tool.contour",
         action: Some("ptnd.tool.contour"),
-        shortcut: None,
+        shortcut: Some("O"),
     },
-    // Scissors is a real engine tool that had no registry entry: without this
-    // the context toolbar badge had no name to show, and the tool was invisible
-    // to every registry-derived view (menu, palette, toolbar).
     SurfaceEntry {
         id: "ptnd.tool.vector.scissors",
         kind: SurfaceKind::Tool,
@@ -932,6 +947,15 @@ pub const SURFACES: &[SurfaceEntry] = &[
         label: "ptnd.text.tool.scissors",
         action: Some("ptnd.tool.scissors"),
         shortcut: Some("Shift+K"),
+    },
+    SurfaceEntry {
+        id: "ptnd.tool.vector.measure",
+        kind: SurfaceKind::Tool,
+        scope: SurfaceScope::V1Required,
+        status: SurfaceStatus::Wired,
+        label: "ptnd.text.tool.measure",
+        action: Some("ptnd.tool.measure"),
+        shortcut: Some("R"),
     },
     SurfaceEntry {
         id: "ptnd.tool.vector.hand",
@@ -954,8 +978,8 @@ pub const SURFACES: &[SurfaceEntry] = &[
     SurfaceEntry {
         id: "ptnd.tool.vector.shape_builder",
         kind: SurfaceKind::Tool,
-        scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Disabled("ptnd.text.blocked.shape_builder"),
+        scope: SurfaceScope::V1Required,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.tool.shape_builder",
         action: Some("ptnd.tool.shape_builder"),
         shortcut: Some("W"),
@@ -967,6 +991,15 @@ pub const SURFACES: &[SurfaceEntry] = &[
         status: SurfaceStatus::Absent,
         label: "ptnd.text.tool.vector_brush",
         action: None,
+        shortcut: None,
+    },
+    SurfaceEntry {
+        id: "ptnd.tool.vector.vector_flood_fill",
+        kind: SurfaceKind::Tool,
+        scope: SurfaceScope::V1Required,
+        status: SurfaceStatus::Wired,
+        label: "ptnd.text.tool.vector_flood_fill",
+        action: Some("ptnd.tool.vector_flood_fill"),
         shortcut: None,
     },
     SurfaceEntry {
@@ -987,6 +1020,51 @@ pub const SURFACES: &[SurfaceEntry] = &[
         label: "ptnd.text.tool.move",
         action: Some("ptnd.tool.select"),
         shortcut: Some("V"),
+    },
+    SurfaceEntry {
+        id: "ptnd.tool.photo.marquee_rect",
+        kind: SurfaceKind::Tool,
+        scope: SurfaceScope::V1Required,
+        status: SurfaceStatus::Wired,
+        label: "ptnd.text.tool.marquee_rect",
+        action: Some("ptnd.tool.photo.marquee_rect"),
+        shortcut: None,
+    },
+    SurfaceEntry {
+        id: "ptnd.tool.photo.marquee_ellipse",
+        kind: SurfaceKind::Tool,
+        scope: SurfaceScope::V1Required,
+        status: SurfaceStatus::Wired,
+        label: "ptnd.text.tool.marquee_ellipse",
+        action: Some("ptnd.tool.photo.marquee_ellipse"),
+        shortcut: None,
+    },
+    SurfaceEntry {
+        id: "ptnd.tool.photo.lasso",
+        kind: SurfaceKind::Tool,
+        scope: SurfaceScope::V1Required,
+        status: SurfaceStatus::Wired,
+        label: "ptnd.text.tool.lasso",
+        action: Some("ptnd.tool.photo.lasso"),
+        shortcut: None,
+    },
+    SurfaceEntry {
+        id: "ptnd.tool.photo.selection_brush",
+        kind: SurfaceKind::Tool,
+        scope: SurfaceScope::V1Required,
+        status: SurfaceStatus::Disabled("ptnd.text.blocked.raster_post_v1"),
+        label: "ptnd.text.tool.selection_brush",
+        action: Some("ptnd.tool.photo.selection_brush"),
+        shortcut: None,
+    },
+    SurfaceEntry {
+        id: "ptnd.tool.photo.flood_select",
+        kind: SurfaceKind::Tool,
+        scope: SurfaceScope::V1Required,
+        status: SurfaceStatus::Disabled("ptnd.text.blocked.raster_post_v1"),
+        label: "ptnd.text.tool.flood_select",
+        action: Some("ptnd.tool.photo.flood_select"),
+        shortcut: None,
     },
     SurfaceEntry {
         id: "ptnd.tool.photo.brush",
@@ -1238,20 +1316,23 @@ pub const SURFACES: &[SurfaceEntry] = &[
 /// Every action identifier that currently resolves to real behavior.
 /// Three lanes resolve actions today, all machine-extracted:
 /// `DocumentSession::dispatch_action` arms in `session.rs`, the
-/// `ToolKind::action_id` table in `tools.rs`, and the host-level arms in
-/// `gui_bridge.rs` (document lifecycle, which replaces the session). Only a resolution path proves
+/// `ToolKind::action_id` table in `tools.rs`, the host-level arms in
+/// `gui_bridge.rs` (document lifecycle, which replaces the session), and the
+/// Freya host UI action lane. Only a resolution path proves
 /// behavior: an `ActionId` constant in `actions.rs` is a declaration, not an
 /// implementation. A surface claiming `Wired` MUST bind one of these (15.C/15.G).
 pub const LIVE_ACTIONS: &[&str] = &[
     "ptnd.action.edit.delete",
     "ptnd.action.edit.deselect",
     "ptnd.action.edit.duplicate",
+    "ptnd.action.edit.preferences",
     "ptnd.action.edit.redo",
     "ptnd.action.edit.select_all",
     "ptnd.action.edit.undo",
     "ptnd.action.file.export",
     "ptnd.action.file.new",
     "ptnd.action.file.open",
+    "ptnd.action.file.place",
     "ptnd.action.file.save",
     "ptnd.action.file.save_as",
     "ptnd.action.object.align",
@@ -1286,6 +1367,7 @@ pub const LIVE_ACTIONS: &[&str] = &[
     "ptnd.tool.pan",
     "ptnd.tool.pen",
     "ptnd.tool.pencil",
+    "ptnd.tool.perspective",
     "ptnd.tool.photo.brush",
     "ptnd.tool.photo.crop",
     "ptnd.tool.photo.eraser",
@@ -1335,7 +1417,6 @@ pub fn personas() -> Vec<&'static SurfaceEntry> {
 /// and, when it is merely blocked rather than unimplemented, an explicit
 /// [`SurfaceStatus::Disabled`] reason (reconciliation test below).
 pub const DECLARED_NOT_LIVE: &[&str] = &[
-    "ptnd.action.file.place",
     "ptnd.action.object.offset_path",
     "ptnd.action.object.slice_path",
 ];

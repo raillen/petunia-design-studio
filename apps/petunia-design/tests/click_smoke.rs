@@ -17,7 +17,7 @@ mod theme;
 #[path = "../src/ui_state.rs"]
 mod ui_state;
 
-use chrome::{ContextToolbar, DocumentTabStrip, FamilyPopup, MenuBarRow, ToolRail};
+use chrome::{ContextToolbar, DocumentTabStrip, MenuBarRow, ToolRail};
 use petunia_design_application::tools::ToolKind;
 use ui_state::UiShell;
 
@@ -36,19 +36,18 @@ impl Component for AppChrome {
             .child(DocumentTabStrip(ui.clone()))
             .child(ContextToolbar(ui.clone()))
             .child(ToolRail(ui.clone()))
-            .child(FamilyPopup(ui))
     }
 }
 
 fn mount() -> (
     TestingRunner,
     State<PetuniaShell>,
-    State<Option<usize>>,
+    State<Option<String>>,
     State<bool>,
 ) {
     use std::cell::RefCell;
     use std::rc::Rc;
-    let seen: Rc<RefCell<Option<(State<PetuniaShell>, State<Option<usize>>, State<bool>)>>> =
+    let seen: Rc<RefCell<Option<(State<PetuniaShell>, State<Option<String>>, State<bool>)>>> =
         Rc::new(RefCell::new(None));
     let seen_hook = seen.clone();
     let (mut runner, ()) = TestingRunner::new(
@@ -67,6 +66,20 @@ fn mount() -> (
             let accent = use_state(|| theme::BLOOM);
             let icon_style = use_state(theme::IconStyle::default);
             let hovered = use_state(|| None);
+            let modifiers =
+                use_state(petunia_design_application::interaction::SemanticModifiers::default);
+            let tool_rail = use_state(ui_state::default_tool_rail);
+            let active_tool = use_state(|| petunia_design_application::tools::ToolKind::Select);
+            let persona =
+                use_state(|| petunia_design_application::surfaces::PERSONA_VECTOR.to_string());
+            let temporary_tool = use_state(|| None);
+            let suspended_tool = use_state(|| None);
+            let dock_tab = use_state(|| 0usize);
+            let text_edit_content = use_state(String::new);
+            let new_doc_open = use_state(|| false);
+            let export_open = use_state(|| false);
+            let confirm_close_open = use_state(|| false);
+            let dock_width = use_state(|| 240.0f32);
             let ui = UiShell::new(
                 shell,
                 open_family,
@@ -76,6 +89,18 @@ fn mount() -> (
                 accent,
                 icon_style,
                 hovered,
+                modifiers,
+                tool_rail,
+                active_tool,
+                persona,
+                temporary_tool,
+                suspended_tool,
+                dock_tab,
+                text_edit_content,
+                new_doc_open,
+                export_open,
+                confirm_close_open,
+                dock_width,
             );
             seen_hook.replace(Some((shell, open_family, customize_open)));
             AppChrome(ui)
@@ -254,6 +279,48 @@ fn rail_click_switches_the_tool() {
 }
 
 #[test]
+fn the_rail_never_activates_a_tool_the_registry_blocks() {
+    let (mut runner, shell, _open, _customize) = mount();
+    runner.sync_and_update();
+    // The registry is the single source of truth. Every tool the rail exposes
+    // must be activatable, and every blocked tool must be refused: a rail
+    // button that paints as usable but does nothing is the fake UI 15.F §2
+    // forbids, so a blocked tool must never be a clickable target at all.
+    let blocked: Vec<ToolKind> = petunia_design_application::surfaces::SURFACES
+        .iter()
+        .filter(|entry| {
+            entry.kind == petunia_design_application::surfaces::SurfaceKind::Tool
+                && !matches!(
+                    entry.status,
+                    petunia_design_application::surfaces::SurfaceStatus::Wired
+                )
+        })
+        .filter_map(|entry| {
+            entry
+                .action
+                .and_then(petunia_design_application::tools::ToolKind::from_action_id)
+        })
+        .collect();
+    for tool in blocked {
+        assert!(
+            chrome::tool_disabled_reason_id(tool).is_some(),
+            "{tool:?} is blocked by the registry, so the rail must state a reason"
+        );
+    }
+    // The default persona exposes only wired vector tools, and clicking the
+    // rail still switches between them.
+    assert_eq!(shell.peek().active_tool(), ToolKind::Select);
+    for y in (100..600).step_by(8).map(|y| y as f64) {
+        runner.click_cursor((22., y));
+        runner.sync_and_update();
+        if shell.peek().active_tool() != ToolKind::Select {
+            return;
+        }
+    }
+    panic!("clicking the rail must switch the tool");
+}
+
+#[test]
 fn toolbar_customize_button_opens_the_dialog() {
     let (mut runner, _shell, _open, customize) = mount();
     runner.sync_and_update();
@@ -284,29 +351,29 @@ fn hovering_the_gear_reports_its_hint() {
 fn menu_row_dispatches_zoom_in() {
     let (mut runner, shell, mut open_family, _customize) = mount();
     runner.sync_and_update();
-    let view_index = shell
+    let view_id = shell
         .peek()
         .bridge
         .query_menu_bar()
         .families
         .iter()
-        .position(|family| family.id == "ptnd.menu.view")
+        .find(|family| family.id == "ptnd.menu.view")
+        .map(|family| family.id.clone())
         .expect("view family is listed");
     let before = zoom_of(&shell);
-    open_family.set(Some(view_index));
+    open_family.set(Some(view_id.clone()));
     runner.sync_and_update();
     runner.poll(
         std::time::Duration::from_millis(1),
         std::time::Duration::from_millis(200),
     );
     runner.sync_and_update();
-    // The popup anchors at the in-flow placeholder and shifts into view, so
-    // its rows sit along the bottom of the window. A click outside the rows
-    // closes the menu (its own scrim discipline), so reopen and keep going.
-    for y in (400..795).step_by(7).map(|y| y as f64) {
+    // The portal anchors the menu below the selected family. A click outside
+    // the rows closes it, so reopen whenever the menu is dismissed.
+    for y in (40..320).step_by(7).map(|y| y as f64) {
         for x in (10..640).step_by(20).map(|x| x as f64) {
             if open_family.peek().is_none() {
-                open_family.set(Some(view_index));
+                open_family.set(Some(view_id.clone()));
                 runner.sync_and_update();
                 runner.poll(
                     std::time::Duration::from_millis(1),

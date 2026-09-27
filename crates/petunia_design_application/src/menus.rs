@@ -27,6 +27,7 @@
 //! when the payload does not name explicit targets, so the same item works
 //! from a menu click, a shortcut, the command palette, MCP or a plugin.
 
+use crate::actions::ActionId;
 use crate::surfaces::{
     SurfaceEntry, SurfaceKind, SurfaceStatus, PERSONA_PHOTO, PERSONA_VECTOR, SURFACES,
 };
@@ -273,6 +274,10 @@ pub const MENU_BAR: &[MenuFamily] = &[
                 "ptnd.text.edit.duplicate",
             )),
             node(item("ptnd.action.edit.delete", "ptnd.text.edit.delete")),
+            node(item(
+                ActionId::EDIT_PREFERENCES,
+                "ptnd.text.edit.preferences",
+            )),
         ],
     },
     MenuFamily {
@@ -392,6 +397,10 @@ pub const MENU_BAR: &[MenuFamily] = &[
                         "ptnd.tool.vector.shape_builder",
                         "ptnd.text.tool.shape_builder",
                     ),
+                    item(
+                        "ptnd.tool.vector.vector_flood_fill",
+                        "ptnd.text.tool.vector_flood_fill",
+                    ),
                 ],
             ),
             group(
@@ -412,11 +421,13 @@ pub const MENU_BAR: &[MenuFamily] = &[
                 "ptnd.text.menu.select",
                 &[
                     item("ptnd.tool.vector.move", "ptnd.text.tool.move"),
+                    item("ptnd.tool.vector.perspective", "ptnd.text.tool.perspective"),
                     item(
                         "ptnd.tool.vector.point_transform",
                         "ptnd.text.tool.point_transform",
                     ),
                     item("ptnd.tool.vector.hand", "ptnd.text.tool.hand"),
+                    item("ptnd.tool.vector.measure", "ptnd.text.tool.measure"),
                     item("ptnd.tool.vector.zoom", "ptnd.text.tool.zoom"),
                     item("ptnd.tool.vector.surface", "ptnd.text.tool.surface"),
                 ],
@@ -432,6 +443,10 @@ pub const MENU_BAR: &[MenuFamily] = &[
                     item("ptnd.tool.vector.frame_text", "ptnd.text.tool.frame_text"),
                     item("ptnd.tool.vector.gradient", "ptnd.text.tool.gradient"),
                     item("ptnd.tool.vector.eyedropper", "ptnd.text.tool.eyedropper"),
+                    item(
+                        "ptnd.tool.vector.style_picker",
+                        "ptnd.text.tool.style_picker",
+                    ),
                     item(
                         "ptnd.tool.vector.transparency",
                         "ptnd.text.tool.transparency",
@@ -455,6 +470,23 @@ pub const MENU_BAR: &[MenuFamily] = &[
                 "ptnd.text.panel.transform",
                 &[
                     item("ptnd.tool.photo.move", "ptnd.text.tool.move"),
+                    item(
+                        "ptnd.tool.photo.marquee_rect",
+                        "ptnd.text.tool.marquee_rect",
+                    ),
+                    item(
+                        "ptnd.tool.photo.marquee_ellipse",
+                        "ptnd.text.tool.marquee_ellipse",
+                    ),
+                    item("ptnd.tool.photo.lasso", "ptnd.text.tool.lasso"),
+                    item(
+                        "ptnd.tool.photo.selection_brush",
+                        "ptnd.text.tool.selection_brush",
+                    ),
+                    item(
+                        "ptnd.tool.photo.flood_select",
+                        "ptnd.text.tool.flood_select",
+                    ),
                     item("ptnd.tool.photo.crop", "ptnd.text.tool.crop"),
                     item("ptnd.tool.photo.gradient", "ptnd.text.tool.gradient"),
                     item("ptnd.tool.photo.eyedropper", "ptnd.text.tool.eyedropper"),
@@ -701,7 +733,13 @@ pub fn availability(action_id: &str, ctx: &ActionContext) -> Availability {
                 Availability::blocked("ptnd.text.blocked.no_document")
             }
         }
-        "ptnd.action.file.place" => Availability::blocked("ptnd.text.blocked.place_image"),
+        "ptnd.action.file.place" => {
+            if ctx.has_document {
+                Availability::ENABLED
+            } else {
+                Availability::blocked("ptnd.text.blocked.no_document")
+            }
+        }
         // Edit.
         "ptnd.action.edit.undo" => {
             if ctx.can_undo {
@@ -724,6 +762,7 @@ pub fn availability(action_id: &str, ctx: &ActionContext) -> Availability {
                 Availability::blocked("ptnd.text.blocked.select_object")
             }
         }
+        "ptnd.action.edit.preferences" => Availability::ENABLED,
         "ptnd.action.edit.select_all" => {
             if ctx.has_document {
                 Availability::ENABLED
@@ -1148,16 +1187,23 @@ mod tests {
     #[test]
     fn blocked_registry_rows_are_disabled_with_their_reason() {
         let bar = menu_bar(&context());
+        let offset = bar
+            .iter()
+            .flat_map(MenuFamilyModel::items)
+            .find(|item| item.surface_id == "ptnd.action.object.offset_path")
+            .expect("offset_path is declared in the Object family");
+        assert!(!offset.enabled);
+        assert_eq!(
+            offset.disabled_reason_id.as_deref(),
+            Some("ptnd.text.blocked.offset_path")
+        );
+
         let place = bar
             .iter()
             .flat_map(MenuFamilyModel::items)
             .find(|item| item.surface_id == "ptnd.action.file.place")
             .expect("place is declared in the File family");
-        assert!(!place.enabled);
-        assert_eq!(
-            place.disabled_reason_id.as_deref(),
-            Some("ptnd.text.blocked.place_image")
-        );
+        assert!(place.enabled, "file.place is enabled when document is open");
     }
 
     #[test]

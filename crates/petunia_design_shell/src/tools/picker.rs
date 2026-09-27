@@ -8,9 +8,10 @@
 use petunia_design_application::Command;
 use petunia_design_document::{AppearanceStack, ChangeSet, Paint};
 use petunia_design_foundation::{ObjectId, PetuniaError};
+use petunia_design_geometry::GPoint;
 
 use crate::bridge::PetuniaDesignGuiBridge;
-use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
+use crate::canvas::{CanvasOverlays, CursorAffordance, SnapEngine, ViewportCamera};
 
 use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase,
@@ -40,13 +41,17 @@ pub struct ColorSample {
 #[derive(Clone, Debug)]
 pub struct PickerTool {
     mode: PickerMode,
+    hover_doc: Option<GPoint>,
 }
 
 impl PickerTool {
     /// Creates a picker tool in color or style mode.
     #[must_use]
     pub fn new(mode: PickerMode) -> Self {
-        Self { mode }
+        Self {
+            mode,
+            hover_doc: None,
+        }
     }
 
     /// Current mode.
@@ -56,7 +61,9 @@ impl PickerTool {
     }
 
     /// Resets tool state.
-    pub fn cancel(&mut self) {}
+    pub fn cancel(&mut self) {
+        self.hover_doc = None;
+    }
 
     /// Handles normalized pointer events.
     pub fn on_pointer_event(
@@ -66,11 +73,20 @@ impl PickerTool {
         _camera: &ViewportCamera,
         _snap: &mut SnapEngine,
     ) -> Result<ChangeSet, PetuniaError> {
+        if event.phase == PointerPhase::Move {
+            self.hover_doc = Some(event.doc_pos);
+            return Ok(ChangeSet::empty());
+        }
+        if event.phase == PointerPhase::Cancel {
+            self.cancel();
+            return Ok(ChangeSet::empty());
+        }
         if event.phase != PointerPhase::Up || event.button != PointerButton::Primary {
             return Ok(ChangeSet::empty());
         }
 
         let pt = event.doc_pos;
+        self.hover_doc = Some(pt);
         let session = match bridge.session() {
             Some(s) => s,
             None => return Ok(ChangeSet::empty()),
@@ -124,10 +140,28 @@ impl PickerTool {
         bridge.submit_all(label, all_cmds)
     }
 
-    /// Resolves overlays (none for eyedropper sampling).
+    /// Resolves overlays with hover highlighting and cursor affordances.
     #[must_use]
-    pub fn overlays(&self) -> CanvasOverlays {
-        CanvasOverlays::default()
+    pub fn overlays(&self, bridge: &PetuniaDesignGuiBridge) -> CanvasOverlays {
+        let mut overlays = CanvasOverlays::default();
+        overlays.cursor = CursorAffordance::Crosshair;
+        if let Some(pt) = self.hover_doc {
+            if let Some(session) = bridge.session() {
+                let hit = session
+                    .spatial_candidates_point(pt, 0.0)
+                    .into_iter()
+                    .find(|id| {
+                        session.find_object(*id).is_some_and(|obj| {
+                            obj.visible && !obj.locked && obj.hit_test(pt)
+                        })
+                    });
+                overlays.hovered_object = hit;
+                if hit.is_some() {
+                    overlays.cursor = CursorAffordance::Pointer;
+                }
+            }
+        }
+        overlays
     }
 }
 

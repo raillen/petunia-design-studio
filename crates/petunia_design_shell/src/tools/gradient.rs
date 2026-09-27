@@ -15,7 +15,8 @@ use petunia_design_geometry::GPoint;
 
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{
-    CanvasOverlays, GradientOverlay, GradientOverlayKind, SnapEngine, ViewportCamera,
+    CanvasOverlays, CursorAffordance, GradientOverlay, GradientOverlayKind, SnapEngine,
+    ViewportCamera,
 };
 
 use petunia_design_application::interaction::{
@@ -56,7 +57,9 @@ pub struct GradientTool {
     kind: GradientKind,
     start_doc: Option<GPoint>,
     current_doc: Option<GPoint>,
+    hover_doc: Option<GPoint>,
     drag_stop: Option<usize>,
+    constrain: bool,
     last_down: Option<(Instant, GPoint)>,
 }
 
@@ -69,7 +72,9 @@ impl GradientTool {
             kind: GradientKind::Linear,
             start_doc: None,
             current_doc: None,
+            hover_doc: None,
             drag_stop: None,
+            constrain: false,
             last_down: None,
         }
     }
@@ -92,7 +97,9 @@ impl GradientTool {
     pub fn cancel(&mut self) {
         self.start_doc = None;
         self.current_doc = None;
+        self.hover_doc = None;
         self.drag_stop = None;
+        self.constrain = false;
     }
 
     /// True while a gesture is in flight.
@@ -132,6 +139,8 @@ impl GradientTool {
             return Ok(ChangeSet::empty());
         }
         snap.reset_hysteresis();
+        self.constrain = event.modifiers.constrain;
+        self.hover_doc = None;
         if self.mode == GradientToolMode::Fill {
             // Double-click on a stop removes it; on the line adds one.
             let now = Instant::now();
@@ -164,8 +173,11 @@ impl GradientTool {
     }
 
     fn on_move(&mut self, event: &NormalizedPointerEvent) -> Result<ChangeSet, PetuniaError> {
+        self.constrain = event.modifiers.constrain;
         if self.start_doc.is_some() {
             self.current_doc = Some(event.doc_pos);
+        } else {
+            self.hover_doc = Some(event.doc_pos);
         }
         Ok(ChangeSet::empty())
     }
@@ -176,6 +188,8 @@ impl GradientTool {
         bridge: &mut PetuniaDesignGuiBridge,
         camera: &ViewportCamera,
     ) -> Result<ChangeSet, PetuniaError> {
+        self.constrain = false;
+        self.hover_doc = Some(event.doc_pos);
         if let Some(index) = self.drag_stop.take() {
             self.start_doc = None;
             self.current_doc = None;
@@ -285,30 +299,104 @@ impl GradientTool {
         camera: &ViewportCamera,
     ) -> CanvasOverlays {
         let mut overlays = CanvasOverlays::default();
-        // In-flight drag preview.
+
+        // 1. Resolve cursor affordance
+        overlays.cursor = if self.drag_stop.is_some() {
+            CursorAffordance::Grabbing
+        } else if self.is_active() {
+            CursorAffordance::Crosshair
+        } else if let Some(hover) = self.hover_doc {
+            if hit_stop(hover, bridge, camera).is_some() {
+                CursorAffordance::Pointer
+            } else {
+                CursorAffordance::Crosshair
+            }
+        } else {
+            CursorAffordance::Crosshair
+        };
+
+        // 2. Resolve gradient overlay
+        let selected_id = bridge.selection().selected_ids.first().copied();
+        let selected_stack = selected_id.and_then(|id| gradient_stack(bridge, id));
+
         if let (Some(p0), Some(p1)) = (self.start_doc, self.current_doc) {
-            overlays.pen_preview = Some(vec![p0, p1]);
-        }
-        // Committed gradient of the first selected object with stops.
-        if let Some(id) = bridge.selection().selected_ids.first() {
-            if let Some(stack) = gradient_stack(bridge, *id) {
-                if let Some((start, end)) = gradient_line(&stack) {
-                    let stops = gradient_stops(&stack)
-                        .iter()
-                        .map(|(offset, _)| (*offset, lerp_point(start, end, *offset)))
-                        .collect();
-                    overlays.gradient = Some(GradientOverlay {
-                        start: camera.doc_to_screen(start),
-                        end: camera.doc_to_screen(end),
-                        stops,
-                        kind: match gradient_paint(&stack) {
-                            Some(Paint::RadialGradient(_)) => GradientOverlayKind::Radial,
-                            _ => GradientOverlayKind::Linear,
-                        },
-                    });
+            if let Some(stop_idx) = self.drag_stop {
+                // Moving an existing stop handle in-flight
+                if let Some(stack) = &selected_stack {
+                    if let Some((start, end)) = gradient_line(stack) {
+                        let mut t = project_t(p1, start, end, camera);
+                        if self.constrain {
+                            t = (t / 0.05).round() * 0.05;
+                        }
+                        let t = t.clamp(0.0, 1.0);
+                        let mut stops: Vec<(f64, GPoint)> = gradient_stops(stack)
+                            .iter()
+                            .enumerate()
+                            .map(|(i, (offset, _))| {
+                                let off = if i == stop_idx { t } else { *offset };
+                                (off, camera.doc_to_screen(lerp_point(start, end, off)))
+                            })
+                            .collect();
+                        stops.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                        overlays.gradient = Some(GradientOverlay {
+                            start: camera.doc_to_screen(start),
+                            end: camera.doc_to_screen(end),
+                            stops,
+                            kind: match gradient_paint(stack) {
+                                Some(Paint::RadialGradient(_)) => GradientOverlayKind::Radial,
+                                _ => GradientOverlayKind::Linear,
+                            },
+                        });
+                    }
                 }
+            } else {
+                // In-flight vector creation or reposition
+                let end = if self.constrain {
+                    snap_linear_45(p0, p1)
+                } else {
+                    p1
+                };
+                overlays.pen_preview = Some(vec![p0, end]);
+                let stops = if let Some(stack) = &selected_stack {
+                    gradient_stops(stack)
+                        .iter()
+                        .map(|(offset, _)| (*offset, camera.doc_to_screen(lerp_point(p0, end, *offset))))
+                        .collect()
+                } else {
+                    vec![
+                        (0.0, camera.doc_to_screen(p0)),
+                        (1.0, camera.doc_to_screen(end)),
+                    ]
+                };
+                overlays.gradient = Some(GradientOverlay {
+                    start: camera.doc_to_screen(p0),
+                    end: camera.doc_to_screen(end),
+                    stops,
+                    kind: match self.kind {
+                        GradientKind::Radial => GradientOverlayKind::Radial,
+                        GradientKind::Linear => GradientOverlayKind::Linear,
+                    },
+                });
+            }
+        } else if let Some(stack) = &selected_stack {
+            // Committed gradient overlay
+            if let Some((start, end)) = gradient_line(stack) {
+                let stops = gradient_stops(stack)
+                    .iter()
+                    .map(|(offset, _)| (*offset, camera.doc_to_screen(lerp_point(start, end, *offset))))
+                    .collect();
+                overlays.gradient = Some(GradientOverlay {
+                    start: camera.doc_to_screen(start),
+                    end: camera.doc_to_screen(end),
+                    stops,
+                    kind: match gradient_paint(stack) {
+                        Some(Paint::RadialGradient(_)) => GradientOverlayKind::Radial,
+                        _ => GradientOverlayKind::Linear,
+                    },
+                });
             }
         }
+
         overlays
     }
 }

@@ -17,6 +17,7 @@ members = [
     "crates/petunia_design_extension",
     "crates/petunia_design_mcp",
     "crates/petunia_design_shell",
+    "crates/petunia_design_testkit",
     "apps/petunia-design-cli",
     "apps/petunia-design",
     "xtask",

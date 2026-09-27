@@ -468,16 +468,34 @@ impl PetuniaDesignGuiBridge {
         self.session()?.cached_bounds(id)
     }
 
-    /// Hit-test against the memoized evaluated outline (F1 + F2).
-    /// `tol` should come from `zoom_flatten_tol`. Visibility/locking stay
-    /// at the call site, as with `hit_test` today.
+    /// Explicit world evaluated bounds, when the frame is migrated.
     #[must_use]
-    pub fn cached_hit(
+    pub fn cached_world_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
+        self.session()?.cached_world_bounds(id)
+    }
+
+    /// Nominal world frame bounds, available for legacy paths too.
+    #[must_use]
+    pub fn cached_world_frame_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
+        self.session()?.cached_world_frame_bounds(id)
+    }
+
+    /// Exact hit against the explicit world-space outline.
+    #[must_use]
+    pub fn cached_world_hit(
         &self,
         id: ObjectId,
         pt: petunia_design_geometry::GPoint,
         tol: f64,
     ) -> bool {
+        self.session()
+            .is_some_and(|s| s.cached_world_hit(id, pt, tol))
+    }
+    /// Hit-test against the memoized evaluated outline (F1 + F2).
+    /// `tol` should come from `zoom_flatten_tol`. Visibility/locking stay
+    /// at the call site, as with `hit_test` today.
+    #[must_use]
+    pub fn cached_hit(&self, id: ObjectId, pt: petunia_design_geometry::GPoint, tol: f64) -> bool {
         self.session().is_some_and(|s| s.cached_hit(id, pt, tol))
     }
 
@@ -748,7 +766,11 @@ impl PetuniaDesignGuiBridge {
                 let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
                 next.push(petunia_design_document::ModifierItem::enabled(
                     nid,
-                    petunia_design_document::ModifierKind::ContourOffset { distance, join, cap },
+                    petunia_design_document::ModifierKind::ContourOffset {
+                        distance,
+                        join,
+                        cap,
+                    },
                 ));
             }
             next

@@ -80,7 +80,7 @@ impl crate::session::DocumentSession {
         query(&self.spatial.borrow().tree)
     }
 
-    /// Bulk-loads the active surface's evaluated bounds at this revision.
+    /// Bulk-loads the active surface's explicit world AABBs at this revision.
     fn rebuild_spatial(&self) {
         let mut cell = self.spatial.borrow_mut();
         cell.tree = RTree::new();
@@ -99,7 +99,11 @@ impl crate::session::DocumentSession {
             .enumerate()
             .filter(|(_, obj)| obj.visible && !obj.locked)
             .filter_map(|(seq, obj)| {
-                let [x, y, w, h] = self.cached_bounds(obj.id)?;
+                let [x, y, w, h] = self
+                    .cached_world_frame_bounds(obj.id)
+                    .or_else(|| self.cached_world_bounds(obj.id))
+                    .or_else(|| self.cached_bounds(obj.id))
+                    .or(obj.bounds)?;
                 Some(IndexedObj {
                     id: obj.id,
                     seq,
@@ -133,10 +137,7 @@ impl crate::session::DocumentSession {
     #[must_use]
     pub fn spatial_candidates_rect(&self, rect: [f64; 4]) -> Vec<ObjectId> {
         let [x0, y0, x1, y1] = rect;
-        let query = AABB::from_corners(
-            [x0.min(x1), y0.min(y1)],
-            [x0.max(x1), y0.max(y1)],
-        );
+        let query = AABB::from_corners([x0.min(x1), y0.min(y1)], [x0.max(x1), y0.max(y1)]);
         let mut hits: Vec<(usize, ObjectId)> = self.with_spatial(|tree| {
             tree.locate_in_envelope_intersecting(&query)
                 .map(|o| (o.seq, o.id))

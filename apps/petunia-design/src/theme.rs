@@ -61,14 +61,11 @@ pub const GOLD: AccentColor = AccentColor {
 
 pub const ACCENTS: &[AccentColor] = &[BLOOM, DESIGN, PHOTO, EMBER, MOSS, GOLD];
 
-/// The shell's icon vocab: a semantic name plus the Tabler asset in each set.
-///
-/// Only entries whose asset exists in **both** sets are listed, so switching
-/// [`IconStyle`] can never show a missing glyph.
+/// Product meaning stays attached to these semantic IDs, not raw SVG names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AppIcon {
     pub outline: &'static [u8],
-    pub filled: &'static [u8],
+    pub filled: Option<&'static [u8]>,
 }
 
 impl AppIcon {
@@ -76,7 +73,7 @@ impl AppIcon {
     pub fn bytes(self, style: IconStyle) -> &'static [u8] {
         match style {
             IconStyle::Outline => self.outline,
-            IconStyle::Filled => self.filled,
+            IconStyle::Filled => self.filled.unwrap_or(self.outline),
         }
     }
 }
@@ -86,13 +83,26 @@ macro_rules! icon {
         #[allow(dead_code)]
         pub const $name: AppIcon = AppIcon {
             outline: include_bytes!(concat!("../assets/icons-outline/", $outline, ".svg")),
-            filled: include_bytes!(concat!("../assets/icons-filled/", $filled, ".svg")),
+            filled: Some(include_bytes!(concat!(
+                "../assets/icons-filled/",
+                $filled,
+                ".svg"
+            ))),
         };
     };
 }
 
-// Filled Tabler has no undo/redo/fit/pen/text/cut/pan glyphs, so the filled
-// set reuses the closest solid metaphor; outline stays the literal one.
+macro_rules! outline_icon {
+    ($name:ident, $outline:literal) => {
+        #[allow(dead_code)]
+        pub const $name: AppIcon = AppIcon {
+            outline: include_bytes!(concat!("../assets/icons-outline/", $outline, ".svg")),
+            filled: None,
+        };
+    };
+}
+
+// Domain tools without an equivalent filled glyph retain the outline asset.
 icon!(ICON_SETTINGS, "settings", "settings");
 icon!(
     ICON_CUSTOMIZE,
@@ -121,13 +131,50 @@ icon!(ICON_INFO, "info", "info-circle");
 icon!(ICON_STAR, "star", "star");
 icon!(ICON_PHOTO, "photo", "photo");
 icon!(ICON_POINTER, "pointer", "pointer");
-icon!(ICON_TEXT, "cursor-text", "file-typography");
-icon!(ICON_PEN, "pen-tool", "edit");
+outline_icon!(ICON_TEXT, "cursor-text");
+outline_icon!(ICON_PEN, "pen-tool");
 icon!(ICON_PENCIL, "pencil", "pencil");
 icon!(ICON_SQUARE, "square", "square");
 icon!(ICON_CIRCLE, "circle", "circle");
 icon!(ICON_TRIANGLE, "triangle", "triangle");
 icon!(ICON_HEXAGON, "hexagon", "hexagon");
+outline_icon!(ICON_MOVE, "move");
+outline_icon!(ICON_HAND, "hand");
+outline_icon!(ICON_NODE, "vector-bezier-2");
+outline_icon!(ICON_BRUSH, "brush");
+outline_icon!(ICON_ERASER, "eraser");
+outline_icon!(ICON_PAINT, "brush");
+outline_icon!(ICON_WAND, "wand");
+outline_icon!(ICON_GRADIENT, "gradient");
+outline_icon!(ICON_TRANSPARENCY, "droplet-half-2");
+outline_icon!(ICON_CROP, "crop");
+outline_icon!(ICON_EYEDROPPER, "pipette");
+outline_icon!(ICON_LAYERS, "layers");
+outline_icon!(ICON_PERSPECTIVE, "perspective");
+outline_icon!(ICON_CORNER, "radius-top-left");
+outline_icon!(ICON_CONTOUR, "circle-dashed");
+outline_icon!(ICON_KNIFE, "knife");
+outline_icon!(ICON_SCISSORS, "scissors");
+outline_icon!(ICON_FILL, "bucket-droplet");
+outline_icon!(ICON_BOOLEAN, "layers-intersect");
+outline_icon!(ICON_COLOR_PICKER, "pipette");
+outline_icon!(ICON_ATTRIBUTE_PICKER, "color-swatch");
+icon!(ICON_ARTBOARD, "artboard", "artboard");
+outline_icon!(ICON_MARQUEE_RECT, "marquee");
+outline_icon!(ICON_MARQUEE_ELLIPSE, "marquee-2");
+outline_icon!(ICON_LASSO, "lasso-polygon");
+outline_icon!(ICON_MEASURE, "ruler-measure");
+outline_icon!(ICON_SELECTION_BRUSH, "brush");
+outline_icon!(ICON_CROP_PHOTO, "crop");
+outline_icon!(ICON_SHAPE_BUILDER, "layers-intersect");
+outline_icon!(ICON_FRAME_TEXT, "text-wrap");
+outline_icon!(ICON_FLOOD_SELECT, "wand");
+outline_icon!(ICON_TYPE, "type");
+icon!(ICON_ROTATE, "rotate", "circle");
+icon!(ICON_MENU, "menu-2", "menu-2");
+icon!(ICON_WARNING, "info", "alert-triangle");
+icon!(ICON_SPARKLES, "sparkles", "sparkles");
+icon!(ICON_GRIP, "dots", "dots-vertical");
 
 // Sizes are the chrome geometry of 08.35 expressed in Freya pixels.
 #[allow(dead_code)]
@@ -147,6 +194,7 @@ pub const BODY_SIZE: f32 = 13.;
 pub const CAPTION_SIZE: f32 = 11.;
 pub const SPACE_1: f32 = 4.;
 pub const SPACE_2: f32 = 8.;
+pub const SPACE_3: f32 = 12.;
 #[allow(dead_code)]
 pub const SPACE_4: f32 = 16.;
 pub const BRAND_MARK_SIZE: f32 = 20.;
@@ -165,6 +213,8 @@ pub const BORDER_SUBTLE: Color = Color::from_rgb(0x41, 0x44, 0x4A);
 pub const TEXT_PRIMARY: Color = Color::from_rgb(0xF2, 0xF3, 0xF5);
 pub const TEXT_SECONDARY: Color = Color::from_rgb(0xC2, 0xC6, 0xCC);
 pub const TEXT_TERTIARY: Color = Color::from_rgb(0x8E, 0x94, 0x9D);
+// Controls the registry blocks: visible, but plainly not actionable.
+pub const TEXT_DISABLED: Color = Color::from_rgb(0x5A, 0x5F, 0x66);
 pub const ACCENT_BLOOM: Color = Color::from_rgb(0xB7, 0x7A, 0xFF);
 pub const STUDIO_DESIGN: Color = Color::from_rgb(0x35, 0xC7, 0xD4);
 pub const STUDIO_PHOTO: Color = Color::from_rgb(0xF0, 0x6C, 0x8D);

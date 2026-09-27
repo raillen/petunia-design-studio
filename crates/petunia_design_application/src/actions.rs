@@ -12,7 +12,9 @@ impl ActionId {
     pub const SURFACE_CREATE: &'static str = "ptnd.action.surface.create";
     pub const OBJECT_CREATE: &'static str = "ptnd.action.object.create";
     pub const OBJECT_DELETE: &'static str = "ptnd.action.object.delete";
+    pub const EDIT_PREFERENCES: &'static str = "ptnd.action.edit.preferences";
     pub const FILL_SET: &'static str = "ptnd.action.fill.set";
+    pub const FILE_PLACE: &'static str = "ptnd.action.file.place";
 
     // Design Persona Tool Actions (08.24, 08.33, 10.1 - 10.7)
     pub const TOOL_SELECT: &'static str = "ptnd.tool.select";

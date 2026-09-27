@@ -12,7 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use petunia_design_geometry::{BooleanInput, BooleanOp, GPath, GPoint, boolean_op};
+use petunia_design_geometry::{boolean_op, BooleanInput, BooleanOp, GPath, GPoint};
 
 /// Flatten tolerance for selection booleans (F-21).
 const SELECTION_TOLERANCE: f64 = 0.5;
@@ -57,8 +57,7 @@ impl SelectionShape {
                 }
                 let contour: Vec<GPoint> = (0..ELLIPSE_SEGMENTS)
                     .map(|i| {
-                        let a = (i as f64) / (ELLIPSE_SEGMENTS as f64)
-                            * std::f64::consts::TAU;
+                        let a = (i as f64) / (ELLIPSE_SEGMENTS as f64) * std::f64::consts::TAU;
                         GPoint::new(cx + rx * a.cos(), cy + ry * a.sin())
                     })
                     .collect();
@@ -172,7 +171,7 @@ impl RasterSelection {
         if self.contours.is_empty() || !delta.is_finite() || delta.abs() < 1e-9 {
             return;
         }
-        use petunia_design_geometry::{OffsetCap, OffsetJoin, offset_path};
+        use petunia_design_geometry::{offset_path, OffsetCap, OffsetJoin};
         let path = GPath::from_polygons(&self.contours);
         // Miter joins keep rectilinear selections sharp (Round would eat corners).
         let grown = offset_path(&path, delta, OffsetJoin::Miter, OffsetCap::None);
@@ -341,7 +340,11 @@ mod tests {
         let mut sel = RasterSelection::new();
         sel.combine(&rect(0.0, 0.0, 10.0, 10.0), SelectionMode::Replace);
         sel.combine(&rect(5.0, 5.0, 15.0, 15.0), SelectionMode::Add);
-        assert!((sel.signed_area().abs() - 175.0).abs() < 1.0, "got {}", sel.signed_area());
+        assert!(
+            (sel.signed_area().abs() - 175.0).abs() < 1.0,
+            "got {}",
+            sel.signed_area()
+        );
         assert!(sel.contains(GPoint::new(12.0, 12.0)));
     }
 
@@ -350,7 +353,11 @@ mod tests {
         let mut sel = RasterSelection::new();
         sel.combine(&rect(0.0, 0.0, 10.0, 10.0), SelectionMode::Replace);
         sel.combine(&rect(2.0, 2.0, 8.0, 8.0), SelectionMode::Subtract);
-        assert!((sel.signed_area().abs() - 64.0).abs() < 1.0, "got {}", sel.signed_area());
+        assert!(
+            (sel.signed_area().abs() - 64.0).abs() < 1.0,
+            "got {}",
+            sel.signed_area()
+        );
         assert!(sel.contains(GPoint::new(1.0, 1.0)));
         assert!(!sel.contains(GPoint::new(5.0, 5.0)));
     }
@@ -360,7 +367,11 @@ mod tests {
         let mut sel = RasterSelection::new();
         sel.combine(&rect(0.0, 0.0, 10.0, 10.0), SelectionMode::Replace);
         sel.combine(&rect(5.0, 5.0, 15.0, 15.0), SelectionMode::Intersect);
-        assert!((sel.signed_area().abs() - 25.0).abs() < 1.0, "got {}", sel.signed_area());
+        assert!(
+            (sel.signed_area().abs() - 25.0).abs() < 1.0,
+            "got {}",
+            sel.signed_area()
+        );
         assert!(!sel.contains(GPoint::new(2.0, 2.0)));
         assert!(sel.contains(GPoint::new(7.0, 7.0)));
     }
@@ -380,16 +391,36 @@ mod tests {
         let mut sel = RasterSelection::new();
         sel.combine(&rect(0.0, 0.0, 10.0, 10.0), SelectionMode::Replace);
         sel.grow(5.0);
-        assert!((sel.signed_area().abs() - 400.0).abs() < 8.0, "got {}", sel.signed_area());
+        assert!(
+            (sel.signed_area().abs() - 400.0).abs() < 8.0,
+            "got {}",
+            sel.signed_area()
+        );
         sel.grow(-5.0);
-        assert!((sel.signed_area().abs() - 100.0).abs() < 8.0, "got {}", sel.signed_area());
+        assert!(
+            (sel.signed_area().abs() - 100.0).abs() < 8.0,
+            "got {}",
+            sel.signed_area()
+        );
     }
 
     #[test]
     fn mode_from_modifiers_matches_photoshop() {
-        assert_eq!(SelectionMode::from_modifiers(false, false), SelectionMode::Replace);
-        assert_eq!(SelectionMode::from_modifiers(true, false), SelectionMode::Add);
-        assert_eq!(SelectionMode::from_modifiers(false, true), SelectionMode::Subtract);
-        assert_eq!(SelectionMode::from_modifiers(true, true), SelectionMode::Intersect);
+        assert_eq!(
+            SelectionMode::from_modifiers(false, false),
+            SelectionMode::Replace
+        );
+        assert_eq!(
+            SelectionMode::from_modifiers(true, false),
+            SelectionMode::Add
+        );
+        assert_eq!(
+            SelectionMode::from_modifiers(false, true),
+            SelectionMode::Subtract
+        );
+        assert_eq!(
+            SelectionMode::from_modifiers(true, true),
+            SelectionMode::Intersect
+        );
     }
 }

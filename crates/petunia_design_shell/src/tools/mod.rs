@@ -27,8 +27,8 @@ pub use manager::ToolManager;
 pub use measure::{AreaReadout, MeasureMode, MeasureTool, MeasurementReadout};
 pub use node::NodeTool;
 pub use pen::{NodeType, PenAnchor, PenCursorHint, PenPhase, PenTool};
-pub use perspective::PerspectiveTool;
 pub use pencil::{PencilFidelity, PencilTool};
+pub use perspective::PerspectiveTool;
 pub use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers,
 };

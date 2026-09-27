@@ -23,7 +23,10 @@ pub use appearance::{
 };
 pub use changeset::{Change, ChangeSet};
 pub use document::{Document, Surface};
-pub use document_object::{AlignmentMode, ArrangePosition, DistributionAxis, DocumentObject, ShapeKind, TextOnPathAttachment};
+pub use document_object::{
+    AlignmentMode, ArrangePosition, DistributionAxis, DocumentObject, GeometryFrameError, ShapeKind,
+    TextOnPathAttachment,
+};
 pub use hierarchy::{ContainerRole, HierarchyValidation, MaskMode};
 pub use modifiers::{ModifierItem, ModifierKind, OpacityStop, evaluate_modifiers, evaluate_opacity_at};
 pub use mutator::DocumentMutator;

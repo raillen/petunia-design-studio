@@ -99,20 +99,25 @@ fn labels_are_localized_in_both_release_locales() {
 fn a_blocked_capability_is_shown_with_its_reason_but_never_offered() {
     let shell = shell_with_document();
     let model = shell.bridge.query_menu_bar();
-    let place = model
-        .item_for_token("ptnd.action.file.place#null")
+    let offset = model
+        .item_for_token("ptnd.action.object.offset_path#null")
         .expect("the blocked capability stays visible so it is not silently missing");
-    assert!(!place.enabled);
-    assert!(!place.disabled_reason.is_empty());
+    assert!(!offset.enabled);
+    assert!(!offset.disabled_reason.is_empty());
 
     assert!(
         !shell
             .bridge
             .query_command_index()
             .iter()
-            .any(|item| item.action_id == "ptnd.action.file.place"),
+            .any(|item| item.action_id == "ptnd.action.object.offset_path"),
         "a blocked action must not be offered by the palette"
     );
+
+    let place = model
+        .item_for_token("ptnd.action.file.place#null")
+        .expect("file.place is available in the menu");
+    assert!(place.enabled, "file.place is enabled with open document");
 }
 
 #[test]

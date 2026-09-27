@@ -13,7 +13,8 @@ use petunia_design_geometry::{GPath, GPoint, GRect, PathVerb};
 
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{
-    CanvasOverlays, SelectionHandle, SelectionHandleKind, SnapEngine, ViewportCamera,
+    CanvasOverlays, CursorAffordance, SelectionHandle, SelectionHandleKind, SnapEngine,
+    ViewportCamera,
 };
 
 use super::pen::NodeType;
@@ -555,7 +556,7 @@ impl NodeTool {
         None
     }
 
-    /// Resolves overlays for the Node tool (node handle points).
+    /// Resolves overlays for the Node tool (node handle points, control arms, and in-flight previews).
     #[must_use]
     pub fn overlays(
         &self,
@@ -570,37 +571,156 @@ impl NodeTool {
                 marquee.current_screen.x,
                 marquee.current_screen.y,
             ));
+            overlays.cursor = CursorAffordance::Crosshair;
             return overlays;
         }
+
+        overlays.cursor = if self.drag.is_some() {
+            CursorAffordance::Grabbing
+        } else {
+            CursorAffordance::Pointer
+        };
+
         let sel_ids = bridge.selection().selected_ids;
         for &id in &sel_ids {
-            if let Some(session) = bridge.session() {
-                if let Some(obj) = session.find_object(id) {
-                    if let Some(ShapeKind::Path(path)) = &obj.shape {
-                        for verb in &path.verbs {
-                            let pt = match verb {
-                                PathVerb::MoveTo(pt) | PathVerb::LineTo(pt) => *pt,
-                                PathVerb::QuadTo(_, pt) | PathVerb::CubicTo(_, _, pt) => *pt,
-                                PathVerb::Close => continue,
-                            };
-                            let screen_pt = camera.doc_to_screen(pt);
-                            let screen_hit_box = GRect::new(
-                                screen_pt.x - 4.0,
-                                screen_pt.y - 4.0,
-                                screen_pt.x + 4.0,
-                                screen_pt.y + 4.0,
-                            );
-                            overlays.handles.push(SelectionHandle {
-                                kind: SelectionHandleKind::TopLeft,
-                                doc_point: pt,
-                                screen_hit_box,
-                            });
-                        }
+            let Some(session) = bridge.session() else {
+                continue;
+            };
+            let Some(obj) = session.find_object(id) else {
+                continue;
+            };
+            let Some(ShapeKind::Path(path)) = &obj.shape else {
+                continue;
+            };
+
+            let verbs = self.current_verbs(id, &path.verbs);
+
+            if self.drag.is_some() {
+                overlays.path_preview = Some(GPath {
+                    verbs: verbs.clone(),
+                });
+            }
+
+            for (idx, verb) in verbs.iter().enumerate() {
+                let Some(pt) = endpoint_of(verb) else {
+                    continue;
+                };
+                let is_selected = self.selected.contains(&(id, idx));
+                let node_type = classify_node(&verbs, idx);
+
+                let kind = match (node_type, is_selected) {
+                    (NodeType::Cusp, false) => SelectionHandleKind::NodeCusp,
+                    (NodeType::Cusp, true) => SelectionHandleKind::NodeCuspSelected,
+                    (NodeType::Smooth, false) => SelectionHandleKind::NodeSmooth,
+                    (NodeType::Smooth, true) => SelectionHandleKind::NodeSmoothSelected,
+                    (NodeType::Symmetric, false) => SelectionHandleKind::NodeSymmetric,
+                    (NodeType::Symmetric, true) => SelectionHandleKind::NodeSymmetricSelected,
+                };
+
+                let screen_pt = camera.doc_to_screen(pt);
+                let screen_hit_box = GRect::new(
+                    screen_pt.x - 5.0,
+                    screen_pt.y - 5.0,
+                    screen_pt.x + 5.0,
+                    screen_pt.y + 5.0,
+                );
+                overlays.handles.push(SelectionHandle {
+                    kind,
+                    doc_point: pt,
+                    screen_hit_box,
+                });
+
+                if is_selected {
+                    let (h_in, h_out) = handles_of(&verbs, idx);
+                    if let Some(hin) = h_in {
+                        overlays.node_control_lines.push((pt, hin));
+                        let h_screen = camera.doc_to_screen(hin);
+                        overlays.handles.push(SelectionHandle {
+                            kind: SelectionHandleKind::NodeControl,
+                            doc_point: hin,
+                            screen_hit_box: GRect::new(
+                                h_screen.x - 4.5,
+                                h_screen.y - 4.5,
+                                h_screen.x + 4.5,
+                                h_screen.y + 4.5,
+                            ),
+                        });
+                    }
+                    if let Some(hout) = h_out {
+                        overlays.node_control_lines.push((pt, hout));
+                        let h_screen = camera.doc_to_screen(hout);
+                        overlays.handles.push(SelectionHandle {
+                            kind: SelectionHandleKind::NodeControl,
+                            doc_point: hout,
+                            screen_hit_box: GRect::new(
+                                h_screen.x - 4.5,
+                                h_screen.y - 4.5,
+                                h_screen.x + 4.5,
+                                h_screen.y + 4.5,
+                            ),
+                        });
                     }
                 }
             }
         }
         overlays
+    }
+
+    /// Evaluates current verbs for an object under active drag, if any.
+    fn current_verbs(&self, id: ObjectId, base_verbs: &[PathVerb]) -> Vec<PathVerb> {
+        let Some(drag) = &self.drag else {
+            return base_verbs.to_vec();
+        };
+        match drag {
+            NodeDrag::Nodes {
+                start_doc,
+                current_doc,
+                initial,
+                moving,
+            }
+            | NodeDrag::Segment {
+                start_doc,
+                current_doc,
+                initial,
+                moving,
+            } => {
+                let dx = current_doc.x - start_doc.x;
+                let dy = current_doc.y - start_doc.y;
+                let delta = GPoint::new(dx, dy);
+                let modified = apply_node_delta(initial.clone(), moving, delta);
+                modified
+                    .into_iter()
+                    .find(|(obj_id, _)| *obj_id == id)
+                    .map(|(_, p)| p.verbs)
+                    .unwrap_or_else(|| base_verbs.to_vec())
+            }
+            NodeDrag::Handle {
+                start_doc,
+                current_doc,
+                object,
+                initial,
+                node_idx,
+                side,
+                mirror,
+                cusp_break,
+            } => {
+                if *object == id {
+                    let mut verbs = initial.verbs.clone();
+                    drag_handle_to(
+                        &mut verbs,
+                        *node_idx,
+                        *side,
+                        *start_doc,
+                        *current_doc,
+                        *mirror,
+                        *cusp_break,
+                    );
+                    verbs
+                } else {
+                    base_verbs.to_vec()
+                }
+            }
+        }
     }
 }
 

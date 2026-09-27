@@ -7,6 +7,67 @@ use crate::changeset::{Change, ChangeSet};
 use crate::document::Document;
 use crate::document_object::DocumentObject;
 
+fn frame_transform_error(id: ObjectId) -> PetuniaError {
+    PetuniaError::invalid_input(format!("object `{id}` cannot be reframed without finite bounds"))
+}
+
+fn reframe_object(
+    object: &mut DocumentObject,
+    transform: petunia_design_geometry::GAffine,
+) -> Result<(Option<[f64; 4]>, f64), PetuniaError> {
+    let [a, b, c, d, _, _] = transform.coeffs;
+    let scale_x = a.hypot(b);
+    let scale_y = c.hypot(d);
+    let shear = (a * c + b * d).abs();
+    if !transform.coeffs.iter().all(|value| value.is_finite())
+        || (scale_x - 1.0).abs() > 1e-8
+        || (scale_y - 1.0).abs() > 1e-8
+        || shear > 1e-8
+    {
+        return Err(PetuniaError::invalid_input(format!(
+            "object `{}` transform is not representable by TRS",
+            object.id
+        )));
+    }
+    let previous_bounds = object.bounds;
+    let previous_rotation = object.rotation;
+    if previous_bounds.is_none() && object.shape.is_none() && object.modifiers.is_empty() {
+        object.rotation = b.atan2(a);
+        if !object.rotation.is_finite() {
+            return Err(PetuniaError::invalid_input(format!(
+                "object `{}` produced a non-finite rotation",
+                object.id
+            )));
+        }
+        return Ok((previous_bounds, previous_rotation));
+    }
+    let current_bounds = previous_bounds.ok_or_else(|| frame_transform_error(object.id))?;
+    if !current_bounds.iter().all(|value| value.is_finite())
+        || current_bounds[2] <= 0.0
+        || current_bounds[3] <= 0.0
+    {
+        return Err(frame_transform_error(object.id));
+    }
+    let width = current_bounds[2];
+    let height = current_bounds[3];
+    let origin = transform.apply(petunia_design_geometry::GPoint::ORIGIN);
+    if !origin.is_finite() {
+        return Err(PetuniaError::invalid_input(format!(
+            "object `{}` produced a non-finite placement origin",
+            object.id
+        )));
+    }
+    object.bounds = Some([origin.x, origin.y, width, height]);
+    object.rotation = b.atan2(a);
+    if !object.rotation.is_finite() {
+        return Err(PetuniaError::invalid_input(format!(
+            "object `{}` produced a non-finite rotation",
+            object.id
+        )));
+    }
+    Ok((previous_bounds, previous_rotation))
+}
+
 /// Exclusive writer over a [`Document`].
 #[derive(Debug)]
 pub struct DocumentMutator<'doc> {
@@ -434,9 +495,12 @@ impl<'doc> DocumentMutator<'doc> {
     pub fn convert_to_curves(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
         for surface in &mut self.document.surfaces {
             if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
-                if matches!(object.shape, Some(crate::ShapeKind::Text { .. })) {
+                if matches!(
+                    object.shape,
+                    Some(crate::ShapeKind::Text { .. }) | Some(crate::ShapeKind::Image { .. })
+                ) {
                     return Err(PetuniaError::invalid_input(format!(
-                        "object `{id}` is text: glyph outlining requires font shaping (10.6)"
+                        "object `{id}` cannot be converted to curves without vectorization"
                     )));
                 }
                 let path = object.to_path();
@@ -1495,10 +1559,12 @@ impl<'doc> DocumentMutator<'doc> {
         Ok(changes)
     }
 
-    /// Groups multiple objects under a new container object (10.5 One-Tree) (F-09).
-    /// Validates same-surface membership, rejects locked children, detaches
-    /// each child from its previous parent (recording `ChildrenChanged` so
-    /// undo restores the old tree), and records the real previous index.
+    /// Groups multiple objects under a new container object (10.5 One-Tree).
+    ///
+    /// The operation validates the common parent, captures each child's world
+    /// transform, and derives the group frame in that parent's local space.
+    /// Paths and document-anchored modifiers without an explicit frame are
+    /// rejected until their migration is available.
     pub fn group_objects(
         &mut self,
         surface: SurfaceId,
@@ -1514,51 +1580,127 @@ impl<'doc> DocumentMutator<'doc> {
                 "object `{group_id}` already exists"
             )));
         }
-
-        let surf = self.document.surface(surface)?;
-        for id in &child_ids {
-            let obj = surf.objects.iter().find(|o| o.id == *id).ok_or_else(|| {
-                PetuniaError::invalid_input(format!(
-                    "child `{id}` not found on surface `{surface}`"
-                ))
-            })?;
-            if obj.locked {
-                return Err(PetuniaError::invalid_input(format!(
-                    "child `{id}` is locked"
-                )));
-            }
-            if *id == group_id {
-                return Err(PetuniaError::invalid_input("cannot group object into itself"));
-            }
+        if child_ids.iter().any(|id| *id == group_id) {
+            return Err(PetuniaError::invalid_input("cannot group object into itself"));
         }
 
+        let first_child = self
+            .document
+            .find_object(child_ids[0])
+            .ok_or_else(|| PetuniaError::not_found(format!("child `{}` not found", child_ids[0])))?;
+        let common_parent = first_child.parent;
+        let mut child_snapshots = Vec::with_capacity(child_ids.len());
+        for child_id in child_ids.iter().copied() {
+            let child = self
+                .document
+                .find_object(child_id)
+                .ok_or_else(|| PetuniaError::not_found(format!("child `{child_id}` not found")))?;
+            if child.parent != common_parent {
+                return Err(PetuniaError::invalid_input(
+                    "grouping requires all children to share the same parent",
+                ));
+            }
+            if child.locked {
+                return Err(PetuniaError::invalid_input(format!(
+                    "child `{child_id}` is locked"
+                )));
+            }
+            child
+                .evaluated_path_local()
+                .map_err(|error| PetuniaError::invalid_input(error.to_string()))?;
+            let world = self
+                .document
+                .world_transform_checked(child_id)
+                .map_err(|error| PetuniaError::invalid_input(error.to_string()))?;
+            let world_bounds = self
+                .document
+                .frame_bounds_world(child_id)
+                .map_err(|error| PetuniaError::invalid_input(error.to_string()))?;
+            let previous_index = if let Some(parent_id) = common_parent {
+                self.document
+                    .find_object(parent_id)
+                    .and_then(|parent| parent.children.iter().position(|id| *id == child_id))
+                    .unwrap_or(0)
+            } else {
+                self.document
+                    .surface(surface)
+                    .ok()
+                    .and_then(|surface| surface.objects.iter().position(|object| object.id == child_id))
+                    .unwrap_or(0)
+            };
+            child_snapshots.push((
+                child_id,
+                child.clone(),
+                previous_index,
+                world,
+                world_bounds,
+            ));
+        }
+
+        let parent_world = match common_parent {
+            Some(parent_id) => self
+                .document
+                .world_transform_checked(parent_id)
+                .map_err(|error| PetuniaError::invalid_input(error.to_string()))?,
+            None => petunia_design_geometry::GAffine::IDENTITY,
+        };
+        let inverse_parent = parent_world
+            .inverse()
+            .ok_or_else(|| PetuniaError::invalid_input("group parent transform is not invertible"))?;
         let mut min_x = f64::INFINITY;
         let mut min_y = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
         let mut max_y = f64::NEG_INFINITY;
-        for id in &child_ids {
-            if let Some(obj) = self.document.find_object(*id) {
-                if let Some(b) = obj.bounds {
-                    min_x = min_x.min(b[0]);
-                    min_y = min_y.min(b[1]);
-                    max_x = max_x.max(b[0] + b[2]);
-                    max_y = max_y.max(b[1] + b[3]);
-                }
+        for (_, _, _, _, [x, y, width, height]) in &child_snapshots {
+            let corners = [
+                petunia_design_geometry::GPoint::new(*x, *y),
+                petunia_design_geometry::GPoint::new(*x + *width, *y),
+                petunia_design_geometry::GPoint::new(*x + *width, *y + *height),
+                petunia_design_geometry::GPoint::new(*x, *y + *height),
+            ];
+            for corner in corners {
+                let local = inverse_parent.apply(corner);
+                min_x = min_x.min(local.x);
+                min_y = min_y.min(local.y);
+                max_x = max_x.max(local.x);
+                max_y = max_y.max(local.y);
             }
         }
+        if !min_x.is_finite()
+            || !min_y.is_finite()
+            || !max_x.is_finite()
+            || !max_y.is_finite()
+        {
+            return Err(PetuniaError::invalid_input(
+                "group children do not have finite world frames",
+            ));
+        }
+        let group_bounds = [
+            min_x,
+            min_y,
+            (max_x - min_x).max(1.0),
+            (max_y - min_y).max(1.0),
+        ];
+        let group_local = petunia_design_geometry::GAffine::translate(group_bounds[0], group_bounds[1]);
+        let group_world = parent_world.after(group_local);
+        let inverse_group = group_world
+            .inverse()
+            .ok_or_else(|| PetuniaError::invalid_input("group transform is not invertible"))?;
+        let group_insert_index = child_snapshots
+            .iter()
+            .map(|(_, _, previous_index, _, _)| *previous_index)
+            .min()
+            .unwrap_or(0);
+        let mut candidates = Vec::with_capacity(child_snapshots.len());
+        for (child_id, child, previous_index, world, _) in child_snapshots {
+            let mut candidate = child.clone();
+            candidate.parent = Some(group_id);
+            let local = inverse_group.after(world);
+            reframe_object(&mut candidate, local)?;
+            candidates.push((child_id, child, candidate, previous_index));
+        }
 
-        let group_bounds = if min_x.is_finite() && min_y.is_finite() {
-            Some([
-                min_x,
-                min_y,
-                (max_x - min_x).max(0.0),
-                (max_y - min_y).max(0.0),
-            ])
-        } else {
-            None
-        };
-
-        let mut group_obj = DocumentObject::new(
+        let mut group_object = DocumentObject::new(
             group_id,
             match role {
                 crate::hierarchy::ContainerRole::Group => "Group",
@@ -1566,157 +1708,160 @@ impl<'doc> DocumentMutator<'doc> {
                 crate::hierarchy::ContainerRole::ClipGroup => "Clip Group",
             },
         );
-        group_obj.role = Some(role);
-        group_obj.bounds = group_bounds;
-        group_obj.children = child_ids.clone();
+        group_object.role = Some(role);
+        group_object.parent = common_parent;
+        group_object.bounds = Some(group_bounds);
+        group_object.children = child_ids.clone();
 
         let mut changes = ChangeSet::empty();
-
-        let target = self.document.surface_mut(surface)?;
-        target.objects.push(group_obj.clone());
-        let group_index = target.objects.len() - 1;
+        let group_index = {
+            let target = self.document.surface_mut(surface)?;
+            target.objects.push(group_object.clone());
+            target.objects.len() - 1
+        };
         changes.push(Change::ObjectAdded {
             surface,
-            object: group_obj,
+            object: group_object,
             index: group_index,
         });
 
-        let (gx, gy) = group_bounds.map_or((0.0, 0.0), |b| (b[0], b[1]));
-        for child_id in child_ids {
-            // Snapshot previous parent + its children index before mutating.
-            let (prev_parent, prev_index) = {
-                let child = self.document.find_object(child_id).ok_or_else(|| {
-                    PetuniaError::not_found(format!("child `{child_id}` not found"))
-                })?;
-                let idx = match child.parent {
-                    Some(pid) => self
-                        .document
-                        .find_object(pid)
-                        .and_then(|p| p.children.iter().position(|c| *c == child_id))
-                        .unwrap_or(0),
-                    None => self
-                        .document
-                        .surface(surface)
-                        .ok()
-                        .and_then(|s| s.objects.iter().position(|o| o.id == child_id))
-                        .unwrap_or(0),
-                };
-                (child.parent, idx)
-            };
-            // Detach from previous parent container.
-            if let Some(old_pid) = prev_parent {
-                if let Some(old_parent) = self.document.find_object_mut(old_pid) {
-                    let prev_ch = old_parent.children.clone();
-                    if let Some(p) = old_parent.children.iter().position(|c| *c == child_id) {
-                        old_parent.children.remove(p);
-                        changes.push(Change::ChildrenChanged {
-                            id: old_pid,
-                            previous_children: prev_ch,
-                            next_children: old_parent.children.clone(),
-                        });
-                    }
-                }
+        if let Some(parent_id) = common_parent {
+            if let Some(parent) = self.document.find_object_mut(parent_id) {
+                let previous_children = parent.children.clone();
+                let insert_index = group_insert_index;
+                parent.children.retain(|id| !child_ids.contains(id));
+                parent.children.insert(insert_index.min(parent.children.len()), group_id);
+                changes.push(Change::ChildrenChanged {
+                    id: parent_id,
+                    previous_children,
+                    next_children: parent.children.clone(),
+                });
             }
-            if let Some(child) = self.document.find_object_mut(child_id) {
-                let prev_bounds = child.bounds;
-                let prev_rot = child.rotation;
+        }
 
+        for (child_id, previous, candidate, previous_index) in candidates {
+            if let Some(child) = self.document.find_object_mut(child_id) {
+                let previous_bounds = previous.bounds;
+                let previous_rotation = previous.rotation;
+                child.bounds = candidate.bounds;
+                child.rotation = candidate.rotation;
                 child.parent = Some(group_id);
-                if let Some(b) = child.bounds {
-                    child.bounds = Some([b[0] - gx, b[1] - gy, b[2], b[3]]);
-                    changes.push(Change::BoundsChanged {
-                        id: child_id,
-                        previous_bounds: prev_bounds,
-                        next_bounds: child.bounds,
-                        previous_rotation: prev_rot,
-                        next_rotation: prev_rot,
-                    });
-                }
+                changes.push(Change::BoundsChanged {
+                    id: child_id,
+                    previous_bounds,
+                    next_bounds: child.bounds,
+                    previous_rotation,
+                    next_rotation: child.rotation,
+                });
                 changes.push(Change::Reparented {
                     id: child_id,
-                    previous_parent: prev_parent,
+                    previous_parent: previous.parent,
                     next_parent: Some(group_id),
-                    previous_index: prev_index,
+                    previous_index,
                     next_index: 0,
                 });
             }
         }
-
         Ok(changes)
     }
 
-    /// Ungroups a container object, moving its children to its parent container (or root).
+    /// Ungroups a container object while preserving each child's world transform.
     pub fn ungroup_objects(&mut self, group_id: ObjectId) -> Result<ChangeSet, PetuniaError> {
         let group = self
             .document
             .find_object(group_id)
+            .cloned()
             .ok_or_else(|| PetuniaError::not_found(format!("group `{group_id}` not found")))?;
         let surface_id = self.document.find_object_surface(group_id).ok_or_else(|| {
             PetuniaError::not_found(format!("surface for `{group_id}` not found"))
         })?;
-
         let parent_id = group.parent;
-        let (gx, gy) = group.bounds.map_or((0.0, 0.0), |b| (b[0], b[1]));
-        let children = group.children.clone();
+        self.document
+            .world_transform_checked(group_id)
+            .map_err(|error| PetuniaError::invalid_input(error.to_string()))?;
+        let parent_world = match parent_id {
+            Some(parent_id) => self
+                .document
+                .world_transform_checked(parent_id)
+                .map_err(|error| PetuniaError::invalid_input(error.to_string()))?,
+            None => petunia_design_geometry::GAffine::IDENTITY,
+        };
+        let inverse_parent = parent_world
+            .inverse()
+            .ok_or_else(|| PetuniaError::invalid_input("group parent transform is not invertible"))?;
+        let mut candidates = Vec::with_capacity(group.children.len());
+        for (index, child_id) in group.children.iter().copied().enumerate() {
+            let child = self
+                .document
+                .find_object(child_id)
+                .cloned()
+                .ok_or_else(|| PetuniaError::not_found(format!("child `{child_id}` not found")))?;
+            child
+                .evaluated_path_local()
+                .map_err(|error| PetuniaError::invalid_input(error.to_string()))?;
+            let world = self
+                .document
+                .world_transform_checked(child_id)
+                .map_err(|error| PetuniaError::invalid_input(error.to_string()))?;
+            let mut candidate = child.clone();
+            candidate.parent = parent_id;
+            reframe_object(&mut candidate, inverse_parent.after(world))?;
+            candidates.push((index, child, candidate));
+        }
 
         let mut changes = ChangeSet::empty();
-
-        for (idx, child_id) in children.iter().enumerate() {
-            if let Some(child) = self.document.find_object_mut(*child_id) {
-                let prev_parent = child.parent;
-                let prev_bounds = child.bounds;
-                let prev_rot = child.rotation;
-
+        for (index, previous, candidate) in candidates {
+            if let Some(child) = self.document.find_object_mut(candidate.id) {
+                let previous_bounds = previous.bounds;
+                let previous_rotation = previous.rotation;
+                child.bounds = candidate.bounds;
+                child.rotation = candidate.rotation;
                 child.parent = parent_id;
-                if let Some(b) = child.bounds {
-                    child.bounds = Some([b[0] + gx, b[1] + gy, b[2], b[3]]);
-                    changes.push(Change::BoundsChanged {
-                        id: *child_id,
-                        previous_bounds: prev_bounds,
-                        next_bounds: child.bounds,
-                        previous_rotation: prev_rot,
-                        next_rotation: prev_rot,
-                    });
-                }
+                changes.push(Change::BoundsChanged {
+                    id: candidate.id,
+                    previous_bounds,
+                    next_bounds: child.bounds,
+                    previous_rotation,
+                    next_rotation: child.rotation,
+                });
                 changes.push(Change::Reparented {
-                    id: *child_id,
-                    previous_parent: prev_parent,
+                    id: candidate.id,
+                    previous_parent: previous.parent,
                     next_parent: parent_id,
-                    previous_index: idx,
-                    next_index: idx,
+                    previous_index: index,
+                    next_index: index,
                 });
             }
         }
 
-        if let Some(pid) = parent_id {
-            if let Some(parent_obj) = self.document.find_object_mut(pid) {
-                let prev_ch = parent_obj.children.clone();
-                if let Some(pos) = parent_obj.children.iter().position(|id| *id == group_id) {
-                    parent_obj.children.remove(pos);
-                    for (offset, cid) in children.iter().enumerate() {
-                        parent_obj.children.insert(pos + offset, *cid);
-                    }
-                } else {
-                    parent_obj.children.extend(children.iter().copied());
+        if let Some(parent_id) = parent_id {
+            if let Some(parent) = self.document.find_object_mut(parent_id) {
+                let previous_children = parent.children.clone();
+                let insert_index = previous_children
+                    .iter()
+                    .position(|id| *id == group_id)
+                    .unwrap_or(parent.children.len());
+                parent.children.retain(|id| *id != group_id);
+                for (offset, child_id) in group.children.iter().enumerate() {
+                    parent.children.insert(insert_index + offset, *child_id);
                 }
                 changes.push(Change::ChildrenChanged {
-                    id: pid,
-                    previous_children: prev_ch,
-                    next_children: parent_obj.children.clone(),
+                    id: parent_id,
+                    previous_children,
+                    next_children: parent.children.clone(),
                 });
             }
         }
 
-        let surf = self.document.surface_mut(surface_id)?;
-        if let Some(pos) = surf.objects.iter().position(|o| o.id == group_id) {
-            let removed_group = surf.objects.remove(pos);
+        let surface = self.document.surface_mut(surface_id)?;
+        if let Some(index) = surface.objects.iter().position(|object| object.id == group_id) {
+            let removed_group = surface.objects.remove(index);
             changes.push(Change::ObjectRemoved {
                 surface: surface_id,
                 object: removed_group,
-                index: pos,
+                index,
             });
         }
-
         Ok(changes)
     }
 
@@ -1758,6 +1903,20 @@ impl<'doc> DocumentMutator<'doc> {
             }
         } else {
             petunia_design_geometry::GAffine::IDENTITY
+        };
+        let reframed = if let Some(world) = world_tx {
+            let object = self
+                .document
+                .find_object(id)
+                .ok_or_else(|| PetuniaError::not_found(format!("object `{id}` not found")))?;
+            let inverse_parent = new_parent_world
+                .inverse()
+                .ok_or_else(|| PetuniaError::invalid_input("new parent transform is not invertible"))?;
+            let mut candidate = object.clone();
+            reframe_object(&mut candidate, inverse_parent.after(world))?;
+            Some((candidate.bounds, candidate.rotation))
+        } else {
+            None
         };
 
         let current_parent = self
@@ -1872,28 +2031,18 @@ impl<'doc> DocumentMutator<'doc> {
                 next_index: target_index,
             });
 
-            if let Some(w) = world_tx {
+            if let Some((next_bounds, next_rotation)) = reframed {
                 let prev_bounds = obj.bounds;
                 let prev_rot = obj.rotation;
-
-                if let Some(inv_np) = new_parent_world.inverse() {
-                    let new_local = inv_np.after(w);
-                    let new_origin = new_local.apply(petunia_design_geometry::GPoint::ORIGIN);
-                    obj.set_local_origin(new_origin.x, new_origin.y);
-                    // Recompose rotation from the local affine (F-07/F-09).
-                    let new_rot =
-                        crate::document_object::DocumentObject::rotation_from_affine(new_local);
-                    if new_rot.is_finite() {
-                        obj.rotation = new_rot;
-                    }
-                    changes.push(Change::BoundsChanged {
-                        id,
-                        previous_bounds: prev_bounds,
-                        next_bounds: obj.bounds,
-                        previous_rotation: prev_rot,
-                        next_rotation: obj.rotation,
-                    });
-                }
+                obj.bounds = next_bounds;
+                obj.rotation = next_rotation;
+                changes.push(Change::BoundsChanged {
+                    id,
+                    previous_bounds: prev_bounds,
+                    next_bounds: obj.bounds,
+                    previous_rotation: prev_rot,
+                    next_rotation: obj.rotation,
+                });
             }
         }
 

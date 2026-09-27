@@ -53,6 +53,19 @@ impl GPath {
         self.verbs.is_empty()
     }
 
+    /// True when every path coordinate is finite.
+    #[must_use]
+    pub fn is_finite(&self) -> bool {
+        self.verbs.iter().all(|verb| match *verb {
+            PathVerb::MoveTo(point) | PathVerb::LineTo(point) => point.is_finite(),
+            PathVerb::QuadTo(control, point) => control.is_finite() && point.is_finite(),
+            PathVerb::CubicTo(control1, control2, point) => {
+                control1.is_finite() && control2.is_finite() && point.is_finite()
+            }
+            PathVerb::Close => true,
+        })
+    }
+
     /// Number of `MoveTo` verbs (subpath starts).
     #[must_use]
     pub fn subpath_count(&self) -> usize {

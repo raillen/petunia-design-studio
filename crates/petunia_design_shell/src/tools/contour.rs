@@ -10,7 +10,10 @@ use petunia_design_foundation::{ObjectId, PetuniaError};
 use petunia_design_geometry::{GPath, GPoint, GRect, OffsetCap, OffsetJoin};
 
 use crate::bridge::PetuniaDesignGuiBridge;
-use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
+use crate::canvas::{
+    CanvasOverlays, CursorAffordance, SelectionHandle, SelectionHandleKind, SnapEngine,
+    ViewportCamera,
+};
 
 use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase,
@@ -53,6 +56,7 @@ pub struct ContourTool {
     contour_drag: Option<ContourDrag>,
     join: OffsetJoin,
     cap: OffsetCap,
+    current_hover: Option<GPoint>,
 }
 
 impl ContourTool {
@@ -65,6 +69,7 @@ impl ContourTool {
             contour_drag: None,
             join: OffsetJoin::Round,
             cap: OffsetCap::None,
+            current_hover: None,
         }
     }
 
@@ -83,6 +88,7 @@ impl ContourTool {
     pub fn cancel(&mut self) {
         self.corner_drag = None;
         self.contour_drag = None;
+        self.current_hover = None;
     }
 
     /// True while a drag gesture is in flight.
@@ -177,6 +183,7 @@ impl ContourTool {
     }
 
     fn on_move(&mut self, event: &NormalizedPointerEvent) -> Result<ChangeSet, PetuniaError> {
+        self.current_hover = Some(event.doc_pos);
         match (&mut self.corner_drag, &mut self.contour_drag) {
             (Some(drag), _) => {
                 drag.current_doc = event.doc_pos;
@@ -303,7 +310,89 @@ impl ContourTool {
             if screen.len() >= 2 {
                 overlays.marquee_screen = Some(screen_marquee(&screen));
             }
+            overlays.path_preview = Some(preview);
         }
+
+        match self.mode {
+            ContourMode::Corner => {
+                let hovered_corner =
+                    self.current_hover.and_then(|h| hit_corner(h, bridge, camera));
+                if self.corner_drag.is_some() {
+                    overlays.cursor = CursorAffordance::ResizeNwse;
+                } else if hovered_corner.is_some() {
+                    overlays.cursor = CursorAffordance::Pointer;
+                } else {
+                    overlays.cursor = CursorAffordance::Crosshair;
+                }
+
+                // Render corner handle widgets on rectangles
+                if let Some(session) = bridge.session() {
+                    let handle_sz = 9.0;
+                    let half_sz = handle_sz / 2.0;
+                    let sel_ids = &session.selection.selected_ids;
+                    let target_ids: Vec<ObjectId> = if !sel_ids.is_empty() {
+                        sel_ids.clone()
+                    } else if let Some(surface_id) = session.active_surface() {
+                        if let Ok(surface) = session.surface(surface_id) {
+                            surface
+                                .objects()
+                                .iter()
+                                .filter(|o| o.visible && !o.locked)
+                                .map(|o| o.id)
+                                .collect()
+                        } else {
+                            Vec::new()
+                        }
+                    } else {
+                        Vec::new()
+                    };
+
+                    for id in target_ids {
+                        if let Some(obj) = session.find_object(id) {
+                            if let (
+                                Some(petunia_design_document::ShapeKind::Rectangle { .. }),
+                                Some([x, y, w, h]),
+                            ) = (&obj.shape, obj.bounds)
+                            {
+                                let corners = [
+                                    GPoint::new(x, y),
+                                    GPoint::new(x + w, y),
+                                    GPoint::new(x + w, y + h),
+                                    GPoint::new(x, y + h),
+                                ];
+                                for (i, corner_pt) in corners.iter().enumerate() {
+                                    let screen_pt = camera.doc_to_screen(*corner_pt);
+                                    let is_hit = hovered_corner == Some((id, i));
+                                    let kind = if is_hit {
+                                        SelectionHandleKind::NodeSmoothSelected
+                                    } else {
+                                        SelectionHandleKind::NodeSmooth
+                                    };
+                                    overlays.handles.push(SelectionHandle {
+                                        kind,
+                                        doc_point: *corner_pt,
+                                        screen_hit_box: GRect::new(
+                                            screen_pt.x - half_sz,
+                                            screen_pt.y - half_sz,
+                                            screen_pt.x + half_sz,
+                                            screen_pt.y + half_sz,
+                                        ),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ContourMode::Contour => {
+                if self.contour_drag.is_some() {
+                    overlays.cursor = CursorAffordance::Grabbing;
+                } else {
+                    overlays.cursor = CursorAffordance::Crosshair;
+                }
+            }
+        }
+
         overlays
     }
 
@@ -363,7 +452,12 @@ impl ContourTool {
             } else {
                 base
             };
-            return petunia_design_geometry::offset_path(&path_for_preview, delta, self.join, self.cap);
+            return petunia_design_geometry::offset_path(
+                &path_for_preview,
+                delta,
+                self.join,
+                self.cap,
+            );
         }
         None
     }

@@ -1,7 +1,7 @@
 //! Undoable commands executed through [`petunia_design_document::DocumentMutator`].
 
 use petunia_design_document::{ChangeSet, Document, DocumentMutator, DocumentObject};
-use petunia_design_foundation::{PetuniaError, ObjectId, SurfaceId};
+use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
 
 /// Single undoable command with explicit IDs (no hidden state).
 #[derive(Clone, Debug)]
@@ -199,13 +199,17 @@ pub enum Command {
         source: petunia_design_document::DataSourceDefinition,
     },
     /// Removes a variable data source (10.11).
-    RemoveDataSource { id: petunia_design_document::DataSourceId },
+    RemoveDataSource {
+        id: petunia_design_document::DataSourceId,
+    },
     /// Adds a data binding (10.11).
     AddDataBinding {
         binding: petunia_design_document::DataBinding,
     },
     /// Removes a data binding (10.11).
-    RemoveDataBinding { id: petunia_design_document::BindingId },
+    RemoveDataBinding {
+        id: petunia_design_document::BindingId,
+    },
     /// Materializes variable data records into surfaces (10.11).
     MaterializeDataMerge {
         source_id: petunia_design_document::DataSourceId,
@@ -543,16 +547,20 @@ pub fn execute(
             // Explicit flatten tolerance (F-21): part of the operation's
             // evidence, no longer a magic literal. Operands read evaluated
             // (09.31): live modifiers participate without being consumed.
-            let tolerance = petunia_design_geometry::GeometryTolerance::default_tolerance().clamped();
+            let tolerance =
+                petunia_design_geometry::GeometryTolerance::default_tolerance().clamped();
             let subj_path = subject.evaluated_path();
             let clip_path = clip.evaluated_path();
 
-            let subj_input =
-                petunia_design_geometry::BooleanInput::new(subj_path.to_polygons(tolerance.flatten));
-            let clip_input =
-                petunia_design_geometry::BooleanInput::new(clip_path.to_polygons(tolerance.flatten));
+            let subj_input = petunia_design_geometry::BooleanInput::new(
+                subj_path.to_polygons(tolerance.flatten),
+            );
+            let clip_input = petunia_design_geometry::BooleanInput::new(
+                clip_path.to_polygons(tolerance.flatten),
+            );
 
-            let result_contours = petunia_design_geometry::boolean_op(&subj_input, &clip_input, *op);
+            let result_contours =
+                petunia_design_geometry::boolean_op(&subj_input, &clip_input, *op);
             let result_path = petunia_design_geometry::GPath::from_polygons(&result_contours);
             let bounds = result_path
                 .bounding_box()

@@ -129,3 +129,46 @@ fn selection_handles_geometry_and_hit_testing() {
     assert!(tl.hit_test(GPoint::new(104.0, 104.0)));
     assert!(!tl.hit_test(GPoint::new(115.0, 115.0)));
 }
+
+#[test]
+fn oriented_selection_handles_and_hit_testing() {
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    // Square 100x100 at origin (100, 100) rotated by 90 degrees (pi/2)
+    let rot = std::f64::consts::FRAC_PI_2;
+    let transform = petunia_design_geometry::GAffine::translate(100.0, 100.0)
+        .after(petunia_design_geometry::GAffine::rotate(rot));
+    let handles = compute_selection_handles_oriented(
+        [0.0, 0.0, 100.0, 100.0],
+        transform,
+        &camera,
+        10.0,
+    );
+
+    assert_eq!(handles.len(), 9);
+    // TopLeft local (0, 0) -> (100, 100)
+    let tl = &handles[0];
+    assert_eq!(tl.kind, SelectionHandleKind::TopLeft);
+    assert!((tl.doc_point.x - 100.0).abs() < 1e-4);
+    assert!((tl.doc_point.y - 100.0).abs() < 1e-4);
+
+    // TopRight local (100, 0) rotated 90 deg:
+    // (100*cos(90) - 0*sin(90) + 100, 100*sin(90) + 0*cos(90) + 100) = (100, 200)
+    let tr = handles
+        .iter()
+        .find(|h| h.kind == SelectionHandleKind::TopRight)
+        .unwrap();
+    assert!((tr.doc_point.x - 100.0).abs() < 1e-4);
+    assert!((tr.doc_point.y - 200.0).abs() < 1e-4);
+
+    // Hit test oriented handle at (100, 200)
+    let hit = hit_test_handle_or_border_oriented(
+        [0.0, 0.0, 100.0, 100.0],
+        transform,
+        GPoint::new(100.0, 200.0),
+        GPoint::new(100.0, 200.0),
+        &camera,
+        10.0,
+        8.0,
+    );
+    assert_eq!(hit, Some(SelectionHandleKind::TopRight));
+}

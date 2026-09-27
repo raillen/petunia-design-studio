@@ -16,7 +16,9 @@ use crate::canvas::{
     CanvasOverlays, SelectionHandle, SelectionHandleKind, SnapEngine, ViewportCamera,
 };
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Corner hit radius in screen pixels.
 const CORNER_HIT_PX: f64 = 14.0;
@@ -191,8 +193,7 @@ fn current_quad(bridge: &PetuniaDesignGuiBridge) -> Option<[GPoint; 4]> {
                 if !modifier.enabled {
                     continue;
                 }
-                if let petunia_design_document::ModifierKind::Perspective { quad } =
-                    &modifier.kind
+                if let petunia_design_document::ModifierKind::Perspective { quad } = &modifier.kind
                 {
                     return Some(quad.map(|[x, y]| GPoint::new(x, y)));
                 }

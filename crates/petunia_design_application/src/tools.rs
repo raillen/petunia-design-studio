@@ -130,7 +130,116 @@ impl ToolKind {
         }
     }
 
-    /// True if this tool belongs to the Photo persona.
+    #[must_use]
+    pub fn from_action_id(action_id: &str) -> Option<Self> {
+        if action_id == Self::Select.action_id() {
+            return Some(Self::Select);
+        }
+        if action_id == Self::Node.action_id() {
+            return Some(Self::Node);
+        }
+        if action_id == Self::PointTransform.action_id() {
+            return Some(Self::PointTransform);
+        }
+        if action_id == Self::Pen.action_id() {
+            return Some(Self::Pen);
+        }
+        if action_id == Self::Pencil.action_id() {
+            return Some(Self::Pencil);
+        }
+        if action_id == Self::Corner.action_id() {
+            return Some(Self::Corner);
+        }
+        if action_id == Self::Contour.action_id() {
+            return Some(Self::Contour);
+        }
+        if action_id == Self::Perspective.action_id() {
+            return Some(Self::Perspective);
+        }
+        if action_id == Self::Knife.action_id() {
+            return Some(Self::Knife);
+        }
+        if action_id == Self::Scissors.action_id() {
+            return Some(Self::Scissors);
+        }
+        if action_id == Self::Rectangle.action_id() || action_id == "ptnd.tool.shape.rectangle" {
+            return Some(Self::Rectangle);
+        }
+        if action_id == Self::Ellipse.action_id() || action_id == "ptnd.tool.shape.ellipse" {
+            return Some(Self::Ellipse);
+        }
+        if action_id == Self::Polygon.action_id() || action_id == "ptnd.tool.shape.polygon" {
+            return Some(Self::Polygon);
+        }
+        if action_id == Self::Star.action_id() || action_id == "ptnd.tool.shape.star" {
+            return Some(Self::Star);
+        }
+        if action_id == Self::ShapeBuilder.action_id() {
+            return Some(Self::ShapeBuilder);
+        }
+        if action_id == Self::VectorFloodFill.action_id() {
+            return Some(Self::VectorFloodFill);
+        }
+        if action_id == Self::ArtisticText.action_id() || action_id == "ptnd.tool.text.artistic" {
+            return Some(Self::ArtisticText);
+        }
+        if action_id == Self::FrameText.action_id() || action_id == "ptnd.tool.text.frame" {
+            return Some(Self::FrameText);
+        }
+        if action_id == Self::Gradient.action_id() {
+            return Some(Self::Gradient);
+        }
+        if action_id == Self::Transparency.action_id() {
+            return Some(Self::Transparency);
+        }
+        if action_id == Self::ColorPicker.action_id() {
+            return Some(Self::ColorPicker);
+        }
+        if action_id == Self::StylePicker.action_id() {
+            return Some(Self::StylePicker);
+        }
+        if action_id == Self::Artboard.action_id() {
+            return Some(Self::Artboard);
+        }
+        if action_id == Self::Measure.action_id() {
+            return Some(Self::Measure);
+        }
+        if action_id == Self::Zoom.action_id() {
+            return Some(Self::Zoom);
+        }
+        if action_id == Self::Hand.action_id() {
+            return Some(Self::Hand);
+        }
+        if action_id == Self::MarqueeRect.action_id() {
+            return Some(Self::MarqueeRect);
+        }
+        if action_id == Self::MarqueeEllipse.action_id() {
+            return Some(Self::MarqueeEllipse);
+        }
+        if action_id == Self::Lasso.action_id() {
+            return Some(Self::Lasso);
+        }
+        if action_id == Self::SelectionBrush.action_id() {
+            return Some(Self::SelectionBrush);
+        }
+        if action_id == Self::FloodSelect.action_id() {
+            return Some(Self::FloodSelect);
+        }
+        if action_id == Self::PixelPaintBrush.action_id() {
+            return Some(Self::PixelPaintBrush);
+        }
+        if action_id == Self::PixelEraser.action_id() {
+            return Some(Self::PixelEraser);
+        }
+        if action_id == Self::PhotoGradient.action_id() {
+            return Some(Self::PhotoGradient);
+        }
+        if action_id == Self::Crop.action_id() {
+            return Some(Self::Crop);
+        }
+        None
+    }
+
     #[must_use]
     pub fn is_photo_persona(&self) -> bool {
         matches!(

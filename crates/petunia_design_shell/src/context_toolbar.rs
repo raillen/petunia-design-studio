@@ -229,10 +229,15 @@ pub const CONTEXT_TOOLBAR: &[ToolbarEntry] = &[
 /// entry the tool rail and the Tool menu resolve.
 #[must_use]
 pub fn tool_label_text_id(tool: ToolKind) -> Option<&'static str> {
-    let action = tool.action_id();
     SURFACES
         .iter()
-        .find(|entry| entry.kind == SurfaceKind::Tool && entry.action == Some(action))
+        .find(|entry| {
+            entry.kind == SurfaceKind::Tool
+                && entry
+                    .action
+                    .and_then(ToolKind::from_action_id)
+                    .is_some_and(|candidate| candidate == tool)
+        })
         .map(|entry| entry.label)
 }
 
@@ -297,6 +302,10 @@ pub fn item_for_token(
     ctx: &ActionContext,
     token: &str,
 ) -> Option<MenuItemPresentation> {
+    item_for_token_in(&menu_items(ctx), service, locale, token)
+}
+
+fn menu_items(ctx: &ActionContext) -> Vec<MenuItemModel> {
     menus::menu_bar(ctx)
         .iter()
         .flat_map(|family| family.nodes.iter())
@@ -304,9 +313,20 @@ pub fn item_for_token(
             MenuNodeModel::Item(item) => std::slice::from_ref(item),
             MenuNodeModel::Group(group) => group.items.as_slice(),
         })
-        .find(|item: &&MenuItemModel| item.action_token == token)
         .cloned()
-        .map(|item| present_item(&item, service, locale))
+        .collect()
+}
+
+fn item_for_token_in(
+    items: &[MenuItemModel],
+    service: &LocalizationService,
+    locale: &Locale,
+    token: &str,
+) -> Option<MenuItemPresentation> {
+    items
+        .iter()
+        .find(|item| item.action_token == token)
+        .map(|item| present_item(item, service, locale))
 }
 
 /// Resolves the toolbar for the active tool.
@@ -321,10 +341,11 @@ pub fn present_context_toolbar(
     tool: ToolKind,
     has_selection: bool,
 ) -> Vec<ToolbarItemPresentation> {
+    let items = menu_items(ctx);
     CONTEXT_TOOLBAR
         .iter()
         .filter(|entry| scope_matches(entry.scope, tool, has_selection))
-        .map(|entry| present_entry(entry, service, locale, ctx, tool))
+        .map(|entry| present_entry(entry, service, locale, &items, tool))
         .collect()
 }
 
@@ -333,7 +354,7 @@ fn present_entry(
     entry: &ToolbarEntry,
     service: &LocalizationService,
     locale: &Locale,
-    ctx: &ActionContext,
+    items: &[MenuItemModel],
     tool: ToolKind,
 ) -> ToolbarItemPresentation {
     let mut resolved = ToolbarItemPresentation {
@@ -375,7 +396,7 @@ fn present_entry(
             // A token that resolves nowhere would be a button that dispatches
             // nothing. It is reported as blocked instead of dressed up as work,
             // and a test forbids the case outright.
-            match item_for_token(service, locale, ctx, entry.token) {
+            match item_for_token_in(items, service, locale, entry.token) {
                 Some(item) => {
                     resolved.enabled = item.enabled;
                     resolved.disabled_reason = item.disabled_reason.clone();
@@ -566,6 +587,7 @@ pub fn present_layout(
     tool: ToolKind,
     has_selection: bool,
 ) -> Vec<ToolbarItemPresentation> {
+    let items = menu_items(ctx);
     let mut presented = Vec::new();
     for slot in &layout.slots {
         if !slot.visible {
@@ -589,7 +611,7 @@ pub fn present_layout(
         if !scope_matches(declared.scope, tool, has_selection) {
             continue;
         }
-        presented.push(present_entry(declared, service, locale, ctx, tool));
+        presented.push(present_entry(declared, service, locale, &items, tool));
     }
     presented
 }
@@ -621,6 +643,7 @@ pub fn present_catalog(
     locale: &Locale,
 ) -> Vec<ToolbarCatalogRow> {
     let ctx = ActionContext::default();
+    let items = menu_items(&ctx);
     layout
         .slots
         .iter()
@@ -640,7 +663,7 @@ pub fn present_catalog(
                 ToolbarEntryKind::Divider => service.text("ptnd.text.shell.divider", locale),
                 ToolbarEntryKind::Spacer => service.text("ptnd.text.shell.spacer", locale),
                 _ => declared.map_or_else(String::new, |entry| {
-                    present_entry(entry, service, locale, &ctx, ToolKind::Select).label
+                    present_entry(entry, service, locale, &items, ToolKind::Select).label
                 }),
             };
             ToolbarCatalogRow {

@@ -3191,6 +3191,7 @@ name = "petunia-design"
 version = "0.1.0"
 dependencies = [
  "freya",
+ "freya-engine",
  "freya-testing",
  "petunia_design_application",
  "petunia_design_color",
@@ -3198,7 +3199,9 @@ dependencies = [
  "petunia_design_foundation",
  "petunia_design_geometry",
  "petunia_design_io",
+ "petunia_design_raster",
  "petunia_design_shell",
+ "serde_json",
 ]
 
 [[package]]
@@ -3410,6 +3413,19 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "petunia_design_testkit"
+version = "0.1.0"
+dependencies = [
+ "petunia_design_application",
+ "petunia_design_document",
+ "petunia_design_foundation",
+ "petunia_design_geometry",
+ "petunia_design_shell",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

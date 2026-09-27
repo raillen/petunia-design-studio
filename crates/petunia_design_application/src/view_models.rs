@@ -53,6 +53,8 @@ pub struct DocumentSummary {
     pub is_dirty: bool,
 }
 
+use petunia_design_geometry::GAffine;
+
 /// Selection summary without widget ownership.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct SelectionViewModel {
@@ -62,6 +64,15 @@ pub struct SelectionViewModel {
     pub key_object: Option<ObjectId>,
     /// Combined bounding box `[x, y, width, height]` in document points.
     pub combined_bounds: Option<[f64; 4]>,
+    /// Nominal frame bounds of the primary/single selected object `[x, y, width, height]`.
+    #[serde(default)]
+    pub primary_bounds: Option<[f64; 4]>,
+    /// In-plane rotation angle of the primary/single selected object in radians.
+    #[serde(default)]
+    pub primary_rotation: f64,
+    /// World affine transform of the primary/single selected object.
+    #[serde(default)]
+    pub primary_transform: Option<GAffine>,
     /// Number of selected objects.
     pub count: usize,
     /// True when nothing is selected.

@@ -186,3 +186,64 @@ Doutrina-mãe: ADR 09.31 (`petunia-design-studio/09 31 — Non-Destructive Editi
 - **Sem fishermen:** peças degeneradas (<1pt de comprimento) caem; sem remoção
   de micro-fragmentos (10.2: sem deleção silenciosa).
 - **Overlay distinto:** Knife mostra a linha; Scissors mostra o ponto de corte.
+
+## Wave 0 — Canvas, input e ordem de implementação (2026-09-25)
+
+- **Shell ativo:** Freya é o adaptador de produto em desenvolvimento nesta worktree. Slint fica congelado como referência histórica de rendering/painéis até a autorização de uma decisão de shell própria.
+- **Fonte única de overlays:** `ToolManager::overlays` resolve a ferramenta ativa; `PetuniaShell::overlays` acrescenta as guias de snap. A política `workspace_overlays` paralela foi removida para impedir que o canvas Freya descarte previews de Corner, Contour, Perspective, ShapeBuilder, texto, cut tools e Photo.
+- **Input:** o adaptador Freya preserva `PointerButton` Left/Middle/Right, trata toque sem botão como primário e não converte botões desconhecidos em primário. `Move` mantém a semântica de ponteiro primário atual; captura/foco de ponteiro é uma decisão posterior.
+- **Documento canônico:** a matriz detalhada das 35 ferramentas está em `petunia-design-studio/13 — Full Notebook Page-by-Page Audit & Conformance Ledger`; este diário registra somente decisões e dependências.
+- **Ordem de implementação:** Select/Transform/Canvas → Pen/Node/Corner/Contour → Shapes/Boolean/ShapeBuilder/SmartFill → Fill/Stroke/Gradient/Transparency → Text/Text-on-Path → Photo/raster → Perspective/Warp/Grid → Place Image/painéis.
+- **Regra de evidência:** nenhum status `Proven` sem teste headless, contrato Action/Command/ChangeSet, persistência/undo, UI semântica, acessibilidade e benchmark aplicáveis.
+- **Estado atual da Wave 0:** a suíte completa `tools_test` passou com **102 testes**; o crate `petunia_design_document` passou com **43 testes** (39 unit + 4 property); a regressão estrutural `canvas_snapshot_uses_world_frame_and_rotation` passou; `cargo check -p petunia_design_shell -p petunia-design --bin petunia-design` passou. O DTO `CanvasSnapshot` e o frame mundial estão conectados, mas a paridade visual completa e a medição release ainda permanecem abertas.
+- **Select + Transform — contrato entregue:** `TransformPreview` é um DTO toolkit-neutral em `petunia_design_shell::canvas`, com `base_revision`, frame AABB e propostas por `ObjectId`. `SelectTool` captura a revisão no `Down`, publica somente durante arraste efetivo, bloqueia commit obsoleto, limpa preview no `Up/Cancel` e rejeita preview cuja revisão já foi substituída. A matemática de rotação usa o pivô do centro da seleção para mover e somar rotação a cada objeto; o commit e o preview compartilham o mesmo cálculo.
+- **Canvas Freya — slice atual:** o renderer desenha a proposta como contorno translúcido usando elementos nativos do Freya, sem SVG por objeto, e aplica a rotação no pivô superior-esquerdo exigido pelo modelo `T(bounds_origin) * R`. O adapter consome `CanvasSnapshot` com frame/transform/AABB mundiais, cache, culling e overlays completos; isto prova a integração do contrato, não equivalência visual com Affinity, Krita, Figma ou Inkscape.
+- **Limite explícito da fatia:** `CanvasObjectProjection` agora expõe frame/transform/AABB mundiais, mas o renderer ainda representa a cena visual apenas por bounds/fill/shape. Paths Bézier, texto, strokes, gradientes, imagens, efeitos, masks complexas e handles de editação geométrica não têm paridade visual comprovada. Não classificar `Proven` nem escolher Vello/wgpu até fixtures headless/release medirem hover, marquee, move/resize/rotate, snapshot e input-to-frame.
+- **Evidência de regressão:** 14 testes `select_` passaram, incluindo publicação/limpeza de preview, cancelamento, commit obsoleto, snapshot obsoleto e rotação multi-objeto; a suíte completa `tools_test` passou com 102 testes. O crate document passou com 43 testes e a regressão estrutural do snapshot mundial passou. Esses números validam comportamento headless, integração do shell e projeção estrutural, não performance de produção nem paridade visual.
+
+## Wave 1 — Ciclos 5 a 8: Feedback Visual, Navegação Fluida, Context Toolbar e Tabs (2026-09-26)
+
+- **Ciclo 5 (Canvas Overlays & Visual Feedback):**
+  - **Marching Ants:** Implementado algoritmo determinístico de traço pontilhado alternado preto/branco (`paint_dashed_line`, `paint_marching_ants_rect`, `paint_marching_ants_polyline`) sem dependência de bindings externas de `PathEffect` do Skia, garantindo visualização precisa para seleções raster (`marquee_screen` e contornos de `selection_mask`).
+  - **Grid de Perspectiva 3x3:** Adicionado wireframe interno 3x3 com subdivisões proporcionais interpoladas bilinearmente dentro dos 4 vértices do quad no `PerspectiveOverlay`.
+  - **Guias de Superfície Persistentes:** O snapshot de visualização (`SurfaceView`) agora transporta as guias persistentes da superfície ativa (`guides: Vec<petunia_design_document::Guide>`), renderizadas em ciano pontilhado (`0x00, 0xBC, 0xD4`).
+- **Ciclo 6 (Navegação Fluida & Criação de Guias pelas Réguas):**
+  - **Navegação Contínua com Botão do Meio:** O viewport agora detecta `PointerButton::Middle` no `on_pointer_down` e permite translação instantânea sem latência durante o arraste.
+  - **Zoom Centrado no Cursor:** O evento de roda (`on_wheel`) com tecla modificadora Ctrl/Cmd ativa utiliza `shell.zoom_at(screen_focus, factor)` preservando o ponto sob o cursor estável no espaço do documento. Rolar sem modificador realiza pan suave horizontal/vertical.
+  - **Criação de Guias por Arraste das Réguas:** Clicar e arrastar a partir da régua superior (`y < 20.0, x >= 20.0`) ou da régua esquerda (`x < 20.0, y >= 20.0`) inicia um drag de guia com badge flutuante de coordenadas em tempo real. No `PointerUp`, um `Command::AddGuide` canônico é despachado para a superfície ativa.
+- **Ciclo 7 (Barra de Ferramentas de Contexto Dinâmica):**
+  - Controles rápidos e botões de ação contextuais na barra de contexto (`chrome.rs`) baseados na ferramenta ativa (`ToolKind`):
+    - `Rectangle` / `Corner`: Ações "Fixar Cantos" (`ptnd.action.object.bake_corners`) e "Para Curvas" (`ptnd.action.object.convert_to_curves`).
+    - `Pen` / `Node`: Ação "Converter em Curvas" (`ptnd.action.object.convert_to_curves`).
+    - `Select`: Botões de operações booleanas imediatas ("União", "Subtrair", "Interseção").
+- **Ciclo 8 (Tab Strip Multi-Documento e Toggles de Visualização):**
+  - Tab strip real com nome do documento aberto, indicador dirty circular âmbar (`is_dirty`), botão fechar aba (`×`), e botão de nova aba (`+` chamando `ptnd.action.file.new`).
+  - Acesso rápido a toggles de visualização no canto direito do tab strip: Snap liga/desliga (`ptnd.surface.tabs.snapping`), Réguas liga/desliga (`ptnd.action.view.toggle_rulers`) e Enquadrar na Janela (`ptnd.action.view.fit_surface`).
+- **Validação e Integridade:**
+  - Todos os 18 testes de `petunia-design` passaram, incluindo o novo teste unitário de criação de guias por arraste (`ruler_drag_creates_horizontal_and_vertical_guides`).
+  - `cargo test --workspace` (todos os 117 testes de ferramentas, 107 testes de aplicação, testes de viewport e proptests) passou 100%.
+  - `cargo check --workspace` passou com zero warnings e zero erros.
+
+## Wave 2 — Ciclos 1 a 5: Place Image, Edição de Texto In-Canvas, Diálogos do Sistema, Dock Splitter / Minimap e Salvaguardas de Fechamento (2026-09-26)
+
+- **Item 1: Place Image (`ptnd.action.file.place`):**
+  - Integração ponta-a-ponta da importação de imagens raster: ação migrada de `DECLARED_NOT_LIVE` para `LIVE_ACTIONS` com status `SurfaceStatus::Wired`.
+  - No handler de sessão (`session.rs`), a carga do arquivo é decodificada via `petunia_design_io::import_raster`, calculando largura e altura reais e anexando os bytes em `data: Some(bytes)`.
+  - Criado objeto de formato `ShapeKind::Image { path, data }`, renderizado no canvas Skia como bitmap decodificado (`skia_safe::Image::from_encoded`).
+- **Item 2: Edição de Texto In-Canvas:**
+  - Editor flutuante in-canvas renderizado diretamente sobre a posição de tela do objeto `ShapeKind::Text` ativo selecionado (`screen_origin` calculado pela projeção de câmera).
+  - Inclui input de texto reativo e botão "Aplicar", despachando `Command::SetShape` na lane de comandos formal, preservando família tipográfica, tamanho da fonte e alinhamentos.
+- **Item 3: Diálogos do Sistema (`NewDocumentDialog` e `ExportDialog`):**
+  - `NewDocumentDialog`: Permite selecionar presets de artboard ("Web 1080p", "Quadrado 1000", "Mobile 390x844", "A4 Print") ou especificar dimensões customizadas em pixels, despachando `Command::SetSurfaceGeometry`.
+  - `ExportDialog`: Permite selecionar o formato de destino (PNG bitmap, SVG vetorial, PDF documento) e caminho do arquivo, despachando `ptnd.action.file.export`.
+  - Acessíveis via Menu Superior (`File > New`, `File > Export`), atalhos globais (`Ctrl+N`, `Ctrl+E`) e Command Palette (`Ctrl+K`).
+- **Item 4: Dock Splitter & Minimap/Navigator:**
+  - `DockSplitter`: Divisor arrastável interativo de 4px entre Workspace e RightDock com feedback visual (cor de destaque ao arrastar e cursor `EwResize`). Utiliza um overlay de captura via `Portal` durante o drag para garantir rastreamento contínuo e clamping de largura entre 180px e 520px.
+  - Aba "Navegador" (5ª aba no RightDock): Exibe nível de zoom atual em %, coordenadas de pan (X, Y), botões de zoom rápido (-25%, +25%, Enquadrar) e um minimap proporcional da área de trabalho e artboard.
+- **Item 5: Salvaguarda de Fechamento (`ConfirmCloseDialog`):**
+  - Diálogo modal de confirmação para prevenir perda de dados acidental: acionado ao clicar em fechar aba (`×`) quando o documento possui alterações não salvas (`shell.bridge.is_dirty()`).
+  - Permite ao usuário cancelar ou confirmar "Fechar Sem Salvar", invocando o fechamento da sessão de forma segura.
+- **Evidências de Teste e Qualidade:**
+  - Suíte `petunia-design` ampliada para 24 testes (14 testes unitários de workspace/dock + 10 testes de chrome), todos com 100% de sucesso.
+  - `cargo test --workspace` 100% verde em todos os crates da aplicação, shell, geometria, documentos e testkit.
+  - `cargo check --workspace` com zero warnings e zero erros.

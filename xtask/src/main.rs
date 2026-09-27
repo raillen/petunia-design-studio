@@ -17,7 +17,7 @@ fn main() {
         "conformance" => cmd_conformance(&root),
         "fixtures" => cmd_fixtures(&root),
         "fuzz-smoke" => cmd_post_v1("fuzz-smoke", "cargo-fuzz corpus not wired in P00"),
-        "bench-smoke" => cmd_post_v1("bench-smoke", "Criterion benches not wired in P00"),
+        "bench-smoke" => cmd_bench_smoke(&root),
         "ui-gauntlet" => cmd_post_v1("ui-gauntlet", "GPUI shell does not exist in P00"),
         "security" => cmd_security(&root),
         "migrations" => cmd_post_v1("migrations", "schema v1 has no predecessors in P00"),
@@ -253,6 +253,28 @@ fn cmd_fixtures(root: &Path) -> i32 {
     0
 }
 
+fn cmd_bench_smoke(root: &Path) -> i32 {
+    println!("xtask bench-smoke: release canvas benchmark (500/2000 objects)");
+    run_cargo(
+        root,
+        &[
+            "run",
+            "--release",
+            "-p",
+            "petunia_design_testkit",
+            "--bin",
+            "canvas-benchmark",
+            "--",
+            "--objects",
+            "500,2000",
+            "--iterations",
+            "5",
+            "--warmup",
+            "2",
+        ],
+    )
+}
+
 /// Dependency/security smoke: cargo audit when available, plus an
 /// offline manifest backstop (no wildcard majors).
 fn cmd_security(root: &Path) -> i32 {
@@ -293,17 +315,66 @@ fn cmd_security(root: &Path) -> i32 {
     0
 }
 
-/// Documentation presence: canonical docs + authority map parse check.
+/// Living documentation (SPEC-001): presence + i18n parity, plus the
+/// VitePress dead-link gate when docs dependencies are installed.
 fn cmd_docs(root: &Path) -> i32 {
-    println!("xtask docs: presence check");
+    println!("xtask docs: presence + i18n parity (SPEC-001)");
     for required in ["docs/AUTHORITY_MAP.json", "docs/glossary.json", "AGENTS.md"] {
         if !root.join(required).exists() {
             eprintln!("docs: missing {required}");
             return 1;
         }
     }
-    println!("docs: OK (VitePress + pt-BR sync is a later wave)");
-    0
+    // Zero-drift parity: pure node, no npm dependencies required.
+    match Command::new("node")
+        .args(["scripts/check-i18n.js"])
+        .current_dir(root)
+        .status()
+    {
+        Ok(status) if status.success() => {}
+        Ok(status) => {
+            eprintln!(
+                "docs: i18n parity failed (exit {})",
+                status.code().unwrap_or(1)
+            );
+            return 1;
+        }
+        Err(error) => {
+            eprintln!("docs: node unavailable ({error}); parity unchecked");
+            return 0;
+        }
+    }
+    // Dead-link gate (ignoreDeadLinks: false): only when docs deps exist.
+    if !root.join("docs/node_modules/.bin/vitepress").exists() {
+        println!("docs: OK (parity green; build unchecked — `pnpm install` in docs/)");
+        return 0;
+    }
+    let manager = if root.join("docs/pnpm-lock.yaml").exists() {
+        "pnpm"
+    } else {
+        "npm"
+    };
+    match Command::new(manager)
+        .args(["run", "build"])
+        .current_dir(root.join("docs"))
+        .status()
+    {
+        Ok(status) if status.success() => {
+            println!("docs: OK (parity green, build green)");
+            0
+        }
+        Ok(status) => {
+            eprintln!(
+                "docs: vitepress build failed (exit {})",
+                status.code().unwrap_or(1)
+            );
+            1
+        }
+        Err(error) => {
+            eprintln!("docs: failed to run {manager} build: {error}");
+            1
+        }
+    }
 }
 
 /// Changed-scope gauntlet for P00: verify + conformance + fixtures + docs.

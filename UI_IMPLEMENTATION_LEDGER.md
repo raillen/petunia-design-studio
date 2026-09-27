@@ -19,6 +19,37 @@ posição na shell, o que já funciona e o que falta.
 > Onde ele discordar de `15.A`–`15.H`, os documentos normativos ganham — e a
 > discordância deve ser registrada (ver §15).
 
+## Atualização Freya — 2026-09-23
+
+- A implementação ativa está em `apps/petunia-design/src/`; as referências históricas a `app.slint` abaixo descrevem o shell anterior e não são fonte de verdade para a worktree Freya.
+- Os menus de família usam `Portal` ancorado no botão: o popup abre abaixo do nome e os submenus permanecem à direita.
+- O rail segue os agrupamentos exatos solicitados: Pen e Pencil separados; Gradient/Transparency em um grupo Fill próprio; Artboard, Measure, Zoom e Hand separados; Knife/Scissors em um grupo Cut próprio.
+- Os ícones usam metáforas Tabler coerentes com cada função; domínios mantém glyph exclusivo sempre que o acervo permite o equivalente sólido/outline.
+- O `ToolRailState` continua permitindo personalização por Workspace Profile: o reset restaura esses presets, sem mudar ActionIds, documento, undo ou persistência.
+- `Edit > Preferences` e `Ctrl+,` são ações globais do registry e abrem o mesmo diálogo pela sessão ativa; a persistência global continua separada.
+- Atalhos de ferramenta vêm do registry por ToolKind. Flyouts mostram os membros do grupo; grupos só ciclam com uma binding comum. `Space` suspende e restaura a ferramenta ativa para Pan.
+- O canvas Freya agora consome o DTO toolkit-neutral `CanvasSnapshot`, com `ObjectId`, frame/transform/AABB mundiais, culling e overlays completos. A fatia Select + Transform mantém preview transitório, proteção por revisão, cancelamento e rotação multi-objeto; uma regressão estrutural prova o frame mundial, mas o renderer ainda pinta proxies paramétricos e a paridade visual não está declarada.
+- O overlay global de tooltip mostra título, resumo e atalho para controles interativos; descrições EN/pt-BR vivem em `shell_strings.rs`.
+
+## Atualização Freya — 2026-09-26 (Ciclos 5 a 8: Feedback Visual, Navegação Fluida, Context Toolbar e Abas)
+
+- **Canvas Overlays (Ciclo 5):** Marching ants alternadas em preto/branco (`paint_dashed_line`) para seleções raster (`marquee_screen` e contornos de máscara); grid 3x3 de perspectiva com wireframe interno no `PerspectiveOverlay`; renderização de guias persistentes de superfície no canvas (`guides`).
+- **Navegação Fluida & Réguas (Ciclo 6):** Pan contínuo com botão do meio do mouse; zoom centrado no cursor via roda com Ctrl/Cmd (`shell.zoom_at`); criação interativa de guias ao clicar e arrastar a partir das réguas horizontal e vertical (com badge de coordenadas ao vivo e despacho de `Command::AddGuide` no soltar).
+- **Context Toolbar Dinâmica (Ciclo 7):** Ações contextuais rápidas na barra de contexto (`chrome.rs`) dependendo do `ToolKind` ativo (Bake Corners e Convert to Curves para Rectangle/Corner; Convert to Curves para Pen/Node; operações booleanas de União/Subtração/Interseção para Select).
+- **Tab Strip Multi-Documento (Ciclo 8):** Aba ativa com título do documento, indicador dirty circular âmbar (`session.is_dirty()`), botão de fechar aba (`×`), botão de nova aba (`+` despachando `ptnd.action.file.new`), e botões de atalho rápido de visualização no canto direito (Snap, Rulers e Fit to Canvas).
+
+## Atualização Freya — 2026-09-26 (Ciclos 1 a 5: Place Image, Texto In-Canvas, Diálogos, Splitter/Minimap e Salvaguarda)
+
+- **Place Image (Ciclo 1):** Ação `ptnd.action.file.place` promovida a `Wired` e live. Handler na sessão decodifica raster via `petunia_design_io::import_raster`, armazena bytes e dimensões em `ShapeKind::Image`, e canvas Skia renderiza o bitmap real.
+- **Edição de Texto In-Canvas (Ciclo 2):** Overlay flutuante com campo de texto e botão Aplicar posicionado dinamicamente sobre o objeto de texto ativo na tela. Dispara `Command::SetShape` na lane canônica de comandos.
+- **Diálogos de Criação e Exportação (Ciclo 3):**
+  - `NewDocumentDialog` com presets profissionais (Web 1080p, Quadrado 1000, Mobile, A4) e dimensões personalizadas via `Command::SetSurfaceGeometry`.
+  - `ExportDialog` com seleção de formato (PNG, SVG, PDF) e caminho, despachando `ptnd.action.file.export`. Integrado a atalhos `Ctrl+N` e `Ctrl+E`, menu File e Command Palette.
+- **Dock Splitter & Minimap/Navigator (Ciclo 4):**
+  - Divisor vertical arrastável entre o workspace e o RightDock com overlay de captura via `Portal` e largura ajustável entre 180px e 520px.
+  - 5ª aba no RightDock ("Navegador") com leitura de zoom em %, pan atual, atalhos de zoom e minimap em escala real da superfície.
+- **Confirmação de Fechamento (Ciclo 5):** Diálogo modal `ConfirmCloseDialog` intercepta o fechamento de abas com modificações não salvas (`shell.bridge.is_dirty()`), garantindo proteção rigorosa contra perda de dados.
+
 ---
 
 ## 0. Como usar (fluxo por item)
@@ -88,7 +119,7 @@ Ordem vertical do `MainWindow` (`app.slint`, `VerticalLayout` raiz):
 |---|---|---|---|---|
 | `ptnd.surface.shell.brand` | §1, esquerda | Slot de ícone quadrado (sem texto) | ✅ | Ícone simbólico ainda não existe; o slot apenas reserva o espaço |
 | `ptnd.surface.menu_bar` | §1, centro | 6 famílias geradas do registry | ✅ | — |
-| `ptnd.surface.shell.persona_persona` | §1, direita | Segmentos "Persona Vetorial" / "Persona Foto", **só texto**, por id do registry | ✅ | 🎭 troca **o menu Vetor/Imagem e o hint da status bar**; rail e painéis não mudam (§5) |
+| `ptnd.surface.shell.persona_persona` | §1, direita | Segmentos "Persona Vetorial" / "Persona Foto", **só texto**, por id do registry | ✅ | 🎭 no shell histórico; Freya atualiza persona, menu, rail e status |
 | `ptnd.surface.shell.undo` | §1, cluster central | `edit.undo`, `Ctrl+Z` | ✅ | — |
 | `ptnd.surface.shell.redo` | §1, cluster central | `edit.redo`, `Ctrl+Y` | ✅ | — |
 | `ptnd.surface.shell.zoom_out` / `zoom_readout` / `zoom_in` / `fit` / `divider` | §1, cluster central | Afastar, **caixa de níveis de zoom**, aproximar, ajustar, divisor | ✅ | O readout é um **controle**: abre o popup com os mesmos níveis do submenu `View ▸ Níveis de zoom` |
@@ -118,7 +149,7 @@ modelo resolvido (`menu_bar_for`, com documento aberto):
 | Família | ID | Linhas | Itens | Persona | Submenus e itens |
 |---|---|---|---|---|---|
 | File | `ptnd.menu.file` | 6 | 6 | todas | new, open, save, save_as, export, place (⛔ com motivo) |
-| Edit | `ptnd.menu.edit` | 4 | 4 | todas | undo, redo, duplicate, delete |
+| Edit | `ptnd.menu.edit` | 5 | 5 | todas | undo, redo, duplicate, delete, preferences |
 | Select | `ptnd.menu.select` | 2 | 2 | todas | select_all, deselect |
 | Object | `ptnd.menu.object` | 6 | 12 | todas | group, ungroup, ▸Alinhamento (6), ▸Distribuir (2), lock, hide |
 | Layer | `ptnd.menu.layer` | 2 | 4 | todas | ▸Organizar (2), ▸Máscara de recorte (2) |
@@ -126,7 +157,7 @@ modelo resolvido (`menu_bar_for`, com documento aberto):
 | **Imagem** | `ptnd.menu.image` | 1 | 5 | foto | ▸Transformar (5, todas ferramentas) |
 | View | `ptnd.menu.view` | 7 | 12 | todas | zoom_in, zoom_out, ▸Níveis de zoom (6), fit_surface, rulers, snapping, palette |
 
-Totais: **24 linhas / 58 itens** na Persona Vetorial; **22 / 45** na Persona Foto.
+Totais: **25 linhas / 59 itens** na Persona Vetorial; **23 / 46** na Persona Foto.
 
 Um item de submenu é um item como qualquer outro: o mesmo token
 (`surface#payload`) entra pela lane de Action, então a paleta de comandos e o
@@ -465,14 +496,14 @@ atalhos global (`slint::Shortcut`) — todo atalho passa por esse `key-pressed`.
 
 ## 14. Tabela L — Ações por domínio
 
-### L.1 Despacháveis hoje (65 em `LIVE_ACTIONS`)
+### L.1 Despacháveis hoje (66 em `LIVE_ACTIONS`)
 
-**31 ações + 34 ferramentas = 65.**
+**32 ações + 34 ferramentas = 66.**
 
 | Domínio | Ações | Exemplos |
 |---|---|---|
 | File | **5** | `file.new`, `file.open`, `file.save`, `file.save_as`, `file.export` |
-| Edit | **6** | `edit.undo`, `edit.redo`, `edit.duplicate`, `edit.delete`, `edit.select_all`, `edit.deselect` |
+| Edit | **7** | `edit.undo`, `edit.redo`, `edit.duplicate`, `edit.delete`, `edit.select_all`, `edit.deselect`, `edit.preferences` |
 | Object | **13** | `object.group`, `object.ungroup`, `object.align`, `object.distribute`, `object.boolean`, `object.arrange.front/back`, `object.clip_mask.create/release`, `object.convert_to_curves`, `object.bake_corners`, `object.lock`, `object.hide` |
 | View | **7** | `view.zoom_in/out/100/fit_surface`, `view.toggle_rulers`, `view.toggle_snapping`, `view.command_palette` |
 | Tools | **34** | todas as `ptnd.tool.*` com `ToolKind` real |
@@ -488,7 +519,7 @@ atalhos global (`slint::Shortcut`) — todo atalho passa por esse `key-pressed`.
 ### L.3 Ausentes (9)
 
 `file.open_recent`, `file.close`, `file.quit`, `edit.cut`, `edit.copy`,
-`edit.paste`, `edit.preferences`, `select.invert`, `view.focus_canvas`.
+`edit.paste`, `select.invert`, `view.focus_canvas`.
 
 ### L.5 Ativas na engine mas FORA do registry (9)
 
@@ -527,24 +558,24 @@ Ordenados por gravidade. Todos verificáveis com `grep` sobre a árvore atual.
 
 | # | Achado | Evidência | Contrato | Gravidade |
 |---|---|---|---|---|
-| M1 | **Atalhos de ferramenta prometidos e inertes** — 18 letras declaradas no registry e impressas em cada botão do rail, sem handler | `grep key-pressed app.slint` = 1 ocorrência (linha 341); nenhuma letra avulsa no handler | 15.F §2 "no fake UI" | **Alta** |
-| M2 | **Botão de fechar a aba desenhado, callback vazio** | `app.slint:706-707` → `clicked => {}` / `close_clicked => {}`; `StudioTabItem` desenha `IconSet.X` + `TouchArea` | 15.F §2 | **Alta** |
-| M3 | **Duas ferramentas `Disabled` no registry são clicáveis e ativáveis na UI**, sem razão visível | Rail: `PointTransform` (⛔ "folded into the Transform HUD") e `ShapeBuilder` (⛔ "arrives after V1") com `clicked => root.select_tool(...)` e handler real em `main.rs` | 15.F §2; `SurfaceStatus::Disabled` | **Alta** |
-| M4 | **Três ferramentas ✅ `Wired` são inalcançáveis** — sem botão, sem item de menu, fora da paleta | `ToolKind::Transparency`, `Contour`, `FrameText` existem; nenhum aparece em §4.1 nem em `MENU_BAR` | 15.G "wired ⇒ reachable" | **Alta** |
+| M1 | **Resolvido no Freya** — atalhos de ferramenta agora são resolvidos pelo rail agrupado | `main.rs::dispatch_workspace_key` + `resolve_tool_shortcut` | 15.F §2 "no fake UI" | Baixa |
+| M2 | **Resolvido no Freya** — aba tem botão fechar com callback e atalho | `chrome.rs::tab_strip` despacha fechar | 15.F §2 | Baixa |
+| M3 | **Resolvido no Freya** — ferramentas `Disabled` não entram no rail; o menu preserva a razão do registry | `default_tool_rail`/`tool_catalog` removem `PointTransform` e `ShapeBuilder`; `MenuItemPresentation` mantém `disabled_reason_id` | 15.F §2; `SurfaceStatus::Disabled` | Baixa |
+| M4 | **Resolvido no Freya** — `Transparency`, `Contour` e `FrameText` estão no rail e no menu derivado | `ToolRailState` + `MENU_BAR` | 15.G "wired ⇒ reachable" | Baixa |
 | M5 | **`dialog.new_document` marcado `Wired` sem existir diálogo** | Registry: ✅ `ptnd.dialog.new_document`; `main.rs:1269` despacha `file.new` direto, sem overlay em `app.slint` | 15.G (status deve refletir a realidade) | **Alta** |
-| M6 | **Persona Photo não tem nenhuma ferramenta na UI** | 9 `ToolKind` Photo + 8 superfícies `ptnd.tool.photo.*`; `active_persona` só troca o hint de status (`main.rs:1062`) | 15.F §5/§6 (workspaces por persona) | **Alta** |
+| M6 | **Resolvido no Freya** — o rail e o menu Image têm conjuntos próprios da persona Photo | `ToolRailState::photo_groups` + `MENU_BAR` | 15.F §5/§6 (workspaces por persona) | Baixa |
 | M7 | **"1 objeto selecionado" hardcoded** | `app.slint` §5: string literal, não conta a seleção | 15.F §2 | Média |
 | M8 | **Linha da prancheta com dimensões hardcoded** | `app.slint:1510`: `"📄 Main Artboard [800 × 600]"` literal | 15.F §2 | Média |
-| M9 | **Indicador "modificado" sempre aceso** | `app.slint:704` → `is_dirty: true` fixo | 15.F §2 | Média |
+| M9 | **Resolvido no Freya** — indicador modificado conectado ao dirty state real | `chrome.rs::tab_strip` lê `session.is_dirty()` | 15.F §2 | Baixa |
 | M10 | **Swatches de Fill/Stroke da toolbar são cor fixa** | §3: `set_selected_color(Tokens.accent-bloom)` — não lê a seleção | 15.F §2 | Média |
 | M11 | **`add_star_clicked` tem handler e nenhum emissor** | `main.rs:1494` + `app.slint:526` declarado; nenhum `root.add_star_clicked()` | ⚰️ código morto | Baixa |
 | M12 | **`open_doc_clicked` / `save_doc_clicked` / `place_image_clicked` sem emissor na UI** | Handler existe; nada emite | ⚰️ código morto | Baixa |
 | M13 | **`title_panel_data_merge` é setado para uma aba que não existe** | `main.rs:618` + propriedade em `app.slint:581`; `active_tab_index` nunca chega a 3 | ⚰️ propriedade morta | Baixa |
-| M14 | **9 ferramentas ativas na engine não têm linha no registry** — 1 delas (`Scissors`) tem botão no rail | `LIVE_ACTIONS` contém `ptnd.tool.scissors`, `measure`, `style_picker`, `vector_flood_fill`, `photo.marquee_rect`, `photo.marquee_ellipse`, `photo.lasso`, `photo.selection_brush`, `photo.flood_select`; nenhuma consta em `SURFACES` | 15.G (toda superfície no manifest) | Média |
+| M14 | **Resolvido no Freya** — as ferramentas ativas sem linha ganharam superfícies e slots de menu | `SURFACES` contém `measure`, `style_picker`, `vector_flood_fill` e as cinco superfícies de seleção Photo; `Scissors` também está registrada | 15.G (toda superfície no manifest) | Baixa |
 | M15 | **Parse de campo numérico sem validação** | `set_stroke_width_value(t.to-float())` → entrada inválida vira `0.0` | — | Média |
 | M16 | **79 strings user-facing literais em `app.slint`** | `grep -c 'text: "'` = 79 | 09.16 i18n | Média |
 | M17 | **18 hints de status literais em `main.rs`** | 16 em `1033–1048` (mapa ferramenta→texto) + 2 em `1066/1068` (persona) | 09.16 i18n | Média |
-| M18 | **Ferramentas não são alcançáveis por menu nem pela paleta** | `MENU_BAR` tem 6 famílias, nenhuma de ferramentas; `command_index()` deriva do menu | 15.F §3 | Média |
+| M18 | **Resolvido no Freya** — as ferramentas são alcançáveis pelo menu e pela palette derivados | `MENU_BAR` inclui grupos Vector/Image; `command_index()` deriva do menu | 15.F §3 | Baixa |
 | M19 | **Sem confirmação para ações destrutivas** | `dialog.overwrite_conflict` ⬜; delete sem confirmação | — | Média |
 | M20 | **Contador "N itens" não pluraliza** | `layer_rows.length + " itens"` | — | Baixa |
 

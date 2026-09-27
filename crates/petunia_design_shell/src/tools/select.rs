@@ -10,8 +10,9 @@ use petunia_design_geometry::{GPoint, GRect};
 
 use crate::bridge::*;
 use crate::canvas::{
-    compute_selection_handles, hit_test_handle_or_border, CanvasOverlays, SelectionHandleKind,
-    SnapEngine, ViewportCamera,
+    compute_selection_handles, compute_selection_handles_oriented, hit_test_handle_or_border,
+    hit_test_handle_or_border_oriented, CanvasOverlays, CursorAffordance, SelectionHandleKind,
+    SnapEngine, TransformPreview, TransformPreviewObject, ViewportCamera,
 };
 
 use petunia_design_application::interaction::{
@@ -75,7 +76,7 @@ pub enum SelectToolState {
     DraggingObjects {
         start_doc: GPoint,
         current_doc: GPoint,
-        initial_positions: Vec<(ObjectId, [f64; 4], f64)>,
+        initial_objects: Vec<(ObjectId, [f64; 4], f64)>,
         is_duplicate: bool,
         anchor_id: Option<ObjectId>,
         was_already_selected: bool,
@@ -98,7 +99,10 @@ pub struct SelectTool {
     gesture_mode: SelectGestureMode,
     marquee_rule: MarqueeSelectRule,
     hovered_object: Option<ObjectId>,
+    hovered_handle: Option<SelectionHandleKind>,
     pressed_object: Option<ObjectId>,
+    preview: Option<TransformPreview>,
+    gesture_revision: Option<u64>,
 }
 
 impl Default for SelectTool {
@@ -117,14 +121,20 @@ impl SelectTool {
             gesture_mode: SelectGestureMode::Rectangle,
             marquee_rule: MarqueeSelectRule::Directional,
             hovered_object: None,
+            hovered_handle: None,
             pressed_object: None,
+            preview: None,
+            gesture_revision: None,
         }
     }
 
     /// Cancels any active gesture and resets to idle.
     pub fn cancel(&mut self) {
         self.state = SelectToolState::Idle;
+        self.hovered_handle = None;
         self.pressed_object = None;
+        self.preview = None;
+        self.gesture_revision = None;
     }
 
     /// Which empty-canvas gesture is active (rectangle marquee or lasso).
@@ -170,6 +180,142 @@ impl SelectTool {
         &self.state
     }
 
+    /// Current uncommitted transform preview.
+    #[must_use]
+    pub fn transform_preview(&self) -> Option<&TransformPreview> {
+        self.preview.as_ref()
+    }
+
+    fn refresh_transform_preview(&mut self, bridge: &PetuniaDesignGuiBridge) {
+        let Some(session) = bridge.session() else {
+            self.preview = None;
+            return;
+        };
+        let Some(base_revision) = self.gesture_revision else {
+            self.preview = None;
+            return;
+        };
+        if session.current_revision() != base_revision {
+            self.preview = None;
+            return;
+        }
+        let preview = match &self.state {
+            SelectToolState::DraggingObjects {
+                start_doc,
+                current_doc,
+                initial_objects,
+                is_duplicate,
+                ..
+            } => {
+                let dx = current_doc.x - start_doc.x;
+                let dy = current_doc.y - start_doc.y;
+                if *is_duplicate || dx.abs() <= f64::EPSILON && dy.abs() <= f64::EPSILON {
+                    None
+                } else {
+                    let objects = initial_objects
+                        .iter()
+                        .map(|(id, [x, y, w, h], rotation)| TransformPreviewObject {
+                            id: *id,
+                            bounds: [x + dx, y + dy, *w, *h],
+                            rotation: *rotation,
+                        })
+                        .collect::<Vec<_>>();
+                    let frame = frame_from_preview_objects(&objects);
+                    Some((objects, frame))
+                }
+            }
+            SelectToolState::TransformingHandle {
+                handle,
+                start_doc,
+                current_doc,
+                initial_bounds,
+                initial_objects,
+            } => {
+                let objects = if *handle == SelectionHandleKind::Rotation {
+                    let [bx, by, bw, bh] = *initial_bounds;
+                    let center = if initial_objects.len() == 1
+                        && initial_objects[0].2.abs() > f64::EPSILON
+                    {
+                        let rot_trans = petunia_design_geometry::GAffine::translate(bx, by)
+                            .after(petunia_design_geometry::GAffine::rotate(
+                                initial_objects[0].2,
+                            ));
+                        rot_trans.apply(GPoint::new(bw / 2.0, bh / 2.0))
+                    } else {
+                        GPoint::new(bx + bw / 2.0, by + bh / 2.0)
+                    };
+                    let delta = petunia_design_geometry::pivot_angle_delta(
+                        *start_doc,
+                        *current_doc,
+                        center,
+                    )
+                    .unwrap_or(0.0);
+                    rotate_preview_objects(initial_objects, center, delta)
+                } else if initial_objects.len() == 1
+                    && initial_objects[0].2.abs() > f64::EPSILON
+                {
+                    let theta = initial_objects[0].2;
+                    let (id, [bx, by, bw, bh], _) = initial_objects[0];
+                    let dx_doc = current_doc.x - start_doc.x;
+                    let dy_doc = current_doc.y - start_doc.y;
+                    let cos_t = (-theta).cos();
+                    let sin_t = (-theta).sin();
+                    let dx_local = dx_doc * cos_t - dy_doc * sin_t;
+                    let dy_local = dx_doc * sin_t + dy_doc * cos_t;
+                    let (nx_local, ny_local, nw, nh) =
+                        calculate_resized_bounds(*handle, [0.0, 0.0, bw, bh], dx_local, dy_local);
+                    let rot_trans = petunia_design_geometry::GAffine::translate(bx, by)
+                        .after(petunia_design_geometry::GAffine::rotate(theta));
+                    let new_origin = rot_trans.apply(GPoint::new(nx_local, ny_local));
+                    vec![TransformPreviewObject {
+                        id,
+                        bounds: [new_origin.x, new_origin.y, nw, nh],
+                        rotation: theta,
+                    }]
+                } else {
+                    let dx = current_doc.x - start_doc.x;
+                    let dy = current_doc.y - start_doc.y;
+                    let (nx, ny, nw, nh) =
+                        calculate_resized_bounds(*handle, *initial_bounds, dx, dy);
+                    let [ibx, iby, ibw, ibh] = *initial_bounds;
+                    let sx = if ibw.abs() > f64::EPSILON {
+                        nw / ibw
+                    } else {
+                        1.0
+                    };
+                    let sy = if ibh.abs() > f64::EPSILON {
+                        nh / ibh
+                    } else {
+                        1.0
+                    };
+                    initial_objects
+                        .iter()
+                        .map(|(id, [x, y, w, h], rotation)| TransformPreviewObject {
+                            id: *id,
+                            bounds: [
+                                nx + (x - ibx) * sx,
+                                ny + (y - iby) * sy,
+                                (w * sx).max(1.0),
+                                (h * sy).max(1.0),
+                            ],
+                            rotation: *rotation,
+                        })
+                        .collect::<Vec<_>>()
+                };
+                let frame = frame_from_preview_objects(&objects);
+                Some((objects, frame))
+            }
+            SelectToolState::Idle
+            | SelectToolState::Marquee { .. }
+            | SelectToolState::Lasso { .. } => None,
+        };
+        self.preview = preview.map(|(objects, frame)| TransformPreview {
+            base_revision,
+            frame,
+            objects,
+        });
+    }
+
     /// Handles a normalized pointer event.
     pub fn on_pointer_event(
         &mut self,
@@ -202,41 +348,65 @@ impl SelectTool {
         }
 
         snap.reset_hysteresis();
+        self.gesture_revision = bridge.session().map(|session| session.current_revision());
+        self.preview = None;
 
         let sel_vm = bridge.selection();
 
         // 1. Check if clicking on any transform handle or bounding box border of active selection
-        if let Some([bx, by, bw, bh]) = sel_vm.combined_bounds {
+        let handle_hit = if sel_vm.count == 1
+            && sel_vm.primary_bounds.is_some()
+            && sel_vm.primary_transform.is_some()
+        {
+            let bounds = sel_vm.primary_bounds.unwrap();
+            let transform = sel_vm.primary_transform.unwrap();
+            hit_test_handle_or_border_oriented(
+                bounds,
+                transform,
+                event.screen_pos,
+                event.doc_pos,
+                camera,
+                self.handle_size_px,
+                8.0,
+            )
+            .map(|h| (h, bounds))
+        } else if let Some([bx, by, bw, bh]) = sel_vm.combined_bounds {
             let doc_box = GRect::new(bx, by, bx + bw, by + bh);
-            if let Some(handle_kind) = hit_test_handle_or_border(
+            hit_test_handle_or_border(
                 doc_box,
                 event.screen_pos,
                 event.doc_pos,
                 camera,
                 self.handle_size_px,
                 8.0,
-            ) {
-                let mut initial_objects = Vec::new();
-                if let Some(session) = bridge.session() {
-                    for &sel_id in &session.selection.selected_ids {
-                        if let Some(obj) = session.find_object(sel_id) {
-                            if !obj.locked {
-                                let b = obj.bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
-                                initial_objects.push((sel_id, b, obj.rotation));
-                            }
+            )
+            .map(|h| (h, [bx, by, bw, bh]))
+        } else {
+            None
+        };
+
+        if let Some((handle_kind, initial_bounds)) = handle_hit {
+            let mut initial_objects = Vec::new();
+            if let Some(session) = bridge.session() {
+                for &sel_id in &session.selection.selected_ids {
+                    if let Some(obj) = session.find_object(sel_id) {
+                        if !obj.locked {
+                            let b = obj.bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
+                            initial_objects.push((sel_id, b, obj.rotation));
                         }
                     }
                 }
-                self.pressed_object = None;
-                self.state = SelectToolState::TransformingHandle {
-                    handle: handle_kind,
-                    start_doc: event.doc_pos,
-                    current_doc: event.doc_pos,
-                    initial_bounds: [bx, by, bw, bh],
-                    initial_objects,
-                };
-                return Ok(ChangeSet::empty());
             }
+            self.pressed_object = None;
+            self.state = SelectToolState::TransformingHandle {
+                handle: handle_kind,
+                start_doc: event.doc_pos,
+                current_doc: event.doc_pos,
+                initial_bounds,
+                initial_objects,
+            };
+            self.refresh_transform_preview(bridge);
+            return Ok(ChangeSet::empty());
         }
 
         // 2. Hit-test document objects under cursor
@@ -271,11 +441,12 @@ impl SelectTool {
             self.state = SelectToolState::DraggingObjects {
                 start_doc: event.doc_pos,
                 current_doc: event.doc_pos,
-                initial_positions,
+                initial_objects: initial_positions,
                 is_duplicate: event.modifiers.duplicate,
                 anchor_id: Some(id),
                 was_already_selected,
             };
+            self.refresh_transform_preview(bridge);
         } else {
             // Clicked on empty canvas: start a selection gesture.
             self.pressed_object = None;
@@ -318,7 +489,38 @@ impl SelectTool {
         match &mut self.state {
             SelectToolState::Idle => {
                 // Hover feedback without touching the document.
-                self.hovered_object = self.hit_test_objects(event.doc_pos, bridge, camera);
+                let sel_vm = bridge.selection();
+                let handle_hit = if sel_vm.count == 1
+                    && sel_vm.primary_bounds.is_some()
+                    && sel_vm.primary_transform.is_some()
+                {
+                    hit_test_handle_or_border_oriented(
+                        sel_vm.primary_bounds.unwrap(),
+                        sel_vm.primary_transform.unwrap(),
+                        event.screen_pos,
+                        event.doc_pos,
+                        camera,
+                        self.handle_size_px,
+                        8.0,
+                    )
+                } else if let Some([bx, by, bw, bh]) = sel_vm.combined_bounds {
+                    hit_test_handle_or_border(
+                        GRect::new(bx, by, bx + bw, by + bh),
+                        event.screen_pos,
+                        event.doc_pos,
+                        camera,
+                        self.handle_size_px,
+                        8.0,
+                    )
+                } else {
+                    None
+                };
+                self.hovered_handle = handle_hit;
+                if handle_hit.is_none() {
+                    self.hovered_object = self.hit_test_objects(event.doc_pos, bridge, camera);
+                } else {
+                    self.hovered_object = None;
+                }
             }
             SelectToolState::Marquee { current_screen, .. } => {
                 *current_screen = event.screen_pos;
@@ -342,8 +544,7 @@ impl SelectTool {
                     target_pt = snap_res.point;
                 }
                 *current_doc = target_pt;
-                // Preview-only: the commit happens once on pointer-up,
-                // so dragging never floods undo (F-01).
+                self.refresh_transform_preview(bridge);
             }
             SelectToolState::TransformingHandle { current_doc, .. } => {
                 let mut target_pt = event.doc_pos;
@@ -352,7 +553,7 @@ impl SelectTool {
                     target_pt = snap_res.point;
                 }
                 *current_doc = target_pt;
-                // Preview-only (F-01): see on_up commit.
+                self.refresh_transform_preview(bridge);
             }
         }
         Ok(ChangeSet::empty())
@@ -367,9 +568,21 @@ impl SelectTool {
     ) -> Result<ChangeSet, PetuniaError> {
         snap.reset_hysteresis();
 
+        let base_revision = self.gesture_revision.take();
+        self.preview = None;
+        let revision_changed = base_revision.is_some_and(|base| {
+            bridge
+                .session()
+                .is_none_or(|session| session.current_revision() != base)
+        });
         let prev_state = std::mem::replace(&mut self.state, SelectToolState::Idle);
         // Click feedback always releases on pointer-up.
         self.pressed_object = None;
+
+        if revision_changed {
+            self.hovered_object = None;
+            return Ok(ChangeSet::empty());
+        }
 
         match prev_state {
             SelectToolState::Idle => {
@@ -423,15 +636,16 @@ impl SelectTool {
             SelectToolState::DraggingObjects {
                 start_doc,
                 current_doc,
-                initial_positions,
+                initial_objects,
                 is_duplicate,
                 anchor_id,
                 was_already_selected,
             } => {
                 let dx = current_doc.x - start_doc.x;
                 let dy = current_doc.y - start_doc.y;
+                let drag_screen_dist = camera.zoom * (dx * dx + dy * dy).sqrt();
 
-                if dx.abs() < f64::EPSILON && dy.abs() < f64::EPSILON {
+                if drag_screen_dist <= CLICK_THRESHOLD_PX {
                     // Click without drag on an already-selected object
                     // collapses a multi-selection onto the clicked object
                     // (Photoshop / Affinity / CorelDRAW behavior).
@@ -455,7 +669,7 @@ impl SelectTool {
                     if let Some(surface_id) = active_surface {
                         let mut cmds = Vec::new();
                         let mut new_ids = Vec::new();
-                        for (orig_id, [x, y, w, h], rot) in initial_positions {
+                        for (orig_id, [x, y, w, h], rot) in initial_objects {
                             let new_id = bridge.next_object_id()?;
                             let source = bridge
                                 .session()
@@ -527,7 +741,7 @@ impl SelectTool {
                     return Ok(ChangeSet::empty());
                 }
                 // Normal translation: update bounds for each moved object.
-                let cmds = initial_positions
+                let cmds = initial_objects
                     .into_iter()
                     .map(|(id, [x, y, w, h], rot)| Command::SetBounds {
                         id,
@@ -548,26 +762,60 @@ impl SelectTool {
                     // Rotation drag: angle delta around the combined center,
                     // added to each object's own rotation (never zeroed).
                     let [bx, by, bw, bh] = initial_bounds;
-                    let center = petunia_design_geometry::GPoint::new(bx + bw / 2.0, by + bh / 2.0);
+                    let center = if initial_objects.len() == 1
+                        && initial_objects[0].2.abs() > f64::EPSILON
+                    {
+                        let rot_trans = petunia_design_geometry::GAffine::translate(bx, by)
+                            .after(petunia_design_geometry::GAffine::rotate(
+                                initial_objects[0].2,
+                            ));
+                        rot_trans.apply(petunia_design_geometry::GPoint::new(bw / 2.0, bh / 2.0))
+                    } else {
+                        petunia_design_geometry::GPoint::new(bx + bw / 2.0, by + bh / 2.0)
+                    };
                     let delta =
                         petunia_design_geometry::pivot_angle_delta(start_doc, current_doc, center)
                             .unwrap_or(0.0);
-                    let cmds = initial_objects
+                    let preview_objects = rotate_preview_objects(&initial_objects, center, delta);
+                    let cmds = preview_objects
                         .into_iter()
-                        .filter_map(|(id, bounds, rot)| {
+                        .filter_map(|preview| {
                             let session = bridge.session()?;
-                            let current = session.find_object(id)?;
+                            let current = session.find_object(preview.id)?;
                             if current.locked {
                                 return None;
                             }
                             Some(Command::SetBounds {
-                                id,
-                                bounds: Some(bounds),
-                                rotation: rot + delta,
+                                id: preview.id,
+                                bounds: Some(preview.bounds),
+                                rotation: preview.rotation,
                             })
                         })
                         .collect();
                     return bridge.submit_all("Rotate objects", cmds);
+                }
+                if initial_objects.len() == 1 && initial_objects[0].2.abs() > f64::EPSILON {
+                    // Single rotated object resize along its local axes
+                    let theta = initial_objects[0].2;
+                    let (id, [bx, by, bw, bh], _) = initial_objects[0];
+                    let dx_doc = current_doc.x - start_doc.x;
+                    let dy_doc = current_doc.y - start_doc.y;
+                    let cos_t = (-theta).cos();
+                    let sin_t = (-theta).sin();
+                    let dx_local = dx_doc * cos_t - dy_doc * sin_t;
+                    let dy_local = dx_doc * sin_t + dy_doc * cos_t;
+                    let (nx_local, ny_local, nw, nh) =
+                        calculate_resized_bounds(handle, [0.0, 0.0, bw, bh], dx_local, dy_local);
+                    let rot_trans = petunia_design_geometry::GAffine::translate(bx, by)
+                        .after(petunia_design_geometry::GAffine::rotate(theta));
+                    let new_origin = rot_trans
+                        .apply(petunia_design_geometry::GPoint::new(nx_local, ny_local));
+                    let cmd = Command::SetBounds {
+                        id,
+                        bounds: Some([new_origin.x, new_origin.y, nw, nh]),
+                        rotation: theta,
+                    };
+                    return bridge.submit_all("Resize object", vec![cmd]);
                 }
                 // Resize drag: map the combined-bounds transform onto each
                 // object proportionally, preserving sizes and rotations.
@@ -671,7 +919,11 @@ impl SelectTool {
                     continue;
                 };
                 if obj.visible && !obj.locked {
-                    if let Some([ox, oy, ow, oh]) = obj.bounds {
+                    if let Some([ox, oy, ow, oh]) = bridge
+                        .cached_world_frame_bounds(id)
+                        .or_else(|| bridge.cached_world_bounds(id))
+                        .or_else(|| obj.bounds)
+                    {
                         let hit = if require_contained {
                             ox >= doc_marquee.x0
                                 && oy >= doc_marquee.y0
@@ -719,7 +971,11 @@ impl SelectTool {
                     continue;
                 };
                 if obj.visible && !obj.locked {
-                    if let Some([ox, oy, ow, oh]) = obj.bounds {
+                    if let Some([ox, oy, ow, oh]) = bridge
+                        .cached_world_frame_bounds(id)
+                        .or_else(|| bridge.cached_world_bounds(id))
+                        .or_else(|| obj.bounds)
+                    {
                         if lasso_hits_rect(polygon_doc, [ox, oy, ow, oh], require_contained) {
                             matched.push(obj.id);
                         }
@@ -748,7 +1004,38 @@ impl SelectTool {
             let Some(obj) = session.find_object(id) else {
                 continue;
             };
-            if obj.visible && !obj.locked && bridge.cached_hit(id, doc_pos, exact_tol) {
+            let hits_frame = session
+                .cached_world_frame_bounds(id)
+                .or_else(|| session.cached_bounds(id))
+                .or(obj.bounds)
+                .is_some_and(|[bx, by, bw, bh]| {
+                    if obj.rotation.abs() <= 1e-4 {
+                        doc_pos.x >= bx - tolerance
+                            && doc_pos.x <= bx + bw + tolerance
+                            && doc_pos.y >= by - tolerance
+                            && doc_pos.y <= by + bh + tolerance
+                    } else if let Ok(trans) = session.document().world_transform_checked(id) {
+                        if let Some(inv) = trans.inverse() {
+                            let local = inv.apply(doc_pos);
+                            local.x >= -tolerance
+                                && local.x <= bw + tolerance
+                                && local.y >= -tolerance
+                                && local.y <= bh + tolerance
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                });
+
+            if obj.visible
+                && !obj.locked
+                && (bridge.cached_world_hit(id, doc_pos, exact_tol)
+                    || (bridge.cached_world_bounds(id).is_none()
+                        && bridge.cached_hit(id, doc_pos, exact_tol))
+                    || hits_frame)
+            {
                 return Some(id);
             }
         }
@@ -762,9 +1049,15 @@ impl SelectTool {
         camera: &ViewportCamera,
         bridge: &PetuniaDesignGuiBridge,
     ) -> CanvasOverlays {
+        let transform_preview = self.preview.clone().filter(|preview| {
+            bridge
+                .session()
+                .is_some_and(|session| session.current_revision() == preview.base_revision)
+        });
         let mut overlays = CanvasOverlays {
             hovered_object: self.hovered_object,
             pressed_object: self.pressed_object,
+            transform_preview,
             ..CanvasOverlays::default()
         };
 
@@ -798,7 +1091,19 @@ impl SelectTool {
             }
             _ => {
                 let sel_vm = bridge.selection();
-                if let Some([bx, by, bw, bh]) = sel_vm.combined_bounds {
+                if sel_vm.count == 1
+                    && sel_vm.primary_bounds.is_some()
+                    && sel_vm.primary_transform.is_some()
+                {
+                    let bounds = sel_vm.primary_bounds.unwrap();
+                    let transform = sel_vm.primary_transform.unwrap();
+                    overlays.handles = compute_selection_handles_oriented(
+                        bounds,
+                        transform,
+                        camera,
+                        self.handle_size_px,
+                    );
+                } else if let Some([bx, by, bw, bh]) = sel_vm.combined_bounds {
                     overlays.handles = compute_selection_handles(
                         GRect::new(bx, by, bx + bw, by + bh),
                         camera,
@@ -808,8 +1113,108 @@ impl SelectTool {
             }
         }
 
+        overlays.cursor = match &self.state {
+            SelectToolState::TransformingHandle { handle, .. } => map_handle_to_cursor(*handle),
+            SelectToolState::DraggingObjects { .. } => CursorAffordance::Move,
+            SelectToolState::Marquee { .. } | SelectToolState::Lasso { .. } => {
+                CursorAffordance::Crosshair
+            }
+            SelectToolState::Idle => {
+                if let Some(handle) = self.hovered_handle {
+                    map_handle_to_cursor(handle)
+                } else if let Some(hovered) = self.hovered_object {
+                    let sel_vm = bridge.selection();
+                    if sel_vm.contains(hovered) {
+                        CursorAffordance::Move
+                    } else {
+                        CursorAffordance::Pointer
+                    }
+                } else {
+                    CursorAffordance::Default
+                }
+            }
+        };
+
         overlays
     }
+}
+
+fn map_handle_to_cursor(handle: SelectionHandleKind) -> CursorAffordance {
+    match handle {
+        SelectionHandleKind::TopLeft | SelectionHandleKind::BottomRight => {
+            CursorAffordance::ResizeNwse
+        }
+        SelectionHandleKind::TopRight | SelectionHandleKind::BottomLeft => {
+            CursorAffordance::ResizeNesw
+        }
+        SelectionHandleKind::Left | SelectionHandleKind::Right => CursorAffordance::ResizeCol,
+        SelectionHandleKind::Top | SelectionHandleKind::Bottom => CursorAffordance::ResizeRow,
+        SelectionHandleKind::Rotation => CursorAffordance::Rotate,
+        SelectionHandleKind::NodeControl => CursorAffordance::Crosshair,
+        SelectionHandleKind::NodeCusp
+        | SelectionHandleKind::NodeCuspSelected
+        | SelectionHandleKind::NodeSmooth
+        | SelectionHandleKind::NodeSmoothSelected
+        | SelectionHandleKind::NodeSymmetric
+        | SelectionHandleKind::NodeSymmetricSelected => CursorAffordance::Pointer,
+    }
+}
+
+fn rotate_preview_objects(
+    objects: &[(ObjectId, [f64; 4], f64)],
+    pivot: GPoint,
+    delta: f64,
+) -> Vec<TransformPreviewObject> {
+    objects
+        .iter()
+        .map(|(id, [x, y, w, h], rotation)| {
+            let origin =
+                petunia_design_geometry::rotate_point_around(GPoint::new(*x, *y), pivot, delta);
+            TransformPreviewObject {
+                id: *id,
+                bounds: [origin.x, origin.y, *w, *h],
+                rotation: rotation + delta,
+            }
+        })
+        .collect()
+}
+
+/// Computes the axis-aligned document frame for a set of previewed objects.
+fn frame_from_preview_objects(objects: &[TransformPreviewObject]) -> [f64; 4] {
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for object in objects {
+        let [x, y, w, h] = object.bounds;
+        let rotation = object.rotation;
+        let (sin, cos) = rotation.sin_cos();
+        let corners = [
+            GPoint::new(x, y),
+            GPoint::new(x + w, y),
+            GPoint::new(x + w, y + h),
+            GPoint::new(x, y + h),
+        ];
+        for corner in corners {
+            let rotated = GPoint::new(
+                x + (corner.x - x) * cos - (corner.y - y) * sin,
+                y + (corner.x - x) * sin + (corner.y - y) * cos,
+            );
+            min_x = min_x.min(rotated.x);
+            min_y = min_y.min(rotated.y);
+            max_x = max_x.max(rotated.x);
+            max_y = max_y.max(rotated.y);
+        }
+    }
+    if objects.is_empty() {
+        return [0.0, 0.0, 0.0, 0.0];
+    }
+    [
+        min_x,
+        min_y,
+        (max_x - min_x).max(1.0),
+        (max_y - min_y).max(1.0),
+    ]
 }
 
 /// Total screen-space length of a lasso path.
@@ -936,7 +1341,7 @@ pub fn calculate_resized_bounds(
         SelectionHandleKind::Bottom => Some(petunia_design_geometry::ResizeHandle::Bottom),
         SelectionHandleKind::BottomLeft => Some(petunia_design_geometry::ResizeHandle::BottomLeft),
         SelectionHandleKind::Left => Some(petunia_design_geometry::ResizeHandle::Left),
-        SelectionHandleKind::Rotation => None,
+        SelectionHandleKind::Rotation | _ => None,
     };
     match mapped {
         Some(h) => petunia_design_geometry::resize_rect_from_handle(h, initial, dx, dy),

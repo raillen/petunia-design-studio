@@ -613,12 +613,12 @@ mod tests {
     fn disabled_items_carry_a_localized_surface_and_a_reason() {
         let (service, locale) = service();
         let model = present_menu_bar(&menus::menu_bar(&context()), &service, &locale);
-        let place = model
-            .item_for_token("ptnd.action.file.place#null")
-            .expect("place is present so the blocked capability is visible");
-        assert!(!place.enabled);
-        assert!(!place.disabled_reason.is_empty());
-        assert!(!place.disabled_reason.starts_with("ptnd.text."));
+        let offset = model
+            .item_for_token("ptnd.action.object.offset_path#null")
+            .expect("offset_path is present so the blocked capability is visible");
+        assert!(!offset.enabled);
+        assert!(!offset.disabled_reason.is_empty());
+        assert!(!offset.disabled_reason.starts_with("ptnd.text."));
     }
 
     #[test]

@@ -8,21 +8,33 @@
 //! a revision mismatch recomputes. Memory is bounded by pruning deleted ids
 //! on every `prune_selection` and clearing on document open/close.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use petunia_design_document::DocumentObject;
 use petunia_design_foundation::ObjectId;
-use petunia_design_geometry::{GPath, GPoint};
+use petunia_design_geometry::{GAffine, GPath, GPoint};
 
-/// One cached evaluation.
-#[derive(Clone, Debug, Default)]
+/// One cached evaluation, separated by coordinate domain.
+#[derive(Clone, Debug)]
 pub struct GeoCacheEntry {
     /// Session revision the entry was computed at.
     pub revision: u64,
-    /// Evaluated outline (modifiers folded).
-    pub path: GPath,
-    /// Evaluated bounds (None when the object has none).
-    pub bounds: Option<[f64; 4]>,
+    /// Legacy evaluated path retained for v1 consumers.
+    pub legacy_path: GPath,
+    /// Legacy evaluated bounds retained for v1 consumers.
+    pub legacy_bounds: Option<[f64; 4]>,
+    /// Evaluated local outline, when the frame is explicit.
+    pub local_path: Option<GPath>,
+    /// Evaluated local bounds, when the local outline has geometry.
+    pub local_bounds: Option<[f64; 4]>,
+    /// Composed world transform, when the frame is explicit.
+    pub world_transform: Option<GAffine>,
+    /// Evaluated world path, when the local frame is explicit.
+    pub world_path: Option<GPath>,
+    /// Evaluated world bounds, if the world path has geometry.
+    pub world_bounds: Option<[f64; 4]>,
+    /// Nominal world frame bounds, available even for an unversioned path.
+    pub world_frame_bounds: Option<[f64; 4]>,
 }
 
 /// Interior-mutable cache so `&self` readers (view-models, overlays,
@@ -30,10 +42,10 @@ pub struct GeoCacheEntry {
 #[derive(Clone, Debug, Default)]
 pub struct GeoCache {
     entries: HashMap<ObjectId, GeoCacheEntry>,
-    /// Flattened outlines keyed by `(object, tolerance bits)`.
-    /// Hit-testing, span sampling and previews share one flatten per
-    /// tolerance instead of re-flattening per query (F2).
+    /// Flattened legacy outlines keyed by `(object, tolerance bits)`.
     flats: HashMap<(ObjectId, u64), Vec<Vec<GPoint>>>,
+    /// Flattened world outlines keyed by `(object, tolerance bits)`.
+    world_flats: HashMap<(ObjectId, u64), Vec<Vec<GPoint>>>,
 }
 
 impl GeoCache {
@@ -59,19 +71,22 @@ impl GeoCache {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.flats.clear();
+        self.world_flats.clear();
     }
 
     /// Drops entries for ids no longer present.
     pub fn prune(&mut self, valid_ids: &[ObjectId]) {
-        self.entries.retain(|id, _| valid_ids.contains(id));
-        self.flats.retain(|(id, _), _| valid_ids.contains(id));
+        let valid: HashSet<ObjectId> = valid_ids.iter().copied().collect();
+        self.entries.retain(|id, _| valid.contains(id));
+        self.flats.retain(|(id, _), _| valid.contains(id));
+        self.world_flats.retain(|(id, _), _| valid.contains(id));
     }
 
     /// Returns cached geometry when fresh, else `None`.
-    fn get(&self, id: ObjectId, revision: u64) -> Option<(GPath, Option<[f64; 4]>)> {
+    fn get(&self, id: ObjectId, revision: u64) -> Option<GeoCacheEntry> {
         self.entries.get(&id).and_then(|entry| {
             if entry.revision == revision {
-                Some((entry.path.clone(), entry.bounds))
+                Some(entry.clone())
             } else {
                 None
             }
@@ -79,32 +94,116 @@ impl GeoCache {
     }
 
     /// Stores a fresh evaluation.
-    fn insert(&mut self, id: ObjectId, revision: u64, path: GPath, bounds: Option<[f64; 4]>) {
-        self.entries.insert(id, GeoCacheEntry {
-            revision,
-            path,
-            bounds,
-        });
+    fn insert(&mut self, id: ObjectId, entry: GeoCacheEntry) {
+        self.entries.insert(id, entry);
     }
 }
 
 /// Session-side accessors. All take `&self`: the cache is interior-mutable.
 impl crate::session::DocumentSession {
-    /// Evaluated `(path, bounds)` for one object, memoized by revision.
-    /// Mirrors `evaluated_bounds` semantics exactly: stored base bounds when
-    /// no modifier is enabled, outline bbox otherwise.
+    /// Evaluates legacy, local and world domains at the current revision.
+    pub fn cached_geometry_entry(&self, id: ObjectId) -> Option<GeoCacheEntry> {
+        let revision = self.current_revision();
+        if let Some(entry) = self.geo_cache.borrow().get(id, revision) {
+            return Some(entry);
+        }
+        let object = self.find_object(id)?;
+        let legacy_path = object.evaluated_path();
+        let legacy_bounds = evaluated_bounds_for(object, &legacy_path);
+        let explicit = object.evaluated_path_local().ok().and_then(|local_path| {
+            let world_transform = self.document().world_transform_checked(id).ok()?;
+            let world_path = local_path.transformed(world_transform);
+            let local_bounds = local_path.bounding_box().map(|rect| {
+                [
+                    rect.x0,
+                    rect.y0,
+                    rect.width().max(1.0),
+                    rect.height().max(1.0),
+                ]
+            });
+            let world_bounds = world_path.bounding_box().map(|rect| {
+                [
+                    rect.x0,
+                    rect.y0,
+                    rect.width().max(1.0),
+                    rect.height().max(1.0),
+                ]
+            });
+            Some((
+                local_path,
+                local_bounds,
+                world_transform,
+                world_path,
+                world_bounds,
+            ))
+        });
+        let world_frame_bounds = self.document().frame_bounds_world(id).ok();
+        let (local_path, local_bounds, world_transform, world_path, world_bounds) = match explicit {
+            Some(values) => (
+                Some(values.0),
+                values.1,
+                Some(values.2),
+                Some(values.3),
+                values.4,
+            ),
+            None => (None, None, None, None, None),
+        };
+        let entry = GeoCacheEntry {
+            revision,
+            legacy_path,
+            legacy_bounds,
+            local_path,
+            local_bounds,
+            world_transform,
+            world_path,
+            world_bounds,
+            world_frame_bounds,
+        };
+        self.geo_cache.borrow_mut().insert(id, entry.clone());
+        Some(entry)
+    }
+
+    /// Legacy `(path, bounds)` compatibility query.
     #[must_use]
     pub fn cached_geometry(&self, id: ObjectId) -> Option<(GPath, Option<[f64; 4]>)> {
-        if let Some(hit) = self.geo_cache.borrow().get(id, self.current_revision()) {
-            return Some(hit);
-        }
-        let obj = self.find_object(id)?;
-        let path = obj.evaluated_path();
-        let bounds = evaluated_bounds_for(obj, &path);
-        self.geo_cache
-            .borrow_mut()
-            .insert(id, self.current_revision(), path.clone(), bounds);
-        Some((path, bounds))
+        self.cached_geometry_entry(id)
+            .map(|entry| (entry.legacy_path, entry.legacy_bounds))
+    }
+
+    /// Explicit local evaluated path.
+    #[must_use]
+    pub fn cached_local_path(&self, id: ObjectId) -> Option<GPath> {
+        self.cached_geometry_entry(id)?.local_path
+    }
+
+    /// Explicit local evaluated bounds.
+    #[must_use]
+    pub fn cached_local_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
+        self.cached_geometry_entry(id)?.local_bounds
+    }
+
+    /// Explicit world transform.
+    #[must_use]
+    pub fn cached_world_transform(&self, id: ObjectId) -> Option<GAffine> {
+        self.cached_geometry_entry(id)?.world_transform
+    }
+
+    /// Explicit world evaluated path.
+    #[must_use]
+    pub fn cached_world_path(&self, id: ObjectId) -> Option<GPath> {
+        self.cached_geometry_entry(id)?.world_path
+    }
+
+    /// Explicit world evaluated bounds.
+    #[must_use]
+    pub fn cached_world_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
+        self.cached_geometry_entry(id)?.world_bounds
+    }
+
+    /// Nominal world frame bounds, including unversioned legacy paths.
+    #[must_use]
+    pub fn cached_world_frame_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
+        self.cached_geometry_entry(id)?.world_frame_bounds
     }
 
     /// Evaluated outline, memoized.
@@ -155,6 +254,53 @@ impl crate::session::DocumentSession {
         Some(polys)
     }
 
+    /// Flattened explicit world outline at `tol`, memoized per revision.
+    #[must_use]
+    pub fn cached_world_polygons(&self, id: ObjectId, tol: f64) -> Option<Vec<Vec<GPoint>>> {
+        let tol = tol.max(0.001);
+        let key = (id, tol.to_bits());
+        let revision = self.current_revision();
+        {
+            let cache = self.geo_cache.borrow();
+            if let Some(flats) = cache.world_flats.get(&key) {
+                if cache
+                    .entries
+                    .get(&id)
+                    .is_some_and(|entry| entry.revision == revision)
+                {
+                    return Some(flats.clone());
+                }
+            }
+        }
+        let path = self.cached_world_path(id)?;
+        let polys = path.to_polygons(tol);
+        self.geo_cache
+            .borrow_mut()
+            .world_flats
+            .insert(key, polys.clone());
+        Some(polys)
+    }
+
+    /// Exact world-space hit test with the shared spatial tolerance.
+    #[must_use]
+    pub fn cached_world_hit(&self, id: ObjectId, pt: GPoint, tol: f64) -> bool {
+        self.cached_world_polygons(id, tol)
+            .is_some_and(|polys| polys.iter().any(|poly| point_in_poly(pt, poly)))
+    }
+
+    /// World-space outline sample at normalized fraction `t`.
+    #[must_use]
+    pub fn cached_world_sample_at(&self, id: ObjectId, t: f64, tol: f64) -> Option<(GPoint, f64)> {
+        let polys = self.cached_world_polygons(id, tol)?;
+        sample_walk(&polys, t)
+    }
+
+    /// World-space normalized fraction nearest to `pt`.
+    #[must_use]
+    pub fn cached_world_nearest_t(&self, id: ObjectId, pt: GPoint, tol: f64) -> Option<f64> {
+        let polys = self.cached_world_polygons(id, tol)?;
+        nearest_walk(&polys, pt)
+    }
     /// Outline sample at normalized fraction `t`, walking memoized polygons.
     /// Same math as `GPath::sample_at`, without re-flattening.
     #[must_use]
@@ -253,14 +399,9 @@ fn nearest_walk(polys: &[Vec<GPoint>], pt: GPoint) -> Option<f64> {
 /// Replicates `DocumentObject::evaluated_bounds` without re-evaluating.
 fn evaluated_bounds_for(obj: &DocumentObject, evaluated: &GPath) -> Option<[f64; 4]> {
     if obj.modifiers.iter().any(|m| m.enabled) {
-        evaluated.bounding_box().map(|r| {
-            [
-                r.x0,
-                r.y0,
-                r.width().max(1.0),
-                r.height().max(1.0),
-            ]
-        })
+        evaluated
+            .bounding_box()
+            .map(|r| [r.x0, r.y0, r.width().max(1.0), r.height().max(1.0)])
     } else {
         obj.bounds
     }

@@ -1,9 +1,29 @@
 //! Document and surface: one tree, stable IDs, JSON persistence.
 
 use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId, NATIVE_SCHEMA_VERSION};
+use petunia_design_geometry::{GAffine, GPath};
 use serde::{Deserialize, Serialize};
 
 use crate::document_object::DocumentObject;
+
+fn checked_local_transform(object: &DocumentObject) -> Result<GAffine, crate::GeometryFrameError> {
+    if object.shape.is_none() && object.modifiers.is_empty() && object.bounds.is_none() {
+        if !object.rotation.is_finite() {
+            return Err(crate::GeometryFrameError::NonFinite(object.id));
+        }
+        return Ok(GAffine::rotate(object.rotation));
+    }
+    let bounds = object
+        .bounds
+        .ok_or(crate::GeometryFrameError::MissingBounds(object.id))?;
+    if !bounds.iter().all(|value| value.is_finite()) || !object.rotation.is_finite() {
+        return Err(crate::GeometryFrameError::NonFinite(object.id));
+    }
+    if bounds[2] <= 0.0 || bounds[3] <= 0.0 {
+        return Err(crate::GeometryFrameError::InvalidBounds(object.id));
+    }
+    Ok(object.local_transform())
+}
 
 fn default_dimensions() -> [f64; 2] {
     [800.0, 600.0]
@@ -254,26 +274,140 @@ impl Document {
         false
     }
 
+    /// Computes the accumulated world affine transform with explicit frame validation.
+    pub fn world_transform_checked(
+        &self,
+        id: ObjectId,
+    ) -> Result<GAffine, crate::GeometryFrameError> {
+        let mut chain: Vec<(ObjectId, GAffine)> = Vec::new();
+        let mut current = Some(id);
+        while let Some(object_id) = current {
+            if chain.iter().any(|(visited, _)| *visited == object_id) {
+                return Err(crate::GeometryFrameError::HierarchyCycle(object_id));
+            }
+            let object = self
+                .find_object(object_id)
+                .ok_or(crate::GeometryFrameError::MissingObject(object_id))?;
+            let transform = checked_local_transform(object)?;
+            chain.push((object_id, transform));
+            current = object.parent;
+        }
+
+        let mut accumulated = GAffine::IDENTITY;
+        for (_, local) in chain.into_iter().rev() {
+            accumulated = accumulated.after(local);
+            if !accumulated.coeffs.iter().all(|value| value.is_finite()) {
+                return Err(crate::GeometryFrameError::NonFinite(id));
+            }
+        }
+        Ok(accumulated)
+    }
+
     /// Computes the accumulated world affine transform from root to this object.
+    ///
+    /// This compatibility wrapper preserves the existing `PetuniaError` API while
+    /// delegating validation to [`Self::world_transform_checked`].
     pub fn world_transform(
         &self,
         id: ObjectId,
-    ) -> Result<petunia_design_geometry::GAffine, PetuniaError> {
-        let mut chain = Vec::new();
-        let mut curr = Some(id);
-        while let Some(c) = curr {
-            let obj = self
-                .find_object(c)
-                .ok_or_else(|| PetuniaError::not_found(format!("object `{c}` not found")))?;
-            chain.push(obj.local_transform());
-            curr = obj.parent;
-        }
+    ) -> Result<GAffine, PetuniaError> {
+        self.world_transform_checked(id)
+            .map_err(|error| PetuniaError::invalid_input(error.to_string()))
+    }
 
-        let mut acc = petunia_design_geometry::GAffine::IDENTITY;
-        for local in chain.into_iter().rev() {
-            acc = acc.after(local);
+    /// Returns the object's base path projected into world/pasteboard space.
+    pub fn base_path_world(
+        &self,
+        id: ObjectId,
+    ) -> Result<GPath, crate::GeometryFrameError> {
+        let object = self
+            .find_object(id)
+            .ok_or(crate::GeometryFrameError::MissingObject(id))?;
+        let transform = self.world_transform_checked(id)?;
+        let path = object.base_path_local()?.transformed(transform);
+        if path.is_finite() {
+            Ok(path)
+        } else {
+            Err(crate::GeometryFrameError::NonFinite(id))
         }
-        Ok(acc)
+    }
+
+    /// Returns the object's evaluated path projected into world/pasteboard space.
+    pub fn evaluated_path_world(
+        &self,
+        id: ObjectId,
+    ) -> Result<GPath, crate::GeometryFrameError> {
+        let object = self
+            .find_object(id)
+            .ok_or(crate::GeometryFrameError::MissingObject(id))?;
+        let transform = self.world_transform_checked(id)?;
+        let path = object.evaluated_path_local()?.transformed(transform);
+        if path.is_finite() {
+            Ok(path)
+        } else {
+            Err(crate::GeometryFrameError::NonFinite(id))
+        }
+    }
+
+    /// Returns the nominal placement frame projected into world space.
+    pub fn frame_bounds_world(
+        &self,
+        id: ObjectId,
+    ) -> Result<[f64; 4], crate::GeometryFrameError> {
+        let object = self
+            .find_object(id)
+            .ok_or(crate::GeometryFrameError::MissingObject(id))?;
+        let bounds = match object.bounds {
+            Some(bounds) => bounds,
+            None if object.shape.is_none() && object.modifiers.is_empty() => {
+                return Ok([0.0, 0.0, 0.0, 0.0]);
+            }
+            None => return Err(crate::GeometryFrameError::MissingBounds(id)),
+        };
+        if !bounds.iter().all(|value| value.is_finite()) {
+            return Err(crate::GeometryFrameError::NonFinite(id));
+        }
+        if bounds[2] <= 0.0 || bounds[3] <= 0.0 {
+            return Err(crate::GeometryFrameError::InvalidBounds(id));
+        }
+        let transform = self.world_transform_checked(id)?;
+        let points = [
+            petunia_design_geometry::GPoint::new(0.0, 0.0),
+            petunia_design_geometry::GPoint::new(bounds[2], 0.0),
+            petunia_design_geometry::GPoint::new(bounds[2], bounds[3]),
+            petunia_design_geometry::GPoint::new(0.0, bounds[3]),
+        ]
+        .map(|point| transform.apply(point));
+        let min_x = points.iter().map(|point| point.x).fold(f64::INFINITY, f64::min);
+        let min_y = points.iter().map(|point| point.y).fold(f64::INFINITY, f64::min);
+        let max_x = points.iter().map(|point| point.x).fold(f64::NEG_INFINITY, f64::max);
+        let max_y = points.iter().map(|point| point.y).fold(f64::NEG_INFINITY, f64::max);
+        if !min_x.is_finite()
+            || !min_y.is_finite()
+            || !max_x.is_finite()
+            || !max_y.is_finite()
+        {
+            return Err(crate::GeometryFrameError::NonFinite(id));
+        }
+        Ok([min_x, min_y, max_x - min_x, max_y - min_y])
+    }
+
+    /// Returns the evaluated world-space bounds, or `None` for an empty path.
+    pub fn evaluated_bounds_world(
+        &self,
+        id: ObjectId,
+    ) -> Result<Option<[f64; 4]>, crate::GeometryFrameError> {
+        Ok(self.evaluated_path_world(id)?.bounding_box().map(|rect| {
+            [rect.x0, rect.y0, rect.width().max(1.0), rect.height().max(1.0)]
+        }))
+    }
+
+    /// Alias for the world-space bounds used by spatial queries and culling.
+    pub fn world_aabb(
+        &self,
+        id: ObjectId,
+    ) -> Result<Option<[f64; 4]>, crate::GeometryFrameError> {
+        self.evaluated_bounds_world(id)
     }
 
     /// Serializes the document to canonical JSON.
@@ -378,5 +512,163 @@ mod tests {
     fn unknown_schema_is_rejected() {
         let bad = r#"{"schema_version":999,"surfaces":[]}"#;
         assert!(Document::from_json(bad).is_err());
+    }
+
+    fn shape_object(
+        id: ObjectId,
+        bounds: [f64; 4],
+        rotation: f64,
+        shape: crate::ShapeKind,
+    ) -> DocumentObject {
+        let mut object = DocumentObject::new(id, "shape");
+        object.bounds = Some(bounds);
+        object.rotation = rotation;
+        object.shape = Some(shape);
+        object
+    }
+
+    #[test]
+    fn local_path_excludes_placement() {
+        let object = shape_object(
+            ObjectId::new(1),
+            [100.0, 200.0, 80.0, 40.0],
+            0.0,
+            crate::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            },
+        );
+        let local = object.base_path_local().expect("local path");
+        let bounds = local.bounding_box().expect("local bounds");
+        assert_eq!([bounds.x0, bounds.y0, bounds.width(), bounds.height()], [0.0, 0.0, 80.0, 40.0]);
+    }
+
+    #[test]
+    fn root_world_path_applies_placement_once() {
+        let mut document = Document::new();
+        let surface = Surface::with_objects(
+            petunia_design_foundation::SurfaceId::new(1),
+            "Page",
+            vec![shape_object(
+                ObjectId::new(2),
+                [100.0, 200.0, 80.0, 40.0],
+                0.0,
+                crate::ShapeKind::Rectangle {
+                    corner_radii: [0.0; 4],
+                },
+            )],
+        );
+        document.surfaces.push(surface);
+        let world = document
+            .base_path_world(ObjectId::new(2))
+            .expect("world path");
+        let bounds = world.bounding_box().expect("world bounds");
+        assert_eq!([bounds.x0, bounds.y0, bounds.width(), bounds.height()], [100.0, 200.0, 80.0, 40.0]);
+    }
+
+    #[test]
+    fn child_world_transform_composes_parent_placement() {
+        let mut document = Document::new();
+        let mut parent = shape_object(
+            ObjectId::new(2),
+            [100.0, 200.0, 200.0, 200.0],
+            0.0,
+            crate::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            },
+        );
+        let mut child = shape_object(
+            ObjectId::new(3),
+            [25.0, 30.0, 50.0, 40.0],
+            0.0,
+            crate::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            },
+        );
+        child.parent = Some(parent.id);
+        parent.children.push(child.id);
+        document.surfaces.push(Surface::with_objects(
+            petunia_design_foundation::SurfaceId::new(1),
+            "Page",
+            vec![parent, child],
+        ));
+        let world = document
+            .base_path_world(ObjectId::new(3))
+            .expect("world path");
+        let bounds = world.bounding_box().expect("world bounds");
+        assert_eq!([bounds.x0, bounds.y0, bounds.width(), bounds.height()], [125.0, 230.0, 50.0, 40.0]);
+    }
+
+    #[test]
+    fn hierarchy_cycle_is_diagnosed() {
+        let mut document = Document::new();
+        let mut parent = shape_object(
+            ObjectId::new(2),
+            [0.0, 0.0, 100.0, 100.0],
+            0.0,
+            crate::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            },
+        );
+        let mut child = shape_object(
+            ObjectId::new(3),
+            [10.0, 10.0, 20.0, 20.0],
+            0.0,
+            crate::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            },
+        );
+        child.parent = Some(parent.id);
+        parent.parent = Some(child.id);
+        parent.children.push(child.id);
+        child.children.push(parent.id);
+        document.surfaces.push(Surface::with_objects(
+            petunia_design_foundation::SurfaceId::new(1),
+            "Page",
+            vec![parent, child],
+        ));
+        assert!(matches!(
+            document.world_transform_checked(ObjectId::new(3)),
+            Err(crate::GeometryFrameError::HierarchyCycle(_))
+        ));
+    }
+
+    #[test]
+    fn ambiguous_legacy_path_requires_migration() {
+        let object = shape_object(
+            ObjectId::new(2),
+            [0.0, 0.0, 100.0, 100.0],
+            0.0,
+            crate::ShapeKind::Path(petunia_design_geometry::GPath::rect(
+                petunia_design_geometry::GRect::new(0.0, 0.0, 10.0, 10.0),
+                0.0,
+                0.0,
+            )),
+        );
+        assert!(matches!(
+            object.base_path_local(),
+            Err(crate::GeometryFrameError::AmbiguousPath(_))
+        ));
+    }
+
+    #[test]
+    fn ambiguous_legacy_modifier_requires_migration() {
+        let mut object = shape_object(
+            ObjectId::new(2),
+            [0.0, 0.0, 100.0, 100.0],
+            0.0,
+            crate::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            },
+        );
+        object.modifiers.push(crate::ModifierItem::enabled(
+            1,
+            crate::ModifierKind::Perspective {
+                quad: [[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0]],
+            },
+        ));
+        assert!(matches!(
+            object.evaluated_path_local(),
+            Err(crate::GeometryFrameError::AmbiguousModifier(_, "Perspective"))
+        ));
     }
 }

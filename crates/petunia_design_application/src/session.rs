@@ -257,7 +257,12 @@ impl DocumentSession {
 
     /// Switches the active editing surface.
     pub fn set_active_surface(&mut self, surface: SurfaceId) {
+        if self.active_surface == Some(surface) {
+            return;
+        }
         self.active_surface = Some(surface);
+        self.spatial.borrow_mut().clear();
+        self.geo_cache.borrow_mut().clear();
     }
 
     /// Current monotonic revision.
@@ -432,6 +437,53 @@ impl DocumentSession {
                 self.save_to(&path)?;
                 Ok(ChangeSet::empty())
             }
+            "ptnd.action.file.place" => {
+                let active_surface = self.active_surface().ok_or_else(|| {
+                    PetuniaError::invalid_input("no active surface to place image")
+                })?;
+                let path_buf = request_path(&request.payload)
+                    .or_else(|_| {
+                        request.payload
+                            .as_str()
+                            .filter(|s| !s.trim().is_empty())
+                            .map(std::path::PathBuf::from)
+                            .ok_or_else(|| PetuniaError::invalid_input("no path"))
+                    })
+                    .unwrap_or_else(|_| std::path::PathBuf::from("sample_image.png"));
+                let path = path_buf.to_string_lossy().to_string();
+                let id = self.next_object_id();
+                let name = path_buf
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Image")
+                    .to_string();
+                let mut bounds = [100.0, 100.0, 300.0, 200.0];
+                let mut data = None;
+                if let Ok(bytes) = std::fs::read(&path_buf) {
+                    if let Ok(imported) = petunia_design_io::import_raster(&bytes, 32 * 1024 * 1024) {
+                        bounds[2] = imported.width as f64;
+                        bounds[3] = imported.height as f64;
+                    }
+                    data = Some(bytes);
+                }
+                let shape = petunia_design_document::ShapeKind::Image {
+                    path,
+                    data,
+                };
+                let cmd = CommandRequest::new(Command::CreateShapeObject {
+                    surface: active_surface,
+                    id,
+                    name,
+                    shape,
+                    bounds: Some(bounds),
+                    fill: None,
+                    stroke: None,
+                    stroke_width: 0.0,
+                });
+                let changes = self.execute_command(cmd)?;
+                self.selection.selected_ids = vec![id];
+                Ok(changes)
+            }
             // View actions mutate view state, not the document, so they
             // return an empty ChangeSet: something observable happened, but
             // nothing entered history (15.B).
@@ -517,11 +569,22 @@ impl DocumentSession {
                 if groups.is_empty() {
                     return Ok(ChangeSet::empty());
                 }
+                let mut released_children = Vec::new();
+                for &gid in &groups {
+                    if let Some(group) = self.document.find_object(gid) {
+                        released_children.extend(group.children.iter().copied());
+                    }
+                }
                 let cmds = groups
                     .into_iter()
                     .map(|group_id| Command::Ungroup { group_id })
                     .collect();
-                self.transact("Ungroup", cmds)
+                let changes = self.transact("Ungroup", cmds)?;
+                if !released_children.is_empty() {
+                    self.selection.select_exact(released_children);
+                    self.prune_selection();
+                }
+                Ok(changes)
             }
             // Duplicate copies the selection with fresh identities and a small
             // visual offset, so the copy is distinguishable from the original.
@@ -840,8 +903,11 @@ impl DocumentSession {
         let mut has_bounds = false;
 
         for &id in &self.selection.selected_ids {
-            // Evaluated outline, memoized by revision (F1).
-            if let Some([x, y, w, h]) = self.cached_bounds(id) {
+            if let Some([x, y, w, h]) = self
+                .cached_world_bounds(id)
+                .or_else(|| self.cached_world_frame_bounds(id))
+                .or_else(|| self.cached_bounds(id))
+            {
                 has_bounds = true;
                 min_x = min_x.min(x);
                 min_y = min_y.min(y);
@@ -856,10 +922,28 @@ impl DocumentSession {
             None
         };
 
+        let (primary_bounds, primary_rotation, primary_transform) =
+            if self.selection.selected_ids.len() == 1 {
+                let id = self.selection.selected_ids[0];
+                if let Some(obj) = self.document.find_object(id) {
+                    let transform = self
+                        .cached_world_transform(id)
+                        .or_else(|| self.document.world_transform_checked(id).ok());
+                    (obj.bounds, obj.rotation, transform)
+                } else {
+                    (None, 0.0, None)
+                }
+            } else {
+                (None, 0.0, None)
+            };
+
         SelectionViewModel {
             selected_ids: self.selection.selected_ids.clone(),
             key_object,
             combined_bounds,
+            primary_bounds,
+            primary_rotation,
+            primary_transform,
             count,
             is_empty: count == 0,
         }

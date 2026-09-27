@@ -1,8 +1,48 @@
 //! Tests for PetuniaDesignGuiBridge, semantic application ports, and reactive presentation models.
 
 use petunia_design_application::{ActionId, ActionRequest, Command, CommandRequest};
-use petunia_design_foundation::IdGenerator;
+use petunia_design_foundation::{IdGenerator, ObjectId};
 use petunia_design_shell::bridge::*;
+use petunia_design_shell::shell::PetuniaShell;
+
+#[test]
+fn canvas_snapshot_uses_world_frame_and_rotation() {
+    let mut shell = PetuniaShell::new(1000.0, 800.0);
+    shell.new_document("World Frame").expect("new document");
+    let surface = shell.bridge.active_surface().expect("surface");
+    let id = ObjectId::new(1);
+
+    shell
+        .bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface,
+            id,
+            name: "Rotated".to_string(),
+        }))
+        .expect("create");
+    shell
+        .bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some([10.0, 20.0, 40.0, 30.0]),
+            rotation: std::f64::consts::FRAC_PI_2,
+        }))
+        .expect("frame");
+
+    let snapshot = shell.canvas_snapshot();
+    let object = snapshot
+        .objects
+        .iter()
+        .find(|object| object.id == id)
+        .expect("world object projection");
+    assert_eq!(object.frame_origin, [10.0, 20.0]);
+    assert_eq!(object.size, [40.0, 30.0]);
+    assert!((object.rotation - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
+    assert!((object.world_bounds[0] + 20.0).abs() < 1e-9);
+    assert!((object.world_bounds[1] - 20.0).abs() < 1e-9);
+    assert!((object.world_bounds[2] - 30.0).abs() < 1e-9);
+    assert!((object.world_bounds[3] - 40.0).abs() < 1e-9);
+}
 
 #[test]
 fn bridge_new_document_and_snapshot_lifecycle() {

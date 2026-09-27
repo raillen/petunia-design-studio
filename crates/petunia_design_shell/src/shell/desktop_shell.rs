@@ -153,7 +153,8 @@ impl PetuniaShell {
     }
 
     /// Collects all active visual overlays (handles, guides, pen curve previews).
-    pub fn overlays(&mut self) -> CanvasOverlays {
+    #[must_use]
+    pub fn overlays(&self) -> CanvasOverlays {
         let camera = self.view_camera();
         let mut ov = self.tools.overlays(&camera, &self.bridge);
         ov.snap_guides = self.snap.active_guides().to_vec();

@@ -9,7 +9,7 @@ use petunia_design_foundation::{ObjectId, PetuniaError};
 use petunia_design_geometry::{GPath, GPoint, PathVerb};
 
 use crate::bridge::PetuniaDesignGuiBridge;
-use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
+use crate::canvas::{CanvasOverlays, CursorAffordance, SnapEngine, ViewportCamera};
 
 use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase,
@@ -267,8 +267,22 @@ impl PencilTool {
     #[must_use]
     pub fn overlays(&self) -> CanvasOverlays {
         let mut overlays = CanvasOverlays::default();
+        overlays.cursor = CursorAffordance::Crosshair;
         if self.sampled_points.len() >= MIN_SAMPLES {
-            overlays.pen_preview = Some(self.sampled_points.clone());
+            if self.straight {
+                let first = self.sampled_points[0];
+                let last = *self.sampled_points.last().unwrap();
+                overlays.pen_preview = Some(vec![first, last]);
+            } else if self.sampled_points.len() >= 3 {
+                if let Ok(fitted) = fit_samples(&self.sampled_points, self.fidelity) {
+                    let is_closed = auto_close(&self.sampled_points, self.close_threshold_px);
+                    overlays.path_preview = Some(close_path(fitted, is_closed));
+                } else {
+                    overlays.pen_preview = Some(self.sampled_points.clone());
+                }
+            } else {
+                overlays.pen_preview = Some(self.sampled_points.clone());
+            }
         }
         overlays
     }
