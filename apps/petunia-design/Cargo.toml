@@ -1,0 +1,25 @@
+[package]
+name = "petunia-design"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "petunia-design"
+path = "src/main.rs"
+
+[dependencies]
+petunia_design_foundation = { path = "../../crates/petunia_design_foundation" }
+petunia_design_geometry = { path = "../../crates/petunia_design_geometry" }
+petunia_design_color = { path = "../../crates/petunia_design_color" }
+petunia_design_document = { path = "../../crates/petunia_design_document" }
+petunia_design_application = { path = "../../crates/petunia_design_application" }
+petunia_design_shell = { path = "../../crates/petunia_design_shell" }
+petunia_design_io = { path = "../../crates/petunia_design_io" }
+petunia_design_raster = { path = "../../crates/petunia_design_raster" }
+serde_json = { workspace = true }
+freya = "0.5.0-rc.7"
+freya-engine = "0.5.0-rc.7"
+
+[dev-dependencies]
+freya-testing = "0.5.0-rc.7"

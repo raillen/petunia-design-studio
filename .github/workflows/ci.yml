@@ -15,3 +15,23 @@ jobs:
           components: rustfmt, clippy
       - name: Fast deterministic gate
         run: cargo xtask verify
+
+  docs:
+    name: Living docs (i18n parity + zero dead links)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
+      - name: Install docs dependencies
+        run: pnpm --dir docs install --frozen-lockfile
+      - name: i18n parity (zero drift, SPEC-001)
+        run: node scripts/check-i18n.js
+      - name: VitePress build (ignoreDeadLinks false)
+        run: pnpm --dir docs run build

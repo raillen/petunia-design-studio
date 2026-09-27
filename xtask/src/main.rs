@@ -17,7 +17,7 @@ fn main() {
         "conformance" => cmd_conformance(&root),
         "fixtures" => cmd_fixtures(&root),
         "fuzz-smoke" => cmd_post_v1("fuzz-smoke", "cargo-fuzz corpus not wired in P00"),
-        "bench-smoke" => cmd_post_v1("bench-smoke", "Criterion benches not wired in P00"),
+        "bench-smoke" => cmd_bench_smoke(&root),
         "ui-gauntlet" => cmd_post_v1("ui-gauntlet", "GPUI shell does not exist in P00"),
         "security" => cmd_security(&root),
         "migrations" => cmd_post_v1("migrations", "schema v1 has no predecessors in P00"),
@@ -80,91 +80,91 @@ fn cmd_architecture(root: &Path) -> i32 {
     // Full 09.22 matrix is enforced as crates are added.
     let rules: &[(&str, &[&str])] = &[
         (
-            "aubrieta_foundation",
+            "petunia_design_foundation",
             &["gpui", "vello", "wgpu", "krilla", "mlua"],
         ),
         (
-            "aubrieta_document",
+            "petunia_design_document",
             &[
                 "gpui",
                 "vello",
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_io",
-                "aubrieta_shell",
+                "petunia_design_io",
+                "petunia_design_shell",
             ],
         ),
         (
-            "aubrieta_application",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_shell"],
+            "petunia_design_application",
+            &["gpui", "vello", "wgpu", "krilla", "petunia_design_shell"],
         ),
-        ("aubrieta_jobs", &["gpui", "vello", "wgpu"]),
+        ("petunia_design_jobs", &["gpui", "vello", "wgpu"]),
         (
-            "aubrieta_geometry",
+            "petunia_design_geometry",
             &[
                 "gpui",
                 "vello",
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_shell",
+                "petunia_design_shell",
             ],
         ),
         (
-            "aubrieta_color",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_shell"],
+            "petunia_design_color",
+            &["gpui", "vello", "wgpu", "krilla", "petunia_design_shell"],
         ),
         (
-            "aubrieta_evaluation",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_shell"],
+            "petunia_design_evaluation",
+            &["gpui", "vello", "wgpu", "krilla", "petunia_design_shell"],
         ),
-        ("aubrieta_render", &["gpui", "aubrieta_shell"]),
-        ("aubrieta_io", &["gpui", "aubrieta_shell"]),
+        ("petunia_design_render", &["gpui", "petunia_design_shell"]),
+        ("petunia_design_io", &["gpui", "petunia_design_shell"]),
         (
-            "aubrieta_text",
+            "petunia_design_text",
             &[
                 "gpui",
                 "vello",
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_shell",
+                "petunia_design_shell",
             ],
         ),
         (
-            "aubrieta_raster",
+            "petunia_design_raster",
             &[
                 "gpui",
                 "vello",
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_shell",
+                "petunia_design_shell",
             ],
         ),
         (
-            "aubrieta_resources",
+            "petunia_design_resources",
             &[
                 "gpui",
                 "vello",
                 "wgpu",
                 "krilla",
                 "mlua",
-                "aubrieta_shell",
+                "petunia_design_shell",
             ],
         ),
         (
-            "aubrieta_platform",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_shell"],
+            "petunia_design_platform",
+            &["gpui", "vello", "wgpu", "krilla", "petunia_design_shell"],
         ),
         (
-            "aubrieta_extension",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_shell"],
+            "petunia_design_extension",
+            &["gpui", "vello", "wgpu", "krilla", "petunia_design_shell"],
         ),
         (
-            "aubrieta_mcp",
-            &["gpui", "vello", "wgpu", "krilla", "aubrieta_shell"],
+            "petunia_design_mcp",
+            &["gpui", "vello", "wgpu", "krilla", "petunia_design_shell"],
         ),
     ];
     let mut failures = 0;
@@ -238,19 +238,41 @@ fn cmd_test(root: &Path) -> i32 {
 /// Headless CLI end-to-end for the P00 slice.
 fn cmd_conformance(root: &Path) -> i32 {
     println!("xtask conformance: headless CLI flow");
-    run_cargo(root, &["run", "-p", "aubrieta-cli"])
+    run_cargo(root, &["run", "-p", "petunia-design-cli"])
 }
 
 /// Fixture presence check (P00: schema + roundtrip covered by unit tests).
 fn cmd_fixtures(root: &Path) -> i32 {
     println!("xtask fixtures: checking tests/trees (P00: unit-level only)");
-    let dir = root.join("crates/aubrieta_document");
+    let dir = root.join("crates/petunia_design_document");
     if !dir.is_dir() {
         eprintln!("fixtures: missing {}", dir.display());
         return 1;
     }
     println!("fixtures: OK (unit fixtures only in P00)");
     0
+}
+
+fn cmd_bench_smoke(root: &Path) -> i32 {
+    println!("xtask bench-smoke: release canvas benchmark (500/2000 objects)");
+    run_cargo(
+        root,
+        &[
+            "run",
+            "--release",
+            "-p",
+            "petunia_design_testkit",
+            "--bin",
+            "canvas-benchmark",
+            "--",
+            "--objects",
+            "500,2000",
+            "--iterations",
+            "5",
+            "--warmup",
+            "2",
+        ],
+    )
 }
 
 /// Dependency/security smoke: cargo audit when available, plus an
@@ -293,17 +315,66 @@ fn cmd_security(root: &Path) -> i32 {
     0
 }
 
-/// Documentation presence: canonical docs + authority map parse check.
+/// Living documentation (SPEC-001): presence + i18n parity, plus the
+/// VitePress dead-link gate when docs dependencies are installed.
 fn cmd_docs(root: &Path) -> i32 {
-    println!("xtask docs: presence check");
+    println!("xtask docs: presence + i18n parity (SPEC-001)");
     for required in ["docs/AUTHORITY_MAP.json", "docs/glossary.json", "AGENTS.md"] {
         if !root.join(required).exists() {
             eprintln!("docs: missing {required}");
             return 1;
         }
     }
-    println!("docs: OK (VitePress + pt-BR sync is a later wave)");
-    0
+    // Zero-drift parity: pure node, no npm dependencies required.
+    match Command::new("node")
+        .args(["scripts/check-i18n.js"])
+        .current_dir(root)
+        .status()
+    {
+        Ok(status) if status.success() => {}
+        Ok(status) => {
+            eprintln!(
+                "docs: i18n parity failed (exit {})",
+                status.code().unwrap_or(1)
+            );
+            return 1;
+        }
+        Err(error) => {
+            eprintln!("docs: node unavailable ({error}); parity unchecked");
+            return 0;
+        }
+    }
+    // Dead-link gate (ignoreDeadLinks: false): only when docs deps exist.
+    if !root.join("docs/node_modules/.bin/vitepress").exists() {
+        println!("docs: OK (parity green; build unchecked — `pnpm install` in docs/)");
+        return 0;
+    }
+    let manager = if root.join("docs/pnpm-lock.yaml").exists() {
+        "pnpm"
+    } else {
+        "npm"
+    };
+    match Command::new(manager)
+        .args(["run", "build"])
+        .current_dir(root.join("docs"))
+        .status()
+    {
+        Ok(status) if status.success() => {
+            println!("docs: OK (parity green, build green)");
+            0
+        }
+        Ok(status) => {
+            eprintln!(
+                "docs: vitepress build failed (exit {})",
+                status.code().unwrap_or(1)
+            );
+            1
+        }
+        Err(error) => {
+            eprintln!("docs: failed to run {manager} build: {error}");
+            1
+        }
+    }
 }
 
 /// Changed-scope gauntlet for P00: verify + conformance + fixtures + docs.

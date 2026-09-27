@@ -1,5 +1,5 @@
 [build]
-target-dir = "/home/raillen/.cargo-targets/aubrieta"
+target-dir = "/home/raillen/.cargo-targets/tools-integration"
 
 [alias]
 xtask = "run -p xtask --"
