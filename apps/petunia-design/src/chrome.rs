@@ -290,6 +290,17 @@ impl Component for DocumentTabStrip {
             .unwrap_or_else(|| "Magnético".to_string());
         let snapping = session.is_some_and(|s| s.view.snapping_enabled);
         let rulers_on = session.is_some_and(|s| s.view.rulers_visible);
+        let soft_proof = *ui.soft_proof.read();
+        let mut soft_proof_toggle = ui.soft_proof;
+        let channel_idx = *ui.channel_view.read();
+        let mut channel_toggle = ui.channel_view;
+        let channel_label = match channel_idx {
+            1 => "Canal: R",
+            2 => "Canal: G",
+            3 => "Canal: B",
+            4 => "Canal: Alfa",
+            _ => "Canal: RGB",
+        };
         let mut shell = ui.shell;
         let mut new_doc_open = ui.new_doc_open;
         let mut confirm_close_open = ui.confirm_close_open;
@@ -404,6 +415,60 @@ impl Component for DocumentTabStrip {
                                 label()
                                     .text("Ajustar")
                                     .color(theme::TEXT_SECONDARY)
+                                    .font_size(theme::CAPTION_SIZE),
+                            ),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .spacing(theme::SPACE_1)
+                            .cross_align(Alignment::Center)
+                            .background(if soft_proof {
+                                theme::SURFACE_PANEL
+                            } else {
+                                Color::TRANSPARENT
+                            })
+                            .padding(Gaps::new_symmetric(2., 5.))
+                            .corner_radius(CornerRadius::new_all(3.))
+                            .on_press(move |_| {
+                                let current = *soft_proof_toggle.read();
+                                soft_proof_toggle.set(!current);
+                            })
+                            .child(
+                                label()
+                                    .text(if soft_proof { "Prova: SWOP" } else { "Prova: Off" })
+                                    .color(if soft_proof {
+                                        theme::ACCENT_BLOOM
+                                    } else {
+                                        theme::TEXT_TERTIARY
+                                    })
+                                    .font_size(theme::CAPTION_SIZE),
+                            ),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .spacing(theme::SPACE_1)
+                            .cross_align(Alignment::Center)
+                            .background(if channel_idx != 0 {
+                                theme::SURFACE_PANEL
+                            } else {
+                                Color::TRANSPARENT
+                            })
+                            .padding(Gaps::new_symmetric(2., 5.))
+                            .corner_radius(CornerRadius::new_all(3.))
+                            .on_press(move |_| {
+                                let next = (*channel_toggle.read() + 1) % 5;
+                                channel_toggle.set(next);
+                            })
+                            .child(
+                                label()
+                                    .text(channel_label)
+                                    .color(if channel_idx != 0 {
+                                        theme::STUDIO_DESIGN
+                                    } else {
+                                        theme::TEXT_TERTIARY
+                                    })
                                     .font_size(theme::CAPTION_SIZE),
                             ),
                     ),

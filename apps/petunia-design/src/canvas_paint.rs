@@ -35,6 +35,8 @@ pub fn paint_raster_tile(
     tile: &petunia_design_raster::Tile,
     camera: &ViewportCamera,
     adjustments: &[petunia_design_document::adjustments::AdjustmentItem],
+    soft_proof: bool,
+    channel_view: usize,
 ) {
     let mut rgba8 = match tile.format {
         petunia_design_raster::PixelFormat::Rgba8 => tile.data.clone(),
@@ -54,17 +56,29 @@ pub fn paint_raster_tile(
             out
         }
     };
-    if !adjustments.is_empty() {
+    if !adjustments.is_empty() || soft_proof || channel_view != 0 {
         for chunk in rgba8.chunks_exact_mut(4) {
-            let rgb = [
+            let mut rgb = [
                 chunk[0] as f32 / 255.0,
                 chunk[1] as f32 / 255.0,
                 chunk[2] as f32 / 255.0,
             ];
-            let adjusted = petunia_design_document::adjustments::apply_adjustment_chain(rgb, adjustments);
-            chunk[0] = (adjusted[0].clamp(0.0, 1.0) * 255.0).round() as u8;
-            chunk[1] = (adjusted[1].clamp(0.0, 1.0) * 255.0).round() as u8;
-            chunk[2] = (adjusted[2].clamp(0.0, 1.0) * 255.0).round() as u8;
+            let a = chunk[3] as f32 / 255.0;
+            if !adjustments.is_empty() {
+                rgb = petunia_design_document::adjustments::apply_adjustment_chain(rgb, adjustments);
+            }
+            let (r, g, b, a_out) = apply_color_proof_and_channels(
+                rgb[0],
+                rgb[1],
+                rgb[2],
+                a,
+                soft_proof,
+                channel_view,
+            );
+            chunk[0] = (r.clamp(0.0, 1.0) * 255.0).round() as u8;
+            chunk[1] = (g.clamp(0.0, 1.0) * 255.0).round() as u8;
+            chunk[2] = (b.clamp(0.0, 1.0) * 255.0).round() as u8;
+            chunk[3] = (a_out.clamp(0.0, 1.0) * 255.0).round() as u8;
         }
     }
     let Some(image) = make_skia_image_from_rgba8(
@@ -125,13 +139,43 @@ const GUIDE: Color = Color::from_rgb(0xF0, 0x6C, 0x8D);
 /// Subtractive / Alt-carve colour.
 const SUBTRACTIVE: Color = Color::from_rgb(0xF0, 0x6C, 0x8D);
 
+/// Transforms an sRGB color with alpha through soft-proofing simulation and channel isolation.
+pub fn apply_color_proof_and_channels(
+    mut r: f32,
+    mut g: f32,
+    mut b: f32,
+    a: f32,
+    soft_proof: bool,
+    channel_view: usize,
+) -> (f32, f32, f32, f32) {
+    if soft_proof {
+        use petunia_design_color::proof::{ColorManagementProvider, DefaultColorManagementProvider, ProofContext};
+        use petunia_design_color::{ColorValue, Srgb};
+        let provider = DefaultColorManagementProvider::default();
+        let ctx = ProofContext::for_profile("US Web Coated (SWOP) v2");
+        let (simulated, _) = provider.soft_proof(&ColorValue::Rgb(Srgb::clamped(r, g, b)), &ctx);
+        r = simulated.r;
+        g = simulated.g;
+        b = simulated.b;
+    }
+    match channel_view {
+        1 => (r, r, r, a),         // Red channel monochrome
+        2 => (g, g, g, a),         // Green channel monochrome
+        3 => (b, b, b, a),         // Blue channel monochrome
+        4 => (a, a, a, 1.0),       // Alpha channel mask (white = opaque, black = transparent)
+        _ => (r, g, b, a),         // Full RGB
+    }
+}
+
 /// Builds the canvas element that paints a whole scene in one pass.
 pub fn canvas_view(
     snapshot: CanvasSnapshot,
     in_flight_guide: Option<(petunia_design_document::GuideOrientation, f64)>,
+    soft_proof: bool,
+    channel_view: usize,
 ) -> Canvas {
     let on_render = RenderCallback::new(move |context: &mut CanvasContext| {
-        paint_scene(&snapshot, context, in_flight_guide);
+        paint_scene(&snapshot, context, in_flight_guide, soft_proof, channel_view);
     });
     canvas(on_render)
         .width(Size::fill())
@@ -143,11 +187,13 @@ fn paint_scene(
     snapshot: &CanvasSnapshot,
     context: &mut CanvasContext,
     in_flight_guide: Option<(petunia_design_document::GuideOrientation, f64)>,
+    soft_proof: bool,
+    channel_view: usize,
 ) {
     let canvas = context.canvas;
-    paint_surface(canvas, snapshot.surface.as_ref(), &snapshot.camera);
+    paint_surface(canvas, snapshot.surface.as_ref(), &snapshot.camera, soft_proof, channel_view);
     for object in &snapshot.objects {
-        paint_object(canvas, object, &snapshot.camera);
+        paint_object(canvas, object, &snapshot.camera, soft_proof, channel_view);
     }
     paint_overlays(canvas, &snapshot.overlays, snapshot.surface.as_ref(), &snapshot.camera);
     if let Some((orient, pos)) = in_flight_guide {
@@ -185,7 +231,13 @@ fn paint_scene(
 }
 
 /// Fills the pasteboard behind the artwork.
-fn paint_surface(canvas: &SkiaCanvas, surface: Option<&SurfaceView>, camera: &ViewportCamera) {
+fn paint_surface(
+    canvas: &SkiaCanvas,
+    surface: Option<&SurfaceView>,
+    camera: &ViewportCamera,
+    soft_proof: bool,
+    channel_view: usize,
+) {
     let Some(surface) = surface else {
         return;
     };
@@ -195,7 +247,16 @@ fn paint_surface(canvas: &SkiaCanvas, surface: Option<&SurfaceView>, camera: &Vi
     let mut paint = Paint::default();
     paint.set_anti_alias(true);
     paint.set_style(PaintStyle::Fill);
-    paint.set_color(Color::from_rgb(0xE2, 0xE4, 0xE8));
+    let (r, g, b, a) = apply_color_proof_and_channels(
+        0xE2 as f32 / 255.0,
+        0xE4 as f32 / 255.0,
+        0xE8 as f32 / 255.0,
+        1.0,
+        soft_proof,
+        channel_view,
+    );
+    let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
+    paint.set_color(Color::from_argb(channel(a), channel(r), channel(g), channel(b)));
     canvas.draw_rect(
         SkRect::new(
             top_left.x as f32,
@@ -216,9 +277,11 @@ fn paint_object(
     canvas: &SkiaCanvas,
     object: &CanvasObjectProjection,
     camera: &ViewportCamera,
+    soft_proof: bool,
+    channel_view: usize,
 ) {
     for tile in &object.raster_tiles {
-        paint_raster_tile(canvas, tile, camera, &object.adjustments);
+        paint_raster_tile(canvas, tile, camera, &object.adjustments, soft_proof, channel_view);
     }
     let opacity = object.opacity.clamp(0.0, 1.0) as f32;
     if let Some(path) = object.outline.as_ref() {
@@ -261,6 +324,8 @@ fn paint_object(
                         Some(color),
                         final_opacity,
                         &object.adjustments,
+                        soft_proof,
+                        channel_view,
                     ));
                     canvas.save();
                     canvas.translate((dx, dy));
@@ -280,6 +345,8 @@ fn paint_object(
                     Some(fill_token),
                     opacity,
                     &object.adjustments,
+                    soft_proof,
+                    channel_view,
                 ));
                 canvas.draw_path(&sk_path, &paint);
             }
@@ -308,6 +375,8 @@ fn paint_object(
                         Some(color),
                         final_opacity,
                         &object.adjustments,
+                        soft_proof,
+                        channel_view,
                     ));
                     canvas.save();
                     canvas.clip_path(&sk_path, None, true);
@@ -331,6 +400,8 @@ fn paint_object(
                         Some(stroke_token),
                         opacity,
                         &object.adjustments,
+                        soft_proof,
+                        channel_view,
                     ));
                     canvas.draw_path(&sk_path, &paint);
                 }
@@ -346,7 +417,16 @@ fn paint_object(
         ..
     }) = object.shape.as_ref()
     {
-        paint_text_object(canvas, object, content, *font_size, camera, opacity);
+        paint_text_object(
+            canvas,
+            object,
+            content,
+            *font_size,
+            camera,
+            opacity,
+            soft_proof,
+            channel_view,
+        );
     } else if let Some(petunia_design_document::ShapeKind::Image {
         path,
         data,
@@ -364,6 +444,8 @@ fn paint_text_object(
     font_size: f64,
     camera: &ViewportCamera,
     opacity: f32,
+    soft_proof: bool,
+    channel_view: usize,
 ) {
     if content.is_empty() {
         return;
@@ -385,7 +467,13 @@ fn paint_text_object(
     text_paint.set_anti_alias(true);
     text_paint.set_style(PaintStyle::Fill);
     let color_token = object.fill.as_deref().or(Some("ptnd.gray/900"));
-    text_paint.set_color(resolve_color(color_token, opacity));
+    text_paint.set_color(resolve_color_with_adjustments(
+        color_token,
+        opacity,
+        &object.adjustments,
+        soft_proof,
+        channel_view,
+    ));
 
     canvas.draw_str(
         content,
@@ -434,24 +522,34 @@ fn build_skia_path(path: &GPath, camera: &ViewportCamera) -> Path {
 }
 
 /// Resolves a design-token into a Skia color with opacity and optional tonal adjustments (Spec 10.10).
+#[allow(dead_code)]
 fn resolve_color(token: Option<&str>, opacity: f32) -> Color {
-    resolve_color_with_adjustments(token, opacity, &[])
+    resolve_color_with_adjustments(token, opacity, &[], false, 0)
 }
 
-/// Resolves a design-token and applies non-destructive tonal adjustments.
+/// Resolves a design-token and applies non-destructive tonal adjustments, soft-proofing and channel view.
 fn resolve_color_with_adjustments(
     token: Option<&str>,
     opacity: f32,
     adjustments: &[petunia_design_document::adjustments::AdjustmentItem],
+    soft_proof: bool,
+    channel_view: usize,
 ) -> Color {
     let mut rgb = token
         .map_or([0.18, 0.5, 0.97], petunia_design_document::resolve_color_to_rgb);
     if !adjustments.is_empty() {
         rgb = petunia_design_document::adjustments::apply_adjustment_chain(rgb, adjustments);
     }
+    let (r, g, b, a) = apply_color_proof_and_channels(
+        rgb[0],
+        rgb[1],
+        rgb[2],
+        opacity.clamp(0.0, 1.0),
+        soft_proof,
+        channel_view,
+    );
     let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
-    let alpha = (opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
-    Color::from_argb(alpha, channel(rgb[0]), channel(rgb[1]), channel(rgb[2]))
+    Color::from_argb(channel(a), channel(r), channel(g), channel(b))
 }
 
 /// Paints overlays in one ordered pass, above the artwork.
@@ -1346,3 +1444,68 @@ fn paint_rulers(canvas: &SkiaCanvas, camera: &ViewportCamera) {
         curr_y += doc_step;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_channel_view_isolation() {
+        let (r, g, b, a) = (0.8, 0.5, 0.2, 0.9);
+
+        // 0: Full RGB composite
+        let out0 = apply_color_proof_and_channels(r, g, b, a, false, 0);
+        assert_eq!(out0, (0.8, 0.5, 0.2, 0.9));
+
+        // 1: Red channel monochrome
+        let out1 = apply_color_proof_and_channels(r, g, b, a, false, 1);
+        assert_eq!(out1, (0.8, 0.8, 0.8, 0.9));
+
+        // 2: Green channel monochrome
+        let out2 = apply_color_proof_and_channels(r, g, b, a, false, 2);
+        assert_eq!(out2, (0.5, 0.5, 0.5, 0.9));
+
+        // 3: Blue channel monochrome
+        let out3 = apply_color_proof_and_channels(r, g, b, a, false, 3);
+        assert_eq!(out3, (0.2, 0.2, 0.2, 0.9));
+
+        // 4: Alpha channel mask (monochrome 1.0 opacity)
+        let out4 = apply_color_proof_and_channels(r, g, b, a, false, 4);
+        assert_eq!(out4, (0.9, 0.9, 0.9, 1.0));
+    }
+
+    #[test]
+    fn test_soft_proof_gamut_simulation() {
+        // High saturation neon cyan
+        let (r, g, b, a) = (0.0, 1.0, 1.0, 1.0);
+
+        let unproofed = apply_color_proof_and_channels(r, g, b, a, false, 0);
+        assert_eq!(unproofed, (0.0, 1.0, 1.0, 1.0));
+
+        let proofed = apply_color_proof_and_channels(r, g, b, a, true, 0);
+        // Press CMYK gamut compression alters the unprintable pure RGB neon cyan
+        assert_ne!(proofed.0, unproofed.0);
+        assert!(proofed.0 >= 0.0 && proofed.0 <= 1.0);
+        assert!(proofed.1 >= 0.0 && proofed.1 <= 1.0);
+        assert!(proofed.2 >= 0.0 && proofed.2 <= 1.0);
+    }
+
+    #[test]
+    fn test_resolve_color_with_proof_and_channels() {
+        let col_normal = resolve_color_with_adjustments(Some("ptnd.gray/900"), 1.0, &[], false, 0);
+        let col_red = resolve_color_with_adjustments(Some("ptnd.gray/900"), 1.0, &[], false, 1);
+        let col_alpha = resolve_color_with_adjustments(Some("ptnd.gray/900"), 0.5, &[], false, 4);
+
+        // Alpha channel view converts 50% opacity into a 50% gray opaque mask
+        assert_eq!(col_alpha.a(), 255);
+        assert_eq!(col_alpha.r(), 128);
+        assert_eq!(col_alpha.g(), 128);
+        assert_eq!(col_alpha.b(), 128);
+
+        // Red channel view renders identical R, G, B channels
+        assert_eq!(col_red.r(), col_red.g());
+        assert_eq!(col_red.g(), col_red.b());
+        assert_eq!(col_normal.a(), 255);
+    }
+}
+

@@ -106,8 +106,8 @@ Modificadores transformam a geometria e a renderização em tempo de execução 
 | **Exposure (Exposição)** | `V1 Required` | ✅ Implementado | ✅ Exposto | Multiplicador de paradas EV, deslocamento de preto e expoente de gama. |
 | **White Balance (Balanço Branco)**| `V1 Required` | ✅ Implementado | ✅ Exposto | Ajustes cromáticos de temperatura (quente/frio) e matiz (verde/magenta). |
 | **Histogram (Histograma)** | `V1 Required` | ✅ Implementado | ✅ Exposto | Widget interativo multi-canal com 32 barras de frequência (RGB, Vermelho, Verde, Azul, Luminância), média tonal e distribuição de sombras, tons médios e realces na aba Propriedades/Ajustes do Dock. |
-| **Channel View (Canais)** | `V1 Required` | ⚠️ Lógica base | ❌ Ausente | Inspeção não-mutante de componentes Vermelho, Verde, Azul e Alfa. |
-| **Soft Proofing (Prova de Cor)** | `V1 Required` | ✅ Em `petunia_color`| ❌ Ausente | Alternador na barra/menu de visualização simulando perfis ICC de impressão. |
+| **Channel View (Canais)** | `V1 Required` | ✅ Implementado | ✅ Exposto | Inspeção semântica não-mutante de componentes (RGB, Vermelho, Verde, Azul, Alfa) com alternador rápido na DocumentTabStrip e renderização de máscara monocromática em tempo real no Skia. |
+| **Soft Proofing (Prova de Cor)** | `V1 Required` | ✅ Implementado | ✅ Exposto | Alternador rápido na DocumentTabStrip simulando perfil gráfico US Web Coated (SWOP) v2 via `petunia_design_color::proof` com reprodução direta na tela. |
 
 ---
 

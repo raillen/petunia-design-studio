@@ -301,6 +301,8 @@ pub struct UiShell {
     pub export_open: State<bool>,
     pub confirm_close_open: State<bool>,
     pub dock_width: State<f32>,
+    pub soft_proof: State<bool>,
+    pub channel_view: State<usize>,
 }
 
 impl PartialEq for UiShell {
@@ -325,6 +327,8 @@ impl PartialEq for UiShell {
             && self.export_open == other.export_open
             && self.confirm_close_open == other.confirm_close_open
             && self.dock_width == other.dock_width
+            && self.soft_proof == other.soft_proof
+            && self.channel_view == other.channel_view
     }
 }
 
@@ -352,6 +356,8 @@ impl UiShell {
         export_open: State<bool>,
         confirm_close_open: State<bool>,
         dock_width: State<f32>,
+        soft_proof: State<bool>,
+        channel_view: State<usize>,
     ) -> Self {
         Self {
             shell,
@@ -374,6 +380,8 @@ impl UiShell {
             export_open,
             confirm_close_open,
             dock_width,
+            soft_proof,
+            channel_view,
         }
     }
 
@@ -434,6 +442,8 @@ impl UiShell {
         let export_open = use_state(|| false);
         let confirm_close_open = use_state(|| false);
         let dock_width = use_state(|| 320.0f32);
+        let soft_proof = use_state(|| false);
+        let channel_view = use_state(|| 0usize);
         Self::new(
             shell,
             open_family,
@@ -455,6 +465,8 @@ impl UiShell {
             export_open,
             confirm_close_open,
             dock_width,
+            soft_proof,
+            channel_view,
         )
     }
 }

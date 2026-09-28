@@ -431,7 +431,12 @@ impl Component for Workspace {
                 }
             })
             .child(
-                canvas_paint::canvas_view(snapshot, in_flight_guide)
+                canvas_paint::canvas_view(
+                    snapshot,
+                    in_flight_guide,
+                    *self.0.soft_proof.read(),
+                    *self.0.channel_view.read(),
+                )
                     .on_pointer_down({
                         move |event| {
                             a11y_id.request_focus();

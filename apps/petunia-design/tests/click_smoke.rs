@@ -80,6 +80,8 @@ fn mount() -> (
             let export_open = use_state(|| false);
             let confirm_close_open = use_state(|| false);
             let dock_width = use_state(|| 240.0f32);
+            let soft_proof = use_state(|| false);
+            let channel_view = use_state(|| 0usize);
             let ui = UiShell::new(
                 shell,
                 open_family,
@@ -101,6 +103,8 @@ fn mount() -> (
                 export_open,
                 confirm_close_open,
                 dock_width,
+                soft_proof,
+                channel_view,
             );
             seen_hook.replace(Some((shell, open_family, customize_open)));
             AppChrome(ui)

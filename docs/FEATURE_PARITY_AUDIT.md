@@ -106,8 +106,8 @@ Modifiers alter geometry and rendering without destroying the original parametri
 | **Exposure** | `V1 Required` | ✅ Implemented | ✅ Exposed | EV stop multiplier, black offset, and gamma power exponent controls. |
 | **White Balance** | `V1 Required` | ✅ Implemented | ✅ Exposed | Temperature (warm/cool) and tint (green/magenta) chromatic adjustments. |
 | **Histogram** | `V1 Required` | ✅ Implemented | ✅ Exposed | Interactive multi-channel 32-bin histogram widget (RGB, Red, Green, Blue, Luminance) with mean, shadows %, midtones %, and highlights % stats in Dock adjustments/properties tab. |
-| **Channel View** | `V1 Required` | ⚠️ Core logic | ❌ Absent | Non-mutating semantic channel inspection (Red, Green, Blue, Alpha). |
-| **Soft Proofing** | `V1 Required` | ✅ In `petunia_color` | ❌ Absent | View menu toggle to simulate ICC print color gamut on canvas. |
+| **Channel View** | `V1 Required` | ✅ Implemented | ✅ Exposed | Non-mutating semantic channel inspection (RGB, Red, Green, Blue, Alpha) with quick toggle on Document Tab Strip and real-time monochrome channel mask rendering. |
+| **Soft Proofing** | `V1 Required` | ✅ Implemented | ✅ Exposed | Quick toggle on Document Tab Strip simulating US Web Coated (SWOP) v2 press gamut via `petunia_design_color::proof` with live Skia canvas reproduction. |
 
 ---
 
