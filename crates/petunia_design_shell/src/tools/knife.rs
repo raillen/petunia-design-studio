@@ -6,10 +6,13 @@
 use petunia_design_application::Command;
 use petunia_design_document::{ChangeSet, ShapeKind};
 use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
-use petunia_design_geometry::GPoint;
+use petunia_design_geometry::{GPoint, GRect};
 
 use crate::bridge::PetuniaDesignGuiBridge;
-use crate::canvas::{CanvasOverlays, CursorAffordance, SnapEngine, ViewportCamera};
+use crate::canvas::{
+    CanvasOverlays, CursorAffordance, SelectionHandle, SelectionHandleKind, SnapEngine,
+    ViewportCamera,
+};
 
 use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase,
@@ -236,6 +239,20 @@ impl KnifeTool {
                     .is_some();
                 if hovered_sliceable {
                     overlays.cursor = CursorAffordance::Pointer;
+                    if let Some(hover) = self.hover_doc {
+                        let s = camera.doc_to_screen(hover);
+                        let half_sz = 4.0;
+                        overlays.handles.push(SelectionHandle {
+                            kind: SelectionHandleKind::NodeCuspSelected,
+                            doc_point: hover,
+                            screen_hit_box: GRect::new(
+                                s.x - half_sz,
+                                s.y - half_sz,
+                                s.x + half_sz,
+                                s.y + half_sz,
+                            ),
+                        });
+                    }
                 } else {
                     overlays.cursor = CursorAffordance::Crosshair;
                 }

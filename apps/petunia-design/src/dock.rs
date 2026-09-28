@@ -481,6 +481,18 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         })
     });
 
+    let inner_shadow_effect = selected_obj.as_ref().and_then(|obj| {
+        obj.appearance.as_ref().and_then(|app| {
+            app.effects.iter().find_map(|e| {
+                if let petunia_design_document::EffectKind::InnerShadow { offset, blur, color, opacity } = &e.kind {
+                    Some((e.id, *offset, *blur, color.clone(), *opacity, e.visible))
+                } else {
+                    None
+                }
+            })
+        })
+    });
+
     let sharpen_effect = selected_obj.as_ref().and_then(|obj| {
         obj.appearance.as_ref().and_then(|app| {
             app.effects.iter().find_map(|e| {
@@ -865,6 +877,7 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                         .child(blur_adjust_button(shell, first_id, "-1pt", -1.0))
                         .child(blur_adjust_button(shell, first_id, "+1pt", 1.0))
                         .child(blur_adjust_button(shell, first_id, "+5pt", 5.0))
+                        .child(toggle_blur_button(shell, first_id))
                         .child(remove_blur_button(
                             shell,
                             first_id,
@@ -874,36 +887,99 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         )
         .child(
             rect()
-                .direction(Direction::Horizontal)
+                .direction(Direction::Vertical)
                 .width(Size::fill())
-                .main_align(Alignment::SpaceBetween)
-                .cross_align(Alignment::Center)
+                .spacing(3.)
                 .child(
-                    label()
-                        .text(match drop_shadow_effect {
-                            Some((_, offset, blur, _, _, true)) => {
-                                format!("Sombra: Desf {:.0}pt | Dist {:.0}pt", blur, offset[0])
-                            }
-                            Some((_, _offset, blur, _, _, false)) => {
-                                format!("Sombra (Oculta): Desf {:.0}pt", blur)
-                            }
-                            None => "Sombra: Nenhuma".to_string(),
-                        })
-                        .font_size(11.)
-                        .color(theme::TEXT_SECONDARY),
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .width(Size::fill())
+                        .main_align(Alignment::SpaceBetween)
+                        .cross_align(Alignment::Center)
+                        .child(
+                            label()
+                                .text(match drop_shadow_effect {
+                                    Some((_, offset, blur, _, op, true)) => {
+                                        format!("Sombra Ext: Desf {:.0} | Dx {:.0} | Dy {:.0} | Op {:.0}%", blur, offset[0], offset[1], op * 100.0)
+                                    }
+                                    Some((_, _, blur, _, _, false)) => {
+                                        format!("Sombra Ext (Oculta): Desf {:.0}pt", blur)
+                                    }
+                                    None => "Sombra Ext: Nenhuma".to_string(),
+                                })
+                                .font_size(11.)
+                                .color(theme::TEXT_SECONDARY),
+                        )
+                        .child(
+                            rect()
+                                .direction(Direction::Horizontal)
+                                .spacing(2.)
+                                .child(toggle_drop_shadow_button(shell, first_id))
+                                .child(remove_shadow_button(
+                                    shell,
+                                    first_id,
+                                    drop_shadow_effect.map(|(id, ..)| id).unwrap_or(102),
+                                )),
+                        ),
                 )
                 .child(
                     rect()
                         .direction(Direction::Horizontal)
                         .spacing(2.)
-                        .child(shadow_dist_button(shell, first_id, "Dist -2", -2.0))
-                        .child(shadow_dist_button(shell, first_id, "Dist +2", 2.0))
-                        .child(shadow_blur_button(shell, first_id, "Desf +2", 2.0))
-                        .child(remove_shadow_button(
-                            shell,
-                            first_id,
-                            drop_shadow_effect.map(|(id, ..)| id).unwrap_or(102),
-                        )),
+                        .child(drop_shadow_adjust_button(shell, first_id, "Dx -2", -2.0, 0.0, 0.0, 0.0))
+                        .child(drop_shadow_adjust_button(shell, first_id, "Dx +2", 2.0, 0.0, 0.0, 0.0))
+                        .child(drop_shadow_adjust_button(shell, first_id, "Dy -2", 0.0, -2.0, 0.0, 0.0))
+                        .child(drop_shadow_adjust_button(shell, first_id, "Dy +2", 0.0, 2.0, 0.0, 0.0))
+                        .child(drop_shadow_adjust_button(shell, first_id, "Desf +2", 0.0, 0.0, 2.0, 0.0))
+                        .child(drop_shadow_adjust_button(shell, first_id, "Op +10%", 0.0, 0.0, 0.0, 0.10)),
+                ),
+        )
+        .child(
+            rect()
+                .direction(Direction::Vertical)
+                .width(Size::fill())
+                .spacing(3.)
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .width(Size::fill())
+                        .main_align(Alignment::SpaceBetween)
+                        .cross_align(Alignment::Center)
+                        .child(
+                            label()
+                                .text(match inner_shadow_effect {
+                                    Some((_, offset, blur, _, op, true)) => {
+                                        format!("Sombra Int: Desf {:.0} | Dist {:.0} | Op {:.0}%", blur, offset[0], op * 100.0)
+                                    }
+                                    Some((_, _, blur, _, _, false)) => {
+                                        format!("Sombra Int (Oculta): Desf {:.0}pt", blur)
+                                    }
+                                    None => "Sombra Int: Nenhuma".to_string(),
+                                })
+                                .font_size(11.)
+                                .color(theme::TEXT_SECONDARY),
+                        )
+                        .child(
+                            rect()
+                                .direction(Direction::Horizontal)
+                                .spacing(2.)
+                                .child(toggle_inner_shadow_button(shell, first_id))
+                                .child(remove_inner_shadow_button(
+                                    shell,
+                                    first_id,
+                                    inner_shadow_effect.map(|(id, ..)| id).unwrap_or(105),
+                                )),
+                        ),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .spacing(2.)
+                        .child(inner_shadow_adjust_button(shell, first_id, "Dist -2", -2.0, 0.0, 0.0))
+                        .child(inner_shadow_adjust_button(shell, first_id, "Dist +2", 2.0, 0.0, 0.0))
+                        .child(inner_shadow_adjust_button(shell, first_id, "Desf -2", 0.0, -2.0, 0.0))
+                        .child(inner_shadow_adjust_button(shell, first_id, "Desf +2", 0.0, 2.0, 0.0))
+                        .child(inner_shadow_adjust_button(shell, first_id, "Op +10%", 0.0, 0.0, 0.10)),
                 ),
         )
         .child(
@@ -1692,7 +1768,7 @@ fn blur_adjust_button(
     Button::new()
         .on_press(move |_| {
             if let Some(id) = target_id {
-                let current_radius = shell
+                let existing = shell
                     .peek()
                     .bridge
                     .session()
@@ -1701,29 +1777,72 @@ fn blur_adjust_button(
                         o.appearance.as_ref().and_then(|app| {
                             app.effects.iter().find_map(|e| {
                                 if let petunia_design_document::EffectKind::GaussianBlur { radius } = e.kind {
-                                    Some(radius)
+                                    Some((e.id, radius, e.visible))
                                 } else {
                                     None
                                 }
                             })
                         })
-                    })
-                    .unwrap_or(0.0);
+                    });
+                let (eff_id, current_radius, visible) = existing.unwrap_or((101, 0.0, true));
                 let new_radius = (current_radius + delta).max(0.5);
-                let _ = shell.write().bridge.submit_all(
-                    "Adjust blur",
-                    vec![Command::AddEffect {
-                        id,
-                        effect: petunia_design_document::EffectItem {
-                            id: 101,
-                            kind: petunia_design_document::EffectKind::GaussianBlur { radius: new_radius },
-                            visible: true,
-                        },
-                    }],
-                );
+                let mut cmds = Vec::new();
+                if existing.is_some() {
+                    cmds.push(Command::RemoveEffect { id, effect_id: eff_id });
+                }
+                cmds.push(Command::AddEffect {
+                    id,
+                    effect: petunia_design_document::EffectItem {
+                        id: eff_id,
+                        kind: petunia_design_document::EffectKind::GaussianBlur { radius: new_radius },
+                        visible,
+                    },
+                });
+                let _ = shell.write().bridge.submit_all("Adjust blur", cmds);
             }
         })
         .child(label().text(label_text).font_size(10.))
+}
+
+fn toggle_blur_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let existing = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .and_then(|o| {
+                        o.appearance.as_ref().and_then(|app| {
+                            app.effects.iter().find_map(|e| {
+                                if let petunia_design_document::EffectKind::GaussianBlur { radius } = e.kind {
+                                    Some((e.id, radius, e.visible))
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                    });
+                if let Some((eff_id, radius, visible)) = existing {
+                    let mut cmds = Vec::new();
+                    cmds.push(Command::RemoveEffect { id, effect_id: eff_id });
+                    cmds.push(Command::AddEffect {
+                        id,
+                        effect: petunia_design_document::EffectItem {
+                            id: eff_id,
+                            kind: petunia_design_document::EffectKind::GaussianBlur { radius },
+                            visible: !visible,
+                        },
+                    });
+                    let _ = shell.write().bridge.submit_all("Toggle blur", cmds);
+                }
+            }
+        })
+        .child(label().text("👁").font_size(10.))
 }
 
 fn remove_blur_button(
@@ -1743,11 +1862,14 @@ fn remove_blur_button(
         .child(label().text("✕").font_size(10.))
 }
 
-fn shadow_dist_button(
+fn drop_shadow_adjust_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
     label_text: &'static str,
-    delta: f64,
+    delta_dx: f64,
+    delta_dy: f64,
+    delta_blur: f64,
+    delta_opacity: f64,
 ) -> impl IntoElement {
     Button::new()
         .on_press(move |_| {
@@ -1761,41 +1883,44 @@ fn shadow_dist_button(
                         o.appearance.as_ref().and_then(|app| {
                             app.effects.iter().find_map(|e| {
                                 if let petunia_design_document::EffectKind::DropShadow { offset, blur, color, opacity } = &e.kind {
-                                    Some((e.id, *offset, *blur, color.clone(), *opacity))
+                                    Some((e.id, *offset, *blur, color.clone(), *opacity, e.visible))
                                 } else {
                                     None
                                 }
                             })
                         })
                     });
-                let (eff_id, offset, blur, color, opacity) = existing.unwrap_or((102, [4.0, 4.0], 8.0, "ptnd.gray/900".to_string(), 0.6));
-                let new_offset = [(offset[0] + delta).max(0.0), (offset[1] + delta).max(0.0)];
-                let _ = shell.write().bridge.submit_all(
-                    "Adjust shadow distance",
-                    vec![Command::AddEffect {
-                        id,
-                        effect: petunia_design_document::EffectItem {
-                            id: eff_id,
-                            kind: petunia_design_document::EffectKind::DropShadow {
-                                offset: new_offset,
-                                blur,
-                                color,
-                                opacity,
-                            },
-                            visible: true,
+                let had_existing = existing.is_some();
+                let (eff_id, offset, blur, color, opacity, visible) = existing.unwrap_or((102, [4.0, 4.0], 8.0, "ptnd.gray/900".to_string(), 0.6, true));
+                let new_offset = [(offset[0] + delta_dx).clamp(-100.0, 100.0), (offset[1] + delta_dy).clamp(-100.0, 100.0)];
+                let new_blur = (blur + delta_blur).max(0.0);
+                let new_opacity = (opacity + delta_opacity).clamp(0.05, 1.0);
+                let mut cmds = Vec::new();
+                if had_existing {
+                    cmds.push(Command::RemoveEffect { id, effect_id: eff_id });
+                }
+                cmds.push(Command::AddEffect {
+                    id,
+                    effect: petunia_design_document::EffectItem {
+                        id: eff_id,
+                        kind: petunia_design_document::EffectKind::DropShadow {
+                            offset: new_offset,
+                            blur: new_blur,
+                            color,
+                            opacity: new_opacity,
                         },
-                    }],
-                );
+                        visible,
+                    },
+                });
+                let _ = shell.write().bridge.submit_all("Adjust drop shadow", cmds);
             }
         })
         .child(label().text(label_text).font_size(10.))
 }
 
-fn shadow_blur_button(
+fn toggle_drop_shadow_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
-    delta: f64,
 ) -> impl IntoElement {
     Button::new()
         .on_press(move |_| {
@@ -1809,34 +1934,34 @@ fn shadow_blur_button(
                         o.appearance.as_ref().and_then(|app| {
                             app.effects.iter().find_map(|e| {
                                 if let petunia_design_document::EffectKind::DropShadow { offset, blur, color, opacity } = &e.kind {
-                                    Some((e.id, *offset, *blur, color.clone(), *opacity))
+                                    Some((e.id, *offset, *blur, color.clone(), *opacity, e.visible))
                                 } else {
                                     None
                                 }
                             })
                         })
                     });
-                let (eff_id, offset, blur, color, opacity) = existing.unwrap_or((102, [4.0, 4.0], 8.0, "ptnd.gray/900".to_string(), 0.6));
-                let new_blur = (blur + delta).max(0.0);
-                let _ = shell.write().bridge.submit_all(
-                    "Adjust shadow blur",
-                    vec![Command::AddEffect {
+                if let Some((eff_id, offset, blur, color, opacity, visible)) = existing {
+                    let mut cmds = Vec::new();
+                    cmds.push(Command::RemoveEffect { id, effect_id: eff_id });
+                    cmds.push(Command::AddEffect {
                         id,
                         effect: petunia_design_document::EffectItem {
                             id: eff_id,
                             kind: petunia_design_document::EffectKind::DropShadow {
                                 offset,
-                                blur: new_blur,
+                                blur,
                                 color,
                                 opacity,
                             },
-                            visible: true,
+                            visible: !visible,
                         },
-                    }],
-                );
+                    });
+                    let _ = shell.write().bridge.submit_all("Toggle drop shadow", cmds);
+                }
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(label().text("👁").font_size(10.))
 }
 
 fn remove_shadow_button(
@@ -1849,6 +1974,124 @@ fn remove_shadow_button(
             if let Some(id) = target_id {
                 let _ = shell.write().bridge.submit_all(
                     "Remove shadow",
+                    vec![Command::RemoveEffect { id, effect_id }],
+                );
+            }
+        })
+        .child(label().text("✕").font_size(10.))
+}
+
+fn inner_shadow_adjust_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    label_text: &'static str,
+    delta_dist: f64,
+    delta_blur: f64,
+    delta_opacity: f64,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let existing = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .and_then(|o| {
+                        o.appearance.as_ref().and_then(|app| {
+                            app.effects.iter().find_map(|e| {
+                                if let petunia_design_document::EffectKind::InnerShadow { offset, blur, color, opacity } = &e.kind {
+                                    Some((e.id, *offset, *blur, color.clone(), *opacity, e.visible))
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                    });
+                let had_existing = existing.is_some();
+                let (eff_id, offset, blur, color, opacity, visible) = existing.unwrap_or((105, [3.0, 3.0], 6.0, "ptnd.gray/900".to_string(), 0.5, true));
+                let new_offset = [(offset[0] + delta_dist).max(0.0), (offset[1] + delta_dist).max(0.0)];
+                let new_blur = (blur + delta_blur).max(0.0);
+                let new_opacity = (opacity + delta_opacity).clamp(0.05, 1.0);
+                let mut cmds = Vec::new();
+                if had_existing {
+                    cmds.push(Command::RemoveEffect { id, effect_id: eff_id });
+                }
+                cmds.push(Command::AddEffect {
+                    id,
+                    effect: petunia_design_document::EffectItem {
+                        id: eff_id,
+                        kind: petunia_design_document::EffectKind::InnerShadow {
+                            offset: new_offset,
+                            blur: new_blur,
+                            color,
+                            opacity: new_opacity,
+                        },
+                        visible,
+                    },
+                });
+                let _ = shell.write().bridge.submit_all("Adjust inner shadow", cmds);
+            }
+        })
+        .child(label().text(label_text).font_size(10.))
+}
+
+fn toggle_inner_shadow_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let existing = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .and_then(|o| {
+                        o.appearance.as_ref().and_then(|app| {
+                            app.effects.iter().find_map(|e| {
+                                if let petunia_design_document::EffectKind::InnerShadow { offset, blur, color, opacity } = &e.kind {
+                                    Some((e.id, *offset, *blur, color.clone(), *opacity, e.visible))
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                    });
+                if let Some((eff_id, offset, blur, color, opacity, visible)) = existing {
+                    let mut cmds = Vec::new();
+                    cmds.push(Command::RemoveEffect { id, effect_id: eff_id });
+                    cmds.push(Command::AddEffect {
+                        id,
+                        effect: petunia_design_document::EffectItem {
+                            id: eff_id,
+                            kind: petunia_design_document::EffectKind::InnerShadow {
+                                offset,
+                                blur,
+                                color,
+                                opacity,
+                            },
+                            visible: !visible,
+                        },
+                    });
+                    let _ = shell.write().bridge.submit_all("Toggle inner shadow", cmds);
+                }
+            }
+        })
+        .child(label().text("👁").font_size(10.))
+}
+
+fn remove_inner_shadow_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    effect_id: u32,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let _ = shell.write().bridge.submit_all(
+                    "Remove inner shadow",
                     vec![Command::RemoveEffect { id, effect_id }],
                 );
             }
@@ -3177,6 +3420,136 @@ mod tests {
         assert!(convert_res.is_ok(), "convert_selected_nodes runs safely");
         let del_res = shell.delete_selected_nodes();
         assert!(del_res.is_ok(), "delete_selected_nodes runs safely");
+    }
+
+    #[test]
+    fn layer_fx_drop_shadow_inner_shadow_and_blur_controls() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("FXDoc").expect("doc opens");
+        let surf_id = shell.bridge.active_surface().unwrap();
+        let obj_id = shell.bridge.next_object_id().unwrap();
+
+        let _ = shell.bridge.submit_all(
+            "Add test shape",
+            vec![
+                Command::CreateObject {
+                    surface: surf_id,
+                    id: obj_id,
+                    name: "FXRect".to_string(),
+                },
+                Command::SetShape {
+                    id: obj_id,
+                    shape: Some(ShapeKind::Rectangle {
+                        corner_radii: [0.0; 4],
+                    }),
+                },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([0.0, 0.0, 100.0, 100.0]),
+                    rotation: 0.0,
+                },
+            ],
+        );
+
+        // 1. Add Drop Shadow
+        let _ = shell.bridge.submit_all(
+            "Add drop shadow",
+            vec![Command::AddEffect {
+                id: obj_id,
+                effect: petunia_design_document::EffectItem {
+                    id: 102,
+                    kind: petunia_design_document::EffectKind::DropShadow {
+                        offset: [4.0, 6.0],
+                        blur: 8.0,
+                        color: "ptnd.gray/900".to_string(),
+                        opacity: 0.6,
+                    },
+                    visible: true,
+                },
+            }],
+        );
+
+        // 2. Add Inner Shadow
+        let _ = shell.bridge.submit_all(
+            "Add inner shadow",
+            vec![Command::AddEffect {
+                id: obj_id,
+                effect: petunia_design_document::EffectItem {
+                    id: 105,
+                    kind: petunia_design_document::EffectKind::InnerShadow {
+                        offset: [2.0, 2.0],
+                        blur: 4.0,
+                        color: "ptnd.black".to_string(),
+                        opacity: 0.5,
+                    },
+                    visible: true,
+                },
+            }],
+        );
+
+        // 3. Add Gaussian Blur
+        let _ = shell.bridge.submit_all(
+            "Add blur",
+            vec![Command::AddEffect {
+                id: obj_id,
+                effect: petunia_design_document::EffectItem {
+                    id: 101,
+                    kind: petunia_design_document::EffectKind::GaussianBlur { radius: 3.5 },
+                    visible: true,
+                },
+            }],
+        );
+
+        // Verify appearance stack
+        {
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(surf_id).unwrap();
+            let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
+            let app = obj.appearance.as_ref().expect("appearance exists");
+            assert_eq!(app.effects.len(), 3);
+
+            let shadow = app.effects.iter().find(|e| matches!(e.kind, petunia_design_document::EffectKind::DropShadow { .. })).unwrap();
+            assert_eq!(shadow.id, 102);
+            assert!(shadow.visible);
+
+            let inner = app.effects.iter().find(|e| matches!(e.kind, petunia_design_document::EffectKind::InnerShadow { .. })).unwrap();
+            assert_eq!(inner.id, 105);
+            assert!(inner.visible);
+
+            let blur = app.effects.iter().find(|e| matches!(e.kind, petunia_design_document::EffectKind::GaussianBlur { .. })).unwrap();
+            assert_eq!(blur.id, 101);
+            assert!(blur.visible);
+        }
+
+        // 4. Toggle Drop Shadow visibility
+        let _ = shell.bridge.submit_all(
+            "Toggle shadow",
+            vec![
+                Command::RemoveEffect { id: obj_id, effect_id: 102 },
+                Command::AddEffect {
+                    id: obj_id,
+                    effect: petunia_design_document::EffectItem {
+                        id: 102,
+                        kind: petunia_design_document::EffectKind::DropShadow {
+                            offset: [4.0, 6.0],
+                            blur: 8.0,
+                            color: "ptnd.gray/900".to_string(),
+                            opacity: 0.6,
+                        },
+                        visible: false,
+                    },
+                },
+            ],
+        );
+
+        {
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(surf_id).unwrap();
+            let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
+            let app = obj.appearance.as_ref().unwrap();
+            let shadow = app.effects.iter().find(|e| matches!(e.kind, petunia_design_document::EffectKind::DropShadow { .. })).unwrap();
+            assert!(!shadow.visible, "Drop shadow must now be hidden");
+        }
     }
 }
 

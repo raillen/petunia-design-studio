@@ -11,8 +11,8 @@
 
 use freya::prelude::*;
 use freya_engine::prelude::{
-    AlphaType, Canvas as SkiaCanvas, Color, ColorType, Data, Font, Image, ImageInfo, Paint,
-    PaintStyle, Path, PathBuilder, Point, Rect as SkRect,
+    AlphaType, BlurStyle, Canvas as SkiaCanvas, Color, ColorType, Data, Font, Image, ImageInfo,
+    MaskFilter, Paint, PaintStyle, Path, PathBuilder, Point, Rect as SkRect,
 };
 use petunia_design_geometry::{GPath, GPoint, PathVerb};
 
@@ -224,6 +224,18 @@ fn paint_object(
     if let Some(path) = object.outline.as_ref() {
         let sk_path = build_skia_path(path, camera);
         if !sk_path.is_empty() {
+            // Check for live Gaussian blur filter
+            let gaussian_blur_radius = object.effects.iter().find_map(|e| {
+                if e.visible {
+                    if let petunia_design_document::EffectKind::GaussianBlur { radius } = e.kind {
+                        if radius > 0.0 {
+                            return Some(radius);
+                        }
+                    }
+                }
+                None
+            });
+
             // Render visible drop shadows behind the object
             for effect in &object.effects {
                 if !effect.visible {
@@ -231,7 +243,7 @@ fn paint_object(
                 }
                 if let petunia_design_document::EffectKind::DropShadow {
                     offset,
-                    blur: _,
+                    blur,
                     color,
                     opacity: shadow_opacity,
                 } = &effect.kind {
@@ -240,6 +252,10 @@ fn paint_object(
                     let mut shadow_paint = Paint::default();
                     shadow_paint.set_anti_alias(true);
                     shadow_paint.set_style(PaintStyle::Fill);
+                    if *blur > 0.0 {
+                        let sigma = ((*blur * camera.zoom) as f32).max(0.5);
+                        shadow_paint.set_mask_filter(MaskFilter::blur(BlurStyle::Normal, sigma, None));
+                    }
                     let final_opacity = (opacity * shadow_opacity.clamp(0.0, 1.0) as f32).clamp(0.0, 1.0);
                     shadow_paint.set_color(resolve_color_with_adjustments(
                         Some(color),
@@ -256,6 +272,10 @@ fn paint_object(
                 let mut paint = Paint::default();
                 paint.set_anti_alias(true);
                 paint.set_style(PaintStyle::Fill);
+                if let Some(radius) = gaussian_blur_radius {
+                    let sigma = ((radius * camera.zoom) as f32).max(0.5);
+                    paint.set_mask_filter(MaskFilter::blur(BlurStyle::Normal, sigma, None));
+                }
                 paint.set_color(resolve_color_with_adjustments(
                     Some(fill_token),
                     opacity,
@@ -263,11 +283,48 @@ fn paint_object(
                 ));
                 canvas.draw_path(&sk_path, &paint);
             }
+            // Render visible inner shadows clipped to the object fill
+            for effect in &object.effects {
+                if !effect.visible {
+                    continue;
+                }
+                if let petunia_design_document::EffectKind::InnerShadow {
+                    offset,
+                    blur,
+                    color,
+                    opacity: shadow_opacity,
+                } = &effect.kind {
+                    let dx = (offset[0] * camera.zoom) as f32;
+                    let dy = (offset[1] * camera.zoom) as f32;
+                    let mut inner_paint = Paint::default();
+                    inner_paint.set_anti_alias(true);
+                    inner_paint.set_style(PaintStyle::Fill);
+                    if *blur > 0.0 {
+                        let sigma = ((*blur * camera.zoom) as f32).max(0.5);
+                        inner_paint.set_mask_filter(MaskFilter::blur(BlurStyle::Inner, sigma, None));
+                    }
+                    let final_opacity = (opacity * shadow_opacity.clamp(0.0, 1.0) as f32).clamp(0.0, 1.0);
+                    inner_paint.set_color(resolve_color_with_adjustments(
+                        Some(color),
+                        final_opacity,
+                        &object.adjustments,
+                    ));
+                    canvas.save();
+                    canvas.clip_path(&sk_path, None, true);
+                    canvas.translate((dx, dy));
+                    canvas.draw_path(&sk_path, &inner_paint);
+                    canvas.restore();
+                }
+            }
             if let Some(stroke_token) = object.stroke.as_deref() {
                 if object.stroke_width > 0.0 {
                     let mut paint = Paint::default();
                     paint.set_anti_alias(true);
                     paint.set_style(PaintStyle::Stroke);
+                    if let Some(radius) = gaussian_blur_radius {
+                        let sigma = ((radius * camera.zoom) as f32).max(0.5);
+                        paint.set_mask_filter(MaskFilter::blur(BlurStyle::Normal, sigma, None));
+                    }
                     let screen_width = (object.stroke_width * camera.zoom).max(1.0) as f32;
                     paint.set_stroke_width(screen_width);
                     paint.set_color(resolve_color_with_adjustments(
@@ -463,12 +520,33 @@ fn paint_overlays(
         paint_marching_ants_rect(canvas, rect);
     }
     if let Some(points) = overlays.pen_preview.as_ref() {
-        let color = if overlays.region_subtractive {
-            SUBTRACTIVE
+        if overlays.region_subtractive && points.len() == 2 {
+            let p0 = camera.doc_to_screen(points[0]);
+            let p1 = camera.doc_to_screen(points[1]);
+            paint_dashed_line(
+                canvas,
+                Point::new(p0.x as f32, p0.y as f32),
+                Point::new(p1.x as f32, p1.y as f32),
+                SUBTRACTIVE,
+                Color::WHITE,
+                4.0,
+            );
+        } else if overlays.region_subtractive && points.len() == 1 {
+            let p0 = camera.doc_to_screen(points[0]);
+            let x = p0.x as f32;
+            let y = p0.y as f32;
+            let sz = 6.0;
+            let cut_paint = outline_paint(SUBTRACTIVE, 2.0);
+            canvas.draw_line(Point::new(x - sz, y), Point::new(x + sz, y), &cut_paint);
+            canvas.draw_line(Point::new(x, y - sz), Point::new(x, y + sz), &cut_paint);
         } else {
-            PREVIEW
-        };
-        paint_polyline(canvas, points, camera, color, 1.5);
+            let color = if overlays.region_subtractive {
+                SUBTRACTIVE
+            } else {
+                PREVIEW
+            };
+            paint_polyline(canvas, points, camera, color, 1.5);
+        }
     }
     if let Some(points) = overlays.lasso_screen.as_ref() {
         paint_polyline(canvas, points, camera, MARQUEE, 1.0);

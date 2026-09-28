@@ -22,10 +22,10 @@ The Vector Persona focuses on Bézier curves, parametric geometry, typography, b
 | **Pen** | `ptnd.tool.pen` | `V1 Required` | ✅ Implemented | ✅ Exposed | ✅ Implemented: Context HUD modes (Bézier curves, Polygon sharp cusps, Line two-point straight segments), Concluir (finish open path), and convert-to-curves. |
 | **Pencil** | `ptnd.tool.pencil` | `V1 Required` | ✅ Implemented | ✅ Exposed | ✅ Implemented: Context HUD 3-level deterministic curve-fitting fidelity (Precise, Balanced, Smooth) and convert-to-curves. |
 | **Corner** | `ptnd.tool.corner` | `V1 Required` | ✅ Implemented | ✅ Exposed | Expose per-corner numeric radius controls in inspector and "Bake Corner Geometry" action. |
-| **Contour** | `ptnd.tool.contour` | `V1 Required` | ✅ Implemented | 🟡 In Flyout | Flyout button in "modify" group; draw radial drag handle on-canvas. |
+| **Contour** | `ptnd.tool.contour` | `V1 Required` | ✅ Implemented | ✅ Exposed | ✅ Implemented: On-canvas radial drag handle knob, Euclidean offset distance badge, and dynamic live modifier preview. |
 | **Perspective** | `ptnd.tool.perspective` | `V1 Required` | ✅ Implemented | ✅ Exposed | Draw interactive 4-vertex quad handles on canvas overlay. |
-| **Knife** | `ptnd.tool.knife` | `V1 Required` | ✅ Implemented | ✅ Exposed | Render dashed cutting guide overlay and constrain cut angle with `Shift`. |
-| **Scissors** | `ptnd.tool.scissors` | `V1 Required` | ✅ Implemented | 🟡 In Flyout | Interactive scissor cursor snapped to nearest path vertex. |
+| **Knife** | `ptnd.tool.knife` | `V1 Required` | ✅ Implemented | ✅ Exposed | ✅ Implemented: On-canvas dashed red/white cutting guide line overlay with 45° angle constraint via Shift. |
+| **Scissors** | `ptnd.tool.scissors` | `V1 Required` | ✅ Implemented | ✅ Exposed | ✅ Implemented: Interactive vertex snapping cursor handle and cut point crosshair on canvas overlay. |
 | **Rectangle** | `ptnd.tool.shape.rectangle` | `V1 Required` | ✅ Implementado | ✅ Exposed | Individual 4-corner corner radius editing. |
 | **Ellipse** | `ptnd.tool.shape.ellipse` | `V1 Required` | ✅ Implemented | ✅ Exposed | Parametric pie and donut angle controls in context HUD. |
 | **Polygon** | `ptnd.tool.shape.polygon` | `V1 Required` | ✅ Implemented | ✅ Exposed | Numeric sides control (3 to 32) in dynamic context toolbar. |
@@ -85,9 +85,9 @@ Modifiers alter geometry and rendering without destroying the original parametri
 
 | Filter / Effect (`EffectKind`) | Family | Scope | Engine | Freya UI Status | Implementation Gap / Required Work |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Drop Shadow** | Layer FX | `V1 Required` | ✅ Implemented | ⚠️ Presets only | Detailed parameter editor: offset (dx, dy), blur radius, color, opacity. |
-| **Inner Shadow** | Layer FX | `V1 Required` | ✅ Implemented | ⚠️ Presets only | Parameter editor clipped to object fill. |
-| **Gaussian Blur** | Live Filter | `V1 Required` | ✅ Implemented | ⚠️ Presets only | Blur radius slider with optional exclusion mask. |
+| **Drop Shadow** | Layer FX | `V1 Required` | ✅ Implemented | ✅ Exposed | ✅ Implemented: Skia GPU MaskFilter blur with detailed parameter editor for Offset (Dx, Dy), Blur radius, Opacity, and visibility toggle in Dock. |
+| **Inner Shadow** | Layer FX | `V1 Required` | ✅ Implemented | ✅ Exposed | ✅ Implemented: Skia clipped inner shadow with MaskFilter blur, Distance, Blur radius, Opacity, and visibility toggle in Dock. |
+| **Gaussian Blur** | Live Filter | `V1 Required` | ✅ Implemented | ✅ Exposed | ✅ Implemented: Skia MaskFilter blur with real-time radius adjustments (-1pt, +1pt, +5pt) and visibility toggle in Dock. |
 | **Sharpen (Unsharp Mask)** | Live Filter | `V1 Required` | ✅ Implemented | ✅ Exposed | Modeled in core engine with interactive radius and amount controls in inspector dock. |
 | **Noise** | Live Filter | `V1 Required` | ✅ Implemented | ✅ Exposed | Modeled in core engine with intensity and monochrome/color toggles in inspector dock. |
 | **Outer Glow / Inner Glow** | Layer FX | `Post-V1 Candidate` | ❌ Not modeled | ❌ Absent | 360-degree radial glow dispersion. |

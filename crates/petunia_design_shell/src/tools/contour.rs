@@ -385,8 +385,23 @@ impl ContourTool {
                 }
             }
             ContourMode::Contour => {
-                if self.contour_drag.is_some() {
+                if let Some(drag) = &self.contour_drag {
                     overlays.cursor = CursorAffordance::Grabbing;
+                    overlays.pen_preview = Some(vec![drag.start_doc, drag.current_doc]);
+                    let delta = radial_delta(bridge, drag.start_doc, drag.current_doc);
+                    overlays.measure_badge = Some((drag.current_doc, format!("{delta:+.1} pt")));
+                    let s = camera.doc_to_screen(drag.current_doc);
+                    let half_sz = 4.5;
+                    overlays.handles.push(SelectionHandle {
+                        kind: SelectionHandleKind::NodeSmoothSelected,
+                        doc_point: drag.current_doc,
+                        screen_hit_box: GRect::new(
+                            s.x - half_sz,
+                            s.y - half_sz,
+                            s.x + half_sz,
+                            s.y + half_sz,
+                        ),
+                    });
                 } else {
                     overlays.cursor = CursorAffordance::Crosshair;
                 }

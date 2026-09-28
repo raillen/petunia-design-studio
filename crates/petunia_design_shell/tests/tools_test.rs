@@ -5745,6 +5745,9 @@ fn contour_overlays_publish_path_preview_and_grabbing_cursor() {
     assert_eq!(ov_drag.cursor, CursorAffordance::Grabbing);
     assert!(ov_drag.path_preview.is_some(), "Contour drag must emit path_preview");
     assert!(ov_drag.marquee_screen.is_some());
+    assert!(ov_drag.pen_preview.is_some(), "Contour drag must emit radial drag vector");
+    assert!(ov_drag.measure_badge.is_some(), "Contour drag must emit measurement badge");
+    assert!(!ov_drag.handles.is_empty(), "Contour drag must emit on-canvas handle knob");
 }
 
 #[test]
@@ -5816,7 +5819,9 @@ fn scissors_cursor_affordance_over_cuttable_shape() {
         &mut snap,
     )
     .unwrap();
-    assert_eq!(tool.overlays(&camera, &bridge).cursor, CursorAffordance::Pointer);
+    let ov_hover = tool.overlays(&camera, &bridge);
+    assert_eq!(ov_hover.cursor, CursorAffordance::Pointer);
+    assert!(!ov_hover.handles.is_empty(), "Scissors hover must emit target snap handle");
 }
 
 #[test]

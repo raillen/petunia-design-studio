@@ -22,10 +22,10 @@ A Persona Vetorial gerencia curvas Bézier, nós, formas paramétricas, tipograf
 | **Pen (Caneta)** | `ptnd.tool.pen` | `V1 Required` | ✅ Implementado | ✅ Exposto | ✅ Implementado: Modos no HUD de contexto (curvas Bézier, polígono com vértices em cúspide, linhas retas de 2 pontos), ação de concluir caminho aberto e conversão para curvas. |
 | **Pencil (Lápis)** | `ptnd.tool.pencil` | `V1 Required` | ✅ Implementado | ✅ Exposto | ✅ Implementado: 3 níveis determinísticos de fidelidade de encaixe de curvas (Preciso, Equilibrado, Suave) no HUD de contexto e conversão para curvas. |
 | **Corner (Cantos)** | `ptnd.tool.corner` | `V1 Required` | ✅ Implementado | ✅ Exposto | Expor controles numéricos de raio por nó no inspetor e comando "Bake Corner Geometry". |
-| **Contour (Contorno)** | `ptnd.tool.contour` | `V1 Required` | ✅ Implementado | 🟡 No Flyout | Botão presente no grupo "modify"; falta alça de arraste radial sobreposta ao canvas. |
+| **Contour (Contorno)** | `ptnd.tool.contour` | `V1 Required` | ✅ Implementado | ✅ Exposto | ✅ Implementado: Alça de arraste radial no canvas, indicador flutuante de distância euclidiana e pré-visualização ao vivo do modificador. |
 | **Perspective (Perspectiva)** | `ptnd.tool.perspective` | `V1 Required` | ✅ Implementado | ✅ Exposto | Desenhar alças interativas dos 4 vértices do quad no overlay do canvas. |
-| **Knife (Faca)** | `ptnd.tool.knife` | `V1 Required` | ✅ Implementado | ✅ Exposto | Renderizar linha guia tracejada de corte e trava de ângulo com `Shift`. |
-| **Scissors (Tesoura)** | `ptnd.tool.scissors` | `V1 Required` | ✅ Implementado | 🟡 No Flyout | Cursor em tesoura com atração magnética ao nó mais próximo do caminho. |
+| **Knife (Faca)** | `ptnd.tool.knife` | `V1 Required` | ✅ Implementado | ✅ Exposto | ✅ Implementado: Linha guia tracejada de corte (vermelho/branco) no canvas com trava de ângulo em 45° via Shift. |
+| **Scissors (Tesoura)** | `ptnd.tool.scissors` | `V1 Required` | ✅ Implementado | ✅ Exposto | ✅ Implementado: Alça de atração sobre o nó do caminho e mira de corte no overlay do canvas. |
 | **Rectangle (Retângulo)** | `ptnd.tool.shape.rectangle` | `V1 Required` | ✅ Implementado | ✅ Exposto | Edição individual do raio dos 4 cantos no painel e no HUD. |
 | **Ellipse (Elipse)** | `ptnd.tool.shape.ellipse` | `V1 Required` | ✅ Implementado | ✅ Exposto | Controles paramétricos de ângulos de setor/torta e anel (Pie e Donut) no HUD. |
 | **Polygon (Polígono)** | `ptnd.tool.shape.polygon` | `V1 Required` | ✅ Implementado | ✅ Exposto | Controle numérico de lados (3 a 32) na Context Toolbar dinâmica. |
@@ -85,9 +85,9 @@ Modificadores transformam a geometria e a renderização em tempo de execução 
 
 | Filtro / Efeito (`EffectKind`) | Família | Escopo | Motor | Estado na UI Freya | Lacuna de Implementação / Trabalho Restante |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Drop Shadow (Sombra Externa)** | Layer FX | `V1 Required` | ✅ Implementado | ⚠️ Apenas presets | Editor completo: deslocamento (dx, dy), raio de desfoque, cor e opacidade. |
-| **Inner Shadow (Sombra Interna)** | Layer FX | `V1 Required` | ✅ Implementado | ⚠️ Apenas presets | Editor completo confinado ao preenchimento do objeto. |
-| **Gaussian Blur (Desfoque)** | Live Filter | `V1 Required` | ✅ Implementado | ⚠️ Apenas presets | Slider de raio com opção de máscara de exclusão. |
+| **Drop Shadow (Sombra Externa)** | Layer FX | `V1 Required` | ✅ Implementado | ✅ Exposto | ✅ Implementado: Desfoque Skia GPU MaskFilter com editor detalhado de parâmetros para Deslocamento (Dx, Dy), Raio de desfoque, Opacidade e alternador de visibilidade no Dock. |
+| **Inner Shadow (Sombra Interna)** | Layer FX | `V1 Required` | ✅ Implementado | ✅ Exposto | ✅ Implementado: Sombra interna Skia recortada com MaskFilter blur, controles de Distância, Raio de desfoque, Opacidade e alternador de visibilidade no Dock. |
+| **Gaussian Blur (Desfoque)** | Live Filter | `V1 Required` | ✅ Implementado | ✅ Exposto | ✅ Implementado: Filtro de desfoque Skia MaskFilter com ajustes em tempo real (-1pt, +1pt, +5pt) e alternador de visibilidade no Dock. |
 | **Sharpen (Nitidez)** | Live Filter | `V1 Required` | ✅ Implementado | ✅ Exposto | Modelado no motor com controles interativos de raio e intensidade no dock de propriedades. |
 | **Noise (Ruído)** | Live Filter | `V1 Required` | ✅ Implementado | ✅ Exposto | Modelado no motor com controles de intensidade e alternador monocromático/colorido no dock. |
 | **Outer Glow / Inner Glow** | Layer FX | `Post-V1 Candidate` | ❌ Não modelado | ❌ Ausente | Brilho radial uniforme em 360 graus. |
