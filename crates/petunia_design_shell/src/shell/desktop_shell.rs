@@ -179,6 +179,30 @@ impl PetuniaShell {
         self.properties_panel.query_model(&self.bridge)
     }
 
+    /// Converts selected nodes to a constraint type (Cusp, Smooth, Symmetric).
+    pub fn convert_selected_nodes(
+        &mut self,
+        node_type: crate::tools::NodeType,
+    ) -> Result<ChangeSet, PetuniaError> {
+        self.tools
+            .node_tool_mut()
+            .convert_selected_nodes(&mut self.bridge, node_type)
+    }
+
+    /// Deletes selected nodes in the active node tool.
+    pub fn delete_selected_nodes(&mut self) -> Result<ChangeSet, PetuniaError> {
+        self.tools
+            .node_tool_mut()
+            .delete_selected_nodes(&mut self.bridge)
+    }
+
+    /// Finishes an in-flight open path in the Pen tool.
+    pub fn finish_open_path(&mut self) -> Result<ChangeSet, PetuniaError> {
+        self.tools
+            .pen_tool_mut()
+            .finish_open_path(&mut self.bridge)
+    }
+
     /// Resolves data merge presentation model.
     #[must_use]
     pub fn query_data_merge(&self) -> DataMergePresentationModel {

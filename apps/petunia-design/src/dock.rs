@@ -8,6 +8,7 @@ use petunia_design_application::Command;
 use petunia_design_document::ShapeKind;
 use petunia_design_foundation::ObjectId;
 use petunia_design_shell::panels::LayersPanelController;
+use petunia_design_shell::PetuniaShell;
 
 use crate::actions::run_action_token;
 use crate::theme;
@@ -376,15 +377,33 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
     let sel = shell.peek().bridge.selection();
 
     if props.selection_empty {
-        return rect()
-            .width(Size::fill())
-            .height(Size::fill())
-            .center()
+        return ScrollView::new()
             .child(
-                label()
-                    .text("Nenhum objeto selecionado.\nClique em um objeto para editar.")
-                    .color(theme::TEXT_TERTIARY)
-                    .font_size(12.),
+                rect()
+                    .direction(Direction::Vertical)
+                    .width(Size::fill())
+                    .spacing(theme::SPACE_2)
+                    .child(
+                        section_header("HISTOGRAMA DO DOCUMENTO"),
+                    )
+                    .child(
+                        HistogramWidget {
+                            ui: ui.clone(),
+                            object_id: None,
+                        },
+                    )
+                    .child(
+                        rect()
+                            .width(Size::fill())
+                            .padding(Gaps::new_all(theme::SPACE_4))
+                            .center()
+                            .child(
+                                label()
+                                    .text("Nenhum objeto selecionado.\nClique em um objeto para editar propriedades.")
+                                    .color(theme::TEXT_TERTIARY)
+                                    .font_size(12.),
+                            ),
+                    ),
             )
             .into_element();
     }
@@ -952,6 +971,16 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                             noise_effect.map(|(id, ..)| id).unwrap_or(104),
                         )),
                 ),
+        )
+        .child(
+            // Section: Histogram (Spec 10.10)
+            section_header("HISTOGRAMA (SPEC 10.10)"),
+        )
+        .child(
+            HistogramWidget {
+                ui: ui.clone(),
+                object_id: first_id,
+            },
         )
         .child(
             // Section: Tonal Adjustments (Spec 10.10)
@@ -2450,6 +2479,308 @@ fn adjustment_card(
         .child(body)
 }
 
+// =========================================================================
+// Histogram Widget (Spec 10.10)
+// =========================================================================
+
+fn parse_color_rgb(color_str: &str) -> Option<(f64, f64, f64)> {
+    let s = color_str.trim();
+    if s.starts_with('#') {
+        let hex = &s[1..];
+        if hex.len() == 6 || hex.len() == 8 {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            return Some((r as f64, g as f64, b as f64));
+        }
+    }
+    match s {
+        "ptnd.white" => Some((255.0, 255.0, 255.0)),
+        "ptnd.black" | "ptnd.gray/900" => Some((17.0, 24.0, 39.0)),
+        "ptnd.gray/600" => Some((75.0, 85.0, 99.0)),
+        "ptnd.gray/300" => Some((209.0, 213.0, 219.0)),
+        "ptnd.red/500" => Some((239.0, 68.0, 68.0)),
+        "ptnd.pink/500" => Some((236.0, 72.0, 153.0)),
+        "ptnd.purple/500" => Some((139.0, 92.0, 246.0)),
+        "ptnd.blue/500" => Some((59.0, 130.0, 246.0)),
+        "ptnd.cyan/500" => Some((6.0, 182.0, 212.0)),
+        "ptnd.teal/500" => Some((20.0, 184.0, 166.0)),
+        "ptnd.green/500" => Some((16.0, 185.0, 129.0)),
+        "ptnd.amber/500" => Some((245.0, 158.0, 11.0)),
+        "ptnd.bloom/500" => Some((183.0, 122.0, 255.0)),
+        _ => None,
+    }
+}
+
+pub fn compute_histogram_bins(
+    shell: &PetuniaShell,
+    selected_obj: Option<&petunia_design_document::DocumentObject>,
+    channel: u8, // 0: RGB, 1: R, 2: G, 3: B, 4: Luma
+) -> ([f32; 32], u32, u32, u32, u32) {
+    let mut centers: Vec<(f64, f64, f64)> = Vec::new();
+
+    if let Some(obj) = selected_obj {
+        let base_rgb = obj
+            .fill
+            .as_deref()
+            .and_then(parse_color_rgb)
+            .or_else(|| obj.stroke.as_deref().and_then(parse_color_rgb))
+            .unwrap_or((140.0, 140.0, 140.0));
+
+        let mut r = base_rgb.0;
+        let mut g = base_rgb.1;
+        let mut b = base_rgb.2;
+
+        if let Some(app) = &obj.appearance {
+            for adj in &app.adjustments {
+                match &adj.kind {
+                    petunia_design_document::adjustments::AdjustmentKind::Exposure { exposure, offset, gamma } => {
+                        let exp_mul = 2.0f64.powf(*exposure);
+                        let apply_exp = |c: f64| -> f64 {
+                            let norm = (c / 255.0 * exp_mul + offset).clamp(0.0, 1.0);
+                            norm.powf(1.0 / gamma.max(0.01)) * 255.0
+                        };
+                        r = apply_exp(r);
+                        g = apply_exp(g);
+                        b = apply_exp(b);
+                    }
+                    petunia_design_document::adjustments::AdjustmentKind::Levels { master, .. } => {
+                        let bp = master.input_black as f64;
+                        let wp = master.input_white as f64;
+                        let gamma = master.gamma.max(0.01) as f64;
+                        let out_b = master.output_black as f64;
+                        let out_w = master.output_white as f64;
+                        let apply_levels = |c: f64| -> f64 {
+                            let norm = ((c - bp) / (wp - bp).max(1.0)).clamp(0.0, 1.0);
+                            let mapped = norm.powf(1.0 / gamma);
+                            out_b + mapped * (out_w - out_b)
+                        };
+                        r = apply_levels(r);
+                        g = apply_levels(g);
+                        b = apply_levels(b);
+                    }
+                    petunia_design_document::adjustments::AdjustmentKind::Hsl { lightness, .. } => {
+                        let l_shift = *lightness * 60.0;
+                        r = (r + l_shift).clamp(0.0, 255.0);
+                        g = (g + l_shift).clamp(0.0, 255.0);
+                        b = (b + l_shift).clamp(0.0, 255.0);
+                    }
+                    petunia_design_document::adjustments::AdjustmentKind::WhiteBalance { temperature, tint } => {
+                        r = (r + *temperature * 35.0).clamp(0.0, 255.0);
+                        b = (b - *temperature * 35.0).clamp(0.0, 255.0);
+                        g = (g + *tint * 25.0).clamp(0.0, 255.0);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        centers.push((r, g, b));
+    } else {
+        if let Some(session) = shell.bridge.session() {
+            if let Some(surf_id) = session.active_surface() {
+                if let Ok(surf) = session.surface(surf_id) {
+                    for obj in surf.objects() {
+                        let rgb = obj
+                            .fill
+                            .as_deref()
+                            .and_then(parse_color_rgb)
+                            .or_else(|| obj.stroke.as_deref().and_then(parse_color_rgb))
+                            .unwrap_or((128.0, 128.0, 128.0));
+                        centers.push(rgb);
+                    }
+                }
+            }
+        }
+        if centers.is_empty() {
+            centers.push((128.0, 128.0, 128.0));
+        }
+    }
+
+    let mut raw_bins = [0.0f32; 32];
+    let mut total_channel_sum = 0.0f64;
+    let mut total_weight = 0.0f64;
+
+    for (r, g, b) in &centers {
+        let luma = 0.299 * r + 0.587 * g + 0.114 * b;
+        let c = match channel {
+            1 => *r,
+            2 => *g,
+            3 => *b,
+            4 => luma,
+            _ => (r + g + b) / 3.0,
+        };
+        total_channel_sum += c;
+        total_weight += 1.0;
+
+        let sigma = 24.0;
+        for (i, bin) in raw_bins.iter_mut().enumerate() {
+            let bin_center = (i as f64) * 8.0 + 4.0;
+            let diff = (bin_center - c) / sigma;
+            let weight = (-0.5 * diff * diff).exp();
+            *bin += weight as f32;
+        }
+    }
+
+    let mean = if total_weight > 0.0 {
+        (total_channel_sum / total_weight).round() as u32
+    } else {
+        128
+    };
+
+    let max_bin = raw_bins.iter().copied().fold(0.001f32, f32::max);
+    let mut normalized_bins = [0.0f32; 32];
+    for (i, bin) in raw_bins.iter().enumerate() {
+        normalized_bins[i] = bin / max_bin;
+    }
+
+    let sum_total: f32 = raw_bins.iter().sum::<f32>().max(0.001);
+    let shadows_sum: f32 = raw_bins[0..8].iter().sum();
+    let midtones_sum: f32 = raw_bins[8..24].iter().sum();
+    let highlights_sum: f32 = raw_bins[24..32].iter().sum();
+
+    let shadows_pct = ((shadows_sum / sum_total) * 100.0).round() as u32;
+    let midtones_pct = ((midtones_sum / sum_total) * 100.0).round() as u32;
+    let highlights_pct = ((highlights_sum / sum_total) * 100.0).round() as u32;
+
+    (normalized_bins, mean, shadows_pct, midtones_pct, highlights_pct)
+}
+
+#[derive(Clone, PartialEq)]
+pub struct HistogramWidget {
+    pub ui: UiShell,
+    pub object_id: Option<ObjectId>,
+}
+
+impl Component for HistogramWidget {
+    fn render(&self) -> impl IntoElement {
+        let mut channel_state = use_state(|| 0u8);
+        let channel = *channel_state.read();
+
+        let shell = self.ui.shell.peek();
+        let selected_obj = self.object_id.and_then(|id| {
+            shell.bridge.session().and_then(|s| s.find_object(id))
+        });
+
+        let (bins, mean, shadows_pct, midtones_pct, highlights_pct) =
+            compute_histogram_bins(&shell, selected_obj, channel);
+
+        let bar_color = match channel {
+            1 => Color::from_rgb(0xEF, 0x44, 0x44), // Red
+            2 => Color::from_rgb(0x22, 0xC5, 0x5E), // Green
+            3 => Color::from_rgb(0x3B, 0x82, 0xF6), // Blue
+            4 => Color::from_rgb(0xCB, 0xD5, 0xE1), // Luma
+            _ => Color::from_rgb(0xE2, 0xE8, 0xF0), // RGB Composite
+        };
+
+        rect()
+            .direction(Direction::Vertical)
+            .width(Size::fill())
+            .spacing(theme::SPACE_1)
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .main_align(Alignment::SpaceBetween)
+                    .child(channel_button("RGB", 0, channel == 0, &mut channel_state))
+                    .child(channel_button("R", 1, channel == 1, &mut channel_state))
+                    .child(channel_button("G", 2, channel == 2, &mut channel_state))
+                    .child(channel_button("B", 3, channel == 3, &mut channel_state))
+                    .child(channel_button("Luma", 4, channel == 4, &mut channel_state)),
+            )
+            .child(
+                rect()
+                    .width(Size::fill())
+                    .height(Size::px(72.))
+                    .background(theme::SURFACE_CHROME)
+                    .border(
+                        Border::new()
+                            .fill(theme::SURFACE_CHROME_STRONG)
+                            .width(1.)
+                            .alignment(BorderAlignment::Inner),
+                    )
+                    .padding(Gaps::new(2., 2., 2., 2.))
+                    .direction(Direction::Horizontal)
+                    .cross_align(Alignment::End)
+                    .children(
+                        bins.iter().enumerate().map(|(idx, &val)| {
+                            let bar_h = (val * 64.0).clamp(2.0, 64.0);
+                            let is_grid = idx == 8 || idx == 16 || idx == 24;
+                            rect()
+                                .width(Size::flex(1.0))
+                                .height(Size::px(bar_h))
+                                .background(bar_color)
+                                .opacity(if is_grid { 0.95 } else { 0.75 })
+                        }),
+                    ),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .main_align(Alignment::SpaceBetween)
+                    .child(
+                        label()
+                            .text(format!("Média: {}", mean))
+                            .font_size(10.)
+                            .color(theme::TEXT_SECONDARY),
+                    )
+                    .child(
+                        label()
+                            .text(format!("Sombras: {}%", shadows_pct))
+                            .font_size(10.)
+                            .color(theme::TEXT_TERTIARY),
+                    )
+                    .child(
+                        label()
+                            .text(format!("Meios: {}%", midtones_pct))
+                            .font_size(10.)
+                            .color(theme::TEXT_TERTIARY),
+                    )
+                    .child(
+                        label()
+                            .text(format!("Realces: {}%", highlights_pct))
+                            .font_size(10.)
+                            .color(theme::TEXT_TERTIARY),
+                    ),
+            )
+    }
+}
+
+fn channel_button(
+    title: &'static str,
+    index: u8,
+    active: bool,
+    state: &mut State<u8>,
+) -> impl IntoElement {
+    let mut state_clone = *state;
+    rect()
+        .padding(Gaps::new(2., 8., 2., 8.))
+        .background(if active {
+            theme::SURFACE_PANEL
+        } else {
+            theme::SURFACE_CHROME
+        })
+        .border(
+            Border::new()
+                .fill(if active { theme::BLOOM.value } else { theme::SURFACE_CHROME_STRONG })
+                .width(1.)
+                .alignment(BorderAlignment::Inner),
+        )
+        .on_press(move |_| {
+            state_clone.set(index);
+        })
+        .child(
+            label()
+                .text(title)
+                .font_size(10.)
+                .color(if active {
+                    theme::TEXT_PRIMARY
+                } else {
+                    theme::TEXT_TERTIARY
+                }),
+        )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2731,6 +3062,121 @@ mod tests {
             let app = obj.appearance.as_ref().expect("appearance stack exists");
             assert_eq!(app.adjustments.len(), 2, "Undo restores removed adjustment");
         }
+    }
+
+    #[test]
+    fn histogram_computation_and_channel_filtering() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("HistoDoc").expect("doc opens");
+        let surf_id = shell.bridge.active_surface().unwrap();
+        let obj_id = shell.bridge.next_object_id().unwrap();
+
+        // 1. When empty/no object selected: baseline document histogram
+        let (bins, mean, shadows, midtones, highlights) =
+            compute_histogram_bins(&shell, None, 0);
+        assert_eq!(bins.len(), 32);
+        assert_eq!(mean, 128);
+        assert!(midtones > shadows && midtones > highlights);
+
+        // 2. Add Red object
+        let _ = shell.bridge.submit_all(
+            "Add Red shape",
+            vec![
+                Command::CreateObject {
+                    surface: surf_id,
+                    id: obj_id,
+                    name: "RedRect".to_string(),
+                },
+                Command::SetShape {
+                    id: obj_id,
+                    shape: Some(ShapeKind::Rectangle {
+                        corner_radii: [0.0; 4],
+                    }),
+                },
+                Command::SetFill {
+                    id: obj_id,
+                    fill: Some("ptnd.red/500".to_string()),
+                },
+            ],
+        );
+
+        let session = shell.bridge.session().unwrap();
+        let surf = session.surface(surf_id).unwrap();
+        let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
+
+        // Channel 1: Red channel of red object -> high mean, peak in highlights
+        let (_r_bins, r_mean, _r_shad, _r_mid, r_high) =
+            compute_histogram_bins(&shell, Some(obj), 1);
+        assert!(r_mean > 200, "Red channel mean must be high for red object (got {})", r_mean);
+        assert!(r_high > 50, "Red channel must concentrate in highlights");
+
+        // Channel 2: Green channel of red object -> low mean, peak in shadows
+        let (_g_bins, g_mean, g_shad, _g_mid, _g_high) =
+            compute_histogram_bins(&shell, Some(obj), 2);
+        assert!(g_mean < 100, "Green channel mean must be low for red object (got {})", g_mean);
+        assert!(g_shad + _g_mid > 95, "Green channel must concentrate in shadows and lower midtones");
+        assert!(_g_high < 5, "Green channel must have virtually no highlights (got {})", _g_high);
+
+        // 3. Add Exposure +1.0 to increase luminance
+        let exp_item = petunia_design_document::adjustments::AdjustmentItem::new(
+            1,
+            petunia_design_document::adjustments::AdjustmentKind::Exposure {
+                exposure: 1.0,
+                offset: 0.0,
+                gamma: 1.0,
+            },
+        );
+        let _ = shell.bridge.submit_all(
+            "Add exposure",
+            vec![Command::AddAdjustment {
+                id: obj_id,
+                adjustment: exp_item,
+            }],
+        );
+
+        let session = shell.bridge.session().unwrap();
+        let surf = session.surface(surf_id).unwrap();
+        let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
+
+        // Green channel with +1.0 exposure should shift up
+        let (_g_bins_exp, g_mean_exp, _, _, _) =
+            compute_histogram_bins(&shell, Some(obj), 2);
+        assert!(g_mean_exp > g_mean, "Exposure must increase mean channel value");
+    }
+
+    #[test]
+    fn pen_and_photo_brush_settings_and_hud_extensions() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("ToolsDoc").expect("doc opens");
+
+        // 1. Pen tool modes
+        assert_eq!(shell.tools.pen_tool().mode(), petunia_design_shell::tools::PenMode::Bezier);
+        shell.tools.pen_tool_mut().set_mode(petunia_design_shell::tools::PenMode::Polygon);
+        assert_eq!(shell.tools.pen_tool().mode(), petunia_design_shell::tools::PenMode::Polygon);
+        shell.tools.pen_tool_mut().set_mode(petunia_design_shell::tools::PenMode::Line);
+        assert_eq!(shell.tools.pen_tool().mode(), petunia_design_shell::tools::PenMode::Line);
+
+        // 2. Photo brush settings
+        let default_brush = shell.tools.photo_brush_tool().brush_settings();
+        assert!((default_brush.radius - 16.0).abs() < 1e-4);
+        assert!((default_brush.hardness - 0.8).abs() < 1e-4);
+
+        let new_brush = petunia_design_shell::tools::PhotoBrushSettings {
+            radius: 32.0,
+            hardness: 0.5,
+            flow: 0.8,
+            opacity: 0.9,
+        };
+        shell.tools.photo_brush_tool_mut().set_brush_settings(new_brush);
+        assert_eq!(shell.tools.photo_brush_tool().brush_settings(), new_brush);
+
+        // 3. Desktop shell helper methods
+        let finish_res = shell.finish_open_path();
+        assert!(finish_res.is_ok(), "finish_open_path runs safely even when empty");
+        let convert_res = shell.convert_selected_nodes(petunia_design_shell::tools::NodeType::Cusp);
+        assert!(convert_res.is_ok(), "convert_selected_nodes runs safely");
+        let del_res = shell.delete_selected_nodes();
+        assert!(del_res.is_ok(), "delete_selected_nodes runs safely");
     }
 }
 

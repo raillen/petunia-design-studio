@@ -17,10 +17,10 @@ The Vector Persona focuses on Bézier curves, parametric geometry, typography, b
 | Tool (`ToolKind`) | Canonical Action (`ActionId`) | Scope | Engine / Shell Status | Freya UI Status | Implementation Gap / Required Work |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Select / Move** | `ptnd.tool.select` | `V1 Required` | ✅ Implemented | ✅ Exposed | Robust hit-testing with spatial index fallback, persistent canvas DOM, and toggle/cycle selection fix. |
-| **Node** | `ptnd.tool.node` | `V1 Required` | ✅ Implemented | ✅ Exposed | Expose node type conversion buttons (Cusp, Smooth, Symmetric) in the dynamic context toolbar. |
+| **Node** | `ptnd.tool.node` | `V1 Required` | ✅ Implemented | ✅ Exposed | ✅ Implemented: Context HUD controls for Cusp, Smooth, Symmetric conversion, node deletion, and convert-to-curves. |
 | **Point Transform** | `ptnd.tool.point_transform` | `Post-V1 Candidate` | ⚠️ Integrated | ⚠️ Integrated | Folded into standard Transform HUD per ADR 08.33; does not require a standalone rail button. |
-| **Pen** | `ptnd.tool.pen` | `V1 Required` | ✅ Implemented | ✅ Exposed | Implement secondary modes in context HUD (Smart Mode, Polygon Mode, Line Mode). |
-| **Pencil** | `ptnd.tool.pencil` | `V1 Required` | ✅ Implemented | ✅ Exposed | Implement tolerance curve-fitting slider (Ramer-Douglas-Peucker) and stroke stabilizer in context HUD. |
+| **Pen** | `ptnd.tool.pen` | `V1 Required` | ✅ Implemented | ✅ Exposed | ✅ Implemented: Context HUD modes (Bézier curves, Polygon sharp cusps, Line two-point straight segments), Concluir (finish open path), and convert-to-curves. |
+| **Pencil** | `ptnd.tool.pencil` | `V1 Required` | ✅ Implemented | ✅ Exposed | ✅ Implemented: Context HUD 3-level deterministic curve-fitting fidelity (Precise, Balanced, Smooth) and convert-to-curves. |
 | **Corner** | `ptnd.tool.corner` | `V1 Required` | ✅ Implemented | ✅ Exposed | Expose per-corner numeric radius controls in inspector and "Bake Corner Geometry" action. |
 | **Contour** | `ptnd.tool.contour` | `V1 Required` | ✅ Implemented | 🟡 In Flyout | Flyout button in "modify" group; draw radial drag handle on-canvas. |
 | **Perspective** | `ptnd.tool.perspective` | `V1 Required` | ✅ Implemented | ✅ Exposed | Draw interactive 4-vertex quad handles on canvas overlay. |
@@ -57,8 +57,8 @@ The Photo Persona manages raster painting, bitmap selections, masks, and pixel-l
 | **Lasso** | `ptnd.tool.photo.lasso` | `V1 Required` | ✅ Implemented | 🟡 In Photo Rail | Auto-close on mouse release and raster selection mask polygon calculation. |
 | **Selection Brush** | `ptnd.tool.photo.selection_brush` | `V1 Required` | ⛔ Blocked | 🟡 In Photo Rail | Requires raster selection buffer painting with Edge-Snapping algorithms. |
 | **Flood Select (Wand)** | `ptnd.tool.photo.flood_select` | `V1 Required` | ⛔ Blocked | 🟡 In Photo Rail | Requires flood fill contiguous color tolerance algorithm connected to raster buffer. |
-| **Pixel Paint Brush** | `ptnd.tool.photo.brush` | `V1 Required` | ⛔ Blocked | 🟡 In Photo Rail | Requires tiled raster layer pipeline (`PixelLayer`) for destructive pixel painting. |
-| **Pixel Eraser** | `ptnd.tool.photo.eraser` | `V1 Required` | ⛔ Blocked | 🟡 In Photo Rail | Requires tiled raster layer pipeline for destructive alpha/RGBA erasing. |
+| **Pixel Paint Brush** | `ptnd.tool.photo.brush` | `V1 Required` | ⛔ Blocked | 🟡 Exposed in HUD | Context HUD controls for Dab Radius (-/+), Hardness, and Opacity. Full destructive drawing awaits tiled pixel layer pipeline (`PixelLayer`). |
+| **Pixel Eraser** | `ptnd.tool.photo.eraser` | `V1 Required` | ⛔ Blocked | 🟡 Exposed in HUD | Context HUD controls for Eraser Radius (-/+), Hardness, and Opacity. Full destructive erasing awaits tiled pixel layer pipeline. |
 | **Photo Gradient** | `ptnd.tool.photo.gradient` | `V1 Required` | ✅ Implemented | 🟡 In Photo Rail | Direct rendering into raster selection mask or pixel layer buffer. |
 | **Crop** | `ptnd.tool.photo.crop` | `V1 Required` | ✅ Implemented | 🟡 In Photo Rail | Aspect ratio constraints (1:1, 16:9, Free) and non-destructive canvas boundary crop. |
 | **Clone / Healing / Inpainting** | — | `Post-V1 Candidate` | ❌ Not modeled | ❌ Absent | Advanced photo retouching and texture synthesis (Post-V1). |
@@ -105,7 +105,7 @@ Modifiers alter geometry and rendering without destroying the original parametri
 | **HSL** | `V1 Required` | ✅ Implemented | ✅ Exposed | Hue rotation (-180° to +180°), saturation, and lightness shifts with real-time preview. |
 | **Exposure** | `V1 Required` | ✅ Implemented | ✅ Exposed | EV stop multiplier, black offset, and gamma power exponent controls. |
 | **White Balance** | `V1 Required` | ✅ Implemented | ✅ Exposed | Temperature (warm/cool) and tint (green/magenta) chromatic adjustments. |
-| **Histogram** | `V1 Required` | ⚠️ CPU calculation | ❌ Absent | Dynamic luminance and RGB channel histogram graph widget. |
+| **Histogram** | `V1 Required` | ✅ Implemented | ✅ Exposed | Interactive multi-channel 32-bin histogram widget (RGB, Red, Green, Blue, Luminance) with mean, shadows %, midtones %, and highlights % stats in Dock adjustments/properties tab. |
 | **Channel View** | `V1 Required` | ⚠️ Core logic | ❌ Absent | Non-mutating semantic channel inspection (Red, Green, Blue, Alpha). |
 | **Soft Proofing** | `V1 Required` | ✅ In `petunia_color` | ❌ Absent | View menu toggle to simulate ICC print color gamut on canvas. |
 
@@ -125,4 +125,4 @@ Modifiers alter geometry and rendering without destroying the original parametri
 | **Navigator Panel** | `ptnd.panel.navigator` | `Post-V1 Candidate` | ✅ Implemented | ✅ Exposed | Draggable viewport rectangle over document thumbnail. |
 | **Assets Panel** | `ptnd.panel.assets` | `Post-V1 Candidate` | ❌ Not modeled | ❌ Absent | Reusable component asset library. |
 | **Data Merge Panel** | `ptnd.panel.data_merge` | `Post-V1 Candidate` | ✅ Engine in 10.11 | ⛔ Disabled | Variable data CSV/JSON binding UI. |
-| **Dynamic Tool Options HUD** | `ptnd.surface.context_toolbar` | `V1 Required` | ✅ Implemented | ✅ Exposed | Dynamic tool options (Star points/radius, Polygon sides, Contour, Perspective, Measure, Gradient, Text, Selection). |
+| **Dynamic Tool Options HUD** | `ptnd.surface.context_toolbar` | `V1 Required` | ✅ Implemented | ✅ Exposed | Dynamic contextual controls for Node (Cusp/Smooth/Symmetric/Delete), Pen (Bézier/Polygon/Line/Finish), Pencil (Precise/Balanced/Smooth), Photo Brush/Eraser (Radius/Hardness/Opacity), Star points, Polygon sides, Contour, Perspective, Measure, Gradient, Text, Selection. |

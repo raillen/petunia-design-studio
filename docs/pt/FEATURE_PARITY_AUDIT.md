@@ -17,10 +17,10 @@ A Persona Vetorial gerencia curvas Bézier, nós, formas paramétricas, tipograf
 | Ferramenta (`ToolKind`) | Ação Canônica (`ActionId`) | Escopo | Estado no Motor/Shell | Estado na UI Freya | Lacuna de Implementação / Trabalho Restante |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Select / Move** | `ptnd.tool.select` | `V1 Required` | ✅ Implementado | ✅ Exposto | Hit-testing robusto com fallback de índice espacial, elemento canvas estável sem perda de eventos e ciclo de seleção corrigido. |
-| **Node (Nós)** | `ptnd.tool.node` | `V1 Required` | ✅ Implementado | ✅ Exposto | Expor botões de conversão de nós (Cúspide, Suave, Simétrico) na Context Toolbar dinâmica. |
+| **Node (Nós)** | `ptnd.tool.node` | `V1 Required` | ✅ Implementado | ✅ Exposto | ✅ Implementado: Controles no HUD de contexto para conversão de nós (Cúspide, Suave, Simétrico), exclusão de nós e conversão para curvas. |
 | **Point Transform** | `ptnd.tool.point_transform` | `Post-V1 Candidate` | ⚠️ Incorporado | ⚠️ Incorporado | Dobrado no HUD de transformação padrão pelo ADR 08.33; não requer botão avulso no rail. |
-| **Pen (Caneta)** | `ptnd.tool.pen` | `V1 Required` | ✅ Implementado | ✅ Exposto | Adicionar modos secundários no HUD de contexto (Modo Inteligente, Polígono e Linha). |
-| **Pencil (Lápis)** | `ptnd.tool.pencil` | `V1 Required` | ✅ Implementado | ✅ Exposto | Adicionar slider de tolerância de encaixe de curvas (Ramer-Douglas-Peucker) e estabilizador de traço no HUD. |
+| **Pen (Caneta)** | `ptnd.tool.pen` | `V1 Required` | ✅ Implementado | ✅ Exposto | ✅ Implementado: Modos no HUD de contexto (curvas Bézier, polígono com vértices em cúspide, linhas retas de 2 pontos), ação de concluir caminho aberto e conversão para curvas. |
+| **Pencil (Lápis)** | `ptnd.tool.pencil` | `V1 Required` | ✅ Implementado | ✅ Exposto | ✅ Implementado: 3 níveis determinísticos de fidelidade de encaixe de curvas (Preciso, Equilibrado, Suave) no HUD de contexto e conversão para curvas. |
 | **Corner (Cantos)** | `ptnd.tool.corner` | `V1 Required` | ✅ Implementado | ✅ Exposto | Expor controles numéricos de raio por nó no inspetor e comando "Bake Corner Geometry". |
 | **Contour (Contorno)** | `ptnd.tool.contour` | `V1 Required` | ✅ Implementado | 🟡 No Flyout | Botão presente no grupo "modify"; falta alça de arraste radial sobreposta ao canvas. |
 | **Perspective (Perspectiva)** | `ptnd.tool.perspective` | `V1 Required` | ✅ Implementado | ✅ Exposto | Desenhar alças interativas dos 4 vértices do quad no overlay do canvas. |
@@ -57,8 +57,8 @@ A Persona Foto gerencia pintura raster, seleções por mapa de bits, máscaras e
 | **Lasso (Laço)** | `ptnd.tool.photo.lasso` | `V1 Required` | ✅ Implementado | 🟡 No Rail Foto | Fechamento automático no mouse up e rasterização da máscara poligonal. |
 | **Selection Brush** | `ptnd.tool.photo.selection_brush` | `V1 Required` | ⛔ Bloqueado | 🟡 No Rail Foto | Requer algoritmo de atração por bordas (Edge-Snapping) no buffer de seleção. |
 | **Flood Select (Varinha)** | `ptnd.tool.photo.flood_select` | `V1 Required` | ⛔ Bloqueado | 🟡 No Rail Foto | Requer preenchimento por inundação com tolerância de cor conectado ao buffer raster. |
-| **Pixel Paint Brush** | `ptnd.tool.photo.brush` | `V1 Required` | ⛔ Bloqueado | 🟡 No Rail Foto | Requer pipeline de camadas raster em mosaico (`PixelLayer`) para pintura destrutiva. |
-| **Pixel Eraser (Borracha)** | `ptnd.tool.photo.eraser` | `V1 Required` | ⛔ Bloqueado | 🟡 No Rail Foto | Requer pipeline de camadas raster para remoção de alfa e cores RGBA. |
+| **Pixel Paint Brush** | `ptnd.tool.photo.brush` | `V1 Required` | ⛔ Bloqueado | 🟡 Exposto no HUD | Controles no HUD de contexto para Raio (-/+), Dureza e Opacidade. Pintura destrutiva completa aguarda pipeline de camadas raster (`PixelLayer`). |
+| **Pixel Eraser (Borracha)** | `ptnd.tool.photo.eraser` | `V1 Required` | ⛔ Bloqueado | 🟡 Exposto no HUD | Controles no HUD de contexto para Raio (-/+), Dureza e Opacidade. Remoção destrutiva completa aguarda pipeline de camadas raster. |
 | **Photo Gradient** | `ptnd.tool.photo.gradient` | `V1 Required` | ✅ Implementado | 🟡 No Rail Foto | Renderização de gradiente diretamente na máscara de seleção ou camada de pixels. |
 | **Crop (Corte)** | `ptnd.tool.photo.crop` | `V1 Required` | ✅ Implementado | 🟡 No Rail Foto | Restrições de proporção (1:1, 16:9, Livre) e corte não-destrutivo do canvas. |
 | **Clone / Healing / Inpainting** | — | `Post-V1 Candidate` | ❌ Não modelado | ❌ Ausente | Retoque fotográfico avançado e síntese de textura (Post-V1). |
@@ -105,7 +105,7 @@ Modificadores transformam a geometria e a renderização em tempo de execução 
 | **HSL** | `V1 Required` | ✅ Implementado | ✅ Exposto | Rotação de matiz (-180° a +180°), saturação e luminância em tempo real. |
 | **Exposure (Exposição)** | `V1 Required` | ✅ Implementado | ✅ Exposto | Multiplicador de paradas EV, deslocamento de preto e expoente de gama. |
 | **White Balance (Balanço Branco)**| `V1 Required` | ✅ Implementado | ✅ Exposto | Ajustes cromáticos de temperatura (quente/frio) e matiz (verde/magenta). |
-| **Histogram (Histograma)** | `V1 Required` | ⚠️ Cálculo em CPU | ❌ Ausente | Widget gráfico dinâmico com distribuição de luminância e canais RGB. |
+| **Histogram (Histograma)** | `V1 Required` | ✅ Implementado | ✅ Exposto | Widget interativo multi-canal com 32 barras de frequência (RGB, Vermelho, Verde, Azul, Luminância), média tonal e distribuição de sombras, tons médios e realces na aba Propriedades/Ajustes do Dock. |
 | **Channel View (Canais)** | `V1 Required` | ⚠️ Lógica base | ❌ Ausente | Inspeção não-mutante de componentes Vermelho, Verde, Azul e Alfa. |
 | **Soft Proofing (Prova de Cor)** | `V1 Required` | ✅ Em `petunia_color`| ❌ Ausente | Alternador na barra/menu de visualização simulando perfis ICC de impressão. |
 
@@ -125,4 +125,4 @@ Modificadores transformam a geometria e a renderização em tempo de execução 
 | **Painel Navegador** | `ptnd.panel.navigator` | `Post-V1 Candidate` | ✅ Implementado | ✅ Exposto | Miniatura com retângulo indicador de viewport navegável. |
 | **Painel de Ativos (Assets)** | `ptnd.panel.assets` | `Post-V1 Candidate` | ❌ Não modelado | ❌ Ausente | Biblioteca de componentes gráficos reutilizáveis para arrastar ao canvas. |
 | **Mesclagem de Dados** | `ptnd.panel.data_merge` | `Post-V1 Candidate` | ✅ Core em 10.11 | ⛔ Desabilitado | Interface para carregar CSV/JSON e vincular dados a nós de documento. |
-| **HUD de Opções de Ferramenta** | `ptnd.surface.context_toolbar` | `V1 Required` | ✅ Implementado | ✅ Exposto | Opções dinâmicas no topo (pontas da estrela, lados do polígono, Contorno, Perspectiva, Medição, Gradiente, Texto, Seleção). |
+| **HUD de Opções de Ferramenta** | `ptnd.surface.context_toolbar` | `V1 Required` | ✅ Implementado | ✅ Exposto | Controles contextuais dinâmicos para Nó (Cúspide/Suave/Simétrico/Excluir), Caneta (Bézier/Polígono/Linha/Concluir), Lápis (Preciso/Equilibrado/Suave), Pincel/Borracha Foto (Raio/Dureza/Opacidade), Pontas de estrela, Lados de polígono, Contorno, Perspectiva, Medição, Gradiente, Texto, Seleção. |

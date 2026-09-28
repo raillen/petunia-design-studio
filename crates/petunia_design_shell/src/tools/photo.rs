@@ -51,10 +51,35 @@ pub enum PhotoToolKind {
     Crop,
 }
 
+/// Quick settings for photo persona raster brush and eraser tools.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PhotoBrushSettings {
+    /// Dab radius in document points / screen pixels.
+    pub radius: f64,
+    /// Hardness falloff in [0.0, 1.0].
+    pub hardness: f32,
+    /// Flow rate in [0.0, 1.0].
+    pub flow: f32,
+    /// Master opacity in [0.0, 1.0].
+    pub opacity: f32,
+}
+
+impl Default for PhotoBrushSettings {
+    fn default() -> Self {
+        Self {
+            radius: 16.0,
+            hardness: 0.8,
+            flow: 1.0,
+            opacity: 1.0,
+        }
+    }
+}
+
 /// Interactive Photo Persona tool handling selections, raster brushes, and cropping.
 #[derive(Clone, Debug)]
 pub struct PhotoTool {
     kind: PhotoToolKind,
+    brush_settings: PhotoBrushSettings,
     start_doc: Option<GPoint>,
     current_doc: Option<GPoint>,
     lasso_doc: Vec<GPoint>,
@@ -66,6 +91,7 @@ impl PhotoTool {
     pub fn new(kind: PhotoToolKind) -> Self {
         Self {
             kind,
+            brush_settings: PhotoBrushSettings::default(),
             start_doc: None,
             current_doc: None,
             lasso_doc: Vec::new(),
@@ -76,6 +102,22 @@ impl PhotoTool {
     #[must_use]
     pub fn kind(&self) -> PhotoToolKind {
         self.kind
+    }
+
+    /// Current brush settings.
+    #[must_use]
+    pub fn brush_settings(&self) -> PhotoBrushSettings {
+        self.brush_settings
+    }
+
+    /// Mutably borrows brush settings.
+    pub fn brush_settings_mut(&mut self) -> &mut PhotoBrushSettings {
+        &mut self.brush_settings
+    }
+
+    /// Updates brush settings.
+    pub fn set_brush_settings(&mut self, settings: PhotoBrushSettings) {
+        self.brush_settings = settings;
     }
 
     /// Cancels active raster gesture.

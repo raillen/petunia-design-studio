@@ -82,11 +82,24 @@ pub enum PenPhase {
     ClosePreview { cursor_doc: GPoint },
 }
 
+/// Pen tool construction mode (Bézier curves, polygon segments, or straight lines).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum PenMode {
+    /// Standard Bézier curve construction with smooth/tangent handles.
+    #[default]
+    Bezier,
+    /// Polygon mode: sharp cusp vertices, drag does not create curved handles.
+    Polygon,
+    /// Line mode: commits two-point straight line segments.
+    Line,
+}
+
 /// Interactive vector Pen tool (10.2).
 #[derive(Clone, Debug)]
 pub struct PenTool {
     anchors: Vec<PenAnchor>,
     phase: PenPhase,
+    mode: PenMode,
     close_threshold_px: f64,
     /// Existing path object being extended, if any (10.2 continuation).
     continuing_object: Option<ObjectId>,
@@ -107,6 +120,7 @@ impl PenTool {
         Self {
             anchors: Vec::new(),
             phase: PenPhase::Idle,
+            mode: PenMode::Bezier,
             close_threshold_px: ENDPOINT_HIT_PX,
             continuing_object: None,
             last_down: None,
@@ -117,6 +131,17 @@ impl PenTool {
     #[must_use]
     pub fn is_active(&self) -> bool {
         !self.anchors.is_empty()
+    }
+
+    /// Construction mode (Bézier, Polygon, Line).
+    #[must_use]
+    pub fn mode(&self) -> PenMode {
+        self.mode
+    }
+
+    /// Sets the construction mode.
+    pub fn set_mode(&mut self, mode: PenMode) {
+        self.mode = mode;
     }
 
     /// In-flight anchors (read-only, for tests and HUD).
@@ -196,7 +221,7 @@ impl PenTool {
         match event.phase {
             PointerPhase::Down => self.on_down(event, bridge, camera, snap),
             PointerPhase::Move => self.on_move(event, camera, snap),
-            PointerPhase::Up => self.on_up(event),
+            PointerPhase::Up => self.on_up(event, bridge),
             PointerPhase::Cancel => {
                 self.cancel();
                 Ok(ChangeSet::empty())
@@ -323,6 +348,9 @@ impl PenTool {
                 anchor_idx,
                 handle_pos,
             } => {
+                if self.mode != PenMode::Bezier {
+                    return Ok(ChangeSet::empty());
+                }
                 let idx = *anchor_idx;
                 let anchor_pt = self.anchors.get(idx).map(|a| a.point).unwrap_or(pt);
                 // Shift locks handle angle to 15° steps (spec 10.1 modifier).
@@ -359,12 +387,19 @@ impl PenTool {
         Ok(ChangeSet::empty())
     }
 
-    fn on_up(&mut self, _event: &NormalizedPointerEvent) -> Result<ChangeSet, PetuniaError> {
+    fn on_up(
+        &mut self,
+        _event: &NormalizedPointerEvent,
+        bridge: &mut PetuniaDesignGuiBridge,
+    ) -> Result<ChangeSet, PetuniaError> {
         if let PenPhase::HandleAdjust { .. } = self.phase {
             let last_pt = self.anchors.last().map_or(GPoint::ORIGIN, |a| a.point);
             self.phase = PenPhase::SegmentPreview {
                 cursor_doc: last_pt,
             };
+        }
+        if self.mode == PenMode::Line && self.anchors.len() >= 2 {
+            return self.commit_path(bridge, false);
         }
         Ok(ChangeSet::empty())
     }

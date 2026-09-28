@@ -871,16 +871,186 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                 }))
                 .into_element(),
         ),
-        ToolKind::Pen | ToolKind::Node => Some(
+        ToolKind::Node => Some(
             rect()
                 .direction(Direction::Horizontal)
                 .spacing(theme::SPACE_1)
                 .cross_align(Alignment::Center)
-                .child(quick_action_btn("Converter em Curvas", move |_| {
+                .child(
+                    label()
+                        .text("Nó:")
+                        .color(theme::TEXT_SECONDARY)
+                        .font_size(theme::CAPTION_SIZE),
+                )
+                .child(quick_action_btn("Cúspide", move |_| {
+                    let _ = shell.write().convert_selected_nodes(petunia_design_shell::tools::NodeType::Cusp);
+                }))
+                .child(quick_action_btn("Suave", move |_| {
+                    let _ = shell.write().convert_selected_nodes(petunia_design_shell::tools::NodeType::Smooth);
+                }))
+                .child(quick_action_btn("Simétrico", move |_| {
+                    let _ = shell.write().convert_selected_nodes(petunia_design_shell::tools::NodeType::Symmetric);
+                }))
+                .child(quick_action_btn("Excluir", move |_| {
+                    let _ = shell.write().delete_selected_nodes();
+                }))
+                .child(quick_action_btn("Para Curvas", move |_| {
                     let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
                 }))
                 .into_element(),
         ),
+        ToolKind::Pen => {
+            let mode = shell.peek().tools.pen_tool().mode();
+            Some(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(theme::SPACE_1)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        label()
+                            .text("Caneta:")
+                            .color(theme::TEXT_SECONDARY)
+                            .font_size(theme::CAPTION_SIZE),
+                    )
+                    .child(quick_action_btn(
+                        if mode == petunia_design_shell::tools::PenMode::Bezier { "Bézier (✓)" } else { "Bézier" },
+                        move |_| {
+                            shell.write().tools.pen_tool_mut().set_mode(petunia_design_shell::tools::PenMode::Bezier);
+                        },
+                    ))
+                    .child(quick_action_btn(
+                        if mode == petunia_design_shell::tools::PenMode::Polygon { "Polígono (✓)" } else { "Polígono" },
+                        move |_| {
+                            shell.write().tools.pen_tool_mut().set_mode(petunia_design_shell::tools::PenMode::Polygon);
+                        },
+                    ))
+                    .child(quick_action_btn(
+                        if mode == petunia_design_shell::tools::PenMode::Line { "Linha (✓)" } else { "Linha" },
+                        move |_| {
+                            shell.write().tools.pen_tool_mut().set_mode(petunia_design_shell::tools::PenMode::Line);
+                        },
+                    ))
+                    .child(quick_action_btn("Concluir", move |_| {
+                        let _ = shell.write().finish_open_path();
+                    }))
+                    .child(quick_action_btn("Para Curvas", move |_| {
+                        let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
+                    }))
+                    .into_element(),
+            )
+        }
+        ToolKind::Pencil => {
+            let fidelity = shell.peek().tools.pencil_tool().fidelity();
+            Some(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(theme::SPACE_1)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        label()
+                            .text("Lápis:")
+                            .color(theme::TEXT_SECONDARY)
+                            .font_size(theme::CAPTION_SIZE),
+                    )
+                    .child(quick_action_btn(
+                        if fidelity == petunia_design_shell::tools::PencilFidelity::Precise { "Preciso (✓)" } else { "Preciso" },
+                        move |_| {
+                            shell.write().tools.pencil_tool_mut().set_fidelity(petunia_design_shell::tools::PencilFidelity::Precise);
+                        },
+                    ))
+                    .child(quick_action_btn(
+                        if fidelity == petunia_design_shell::tools::PencilFidelity::Balanced { "Equilibrado (✓)" } else { "Equilibrado" },
+                        move |_| {
+                            shell.write().tools.pencil_tool_mut().set_fidelity(petunia_design_shell::tools::PencilFidelity::Balanced);
+                        },
+                    ))
+                    .child(quick_action_btn(
+                        if fidelity == petunia_design_shell::tools::PencilFidelity::Smooth { "Suave (✓)" } else { "Suave" },
+                        move |_| {
+                            shell.write().tools.pencil_tool_mut().set_fidelity(petunia_design_shell::tools::PencilFidelity::Smooth);
+                        },
+                    ))
+                    .child(quick_action_btn("Para Curvas", move |_| {
+                        let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
+                    }))
+                    .into_element(),
+            )
+        }
+        ToolKind::PixelPaintBrush | ToolKind::PixelEraser => {
+            let is_brush = tool == ToolKind::PixelPaintBrush;
+            let settings = if is_brush {
+                shell.peek().tools.photo_brush_tool().brush_settings()
+            } else {
+                shell.peek().tools.photo_eraser_tool().brush_settings()
+            };
+            let radius = settings.radius;
+            let hardness = (settings.hardness * 100.0).round() as u32;
+            let opacity = (settings.opacity * 100.0).round() as u32;
+
+            Some(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(theme::SPACE_1)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        label()
+                            .text(if is_brush { "Pincel:" } else { "Borracha:" })
+                            .color(theme::TEXT_SECONDARY)
+                            .font_size(theme::CAPTION_SIZE),
+                    )
+                    .child(
+                        label()
+                            .text(format!("{:.0}px", radius))
+                            .color(theme::TEXT_PRIMARY)
+                            .font_size(theme::CAPTION_SIZE),
+                    )
+                    .child(quick_action_btn("Raio -", move |_| {
+                        let mut sh = shell.write();
+                        let target = if is_brush {
+                            sh.tools.photo_brush_tool_mut()
+                        } else {
+                            sh.tools.photo_eraser_tool_mut()
+                        };
+                        let mut s = target.brush_settings();
+                        s.radius = (s.radius - 4.0).clamp(2.0, 256.0);
+                        target.set_brush_settings(s);
+                    }))
+                    .child(quick_action_btn("Raio +", move |_| {
+                        let mut sh = shell.write();
+                        let target = if is_brush {
+                            sh.tools.photo_brush_tool_mut()
+                        } else {
+                            sh.tools.photo_eraser_tool_mut()
+                        };
+                        let mut s = target.brush_settings();
+                        s.radius = (s.radius + 4.0).clamp(2.0, 256.0);
+                        target.set_brush_settings(s);
+                    }))
+                    .child(quick_action_btn(format!("Dureza {}%", hardness), move |_| {
+                        let mut sh = shell.write();
+                        let target = if is_brush {
+                            sh.tools.photo_brush_tool_mut()
+                        } else {
+                            sh.tools.photo_eraser_tool_mut()
+                        };
+                        let mut s = target.brush_settings();
+                        s.hardness = if s.hardness < 0.3 { 0.5 } else if s.hardness < 0.8 { 1.0 } else { 0.0 };
+                        target.set_brush_settings(s);
+                    }))
+                    .child(quick_action_btn(format!("Opacidade {}%", opacity), move |_| {
+                        let mut sh = shell.write();
+                        let target = if is_brush {
+                            sh.tools.photo_brush_tool_mut()
+                        } else {
+                            sh.tools.photo_eraser_tool_mut()
+                        };
+                        let mut s = target.brush_settings();
+                        s.opacity = if s.opacity < 0.4 { 0.5 } else if s.opacity < 0.8 { 1.0 } else { 0.25 };
+                        target.set_brush_settings(s);
+                    }))
+                    .into_element(),
+            )
+        }
         ToolKind::Select => Some(
             rect()
                 .direction(Direction::Horizontal)
@@ -1221,14 +1391,14 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
 }
 
 fn quick_action_btn(
-    title: &'static str,
+    title: impl Into<String>,
     on_press: impl FnMut(Event<PressEventData>) + 'static,
 ) -> Element {
     Button::new()
         .on_press(on_press)
         .child(
             label()
-                .text(title)
+                .text(title.into())
                 .color(theme::TEXT_PRIMARY)
                 .font_size(theme::CAPTION_SIZE),
         )

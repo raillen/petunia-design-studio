@@ -26,14 +26,14 @@ pub use knife::{KnifeMode, KnifeTool};
 pub use manager::ToolManager;
 pub use measure::{AreaReadout, MeasureMode, MeasureTool, MeasurementReadout};
 pub use node::NodeTool;
-pub use pen::{NodeType, PenAnchor, PenCursorHint, PenPhase, PenTool};
+pub use pen::{NodeType, PenAnchor, PenCursorHint, PenMode, PenPhase, PenTool};
 pub use pencil::{PencilFidelity, PencilTool};
 pub use perspective::PerspectiveTool;
 pub use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers,
 };
 pub use petunia_design_application::tools::ToolKind;
-pub use photo::{PhotoTool, PhotoToolKind};
+pub use photo::{PhotoBrushSettings, PhotoTool, PhotoToolKind};
 pub use picker::{PickerMode, PickerTool};
 pub use point_transform::PointTransformTool;
 pub use select::{MarqueeSelectRule, SelectGestureMode, SelectTool, SelectToolState};

@@ -180,6 +180,61 @@ impl ToolManager {
         &mut self.gradient_tool
     }
 
+    /// Borrows the Node tool.
+    #[must_use]
+    pub fn node_tool(&self) -> &super::node::NodeTool {
+        &self.node_tool
+    }
+
+    /// Mutably borrows the Node tool.
+    pub fn node_tool_mut(&mut self) -> &mut super::node::NodeTool {
+        &mut self.node_tool
+    }
+
+    /// Borrows the Pen tool.
+    #[must_use]
+    pub fn pen_tool(&self) -> &super::pen::PenTool {
+        &self.pen_tool
+    }
+
+    /// Mutably borrows the Pen tool.
+    pub fn pen_tool_mut(&mut self) -> &mut super::pen::PenTool {
+        &mut self.pen_tool
+    }
+
+    /// Borrows the Pencil tool.
+    #[must_use]
+    pub fn pencil_tool(&self) -> &super::pencil::PencilTool {
+        &self.pencil_tool
+    }
+
+    /// Mutably borrows the Pencil tool.
+    pub fn pencil_tool_mut(&mut self) -> &mut super::pencil::PencilTool {
+        &mut self.pencil_tool
+    }
+
+    /// Borrows the Photo raster brush tool.
+    #[must_use]
+    pub fn photo_brush_tool(&self) -> &super::photo::PhotoTool {
+        &self.photo_brush_tool
+    }
+
+    /// Mutably borrows the Photo raster brush tool.
+    pub fn photo_brush_tool_mut(&mut self) -> &mut super::photo::PhotoTool {
+        &mut self.photo_brush_tool
+    }
+
+    /// Borrows the Photo raster eraser tool.
+    #[must_use]
+    pub fn photo_eraser_tool(&self) -> &super::photo::PhotoTool {
+        &self.photo_eraser_tool
+    }
+
+    /// Mutably borrows the Photo raster eraser tool.
+    pub fn photo_eraser_tool_mut(&mut self) -> &mut super::photo::PhotoTool {
+        &mut self.photo_eraser_tool
+    }
+
     /// Cancels any active gesture in the current tool.
     pub fn cancel_active(&mut self) {
         match self.active_kind {
