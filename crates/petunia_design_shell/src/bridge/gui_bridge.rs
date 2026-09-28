@@ -709,6 +709,18 @@ impl PetuniaDesignGuiBridge {
         self.submit_command(CommandRequest::new(Command::ConvertToCurves { id }))
     }
 
+    /// Renames an object by stable ID.
+    pub fn rename_object(
+        &mut self,
+        id: ObjectId,
+        name: impl Into<String>,
+    ) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::RenameObject {
+            id,
+            name: name.into(),
+        }))
+    }
+
     /// Bakes corner geometry into an explicit vector path (10.2, 10.3).
     pub fn bake_corners(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
         self.submit_command(CommandRequest::new(Command::BakeCorners { id }))

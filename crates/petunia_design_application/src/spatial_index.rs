@@ -86,34 +86,39 @@ impl crate::session::DocumentSession {
         cell.tree = RTree::new();
         cell.entries = 0;
         cell.revision = self.current_revision();
-        let Some(surface_id) = self.active_surface() else {
-            return;
-        };
-        let Ok(surface) = self.surface(surface_id) else {
-            return;
-        };
+        let surfaces: Vec<&petunia_design_document::Surface> =
+            if let Some(surface_id) = self.active_surface() {
+                if let Ok(s) = self.surface(surface_id) {
+                    vec![s]
+                } else {
+                    self.document().surfaces().iter().collect()
+                }
+            } else {
+                self.document().surfaces().iter().collect()
+            };
         // evaluated_bounds is itself memoized (F1): rebuilds stay cheap.
-        let items: Vec<IndexedObj> = surface
-            .objects()
-            .iter()
-            .enumerate()
-            .filter(|(_, obj)| obj.visible && !obj.locked)
-            .filter_map(|(seq, obj)| {
-                let [x, y, w, h] = self
+        let mut items: Vec<IndexedObj> = Vec::new();
+        let mut global_seq = 0;
+        for surface in surfaces {
+            for obj in surface.objects().iter().filter(|o| o.visible && !o.locked) {
+                let Some([x, y, w, h]) = self
                     .cached_world_frame_bounds(obj.id)
                     .or_else(|| self.cached_world_bounds(obj.id))
                     .or_else(|| self.cached_bounds(obj.id))
-                    .or(obj.bounds)?;
-                Some(IndexedObj {
+                    .or(obj.bounds) else {
+                    continue;
+                };
+                items.push(IndexedObj {
                     id: obj.id,
-                    seq,
-                    x0: x,
-                    y0: y,
-                    x1: x + w,
-                    y1: y + h,
-                })
-            })
-            .collect();
+                    seq: global_seq,
+                    x0: x.min(x + w),
+                    y0: y.min(y + h),
+                    x1: x.max(x + w),
+                    y1: y.max(y + h),
+                });
+                global_seq += 1;
+            }
+        }
         cell.entries = items.len();
         cell.tree = RTree::bulk_load(items);
     }

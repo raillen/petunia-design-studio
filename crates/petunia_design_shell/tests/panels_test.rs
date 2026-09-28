@@ -58,6 +58,26 @@ fn layers_panel_visibility_lock_and_reorder() {
     let m_reorder = controller.query_model(&bridge);
     assert_eq!(m_reorder.rows[0].id, id2);
     assert_eq!(m_reorder.rows[1].id, id1);
+
+    // 5. Arrange: Move Layer 2 Forward (from index 0 to index 1)
+    controller
+        .arrange_row(
+            &mut bridge,
+            surface_id,
+            id2,
+            petunia_design_document::ArrangePosition::Forward,
+        )
+        .unwrap();
+    let m_arrange = controller.query_model(&bridge);
+    assert_eq!(m_arrange.rows[0].id, id1);
+    assert_eq!(m_arrange.rows[1].id, id2);
+
+    // 6. Rename: Rename Layer 1 to "Hero Layer"
+    controller
+        .rename_row(&mut bridge, id1, "Hero Layer")
+        .unwrap();
+    let m_rename = controller.query_model(&bridge);
+    assert_eq!(m_rename.rows[0].name, "Hero Layer");
 }
 
 #[test]

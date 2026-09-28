@@ -114,6 +114,8 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
     let mut shell_for_group = shell;
     let mut shell_for_ungroup = shell;
     let mut shell_for_delete = shell;
+    let mut shell_for_front = shell;
+    let mut shell_for_back = shell;
 
     rect()
         .direction(Direction::Vertical)
@@ -147,7 +149,7 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                                         "ptnd.action.object.group",
                                     );
                                 })
-                                .child(label().text("Agrupar").font_size(11.)),
+                                .child(label().text("Agrupar").font_size(10.)),
                         )
                         .child(
                             Button::new()
@@ -157,7 +159,27 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                                         "ptnd.action.object.ungroup",
                                     );
                                 })
-                                .child(label().text("Desagrupar").font_size(11.)),
+                                .child(label().text("Desagrupar").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    let _ = run_action_token(
+                                        &mut shell_for_front.write(),
+                                        "ptnd.action.object.arrange.front",
+                                    );
+                                })
+                                .child(label().text("▲ Topo").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    let _ = run_action_token(
+                                        &mut shell_for_back.write(),
+                                        "ptnd.action.object.arrange.back",
+                                    );
+                                })
+                                .child(label().text("▼ Fundo").font_size(10.)),
                         )
                         .child(
                             Button::new()
@@ -167,7 +189,7 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                                         "ptnd.action.edit.delete",
                                     );
                                 })
-                                .child(label().text("Excluir").font_size(11.)),
+                                .child(label().text("Excluir").font_size(10.)),
                         ),
                 ),
         )
@@ -189,6 +211,10 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                     let mut shell_for_select = shell;
                     let mut shell_for_vis = shell;
                     let mut shell_for_lock = shell;
+                    let mut shell_for_up = shell;
+                    let mut shell_for_down = shell;
+                    let mut shell_for_rename = shell;
+                    let current_name = name.clone();
 
                     rect()
                         .direction(Direction::Horizontal)
@@ -242,6 +268,69 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                                 .direction(Direction::Horizontal)
                                 .cross_align(Alignment::Center)
                                 .spacing(theme::SPACE_1)
+                                .child(
+                                    rect()
+                                        .padding(Gaps::new_all(2.))
+                                        .on_press(move |_| {
+                                            let surf = shell_for_up.peek().bridge.active_surface();
+                                            if let Some(surf) = surf {
+                                                let _ = LayersPanelController::new().arrange_row(
+                                                    &mut shell_for_up.write().bridge,
+                                                    surf,
+                                                    id,
+                                                    petunia_design_document::ArrangePosition::Forward,
+                                                );
+                                            }
+                                        })
+                                        .child(
+                                            label()
+                                                .text("▲")
+                                                .font_size(10.)
+                                                .color(theme::TEXT_SECONDARY),
+                                        ),
+                                )
+                                .child(
+                                    rect()
+                                        .padding(Gaps::new_all(2.))
+                                        .on_press(move |_| {
+                                            let surf = shell_for_down.peek().bridge.active_surface();
+                                            if let Some(surf) = surf {
+                                                let _ = LayersPanelController::new().arrange_row(
+                                                    &mut shell_for_down.write().bridge,
+                                                    surf,
+                                                    id,
+                                                    petunia_design_document::ArrangePosition::Backward,
+                                                );
+                                            }
+                                        })
+                                        .child(
+                                            label()
+                                                .text("▼")
+                                                .font_size(10.)
+                                                .color(theme::TEXT_SECONDARY),
+                                        ),
+                                )
+                                .child(
+                                    rect()
+                                        .padding(Gaps::new_all(2.))
+                                        .on_press(move |_| {
+                                            let new_name = if current_name.ends_with(" *") {
+                                                current_name.trim_end_matches(" *").to_string()
+                                            } else {
+                                                format!("{} *", current_name)
+                                            };
+                                            let _ = LayersPanelController::new().rename_row(
+                                                &mut shell_for_rename.write().bridge,
+                                                id,
+                                                new_name,
+                                            );
+                                        })
+                                        .child(
+                                            label()
+                                                .text("✏️")
+                                                .font_size(10.),
+                                        ),
+                                )
                                 .child(
                                     rect()
                                         .padding(Gaps::new_all(2.))

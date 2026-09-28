@@ -86,6 +86,32 @@ impl LayersPanelController {
         bridge.submit_command(cmd)
     }
 
+    /// Changes an object's z-order (forward, backward, front, back).
+    pub fn arrange_row(
+        &self,
+        bridge: &mut PetuniaDesignGuiBridge,
+        surface: SurfaceId,
+        id: ObjectId,
+        position: petunia_design_document::ArrangePosition,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let cmd = CommandRequest::new(Command::ArrangeObject {
+            surface,
+            id,
+            position,
+        });
+        bridge.submit_command(cmd)
+    }
+
+    /// Renames a layer row by ID.
+    pub fn rename_row(
+        &self,
+        bridge: &mut PetuniaDesignGuiBridge,
+        id: ObjectId,
+        name: impl Into<String>,
+    ) -> Result<ChangeSet, PetuniaError> {
+        bridge.rename_object(id, name)
+    }
+
     /// Deletes all currently selected objects via semantic action.
     pub fn delete_selected(
         &self,

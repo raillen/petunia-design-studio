@@ -311,17 +311,11 @@ impl Component for Workspace {
         let mut gesture_tick = use_state(|| 0u64);
         let ruler_drag = use_state(|| None::<(petunia_design_document::GuideOrientation, f64)>);
         let middle_pan_last = use_state(|| None::<GPoint>);
+        let mut is_pointer_down = use_state(|| false);
         let a11y_id = use_a11y();
         let snapshot = shell.read().canvas_snapshot();
         let cursor_icon = map_cursor_affordance(snapshot.overlays.cursor);
-        let active_tool = *self.0.active_tool.read();
-        let tick = *gesture_tick.read();
         let in_flight_guide = *ruler_drag.read();
-        let canvas_key = (snapshot.revision ^ tick)
-            .wrapping_add(snapshot.camera.zoom.to_bits())
-            .wrapping_add(snapshot.camera.pan_x.to_bits())
-            .wrapping_add(snapshot.camera.pan_y.to_bits())
-            .wrapping_add(active_tool as u64);
 
         let active_text_object = snapshot.objects.iter().find(|o| {
             o.active && matches!(o.shape, Some(petunia_design_document::ShapeKind::Text { .. }))
@@ -401,21 +395,24 @@ impl Component for Workspace {
             .a11y_focusable(true)
             .on_global_pointer_press({
                 move |event: Event<PointerEventData>| {
-                    let location = event.element_location();
-                    let button = event
-                        .button()
-                        .and_then(|b| pointer_button(Some(b)))
-                        .unwrap_or(PointerButton::Primary);
-                    dispatch_workspace_at(
-                        shell,
-                        modifiers,
-                        gesture_tick,
-                        ruler_drag,
-                        middle_pan_last,
-                        PointerPhase::Up,
-                        button,
-                        GPoint::new(location.x, location.y),
-                    );
+                    if *is_pointer_down.peek() {
+                        is_pointer_down.set(false);
+                        let location = event.element_location();
+                        let button = event
+                            .button()
+                            .and_then(|b| pointer_button(Some(b)))
+                            .unwrap_or(PointerButton::Primary);
+                        dispatch_workspace_at(
+                            shell,
+                            modifiers,
+                            gesture_tick,
+                            ruler_drag,
+                            middle_pan_last,
+                            PointerPhase::Up,
+                            button,
+                            GPoint::new(location.x, location.y),
+                        );
+                    }
                 }
             })
             .on_sized({
@@ -434,10 +431,11 @@ impl Component for Workspace {
                 }
             })
             .child(
-                canvas_paint::canvas_view(snapshot, canvas_key, in_flight_guide)
+                canvas_paint::canvas_view(snapshot, in_flight_guide)
                     .on_pointer_down({
                         move |event| {
                             a11y_id.request_focus();
+                            is_pointer_down.set(true);
                             dispatch_workspace_pointer(
                                 shell,
                                 modifiers,
@@ -465,48 +463,57 @@ impl Component for Workspace {
                     .on_mouse_up({
                         move |event: Event<MouseEventData>| {
                             event.prevent_default();
-                            let button = pointer_button(event.button).unwrap_or(PointerButton::Primary);
-                            let location = event.element_location;
-                            dispatch_workspace_at(
-                                shell,
-                                modifiers,
-                                gesture_tick,
-                                ruler_drag,
-                                middle_pan_last,
-                                PointerPhase::Up,
-                                button,
-                                GPoint::new(location.x, location.y),
-                            );
+                            if *is_pointer_down.peek() {
+                                is_pointer_down.set(false);
+                                let button = pointer_button(event.button).unwrap_or(PointerButton::Primary);
+                                let location = event.element_location;
+                                dispatch_workspace_at(
+                                    shell,
+                                    modifiers,
+                                    gesture_tick,
+                                    ruler_drag,
+                                    middle_pan_last,
+                                    PointerPhase::Up,
+                                    button,
+                                    GPoint::new(location.x, location.y),
+                                );
+                            }
                         }
                     })
                     .on_touch_end({
                         move |event: Event<TouchEventData>| {
-                            let location = event.element_location;
-                            dispatch_workspace_at(
-                                shell,
-                                modifiers,
-                                gesture_tick,
-                                ruler_drag,
-                                middle_pan_last,
-                                PointerPhase::Up,
-                                PointerButton::Primary,
-                                GPoint::new(location.x, location.y),
-                            );
+                            if *is_pointer_down.peek() {
+                                is_pointer_down.set(false);
+                                let location = event.element_location;
+                                dispatch_workspace_at(
+                                    shell,
+                                    modifiers,
+                                    gesture_tick,
+                                    ruler_drag,
+                                    middle_pan_last,
+                                    PointerPhase::Up,
+                                    PointerButton::Primary,
+                                    GPoint::new(location.x, location.y),
+                                );
+                            }
                         }
                     })
                     .on_touch_cancel({
                         move |event: Event<TouchEventData>| {
-                            let location = event.element_location;
-                            dispatch_workspace_at(
-                                shell,
-                                modifiers,
-                                gesture_tick,
-                                ruler_drag,
-                                middle_pan_last,
-                                PointerPhase::Cancel,
-                                PointerButton::Primary,
-                                GPoint::new(location.x, location.y),
-                            );
+                            if *is_pointer_down.peek() {
+                                is_pointer_down.set(false);
+                                let location = event.element_location;
+                                dispatch_workspace_at(
+                                    shell,
+                                    modifiers,
+                                    gesture_tick,
+                                    ruler_drag,
+                                    middle_pan_last,
+                                    PointerPhase::Cancel,
+                                    PointerButton::Primary,
+                                    GPoint::new(location.x, location.y),
+                                );
+                            }
                         }
                     })
                     .on_wheel({

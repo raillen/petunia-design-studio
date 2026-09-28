@@ -204,6 +204,34 @@ impl<'doc> DocumentMutator<'doc> {
         )))
     }
 
+    /// Renames an object by stable ID.
+    pub fn rename_object(
+        &mut self,
+        id: ObjectId,
+        new_name: impl Into<String>,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let name = new_name.into();
+        for surface in &mut self.document.surfaces {
+            if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
+                let previous = object.name.clone();
+                if previous == name {
+                    return Ok(ChangeSet::empty());
+                }
+                object.name = name.clone();
+                let mut changes = ChangeSet::empty();
+                changes.push(Change::NameChanged {
+                    id,
+                    previous,
+                    next: name,
+                });
+                return Ok(changes);
+            }
+        }
+        Err(PetuniaError::not_found(format!(
+            "object `{id}` does not exist"
+        )))
+    }
+
     /// Sets an object's semantic fill token.
     pub fn set_fill(
         &mut self,
@@ -2663,6 +2691,18 @@ impl<'doc> DocumentMutator<'doc> {
                         continue;
                     }
                     target.objects.insert(dest, object);
+                }
+                Change::NameChanged { id, previous, .. } => {
+                    let found = self
+                        .document
+                        .surfaces
+                        .iter_mut()
+                        .flat_map(|s| s.objects.iter_mut())
+                        .find(|o| o.id == id)
+                        .ok_or_else(|| {
+                            PetuniaError::not_found(format!("object `{id}` does not exist"))
+                        })?;
+                    found.name = previous;
                 }
                 Change::FillChanged { id, previous, .. } => {
                     let found = self

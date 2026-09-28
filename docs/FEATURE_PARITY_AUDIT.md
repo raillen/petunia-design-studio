@@ -16,7 +16,7 @@ The Vector Persona focuses on Bézier curves, parametric geometry, typography, b
 
 | Tool (`ToolKind`) | Canonical Action (`ActionId`) | Scope | Engine / Shell Status | Freya UI Status | Implementation Gap / Required Work |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Select / Move** | `ptnd.tool.select` | `V1 Required` | ✅ Implemented | ✅ Exposed | Complete interactive rotation handles on bounding-box corners and marquee crossing-selection toggle. |
+| **Select / Move** | `ptnd.tool.select` | `V1 Required` | ✅ Implemented | ✅ Exposed | Robust hit-testing with spatial index fallback, persistent canvas DOM, and toggle/cycle selection fix. |
 | **Node** | `ptnd.tool.node` | `V1 Required` | ✅ Implemented | ✅ Exposed | Expose node type conversion buttons (Cusp, Smooth, Symmetric) in the dynamic context toolbar. |
 | **Point Transform** | `ptnd.tool.point_transform` | `Post-V1 Candidate` | ⚠️ Integrated | ⚠️ Integrated | Folded into standard Transform HUD per ADR 08.33; does not require a standalone rail button. |
 | **Pen** | `ptnd.tool.pen` | `V1 Required` | ✅ Implemented | ✅ Exposed | Implement secondary modes in context HUD (Smart Mode, Polygon Mode, Line Mode). |
@@ -118,7 +118,7 @@ Modifiers alter geometry and rendering without destroying the original parametri
 | **Preferences Window** | `ptnd.window.preferences` | `Post-V1 Candidate` | ⚠️ Partial | 🟡 CustomizeDialog | Form with General, Performance, Color, and Keyboard Shortcuts; `preferences.toml` persistence. |
 | **New Document Dialog** | `ptnd.dialog.new_document` | `V1 Required` | ✅ Implemented | 🟡 Existing Modal | Add Bleed, Margins, and Color Space presets (sRGB, CMYK). |
 | **Export Dialog** | `ptnd.dialog.export` | `V1 Required` | ✅ Implemented | 🟡 Existing Modal | Add Resolution (DPI 72/150/300), embedded ICC profiles, and Artboard selection. |
-| **Layers Panel** | `ptnd.panel.layers` | `V1 Required` | ✅ Implemented | ✅ Exposed | Drag-and-drop layer reordering and double-click inline renaming. |
+| **Layers Panel** | `ptnd.panel.layers` | `V1 Required` | ✅ Implemented | ✅ Exposed | Layer reordering with ▲/▼ arrange buttons, inline renaming via ✏️ and RenameObject command. |
 | **Properties Inspector** | `ptnd.panel.properties` | `V1 Required` | ✅ Implemented | ✅ Exposed | Integrate dash styles, caps/joins, typography leading/tracking, and FX stack. |
 | **Color & Swatches** | `ptnd.panel.color` / `swatches` | `V1 Required` | ✅ Implemented | ✅ Exposed | Color sliders (RGB, HSL, CMYK) alongside existing swatch palettes. |
 | **History Panel** | `ptnd.panel.history` | `V1 Required` | ✅ Implemented | ✅ Exposed | Non-destructive branching history timeline navigation. |

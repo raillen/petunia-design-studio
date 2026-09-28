@@ -1000,7 +1000,19 @@ impl SelectTool {
         // Spatial prefilter (F3) over evaluated bounds, topmost-first, then
         // the exact test on the memoized outline (F1 + F2). Unlike the old
         // base-bounds pre-check, warped/inset outlines hit where drawn (09.31).
-        for id in session.spatial_candidates_point(doc_pos, tolerance) {
+        let candidates = session.spatial_candidates_point(doc_pos, tolerance);
+        let ids: Vec<ObjectId> = if !candidates.is_empty() {
+            candidates
+        } else {
+            session
+                .document()
+                .surfaces()
+                .iter()
+                .flat_map(|s| s.objects().iter().rev().map(|o| o.id))
+                .collect()
+        };
+
+        for id in ids {
             let Some(obj) = session.find_object(id) else {
                 continue;
             };
@@ -1010,17 +1022,26 @@ impl SelectTool {
                 .or(obj.bounds)
                 .is_some_and(|[bx, by, bw, bh]| {
                     if obj.rotation.abs() <= 1e-4 {
-                        doc_pos.x >= bx - tolerance
-                            && doc_pos.x <= bx + bw + tolerance
-                            && doc_pos.y >= by - tolerance
-                            && doc_pos.y <= by + bh + tolerance
+                        let min_x = bx.min(bx + bw);
+                        let max_x = bx.max(bx + bw);
+                        let min_y = by.min(by + bh);
+                        let max_y = by.max(by + bh);
+                        doc_pos.x >= min_x - tolerance
+                            && doc_pos.x <= max_x + tolerance
+                            && doc_pos.y >= min_y - tolerance
+                            && doc_pos.y <= max_y + tolerance
                     } else if let Ok(trans) = session.document().world_transform_checked(id) {
                         if let Some(inv) = trans.inverse() {
                             let local = inv.apply(doc_pos);
-                            local.x >= -tolerance
-                                && local.x <= bw + tolerance
-                                && local.y >= -tolerance
-                                && local.y <= bh + tolerance
+                            let [_, _, ow, oh] = obj.bounds.unwrap_or([0.0, 0.0, bw, bh]);
+                            let min_x = 0.0f64.min(ow);
+                            let max_x = 0.0f64.max(ow);
+                            let min_y = 0.0f64.min(oh);
+                            let max_y = 0.0f64.max(oh);
+                            local.x >= min_x - tolerance
+                                && local.x <= max_x + tolerance
+                                && local.y >= min_y - tolerance
+                                && local.y <= max_y + tolerance
                         } else {
                             false
                         }

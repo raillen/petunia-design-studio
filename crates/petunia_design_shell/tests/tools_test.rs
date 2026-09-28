@@ -81,6 +81,90 @@ fn select_tool_click_and_toggle_selection() {
 }
 
 #[test]
+fn select_tool_click_cycle_select_deselect_reselect() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Select Cycle Test").expect("doc");
+    let surface_id = bridge.active_surface().unwrap();
+
+    let mut gen = IdGenerator::new();
+    let id1 = gen.next_object();
+    let id2 = gen.next_object();
+
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id: id1,
+            name: "BoxA".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id: id1,
+            bounds: Some([10.0, 10.0, 50.0, 50.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id: id2,
+            name: "BoxB".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id: id2,
+            bounds: Some([100.0, 100.0, 50.0, 50.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = SelectTool::new();
+
+    let mut click = |tool: &mut SelectTool, bridge: &mut PetuniaDesignGuiBridge, x: f64, y: f64| {
+        let down = NormalizedPointerEvent::new(
+            PointerPhase::Down,
+            PointerButton::Primary,
+            GPoint::new(x, y),
+            GPoint::new(x, y),
+            SemanticModifiers::default(),
+        );
+        tool.on_pointer_event(&down, bridge, &camera, &mut snap).unwrap();
+        let up = NormalizedPointerEvent::new(
+            PointerPhase::Up,
+            PointerButton::Primary,
+            GPoint::new(x, y),
+            GPoint::new(x, y),
+            SemanticModifiers::default(),
+        );
+        tool.on_pointer_event(&up, bridge, &camera, &mut snap).unwrap();
+    };
+
+    // 1. Click Box A
+    click(&mut tool, &mut bridge, 25.0, 25.0);
+    assert_eq!(bridge.selection().selected_ids, vec![id1]);
+
+    // 2. Click Box B
+    click(&mut tool, &mut bridge, 125.0, 125.0);
+    assert_eq!(bridge.selection().selected_ids, vec![id2]);
+
+    // 3. Click empty canvas (300, 300) -> deselect
+    click(&mut tool, &mut bridge, 300.0, 300.0);
+    assert!(bridge.selection().is_empty);
+
+    // 4. Reselect Box A
+    click(&mut tool, &mut bridge, 25.0, 25.0);
+    assert_eq!(bridge.selection().selected_ids, vec![id1]);
+
+    // 5. Reselect Box B
+    click(&mut tool, &mut bridge, 125.0, 125.0);
+    assert_eq!(bridge.selection().selected_ids, vec![id2]);
+}
+
+#[test]
 fn select_tool_drag_translation_and_duplicate_drag() {
     let mut bridge = PetuniaDesignGuiBridge::new();
     bridge.new_document("Drag Test").expect("doc");

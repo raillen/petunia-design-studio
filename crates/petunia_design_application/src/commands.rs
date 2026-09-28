@@ -42,6 +42,11 @@ pub enum Command {
         id: ObjectId,
         new_index: usize,
     },
+    /// Renames an object by stable ID.
+    RenameObject {
+        id: ObjectId,
+        name: String,
+    },
     /// Arrange an object one step or to a z-order edge (10.1, F-16).
     ArrangeObject {
         surface: SurfaceId,
@@ -399,6 +404,7 @@ pub fn execute(
             id,
             new_index,
         } => mutator.reorder_object(*surface, *id, *new_index),
+        Command::RenameObject { id, name } => mutator.rename_object(*id, name.clone()),
         Command::ArrangeObject {
             surface,
             id,

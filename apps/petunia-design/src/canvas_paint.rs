@@ -128,14 +128,12 @@ const SUBTRACTIVE: Color = Color::from_rgb(0xF0, 0x6C, 0x8D);
 /// Builds the canvas element that paints a whole scene in one pass.
 pub fn canvas_view(
     snapshot: CanvasSnapshot,
-    key: u64,
     in_flight_guide: Option<(petunia_design_document::GuideOrientation, f64)>,
 ) -> Canvas {
     let on_render = RenderCallback::new(move |context: &mut CanvasContext| {
         paint_scene(&snapshot, context, in_flight_guide);
     });
     canvas(on_render)
-        .key(key)
         .width(Size::fill())
         .height(Size::fill())
 }

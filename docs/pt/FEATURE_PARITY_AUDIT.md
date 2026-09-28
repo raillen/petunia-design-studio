@@ -16,7 +16,7 @@ A Persona Vetorial gerencia curvas Bézier, nós, formas paramétricas, tipograf
 
 | Ferramenta (`ToolKind`) | Ação Canônica (`ActionId`) | Escopo | Estado no Motor/Shell | Estado na UI Freya | Lacuna de Implementação / Trabalho Restante |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Select / Move** | `ptnd.tool.select` | `V1 Required` | ✅ Implementado | ✅ Exposto | Finalizar alças de rotação interativa nos cantos da caixa delimitadora e seleção por cruzamento. |
+| **Select / Move** | `ptnd.tool.select` | `V1 Required` | ✅ Implementado | ✅ Exposto | Hit-testing robusto com fallback de índice espacial, elemento canvas estável sem perda de eventos e ciclo de seleção corrigido. |
 | **Node (Nós)** | `ptnd.tool.node` | `V1 Required` | ✅ Implementado | ✅ Exposto | Expor botões de conversão de nós (Cúspide, Suave, Simétrico) na Context Toolbar dinâmica. |
 | **Point Transform** | `ptnd.tool.point_transform` | `Post-V1 Candidate` | ⚠️ Incorporado | ⚠️ Incorporado | Dobrado no HUD de transformação padrão pelo ADR 08.33; não requer botão avulso no rail. |
 | **Pen (Caneta)** | `ptnd.tool.pen` | `V1 Required` | ✅ Implementado | ✅ Exposto | Adicionar modos secundários no HUD de contexto (Modo Inteligente, Polígono e Linha). |
@@ -118,7 +118,7 @@ Modificadores transformam a geometria e a renderização em tempo de execução 
 | **Janela de Preferências** | `ptnd.window.preferences` | `Post-V1 Candidate` | ⚠️ Parcial | 🟡 CustomizeDialog | Formulário de configurações com persistência em `preferences.toml`. |
 | **Diálogo de Novo Documento** | `ptnd.dialog.new_document` | `V1 Required` | ✅ Implementado | 🟡 Modal Existente | Incluir opções de sangria (bleed), margens e espaços de cor. |
 | **Diálogo de Exportação** | `ptnd.dialog.export` | `V1 Required` | ✅ Implementado | 🟡 Modal Existente | Seleção de resolução (DPI 72/150/300), perfil ICC e seleção de pranchetas. |
-| **Painel Camadas** | `ptnd.panel.layers` | `V1 Required` | ✅ Implementado | ✅ Exposto | Suporte a reordenamento por arrastar e soltar (drag & drop) e renomeação inline. |
+| **Painel Camadas** | `ptnd.panel.layers` | `V1 Required` | ✅ Implementado | ✅ Exposto | Reordenação de camadas com botões ▲/▼, renomeação rápida via ✏️ e comando RenameObject. |
 | **Inspetor de Propriedades** | `ptnd.panel.properties` | `V1 Required` | ✅ Implementado | ✅ Exposto | Integrar estilos de traço avançados, controle tipográfico e pilha de efeitos (FX). |
 | **Cores e Amostras** | `ptnd.panel.color` / `swatches` | `V1 Required` | ✅ Implementado | ✅ Exposto | Controles deslizantes (RGB, HSL, CMYK) junto às paletas de amostras. |
 | **Painel Histórico** | `ptnd.panel.history` | `V1 Required` | ✅ Implementado | ✅ Exposto | Navegação e ramificação temporal não-destrutiva de estados de desfazer. |

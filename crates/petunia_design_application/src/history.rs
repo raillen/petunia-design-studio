@@ -150,6 +150,9 @@ impl Replayer {
                 Change::ObjectRemoved { object, .. } => {
                     mutator.remove_object(object.id)?;
                 }
+                Change::NameChanged { id, next, .. } => {
+                    mutator.rename_object(id, next)?;
+                }
                 Change::FillChanged { id, next, .. } => {
                     mutator.set_fill(id, next)?;
                 }
