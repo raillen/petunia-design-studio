@@ -74,7 +74,7 @@ Modifiers alter geometry and rendering without destroying the original parametri
 | :--- | :--- | :--- | :--- | :--- |
 | **ContourOffset** | `V1 Required` | ✅ Implemented | ⚠️ Partial | Expose join styles (Miter, Round, Bevel) in Properties inspector. |
 | **TransparentGradient** | `V1 Required` | ✅ Implemented | ⚠️ Partial | Inspector UI to manage multiple opacity stops along the gradient vector. |
-| **Perspective** | `V1 Required` | ✅ Implemented | ⚠️ Partial | 4-corner coordinate controls in Properties and interactive canvas handles. |
+| **Perspective** | `V1 Required` | ✅ Implemented | ✅ Exposed | 4-corner interactive canvas handles with 3x3 perspective mesh and context HUD bake action. |
 | **CropRect** | `V1 Required` | ✅ Implemented | ⚠️ Partial | Non-destructive vector bounding box clipping. |
 | **Warp / Envelope Mesh** | `Post-V1 Candidate` | ❌ Not modeled | ❌ Absent | Multi-node NxN Bézier mesh warping. |
 | **Modifier Stack Inspector** | `V1 Required` | ⚠️ Ready in core | ❌ Absent | UI section to list, toggle, reorder, and **Bake** (commit to curves) modifiers. |
@@ -125,4 +125,4 @@ Modifiers alter geometry and rendering without destroying the original parametri
 | **Navigator Panel** | `ptnd.panel.navigator` | `Post-V1 Candidate` | ✅ Implemented | ✅ Exposed | Draggable viewport rectangle over document thumbnail. |
 | **Assets Panel** | `ptnd.panel.assets` | `Post-V1 Candidate` | ❌ Not modeled | ❌ Absent | Reusable component asset library. |
 | **Data Merge Panel** | `ptnd.panel.data_merge` | `Post-V1 Candidate` | ✅ Engine in 10.11 | ⛔ Disabled | Variable data CSV/JSON binding UI. |
-| **Dynamic Tool Options HUD** | `ptnd.surface.context_toolbar` | `V1 Required` | ✅ Implemented | ⚠️ Partial | Dynamic tool options (Star points/radius, Polygon sides, Pen modes, Corner radius). |
+| **Dynamic Tool Options HUD** | `ptnd.surface.context_toolbar` | `V1 Required` | ✅ Implemented | ✅ Exposed | Dynamic tool options (Star points/radius, Polygon sides, Contour, Perspective, Measure, Gradient, Text, Selection). |

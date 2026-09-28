@@ -338,10 +338,15 @@ impl GradientTool {
                             })
                             .collect();
                         stops.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                        let stop_colors = gradient_stops(stack)
+                            .iter()
+                            .map(|(_, c)| petunia_design_document::resolve_color_to_rgb(c))
+                            .collect();
                         overlays.gradient = Some(GradientOverlay {
                             start: camera.doc_to_screen(start),
                             end: camera.doc_to_screen(end),
                             stops,
+                            stop_colors,
                             kind: match gradient_paint(stack) {
                                 Some(Paint::RadialGradient(_)) => GradientOverlayKind::Radial,
                                 _ => GradientOverlayKind::Linear,
@@ -368,10 +373,19 @@ impl GradientTool {
                         (1.0, camera.doc_to_screen(end)),
                     ]
                 };
+                let stop_colors = if let Some(stack) = &selected_stack {
+                    gradient_stops(stack)
+                        .iter()
+                        .map(|(_, c)| petunia_design_document::resolve_color_to_rgb(c))
+                        .collect()
+                } else {
+                    vec![[1.0, 1.0, 1.0], [0.0, 0.0, 0.0]]
+                };
                 overlays.gradient = Some(GradientOverlay {
                     start: camera.doc_to_screen(p0),
                     end: camera.doc_to_screen(end),
                     stops,
+                    stop_colors,
                     kind: match self.kind {
                         GradientKind::Radial => GradientOverlayKind::Radial,
                         GradientKind::Linear => GradientOverlayKind::Linear,
@@ -385,10 +399,15 @@ impl GradientTool {
                     .iter()
                     .map(|(offset, _)| (*offset, camera.doc_to_screen(lerp_point(start, end, *offset))))
                     .collect();
+                let stop_colors = gradient_stops(stack)
+                    .iter()
+                    .map(|(_, c)| petunia_design_document::resolve_color_to_rgb(c))
+                    .collect();
                 overlays.gradient = Some(GradientOverlay {
                     start: camera.doc_to_screen(start),
                     end: camera.doc_to_screen(end),
                     stops,
+                    stop_colors,
                     kind: match gradient_paint(stack) {
                         Some(Paint::RadialGradient(_)) => GradientOverlayKind::Radial,
                         _ => GradientOverlayKind::Linear,

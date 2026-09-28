@@ -13,7 +13,8 @@ use petunia_design_geometry::GPoint;
 
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{
-    CanvasOverlays, SelectionHandle, SelectionHandleKind, SnapEngine, ViewportCamera,
+    CanvasOverlays, CursorAffordance, SelectionHandle, SelectionHandleKind, SnapEngine,
+    ViewportCamera,
 };
 
 use petunia_design_application::interaction::{
@@ -148,6 +149,11 @@ impl PerspectiveTool {
         let mut overlays = CanvasOverlays::default();
         let Some(quad) = current_quad(bridge) else {
             return overlays;
+        };
+        overlays.cursor = if self.drag.is_some() {
+            CursorAffordance::Grabbing
+        } else {
+            CursorAffordance::Crosshair
         };
         let kinds = [
             SelectionHandleKind::TopLeft,

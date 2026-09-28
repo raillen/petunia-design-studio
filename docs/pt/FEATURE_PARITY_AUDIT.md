@@ -74,7 +74,7 @@ Modificadores transformam a geometria e a renderização em tempo de execução 
 | :--- | :--- | :--- | :--- | :--- |
 | **ContourOffset** | `V1 Required` | ✅ Implementado | ⚠️ Parcial | Expor estilos de junção (Miter, Round, Bevel) no inspetor de Propriedades. |
 | **TransparentGradient** | `V1 Required` | ✅ Implementado | ⚠️ Parcial | UI para configurar múltiplos pontos de parada de opacidade ao longo do vetor. |
-| **Perspective** | `V1 Required` | ✅ Implementado | ⚠️ Parcial | Controles numéricos dos 4 vértices no inspetor e alças no canvas. |
+| **Perspective** | `V1 Required` | ✅ Implementado | ✅ Exposto | Alças de tela interativas nos 4 cantos com malha 3x3 e ação de fixação (bake) no HUD de contexto. |
 | **CropRect** | `V1 Required` | ✅ Implementado | ⚠️ Parcial | Recorte retangular não-destrutivo de caixas delimitadoras. |
 | **Warp / Envelope Mesh** | `Post-V1 Candidate` | ❌ Não modelado | ❌ Ausente | Deformação por malha Bézier livre NxN. |
 | **Modifier Stack Inspector** | `V1 Required` | ⚠️ Pronto no núcleo | ❌ Ausente | Seção no Dock para listar, reordenar, ocultar e dar **Bake** (converter em curvas). |
@@ -125,4 +125,4 @@ Modificadores transformam a geometria e a renderização em tempo de execução 
 | **Painel Navegador** | `ptnd.panel.navigator` | `Post-V1 Candidate` | ✅ Implementado | ✅ Exposto | Miniatura com retângulo indicador de viewport navegável. |
 | **Painel de Ativos (Assets)** | `ptnd.panel.assets` | `Post-V1 Candidate` | ❌ Não modelado | ❌ Ausente | Biblioteca de componentes gráficos reutilizáveis para arrastar ao canvas. |
 | **Mesclagem de Dados** | `ptnd.panel.data_merge` | `Post-V1 Candidate` | ✅ Core em 10.11 | ⛔ Desabilitado | Interface para carregar CSV/JSON e vincular dados a nós de documento. |
-| **HUD de Opções de Ferramenta** | `ptnd.surface.context_toolbar` | `V1 Required` | ✅ Implementado | ⚠️ Parcial | Opções dinâmicas no topo (pontas da estrela, lados do polígono, modos da caneta). |
+| **HUD de Opções de Ferramenta** | `ptnd.surface.context_toolbar` | `V1 Required` | ✅ Implementado | ✅ Exposto | Opções dinâmicas no topo (pontas da estrela, lados do polígono, Contorno, Perspectiva, Medição, Gradiente, Texto, Seleção). |

@@ -277,6 +277,8 @@ pub struct GradientOverlay {
     pub end: GPoint,
     /// `(offset, handle position)` per stop.
     pub stops: Vec<(f64, GPoint)>,
+    /// Resolved RGB color `[r, g, b]` in [0.0, 1.0] for each stop.
+    pub stop_colors: Vec<[f32; 3]>,
     /// Geometry kind being previewed.
     pub kind: GradientOverlayKind,
 }

@@ -158,6 +158,28 @@ impl ToolManager {
         self.select_tool.set_marquee_rule(rule);
     }
 
+    /// Borrows the Measure tool.
+    #[must_use]
+    pub fn measure_tool(&self) -> &super::measure::MeasureTool {
+        &self.measure_tool
+    }
+
+    /// Mutably borrows the Measure tool.
+    pub fn measure_tool_mut(&mut self) -> &mut super::measure::MeasureTool {
+        &mut self.measure_tool
+    }
+
+    /// Borrows the Gradient tool.
+    #[must_use]
+    pub fn gradient_tool(&self) -> &super::gradient::GradientTool {
+        &self.gradient_tool
+    }
+
+    /// Mutably borrows the Gradient tool.
+    pub fn gradient_tool_mut(&mut self) -> &mut super::gradient::GradientTool {
+        &mut self.gradient_tool
+    }
+
     /// Cancels any active gesture in the current tool.
     pub fn cancel_active(&mut self) {
         match self.active_kind {

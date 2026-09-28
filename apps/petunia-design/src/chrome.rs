@@ -1157,6 +1157,65 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                 }))
                 .into_element(),
         ),
+        ToolKind::Measure => {
+            let mode = shell.peek().tools.measure_tool().mode();
+            Some(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(theme::SPACE_1)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        label()
+                            .text("Medição:")
+                            .color(theme::TEXT_SECONDARY)
+                            .font_size(theme::CAPTION_SIZE),
+                    )
+                    .child(quick_action_btn(
+                        if mode == petunia_design_shell::tools::MeasureMode::Distance { "Distância (✓)" } else { "Distância" },
+                        move |_| {
+                            shell.write().tools.measure_tool_mut().set_mode(petunia_design_shell::tools::MeasureMode::Distance);
+                        },
+                    ))
+                    .child(quick_action_btn(
+                        if mode == petunia_design_shell::tools::MeasureMode::Area { "Área (✓)" } else { "Área" },
+                        move |_| {
+                            shell.write().tools.measure_tool_mut().set_mode(petunia_design_shell::tools::MeasureMode::Area);
+                        },
+                    ))
+                    .child(quick_action_btn("Limpar", move |_| {
+                        shell.write().tools.measure_tool_mut().cancel();
+                    }))
+                    .into_element(),
+            )
+        }
+        ToolKind::Gradient | ToolKind::Transparency => {
+            let kind = shell.peek().tools.gradient_tool().kind();
+            Some(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(theme::SPACE_1)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        label()
+                            .text("Gradiente:")
+                            .color(theme::TEXT_SECONDARY)
+                            .font_size(theme::CAPTION_SIZE),
+                    )
+                    .child(quick_action_btn(
+                        if kind == petunia_design_shell::tools::GradientKind::Linear { "Linear (✓)" } else { "Linear" },
+                        move |_| {
+                            shell.write().tools.gradient_tool_mut().set_kind(petunia_design_shell::tools::GradientKind::Linear);
+                        },
+                    ))
+                    .child(quick_action_btn(
+                        if kind == petunia_design_shell::tools::GradientKind::Radial { "Radial (✓)" } else { "Radial" },
+                        move |_| {
+                            shell.write().tools.gradient_tool_mut().set_kind(petunia_design_shell::tools::GradientKind::Radial);
+                        },
+                    ))
+                    .into_element(),
+            )
+        }
         _ => None,
     }
 }

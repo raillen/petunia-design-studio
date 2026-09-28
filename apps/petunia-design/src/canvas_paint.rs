@@ -483,7 +483,9 @@ fn paint_overlays(
         canvas.draw_path(&skia_path, &outline_paint(ACCENT, 1.5));
     }
     for &(anchor, control) in &overlays.node_control_lines {
-        stroke_line(canvas, anchor, control, Color::from_argb(0xCC, 0xB7, 0x7A, 0xFF), 1.0);
+        let s_anchor = camera.doc_to_screen(anchor);
+        let s_control = camera.doc_to_screen(control);
+        stroke_line(canvas, s_anchor, s_control, Color::from_argb(0xCC, 0xB7, 0x7A, 0xFF), 1.0);
     }
     if let Some(dabs) = &overlays.brush_preview {
         for dab in dabs {
@@ -491,8 +493,7 @@ fn paint_overlays(
         }
     }
     if let Some((pos_doc, label)) = &overlays.measure_badge {
-        let screen_pt = camera.doc_to_screen(*pos_doc);
-        paint_guide_badge(canvas, label, screen_pt, screen_pt);
+        paint_measure_overlay(canvas, pos_doc, label, overlays.pen_preview.as_deref(), camera);
     }
     paint_selection_bounding_box(canvas, &overlays.handles, camera);
     for handle in &overlays.handles {
@@ -770,6 +771,65 @@ fn paint_guide_badge(
     );
 }
 
+/// Paints precision measurement overlays: dimension lines, end ticks, orthogonal guides and badge.
+fn paint_measure_overlay(
+    canvas: &SkiaCanvas,
+    pos_doc: &GPoint,
+    label: &str,
+    pen_preview: Option<&[GPoint]>,
+    camera: &ViewportCamera,
+) {
+    if let Some(pts) = pen_preview {
+        if pts.len() >= 2 {
+            let s0 = camera.doc_to_screen(pts[0]);
+            let s1 = camera.doc_to_screen(pts[1]);
+            let dx = s1.x - s0.x;
+            let dy = s1.y - s0.y;
+            let len = dx.hypot(dy);
+
+            let tick_paint = outline_paint(Color::from_rgb(0x00, 0xE5, 0xFF), 1.5);
+
+            if len > 2.0 {
+                let nx = -dy / len;
+                let ny = dx / len;
+                let tick_len = 6.0;
+
+                // End cap tick at s0
+                canvas.draw_line(
+                    Point::new((s0.x - nx * tick_len) as f32, (s0.y - ny * tick_len) as f32),
+                    Point::new((s0.x + nx * tick_len) as f32, (s0.y + ny * tick_len) as f32),
+                    &tick_paint,
+                );
+                // End cap tick at s1
+                canvas.draw_line(
+                    Point::new((s1.x - nx * tick_len) as f32, (s1.y - ny * tick_len) as f32),
+                    Point::new((s1.x + nx * tick_len) as f32, (s1.y + ny * tick_len) as f32),
+                    &tick_paint,
+                );
+
+                // Orthogonal projection lines (when not near-horizontal or near-vertical)
+                if dx.abs() > 16.0 && dy.abs() > 16.0 {
+                    let corner = GPoint::new(s1.x, s0.y);
+                    let dash_paint = outline_paint(Color::from_argb(0x88, 0x00, 0xE5, 0xFF), 1.0);
+                    canvas.draw_line(
+                        Point::new(s0.x as f32, s0.y as f32),
+                        Point::new(corner.x as f32, corner.y as f32),
+                        &dash_paint,
+                    );
+                    canvas.draw_line(
+                        Point::new(corner.x as f32, corner.y as f32),
+                        Point::new(s1.x as f32, s1.y as f32),
+                        &dash_paint,
+                    );
+                }
+            }
+        }
+    }
+
+    let screen_pt = camera.doc_to_screen(*pos_doc);
+    paint_guide_badge(canvas, label, screen_pt, screen_pt);
+}
+
 /// Paints the interactive gradient line vector and stops on the canvas.
 fn paint_gradient_overlay(
     canvas: &SkiaCanvas,
@@ -779,49 +839,91 @@ fn paint_gradient_overlay(
     let p_start = gradient.start;
     let p_end = gradient.end;
 
-    stroke_line(canvas, p_start, p_end, ACCENT, 1.5);
-
-    let mut fill_paint = Paint::default();
-    fill_paint.set_anti_alias(true);
-    fill_paint.set_style(PaintStyle::Fill);
-    fill_paint.set_color(Color::from_rgb(0xFF, 0xFF, 0xFF));
-
-    let stroke = outline_paint(ACCENT, 1.5);
-
-    // Intermediate stops (circles)
-    for &(_offset, stop_screen) in &gradient.stops {
-        let mut stop_circ = PathBuilder::default();
-        stop_circ.add_circle((stop_screen.x as f32, stop_screen.y as f32), 4.5, None);
-        let path = stop_circ.detach();
-        canvas.draw_path(&path, &fill_paint);
-        canvas.draw_path(&path, &stroke);
+    // 1. If Radial, draw extent guide circle
+    if gradient.kind == petunia_design_shell::canvas::GradientOverlayKind::Radial {
+        let dx = (p_end.x - p_start.x) as f32;
+        let dy = (p_end.y - p_start.y) as f32;
+        let radius = (dx * dx + dy * dy).sqrt();
+        if radius > 1.0 {
+            let mut radial_paint = outline_paint(Color::from_argb(0x88, 0xB7, 0x7A, 0xFF), 1.0);
+            radial_paint.set_style(PaintStyle::Stroke);
+            let mut circle_builder = PathBuilder::default();
+            circle_builder.add_circle((p_start.x as f32, p_start.y as f32), radius, None);
+            canvas.draw_path(&circle_builder.detach(), &radial_paint);
+        }
     }
 
-    // Start handle (circle with ACCENT border)
-    let mut start_circ = PathBuilder::default();
-    start_circ.add_circle((p_start.x as f32, p_start.y as f32), 5.5, None);
-    let path = start_circ.detach();
-    canvas.draw_path(&path, &fill_paint);
-    canvas.draw_path(&path, &stroke);
+    // 2. Vector line with drop shadow for contrast
+    stroke_line(canvas, p_start, p_end, Color::from_argb(0x80, 0x00, 0x00, 0x00), 2.5);
+    stroke_line(canvas, p_start, p_end, ACCENT, 1.5);
 
-    // End handle (square with ACCENT fill and white border)
-    let half = 5.0;
+    // 3. Intermediate stops with resolved stop colors
+    for (i, &(_offset, stop_screen)) in gradient.stops.iter().enumerate() {
+        let (sx, sy) = (stop_screen.x as f32, stop_screen.y as f32);
+        let rgb = gradient.stop_colors.get(i).copied().unwrap_or([1.0, 1.0, 1.0]);
+        let stop_color = Color::from_rgb(
+            (rgb[0].clamp(0.0, 1.0) * 255.0).round() as u8,
+            (rgb[1].clamp(0.0, 1.0) * 255.0).round() as u8,
+            (rgb[2].clamp(0.0, 1.0) * 255.0).round() as u8,
+        );
+
+        // Shadow ring
+        let mut shadow_circ = PathBuilder::default();
+        shadow_circ.add_circle((sx, sy + 1.0), 6.0, None);
+        let mut shadow_paint = Paint::default();
+        shadow_paint.set_anti_alias(true);
+        shadow_paint.set_color(Color::from_argb(0x80, 0, 0, 0));
+        canvas.draw_path(&shadow_circ.detach(), &shadow_paint);
+
+        // White outer ring
+        let mut outer_circ = PathBuilder::default();
+        outer_circ.add_circle((sx, sy), 5.5, None);
+        let mut white_paint = Paint::default();
+        white_paint.set_anti_alias(true);
+        white_paint.set_color(Color::WHITE);
+        canvas.draw_path(&outer_circ.detach(), &white_paint);
+
+        // Colored stop center
+        let mut inner_circ = PathBuilder::default();
+        inner_circ.add_circle((sx, sy), 4.0, None);
+        let mut inner_paint = Paint::default();
+        inner_paint.set_anti_alias(true);
+        inner_paint.set_color(stop_color);
+        canvas.draw_path(&inner_circ.detach(), &inner_paint);
+
+        // Subtle dark rim
+        let stroke = outline_paint(Color::from_argb(0x80, 0, 0, 0), 1.0);
+        let mut border_circ = PathBuilder::default();
+        border_circ.add_circle((sx, sy), 5.5, None);
+        canvas.draw_path(&border_circ.detach(), &stroke);
+    }
+
+    // 4. Start handle (origin ring)
+    let (sx, sy) = (p_start.x as f32, p_start.y as f32);
+    let mut start_circ = PathBuilder::default();
+    start_circ.add_circle((sx, sy), 6.5, None);
+    let path = start_circ.detach();
+    let mut fill_paint = Paint::default();
+    fill_paint.set_anti_alias(true);
+    fill_paint.set_color(Color::WHITE);
+    canvas.draw_path(&path, &fill_paint);
+    canvas.draw_path(&path, &outline_paint(ACCENT, 2.0));
+
+    // 5. End handle (termination square)
+    let (ex, ey) = (p_end.x as f32, p_end.y as f32);
+    let half = 5.5;
     let mut end_box = PathBuilder::default();
     end_box.add_rect(
-        SkRect::new(
-            p_end.x as f32 - half,
-            p_end.y as f32 - half,
-            p_end.x as f32 + half,
-            p_end.y as f32 + half,
-        ),
+        SkRect::new(ex - half, ey - half, ex + half, ey + half),
         None,
         None,
     );
     let end_path = end_box.detach();
-    let mut end_fill = fill_paint;
+    let mut end_fill = Paint::default();
+    end_fill.set_anti_alias(true);
     end_fill.set_color(ACCENT);
     canvas.draw_path(&end_path, &end_fill);
-    canvas.draw_path(&end_path, &outline_paint(Color::from_rgb(0xFF, 0xFF, 0xFF), 1.0));
+    canvas.draw_path(&end_path, &outline_paint(Color::WHITE, 1.5));
 }
 
 /// Builds an antialiased stroke paint.

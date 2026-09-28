@@ -1534,6 +1534,51 @@ mod workspace_tests {
         runner.sync_and_update();
         assert_eq!(*ui.dock_tab.read(), 0, "switches back to Camadas (0)");
     }
+
+    #[test]
+    fn gradient_and_measure_overlays_and_controls() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("OverlaysTest").expect("document opens");
+
+        // Measure tool mode toggling
+        shell.tools.set_active_tool(ToolKind::Measure);
+        assert_eq!(shell.tools.measure_tool().mode(), petunia_design_shell::tools::MeasureMode::Distance);
+        shell.tools.measure_tool_mut().set_mode(petunia_design_shell::tools::MeasureMode::Area);
+        assert_eq!(shell.tools.measure_tool().mode(), petunia_design_shell::tools::MeasureMode::Area);
+        shell.tools.measure_tool_mut().cancel();
+
+        // Gradient tool kind toggling
+        shell.tools.set_active_tool(ToolKind::Gradient);
+        assert_eq!(shell.tools.gradient_tool().kind(), petunia_design_shell::tools::GradientKind::Linear);
+        shell.tools.gradient_tool_mut().set_kind(petunia_design_shell::tools::GradientKind::Radial);
+        assert_eq!(shell.tools.gradient_tool().kind(), petunia_design_shell::tools::GradientKind::Radial);
+
+        // Perspective tool overlays cursor affordance on selected object
+        let rect_id = petunia_design_foundation::ObjectId::new(101);
+        let surface_id = shell.bridge.active_surface().unwrap();
+        shell.bridge.submit_all(
+            "Create rect for perspective",
+            vec![
+                petunia_design_application::Command::CreateObject {
+                    surface: surface_id,
+                    id: rect_id,
+                    name: "Rect".to_string(),
+                },
+                petunia_design_application::Command::SetBounds {
+                    id: rect_id,
+                    bounds: Some([10.0, 10.0, 100.0, 100.0]),
+                    rotation: 0.0,
+                },
+            ],
+        ).unwrap();
+        shell.bridge.set_selection(vec![rect_id]);
+
+        shell.tools.set_active_tool(ToolKind::Perspective);
+        let cam = shell.view_camera();
+        let overlays = shell.tools.overlays(&cam, &shell.bridge);
+        assert_eq!(overlays.handles.len(), 4, "Perspective quad provides 4 corner handles");
+        assert_eq!(overlays.cursor, petunia_design_shell::canvas::CursorAffordance::Crosshair);
+    }
 }
 
 
