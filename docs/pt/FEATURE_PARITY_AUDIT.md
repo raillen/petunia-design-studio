@@ -115,9 +115,9 @@ Modificadores transformam a geometria e a renderização em tempo de execução 
 
 | Área / Recurso | ID de Superfície | Escopo | Motor | Estado na UI Freya | Lacuna de Implementação / Trabalho Restante |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Janela de Preferências** | `ptnd.window.preferences` | `Post-V1 Candidate` | ⚠️ Parcial | 🟡 CustomizeDialog | Formulário de configurações com persistência em `preferences.toml`. |
-| **Diálogo de Novo Documento** | `ptnd.dialog.new_document` | `V1 Required` | ✅ Implementado | 🟡 Modal Existente | Incluir opções de sangria (bleed), margens e espaços de cor. |
-| **Diálogo de Exportação** | `ptnd.dialog.export` | `V1 Required` | ✅ Implementado | 🟡 Modal Existente | Seleção de resolução (DPI 72/150/300), perfil ICC e seleção de pranchetas. |
+| **Janela de Preferências** | `ptnd.window.preferences` | `Post-V1 Candidate` | ✅ Implementado | ✅ Exposto | Diálogo em abas com Geral (Idioma EN/pt-BR, Paletas de Acento), Catálogo de Ferramentas, Desempenho (GPU/LOD) e Atalhos de Teclado. |
+| **Diálogo de Novo Documento** | `ptnd.dialog.new_document` | `V1 Required` | ✅ Implementado | ✅ Exposto | Presets completos (1080p, 4K, Quadrado, Mobile, A4, Carta), inverter orientação, Sangria (3mm/5mm), Margens (10/20/36pt) e Espaço de Cor. |
+| **Diálogo de Exportação** | `ptnd.dialog.export` | `V1 Required` | ✅ Implementado | ✅ Exposto | Seleção de formato (PNG, SVG, PDF), resolução DPI (72, 144, 300), informações de prancheta, fundo transparente e pipeline de exportação. |
 | **Painel Camadas** | `ptnd.panel.layers` | `V1 Required` | ✅ Implementado | ✅ Exposto | Reordenação de camadas com botões ▲/▼, renomeação rápida via ✏️ e comando RenameObject. |
 | **Inspetor de Propriedades** | `ptnd.panel.properties` | `V1 Required` | ✅ Implementado | ✅ Exposto | Integrar estilos de traço avançados, controle tipográfico e pilha de efeitos (FX). |
 | **Cores e Amostras** | `ptnd.panel.color` / `swatches` | `V1 Required` | ✅ Implementado | ✅ Exposto | Controles deslizantes (RGB, HSL, CMYK) junto às paletas de amostras. |

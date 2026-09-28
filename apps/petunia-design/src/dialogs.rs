@@ -123,25 +123,29 @@ fn palette_row(
         )
 }
 
-/// Toolbar customization: every layout slot with show/hide, reorder, divider.
+///// Preferences and toolbar customization dialog.
 #[derive(Clone, PartialEq)]
 pub struct CustomizeDialog(pub UiShell);
 
 impl Component for CustomizeDialog {
     fn render(&self) -> impl IntoElement {
         let ui = &self.0;
+        let active_tab = use_state(|| 0usize);
+
         if !(*ui.customize_open.read()) {
             // Zero-size: a default rect would cover the window and swallow
             // every click meant for the chrome below.
             return rect().width(Size::px(0.)).height(Size::px(0.));
         }
+
+        let mut tab_tb = active_tab;
+        let mut tab_gen = active_tab;
+        let mut tab_perf = active_tab;
+        let mut tab_sc = active_tab;
+        let current_tab = *active_tab.read();
+
         let catalog = ui.shell.peek().bridge.query_toolbar_catalog();
-        let title = ui
-            .shell
-            .peek()
-            .bridge
-            .localization()
-            .text("ptnd.text.shell.customize", ui.shell.peek().bridge.locale());
+        let title = "Preferências & Customização";
         let reset_label = ui.shell.peek().bridge.localization().text(
             "ptnd.text.shell.reset_toolbar",
             ui.shell.peek().bridge.locale(),
@@ -156,44 +160,294 @@ impl Component for CustomizeDialog {
         let mut customize_open = ui.customize_open;
         let mut shell_for_reset = ui.shell;
         rect()
-            .position(Position::new_absolute().top(74.))
+            .position(Position::new_absolute().top(60.))
             .width(Size::fill())
             .main_align(Alignment::Center)
             .child(
                 Popup::new()
                     .on_close_request(move |_| customize_open.set(false))
-                    .child(PopupTitle::new(title))
+                    .child(PopupTitle::new(title.to_string()))
                     .child(
                         PopupContent::new().child(
                             rect()
                                 .direction(Direction::Vertical)
-                                .width(Size::px(560.))
-                                .spacing(theme::SPACE_1)
-                                .children(
-                                    catalog
-                                        .iter()
-                                        .enumerate()
-                                        .map(|(index, row)| catalog_row(ui.clone(), index, row)),
-                                )
+                                .width(Size::px(580.))
+                                .spacing(theme::SPACE_2)
                                 .child(
                                     rect()
                                         .direction(Direction::Horizontal)
-                                        .spacing(theme::SPACE_2)
-                                        .main_align(Alignment::End)
-                                        .child(divider_adder(ui.clone(), divider_label))
+                                        .width(Size::fill())
+                                        .spacing(theme::SPACE_1)
                                         .child(
                                             Button::new()
-                                                .on_press(move |_| {
-                                                    shell_for_reset.write().bridge.toolbar_reset();
-                                                })
-                                                .child(reset_label.clone()),
+                                                .on_press(move |_| tab_tb.set(0))
+                                                .child(
+                                                    label()
+                                                        .text(if current_tab == 0 {
+                                                            "✓ Ferramentas"
+                                                        } else {
+                                                            "Ferramentas"
+                                                        })
+                                                        .font_size(11.),
+                                                ),
+                                        )
+                                        .child(
+                                            Button::new()
+                                                .on_press(move |_| tab_gen.set(1))
+                                                .child(
+                                                    label()
+                                                        .text(if current_tab == 1 {
+                                                            "✓ Geral & Idioma"
+                                                        } else {
+                                                            "Geral & Idioma"
+                                                        })
+                                                        .font_size(11.),
+                                                ),
+                                        )
+                                        .child(
+                                            Button::new()
+                                                .on_press(move |_| tab_perf.set(2))
+                                                .child(
+                                                    label()
+                                                        .text(if current_tab == 2 {
+                                                            "✓ Desempenho"
+                                                        } else {
+                                                            "Desempenho"
+                                                        })
+                                                        .font_size(11.),
+                                                ),
+                                        )
+                                        .child(
+                                            Button::new()
+                                                .on_press(move |_| tab_sc.set(3))
+                                                .child(
+                                                    label()
+                                                        .text(if current_tab == 3 {
+                                                            "✓ Atalhos"
+                                                        } else {
+                                                            "Atalhos"
+                                                        })
+                                                        .font_size(11.),
+                                                ),
                                         ),
                                 )
-                                .child(tool_rail_settings(ui.clone())),
+                                .child(match current_tab {
+                                    1 => rect().child(preferences_general_tab(ui.clone())),
+                                    2 => rect().child(preferences_performance_tab()),
+                                    3 => rect().child(preferences_shortcuts_tab()),
+                                    _ => rect()
+                                        .direction(Direction::Vertical)
+                                        .spacing(theme::SPACE_1)
+                                        .children(
+                                            catalog.iter().enumerate().map(|(index, row)| {
+                                                catalog_row(ui.clone(), index, row)
+                                            }),
+                                        )
+                                        .child(
+                                            rect()
+                                                .direction(Direction::Horizontal)
+                                                .spacing(theme::SPACE_2)
+                                                .main_align(Alignment::End)
+                                                .child(divider_adder(ui.clone(), divider_label))
+                                                .child(
+                                                    Button::new()
+                                                        .on_press(move |_| {
+                                                            shell_for_reset
+                                                                .write()
+                                                                .bridge
+                                                                .toolbar_reset();
+                                                        })
+                                                        .child(reset_label.clone()),
+                                                ),
+                                        )
+                                        .child(tool_rail_settings(ui.clone())),
+                                }),
                         ),
                     ),
             )
     }
+}
+
+fn preferences_general_tab(ui: UiShell) -> impl IntoElement {
+    let mut shell_en = ui.shell;
+    let mut shell_pt = ui.shell;
+    let is_pt = *ui.shell.peek().bridge.locale() == petunia_design_shell::Locale::PtBr;
+    rect()
+        .direction(Direction::Vertical)
+        .width(Size::fill())
+        .spacing(theme::SPACE_2)
+        .child(
+            label()
+                .text("IDIOMA DA INTERFACE / INTERFACE LANGUAGE")
+                .font_size(10.)
+                .color(theme::TEXT_TERTIARY),
+        )
+        .child(
+            rect()
+                .direction(Direction::Horizontal)
+                .spacing(theme::SPACE_1)
+                .child(
+                    Button::new()
+                        .on_press(move |_| {
+                            shell_pt
+                                .write()
+                                .bridge
+                                .set_locale(petunia_design_shell::Locale::PtBr);
+                        })
+                        .child(
+                            label()
+                                .text(if is_pt {
+                                    "✓ Português (pt-BR)"
+                                } else {
+                                    "Português (pt-BR)"
+                                })
+                                .font_size(11.),
+                        ),
+                )
+                .child(
+                    Button::new()
+                        .on_press(move |_| {
+                            shell_en
+                                .write()
+                                .bridge
+                                .set_locale(petunia_design_shell::Locale::EnUs);
+                        })
+                        .child(
+                            label()
+                                .text(if !is_pt {
+                                    "✓ English (en-US)"
+                                } else {
+                                    "English (en-US)"
+                                })
+                                .font_size(11.),
+                        ),
+                ),
+        )
+        .child(
+            label()
+                .text("PALETA DE CORES / THEME ACCENT")
+                .font_size(10.)
+                .color(theme::TEXT_TERTIARY),
+        )
+        .child(
+            rect()
+                .direction(Direction::Horizontal)
+                .spacing(theme::SPACE_1)
+                .child(
+                    rect()
+                        .padding(Gaps::new_all(4.))
+                        .background(theme::ACCENT_BLOOM)
+                        .child(label().text("Bloom").font_size(11.).color(Color::WHITE)),
+                )
+                .child(
+                    rect()
+                        .padding(Gaps::new_all(4.))
+                        .background(theme::STUDIO_DESIGN)
+                        .child(label().text("Design").font_size(11.).color(Color::WHITE)),
+                )
+                .child(
+                    rect()
+                        .padding(Gaps::new_all(4.))
+                        .background(theme::STUDIO_PHOTO)
+                        .child(label().text("Photo").font_size(11.).color(Color::WHITE)),
+                ),
+        )
+        .child(
+            label()
+                .text("HISTÓRICO E ARQUIVO")
+                .font_size(10.)
+                .color(theme::TEXT_TERTIARY),
+        )
+        .child(
+            label()
+                .text("Limite de histórico não-destrutivo: Ilimitado (Branching Timeline)")
+                .font_size(11.)
+                .color(theme::TEXT_SECONDARY),
+        )
+}
+
+fn preferences_performance_tab() -> impl IntoElement {
+    rect()
+        .direction(Direction::Vertical)
+        .width(Size::fill())
+        .spacing(theme::SPACE_2)
+        .child(
+            label()
+                .text("MOTOR DE RENDERIZAÇÃO")
+                .font_size(10.)
+                .color(theme::TEXT_TERTIARY),
+        )
+        .child(
+            label()
+                .text("✓ Skia GPU Rasterizer Ativo (RenderCallback Direto)")
+                .font_size(11.)
+                .color(theme::TEXT_PRIMARY),
+        )
+        .child(
+            label()
+                .text("QUALIDADE DO PREVIEW (LOD)")
+                .font_size(10.)
+                .color(theme::TEXT_TERTIARY),
+        )
+        .child(
+            label()
+                .text("✓ Nível de Detalhe Adaptativo (Curvas Bézier & Shaders Skia)")
+                .font_size(11.)
+                .color(theme::TEXT_SECONDARY),
+        )
+        .child(
+            label()
+                .text("SUAVIZAÇÃO (ANTI-ALIASING)")
+                .font_size(10.)
+                .color(theme::TEXT_TERTIARY),
+        )
+        .child(
+            label()
+                .text("✓ Subpixel Antialiasing em Espaço de Cor 32-bit RGBA")
+                .font_size(11.)
+                .color(theme::TEXT_SECONDARY),
+        )
+}
+
+fn preferences_shortcuts_tab() -> impl IntoElement {
+    let shortcuts = [
+        ("V", "Ferramenta de Seleção / Mover"),
+        ("A", "Edição de Nós e Âncoras (Node Tool)"),
+        ("P", "Caneta Vetorial Bézier (Pen Tool)"),
+        ("N", "Lápis de Traçado Livre (Pencil Tool)"),
+        ("M", "Formas Paramétricas (Retângulo / Elipse)"),
+        ("T", "Texto Artístico e Parágrafos"),
+        ("G", "Gradiente Linear e Radial"),
+        ("Z", "Zoom / Lupa"),
+        ("H / Espaço", "Navegação / Pan"),
+        ("Ctrl + Z", "Desfazer Operação (Undo)"),
+        ("Ctrl + Shift + Z", "Refazer Operação (Redo)"),
+        ("Ctrl + K", "Paleta de Comandos Rápidos"),
+        ("Ctrl + N", "Novo Documento"),
+        ("Ctrl + E", "Exportar Documento"),
+        ("Ctrl + 0", "Enquadrar Superfície na Tela"),
+        ("Ctrl + 1", "Zoom Real 100%"),
+    ];
+
+    rect()
+        .direction(Direction::Vertical)
+        .width(Size::fill())
+        .spacing(theme::SPACE_1)
+        .children(shortcuts.iter().map(|(key, desc)| {
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::fill())
+                .main_align(Alignment::SpaceBetween)
+                .cross_align(Alignment::Center)
+                .padding(Gaps::new_all(2.))
+                .child(
+                    rect()
+                        .padding(Gaps::new(2., 6., 2., 6.))
+                        .background(theme::SURFACE_CHROME_STRONG)
+                        .child(label().text(*key).font_size(11.).color(theme::TEXT_PRIMARY)),
+                )
+                .child(label().text(*desc).font_size(11.).color(theme::TEXT_SECONDARY))
+        }))
 }
 
 fn catalog_row(
@@ -575,6 +829,9 @@ impl Component for NewDocumentDialog {
         let doc_name = use_state(|| "Novo Documento".to_string());
         let width_val = use_state(|| 1920.0f64);
         let height_val = use_state(|| 1080.0f64);
+        let bleed_val = use_state(|| 0.0f64);
+        let margin_val = use_state(|| 0.0f64);
+        let color_space = use_state(|| "srgb".to_string());
 
         if !(*ui.new_doc_open.read()) {
             return rect().width(Size::px(0.)).height(Size::px(0.));
@@ -584,16 +841,25 @@ impl Component for NewDocumentDialog {
 
         let mut w_state = width_val;
         let mut h_state = height_val;
+        let mut bleed_state = bleed_val;
+        let mut margin_state = margin_val;
+        let mut cs_state = color_space;
+
+        let cur_w = *width_val.read();
+        let cur_h = *height_val.read();
+        let cur_bleed = *bleed_val.read();
+        let cur_margin = *margin_val.read();
+        let cur_cs = color_space.read().clone();
 
         rect()
-            .position(Position::new_absolute().top(80.))
+            .position(Position::new_absolute().top(50.))
             .width(Size::fill())
             .cross_align(Alignment::Center)
             .main_align(Alignment::Center)
             .child(
                 rect()
                     .direction(Direction::Vertical)
-                    .width(Size::px(460.))
+                    .width(Size::px(500.))
                     .background(theme::SURFACE_PANEL)
                     .border(
                         Border::new()
@@ -611,7 +877,7 @@ impl Component for NewDocumentDialog {
                             .cross_align(Alignment::Center)
                             .child(
                                 label()
-                                    .text("Novo Documento")
+                                    .text("Novo Documento / New Document")
                                     .font_size(14.)
                                     .color(theme::TEXT_PRIMARY),
                             )
@@ -621,6 +887,21 @@ impl Component for NewDocumentDialog {
                                         new_doc_open.set(false);
                                     })
                                     .child(label().text("✕").font_size(12.)),
+                            ),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Vertical)
+                            .width(Size::fill())
+                            .spacing(theme::SPACE_1)
+                            .child(
+                                label()
+                                    .text("NOME DO DOCUMENTO")
+                                    .font_size(10.)
+                                    .color(theme::TEXT_TERTIARY),
+                            )
+                            .child(
+                                Input::new(doc_name).placeholder("Nome do documento..."),
                             ),
                     )
                     .child(
@@ -645,10 +926,18 @@ impl Component for NewDocumentDialog {
                             .child(
                                 Button::new()
                                     .on_press(move |_| {
+                                        w_state.set(3840.0);
+                                        h_state.set(2160.0);
+                                    })
+                                    .child(label().text("4K UHD").font_size(11.)),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
                                         w_state.set(1080.0);
                                         h_state.set(1080.0);
                                     })
-                                    .child(label().text("Square (1080p)").font_size(11.)),
+                                    .child(label().text("Square").font_size(11.)),
                             )
                             .child(
                                 Button::new()
@@ -665,6 +954,14 @@ impl Component for NewDocumentDialog {
                                         h_state.set(842.0);
                                     })
                                     .child(label().text("A4").font_size(11.)),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        w_state.set(612.0);
+                                        h_state.set(792.0);
+                                    })
+                                    .child(label().text("Letter").font_size(11.)),
                             ),
                     )
                     .child(
@@ -675,13 +972,180 @@ impl Component for NewDocumentDialog {
                             .cross_align(Alignment::Center)
                             .child(
                                 label()
-                                    .text(format!(
-                                        "Dimensões: {:.0} × {:.0} pt",
-                                        *width_val.read(),
-                                        *height_val.read()
-                                    ))
+                                    .text(format!("Dimensões: {:.0} × {:.0} pt", cur_w, cur_h))
                                     .font_size(12.)
                                     .color(theme::TEXT_SECONDARY),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        let (w, h) = (*w_state.peek(), *h_state.peek());
+                                        w_state.set(h);
+                                        h_state.set(w);
+                                    })
+                                    .child(label().text("⇄ Inverter Orientação").font_size(11.)),
+                            ),
+                    )
+                    .child(
+                        label()
+                            .text("SANGRIA / BLEED")
+                            .font_size(10.)
+                            .color(theme::TEXT_TERTIARY),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .width(Size::fill())
+                            .spacing(theme::SPACE_1)
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| bleed_state.set(0.0))
+                                    .child(
+                                        label()
+                                            .text(if cur_bleed == 0.0 {
+                                                "✓ Sem Sangria"
+                                            } else {
+                                                "Sem Sangria"
+                                            })
+                                            .font_size(11.),
+                                    ),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| bleed_state.set(8.5))
+                                    .child(
+                                        label()
+                                            .text(if (cur_bleed - 8.5).abs() < 0.1 {
+                                                "✓ 3 mm (8.5 pt)"
+                                            } else {
+                                                "3 mm (8.5 pt)"
+                                            })
+                                            .font_size(11.),
+                                    ),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| bleed_state.set(14.2))
+                                    .child(
+                                        label()
+                                            .text(if (cur_bleed - 14.2).abs() < 0.1 {
+                                                "✓ 5 mm (14.2 pt)"
+                                            } else {
+                                                "5 mm (14.2 pt)"
+                                            })
+                                            .font_size(11.),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        label()
+                            .text("MARGENS SEGURAS / MARGINS")
+                            .font_size(10.)
+                            .color(theme::TEXT_TERTIARY),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .width(Size::fill())
+                            .spacing(theme::SPACE_1)
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| margin_state.set(0.0))
+                                    .child(
+                                        label()
+                                            .text(if cur_margin == 0.0 { "✓ 0 pt" } else { "0 pt" })
+                                            .font_size(11.),
+                                    ),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| margin_state.set(10.0))
+                                    .child(
+                                        label()
+                                            .text(if (cur_margin - 10.0).abs() < 0.1 {
+                                                "✓ 10 pt"
+                                            } else {
+                                                "10 pt"
+                                            })
+                                            .font_size(11.),
+                                    ),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| margin_state.set(20.0))
+                                    .child(
+                                        label()
+                                            .text(if (cur_margin - 20.0).abs() < 0.1 {
+                                                "✓ 20 pt"
+                                            } else {
+                                                "20 pt"
+                                            })
+                                            .font_size(11.),
+                                    ),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| margin_state.set(36.0))
+                                    .child(
+                                        label()
+                                            .text(if (cur_margin - 36.0).abs() < 0.1 {
+                                                "✓ 36 pt (0.5\")"
+                                            } else {
+                                                "36 pt (0.5\")"
+                                            })
+                                            .font_size(11.),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        label()
+                            .text("ESPAÇO DE COR / COLOR PROFILE")
+                            .font_size(10.)
+                            .color(theme::TEXT_TERTIARY),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .width(Size::fill())
+                            .spacing(theme::SPACE_1)
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| cs_state.set("srgb".to_string()))
+                                    .child(
+                                        label()
+                                            .text(if cur_cs == "srgb" {
+                                                "✓ sRGB (Telas)"
+                                            } else {
+                                                "sRGB (Telas)"
+                                            })
+                                            .font_size(11.),
+                                    ),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| cs_state.set("p3".to_string()))
+                                    .child(
+                                        label()
+                                            .text(if cur_cs == "p3" {
+                                                "✓ Display P3"
+                                            } else {
+                                                "Display P3"
+                                            })
+                                            .font_size(11.),
+                                    ),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| cs_state.set("cmyk".to_string()))
+                                    .child(
+                                        label()
+                                            .text(if cur_cs == "cmyk" {
+                                                "✓ CMYK (Impressão)"
+                                            } else {
+                                                "CMYK (Impressão)"
+                                            })
+                                            .font_size(11.),
+                                    ),
                             ),
                     )
                     .child(
@@ -703,22 +1167,35 @@ impl Component for NewDocumentDialog {
                                         let name = doc_name.peek().clone();
                                         let w = *width_val.peek();
                                         let h = *height_val.peek();
+                                        let bleed_amt = *bleed_val.peek();
+                                        let margin_amt = *margin_val.peek();
                                         let mut s = shell.write();
                                         if s.new_document(&name).is_ok() {
                                             if let Some(surf_id) = s.bridge.active_surface() {
-                                                let _ = s.bridge.submit_all(
-                                                    "Set surface geometry",
-                                                    vec![petunia_design_application::Command::SetSurfaceGeometry {
+                                                let cmds = vec![
+                                                    petunia_design_application::Command::SetSurfaceGeometry {
                                                         surface: surf_id,
                                                         origin: [0.0, 0.0],
                                                         dimensions: [w, h],
-                                                    }],
+                                                    },
+                                                    petunia_design_application::Command::SetSurfaceBleed {
+                                                        surface: surf_id,
+                                                        bleed: petunia_design_document::Bleed::uniform(bleed_amt),
+                                                    },
+                                                    petunia_design_application::Command::SetSurfaceMargins {
+                                                        surface: surf_id,
+                                                        margins: petunia_design_document::Margins::uniform(margin_amt),
+                                                    },
+                                                ];
+                                                let _ = s.bridge.submit_all(
+                                                    "Set surface geometry, bleed and margins",
+                                                    cmds,
                                                 );
                                             }
                                         }
                                         new_doc_open.set(false);
                                     })
-                                    .child(label().text("Criar").font_size(11.)),
+                                    .child(label().text("Criar Documento").font_size(11.)),
                             ),
                     ),
             )
@@ -734,6 +1211,8 @@ impl Component for ExportDialog {
         let ui = &self.0;
         let export_format = use_state(|| "png".to_string());
         let export_path = use_state(|| "export_output.png".to_string());
+        let dpi_scale = use_state(|| 72u32);
+        let bg_transparent = use_state(|| true);
 
         if !(*ui.export_open.read()) {
             return rect().width(Size::px(0.)).height(Size::px(0.));
@@ -741,24 +1220,34 @@ impl Component for ExportDialog {
         let mut export_open = ui.export_open;
         let mut shell = ui.shell;
 
-        let mut fmt_png = export_format;
-        let mut fmt_svg = export_format;
-        let mut fmt_pdf = export_format;
-        let mut p_png = export_path;
-        let mut p_svg = export_path;
-        let mut p_pdf = export_path;
+        let mut fmt_state = export_format;
+        let mut path_state = export_path;
+        let mut dpi_state = dpi_scale;
+        let mut bg_state = bg_transparent;
 
         let active_fmt = export_format.read().clone();
+        let cur_dpi = *dpi_scale.read();
+        let cur_bg_trans = *bg_transparent.read();
+
+        let active_surf_info = {
+            let s = shell.peek();
+            s.bridge.active_surface().and_then(|surf_id| {
+                s.bridge
+                    .session()
+                    .and_then(|sess| sess.document().surface(surf_id).ok())
+                    .map(|surf| (surf.name.clone(), surf.dimensions[0], surf.dimensions[1]))
+            })
+        };
 
         rect()
-            .position(Position::new_absolute().top(80.))
+            .position(Position::new_absolute().top(70.))
             .width(Size::fill())
             .cross_align(Alignment::Center)
             .main_align(Alignment::Center)
             .child(
                 rect()
                     .direction(Direction::Vertical)
-                    .width(Size::px(440.))
+                    .width(Size::px(480.))
                     .background(theme::SURFACE_PANEL)
                     .border(
                         Border::new()
@@ -776,7 +1265,7 @@ impl Component for ExportDialog {
                             .cross_align(Alignment::Center)
                             .child(
                                 label()
-                                    .text("Exportar Arte / Documento")
+                                    .text("Exportar Arte / Export Artwork")
                                     .font_size(14.)
                                     .color(theme::TEXT_PRIMARY),
                             )
@@ -802,8 +1291,18 @@ impl Component for ExportDialog {
                             .child(
                                 Button::new()
                                     .on_press(move |_| {
-                                        fmt_png.set("png".to_string());
-                                        p_png.set("export_output.png".to_string());
+                                        fmt_state.set("png".to_string());
+                                        let cur = path_state.peek().clone();
+                                        let updated = if cur.ends_with(".svg") {
+                                            cur.replace(".svg", ".png")
+                                        } else if cur.ends_with(".pdf") {
+                                            cur.replace(".pdf", ".png")
+                                        } else if !cur.ends_with(".png") {
+                                            format!("{}.png", cur)
+                                        } else {
+                                            cur
+                                        };
+                                        path_state.set(updated);
                                     })
                                     .child(
                                         label()
@@ -818,8 +1317,18 @@ impl Component for ExportDialog {
                             .child(
                                 Button::new()
                                     .on_press(move |_| {
-                                        fmt_svg.set("svg".to_string());
-                                        p_svg.set("export_output.svg".to_string());
+                                        fmt_state.set("svg".to_string());
+                                        let cur = path_state.peek().clone();
+                                        let updated = if cur.ends_with(".png") {
+                                            cur.replace(".png", ".svg")
+                                        } else if cur.ends_with(".pdf") {
+                                            cur.replace(".pdf", ".svg")
+                                        } else if !cur.ends_with(".svg") {
+                                            format!("{}.svg", cur)
+                                        } else {
+                                            cur
+                                        };
+                                        path_state.set(updated);
                                     })
                                     .child(
                                         label()
@@ -834,8 +1343,18 @@ impl Component for ExportDialog {
                             .child(
                                 Button::new()
                                     .on_press(move |_| {
-                                        fmt_pdf.set("pdf".to_string());
-                                        p_pdf.set("export_output.pdf".to_string());
+                                        fmt_state.set("pdf".to_string());
+                                        let cur = path_state.peek().clone();
+                                        let updated = if cur.ends_with(".png") {
+                                            cur.replace(".png", ".pdf")
+                                        } else if cur.ends_with(".svg") {
+                                            cur.replace(".svg", ".pdf")
+                                        } else if !cur.ends_with(".pdf") {
+                                            format!("{}.pdf", cur)
+                                        } else {
+                                            cur
+                                        };
+                                        path_state.set(updated);
                                     })
                                     .child(
                                         label()
@@ -849,8 +1368,118 @@ impl Component for ExportDialog {
                             ),
                     )
                     .child(
+                        label()
+                            .text("RESOLUÇÃO / DENSIDADE (DPI)")
+                            .font_size(10.)
+                            .color(theme::TEXT_TERTIARY),
+                    )
+                    .child(
                         rect()
+                            .direction(Direction::Horizontal)
                             .width(Size::fill())
+                            .spacing(theme::SPACE_1)
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| dpi_state.set(72))
+                                    .child(
+                                        label()
+                                            .text(if cur_dpi == 72 {
+                                                "✓ 72 DPI (1x Tela)"
+                                            } else {
+                                                "72 DPI (1x Tela)"
+                                            })
+                                            .font_size(11.),
+                                    ),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| dpi_state.set(144))
+                                    .child(
+                                        label()
+                                            .text(if cur_dpi == 144 {
+                                                "✓ 144 DPI (2x Retina)"
+                                            } else {
+                                                "144 DPI (2x Retina)"
+                                            })
+                                            .font_size(11.),
+                                    ),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| dpi_state.set(300))
+                                    .child(
+                                        label()
+                                            .text(if cur_dpi == 300 {
+                                                "✓ 300 DPI (Impressão)"
+                                            } else {
+                                                "300 DPI (Impressão)"
+                                            })
+                                            .font_size(11.),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        label()
+                            .text("FUNDO DA IMAGEM")
+                            .font_size(10.)
+                            .color(theme::TEXT_TERTIARY),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .width(Size::fill())
+                            .spacing(theme::SPACE_1)
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| bg_state.set(true))
+                                    .child(
+                                        label()
+                                            .text(if cur_bg_trans {
+                                                "✓ Transparente (Alpha)"
+                                            } else {
+                                                "Transparente (Alpha)"
+                                            })
+                                            .font_size(11.),
+                                    ),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| bg_state.set(false))
+                                    .child(
+                                        label()
+                                            .text(if !cur_bg_trans {
+                                                "✓ Branco Opaco"
+                                            } else {
+                                                "Branco Opaco"
+                                            })
+                                            .font_size(11.),
+                                    ),
+                            ),
+                    )
+                    .child(if let Some((name, w, h)) = active_surf_info {
+                        rect().child(
+                            label()
+                                .text(format!(
+                                    "Superfície Alvo: {} ({:.0} × {:.0} pt)",
+                                    name, w, h
+                                ))
+                                .font_size(11.)
+                                .color(theme::TEXT_SECONDARY),
+                        )
+                    } else {
+                        rect()
+                    })
+                    .child(
+                        rect()
+                            .direction(Direction::Vertical)
+                            .width(Size::fill())
+                            .spacing(theme::SPACE_1)
+                            .child(
+                                label()
+                                    .text("CAMINHO DE GRAVAÇÃO DO ARQUIVO")
+                                    .font_size(10.)
+                                    .color(theme::TEXT_TERTIARY),
+                            )
                             .child(Input::new(export_path).placeholder("Caminho do arquivo...")),
                     )
                     .child(
@@ -871,10 +1500,13 @@ impl Component for ExportDialog {
                                     .on_press(move |_| {
                                         let path = export_path.peek().clone();
                                         let fmt = export_format.peek().clone();
-                                        let payload = serde_json::json!({
+                                        let mut payload = serde_json::json!({
                                             "path": path,
                                             "format": fmt,
                                         });
+                                        if let Some(surf) = shell.peek().bridge.active_surface() {
+                                            payload["surface"] = serde_json::json!(surf.raw());
+                                        }
                                         let res = shell.write().bridge.dispatch_action(
                                             petunia_design_application::ActionRequest::new(
                                                 petunia_design_application::ActionId::new(
@@ -887,7 +1519,7 @@ impl Component for ExportDialog {
                                             export_open.set(false);
                                         }
                                     })
-                                    .child(label().text("Exportar").font_size(11.)),
+                                    .child(label().text("Exportar Arquivo").font_size(11.)),
                             ),
                     ),
             )

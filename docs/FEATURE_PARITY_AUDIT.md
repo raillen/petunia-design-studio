@@ -115,9 +115,9 @@ Modifiers alter geometry and rendering without destroying the original parametri
 
 | Area / Feature | Surface ID | Scope | Engine | Freya UI Status | Implementation Gap / Required Work |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Preferences Window** | `ptnd.window.preferences` | `Post-V1 Candidate` | ⚠️ Partial | 🟡 CustomizeDialog | Form with General, Performance, Color, and Keyboard Shortcuts; `preferences.toml` persistence. |
-| **New Document Dialog** | `ptnd.dialog.new_document` | `V1 Required` | ✅ Implemented | 🟡 Existing Modal | Add Bleed, Margins, and Color Space presets (sRGB, CMYK). |
-| **Export Dialog** | `ptnd.dialog.export` | `V1 Required` | ✅ Implemented | 🟡 Existing Modal | Add Resolution (DPI 72/150/300), embedded ICC profiles, and Artboard selection. |
+| **Preferences Window** | `ptnd.window.preferences` | `Post-V1 Candidate` | ✅ Implemented | ✅ Exposed | Tabbed dialog with General (Language EN/pt-BR, Accent Palettes), Toolbar Catalog, Performance (GPU/LOD), and Shortcuts. |
+| **New Document Dialog** | `ptnd.dialog.new_document` | `V1 Required` | ✅ Implemented | ✅ Exposed | Full presets (1080p, 4K, Square, Mobile, A4, Letter), orientation swap, Bleed (3mm/5mm), Margins (10/20/36pt), and Color Space. |
+| **Export Dialog** | `ptnd.dialog.export` | `V1 Required` | ✅ Implemented | ✅ Exposed | Format selection (PNG, SVG, PDF), DPI resolution (72, 144, 300), surface info, transparent background toggle, and export pipeline. |
 | **Layers Panel** | `ptnd.panel.layers` | `V1 Required` | ✅ Implemented | ✅ Exposed | Layer reordering with ▲/▼ arrange buttons, inline renaming via ✏️ and RenameObject command. |
 | **Properties Inspector** | `ptnd.panel.properties` | `V1 Required` | ✅ Implemented | ✅ Exposed | Integrate dash styles, caps/joins, typography leading/tracking, and FX stack. |
 | **Color & Swatches** | `ptnd.panel.color` / `swatches` | `V1 Required` | ✅ Implemented | ✅ Exposed | Color sliders (RGB, HSL, CMYK) alongside existing swatch palettes. |

@@ -1339,19 +1339,31 @@ mod workspace_tests {
         shell.new_document("NewDocTest").expect("document opens");
         let surface_id = shell.bridge.active_surface().unwrap();
 
-        // Preset: Full HD 1920x1080
+        // Preset: Full HD 1920x1080 with 3mm bleed and 20pt margin
         shell.bridge.submit_all(
             "Set Surface Geometry 1080p",
-            vec![petunia_design_application::Command::SetSurfaceGeometry {
-                surface: surface_id,
-                origin: [0.0, 0.0],
-                dimensions: [1920.0, 1080.0],
-            }],
+            vec![
+                petunia_design_application::Command::SetSurfaceGeometry {
+                    surface: surface_id,
+                    origin: [0.0, 0.0],
+                    dimensions: [1920.0, 1080.0],
+                },
+                petunia_design_application::Command::SetSurfaceBleed {
+                    surface: surface_id,
+                    bleed: petunia_design_document::Bleed::uniform(8.5),
+                },
+                petunia_design_application::Command::SetSurfaceMargins {
+                    surface: surface_id,
+                    margins: petunia_design_document::Margins::uniform(20.0),
+                },
+            ],
         ).expect("command succeeds");
 
         let session = shell.bridge.session().unwrap();
         let surface = session.surface(surface_id).unwrap();
         assert_eq!(surface.dimensions, [1920.0, 1080.0]);
+        assert_eq!(surface.bleed, petunia_design_document::Bleed::uniform(8.5));
+        assert_eq!(surface.margins, petunia_design_document::Margins::uniform(20.0));
     }
 
     #[test]

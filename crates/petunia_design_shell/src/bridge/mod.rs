@@ -3,6 +3,7 @@
 pub mod gui_bridge;
 
 pub use gui_bridge::PetuniaDesignGuiBridge;
+pub use petunia_design_resources::i18n::Locale;
 pub use petunia_design_application::ports::{
     ActionQueryPort, CommandPort, DocumentQueryPort, HierarchyPort, InspectionPort, PropertyPort,
     SelectionPort, SurfacePort, VariableDataPort,
