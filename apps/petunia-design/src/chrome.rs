@@ -897,6 +897,266 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                 }))
                 .into_element(),
         ),
+        ToolKind::Star => Some(
+            rect()
+                .direction(Direction::Horizontal)
+                .spacing(theme::SPACE_1)
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text("Estrela:")
+                        .color(theme::TEXT_SECONDARY)
+                        .font_size(theme::CAPTION_SIZE),
+                )
+                .child(quick_action_btn("Pontas -", move |_| {
+                    let maybe_change = {
+                        let sh = shell.peek();
+                        sh.bridge.selection().selected_ids.first().copied().and_then(|id| {
+                            let obj = sh.bridge.session().and_then(|s| s.find_object(id));
+                            if let Some(obj) = obj {
+                                if let Some(petunia_design_document::ShapeKind::Star { points, inner_ratio }) = obj.shape {
+                                    return Some((id, points, inner_ratio));
+                                }
+                            }
+                            None
+                        })
+                    };
+                    if let Some((id, points, inner_ratio)) = maybe_change {
+                        let new_points = (points as i32 - 1).clamp(3, 36) as u32;
+                        let _ = shell.write().bridge.submit_all(
+                            "Change star points",
+                            vec![petunia_design_application::Command::SetShape {
+                                id,
+                                shape: Some(petunia_design_document::ShapeKind::Star { points: new_points, inner_ratio }),
+                            }],
+                        );
+                    }
+                }))
+                .child(quick_action_btn("Pontas +", move |_| {
+                    let maybe_change = {
+                        let sh = shell.peek();
+                        sh.bridge.selection().selected_ids.first().copied().and_then(|id| {
+                            let obj = sh.bridge.session().and_then(|s| s.find_object(id));
+                            if let Some(obj) = obj {
+                                if let Some(petunia_design_document::ShapeKind::Star { points, inner_ratio }) = obj.shape {
+                                    return Some((id, points, inner_ratio));
+                                }
+                            }
+                            None
+                        })
+                    };
+                    if let Some((id, points, inner_ratio)) = maybe_change {
+                        let new_points = (points as i32 + 1).clamp(3, 36) as u32;
+                        let _ = shell.write().bridge.submit_all(
+                            "Change star points",
+                            vec![petunia_design_application::Command::SetShape {
+                                id,
+                                shape: Some(petunia_design_document::ShapeKind::Star { points: new_points, inner_ratio }),
+                            }],
+                        );
+                    }
+                }))
+                .child(quick_action_btn("Para Curvas", move |_| {
+                    let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
+                }))
+                .into_element(),
+        ),
+        ToolKind::Polygon => Some(
+            rect()
+                .direction(Direction::Horizontal)
+                .spacing(theme::SPACE_1)
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text("Polígono:")
+                        .color(theme::TEXT_SECONDARY)
+                        .font_size(theme::CAPTION_SIZE),
+                )
+                .child(quick_action_btn("Lados -", move |_| {
+                    let maybe_change = {
+                        let sh = shell.peek();
+                        sh.bridge.selection().selected_ids.first().copied().and_then(|id| {
+                            let obj = sh.bridge.session().and_then(|s| s.find_object(id));
+                            if let Some(obj) = obj {
+                                if let Some(petunia_design_document::ShapeKind::Polygon { sides }) = obj.shape {
+                                    return Some((id, sides));
+                                }
+                            }
+                            None
+                        })
+                    };
+                    if let Some((id, sides)) = maybe_change {
+                        let new_sides = (sides as i32 - 1).clamp(3, 36) as u32;
+                        let _ = shell.write().bridge.submit_all(
+                            "Change polygon sides",
+                            vec![petunia_design_application::Command::SetShape {
+                                id,
+                                shape: Some(petunia_design_document::ShapeKind::Polygon { sides: new_sides }),
+                            }],
+                        );
+                    }
+                }))
+                .child(quick_action_btn("Lados +", move |_| {
+                    let maybe_change = {
+                        let sh = shell.peek();
+                        sh.bridge.selection().selected_ids.first().copied().and_then(|id| {
+                            let obj = sh.bridge.session().and_then(|s| s.find_object(id));
+                            if let Some(obj) = obj {
+                                if let Some(petunia_design_document::ShapeKind::Polygon { sides }) = obj.shape {
+                                    return Some((id, sides));
+                                }
+                            }
+                            None
+                        })
+                    };
+                    if let Some((id, sides)) = maybe_change {
+                        let new_sides = (sides as i32 + 1).clamp(3, 36) as u32;
+                        let _ = shell.write().bridge.submit_all(
+                            "Change polygon sides",
+                            vec![petunia_design_application::Command::SetShape {
+                                id,
+                                shape: Some(petunia_design_document::ShapeKind::Polygon { sides: new_sides }),
+                            }],
+                        );
+                    }
+                }))
+                .child(quick_action_btn("Para Curvas", move |_| {
+                    let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
+                }))
+                .into_element(),
+        ),
+        ToolKind::Contour => Some(
+            rect()
+                .direction(Direction::Horizontal)
+                .spacing(theme::SPACE_1)
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text("Contorno:")
+                        .color(theme::TEXT_SECONDARY)
+                        .font_size(theme::CAPTION_SIZE),
+                )
+                .child(quick_action_btn("-2pt", move |_| {
+                    let maybe_target = {
+                        let sh = shell.peek();
+                        sh.bridge.selection().selected_ids.first().copied().map(|id| {
+                            let dist = sh
+                                .bridge
+                                .session()
+                                .and_then(|s| s.find_object(id))
+                                .and_then(|o| {
+                                    o.modifiers.iter().find_map(|m| {
+                                        if let petunia_design_document::ModifierKind::ContourOffset { distance, .. } = m.kind {
+                                            Some(distance)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                })
+                                .unwrap_or(0.0);
+                            (id, dist)
+                        })
+                    };
+                    if let Some((id, current_dist)) = maybe_target {
+                        let _ = shell.write().bridge.submit_all(
+                            "Adjust contour",
+                            vec![petunia_design_application::Command::OffsetPath { id, delta: current_dist - 2.0 }],
+                        );
+                    }
+                }))
+                .child(quick_action_btn("+2pt", move |_| {
+                    let maybe_target = {
+                        let sh = shell.peek();
+                        sh.bridge.selection().selected_ids.first().copied().map(|id| {
+                            let dist = sh
+                                .bridge
+                                .session()
+                                .and_then(|s| s.find_object(id))
+                                .and_then(|o| {
+                                    o.modifiers.iter().find_map(|m| {
+                                        if let petunia_design_document::ModifierKind::ContourOffset { distance, .. } = m.kind {
+                                            Some(distance)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                })
+                                .unwrap_or(0.0);
+                            (id, dist)
+                        })
+                    };
+                    if let Some((id, current_dist)) = maybe_target {
+                        let _ = shell.write().bridge.submit_all(
+                            "Adjust contour",
+                            vec![petunia_design_application::Command::OffsetPath { id, delta: current_dist + 2.0 }],
+                        );
+                    }
+                }))
+                .child(quick_action_btn("Fixar Contorno", move |_| {
+                    let target_id = shell.peek().bridge.selection().selected_ids.first().copied();
+                    if let Some(id) = target_id {
+                        let _ = shell.write().bridge.submit_all(
+                            "Bake contour",
+                            vec![petunia_design_application::Command::BakeContour { id }],
+                        );
+                    }
+                }))
+                .into_element(),
+        ),
+        ToolKind::Perspective => Some(
+            rect()
+                .direction(Direction::Horizontal)
+                .spacing(theme::SPACE_1)
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text("Perspectiva:")
+                        .color(theme::TEXT_SECONDARY)
+                        .font_size(theme::CAPTION_SIZE),
+                )
+                .child(quick_action_btn("Fixar Geometria", move |_| {
+                    let target_id = shell.peek().bridge.selection().selected_ids.first().copied();
+                    if let Some(id) = target_id {
+                        let _ = shell.write().bridge.submit_all(
+                            "Bake perspective",
+                            vec![petunia_design_application::Command::BakeGeometry { id }],
+                        );
+                    }
+                }))
+                .into_element(),
+        ),
+        ToolKind::ArtisticText | ToolKind::FrameText => Some(
+            rect()
+                .direction(Direction::Horizontal)
+                .spacing(theme::SPACE_1)
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text("Texto:")
+                        .color(theme::TEXT_SECONDARY)
+                        .font_size(theme::CAPTION_SIZE),
+                )
+                .child(quick_action_btn("Converter em Curvas", move |_| {
+                    let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
+                }))
+                .into_element(),
+        ),
+        ToolKind::MarqueeRect | ToolKind::MarqueeEllipse | ToolKind::Lasso => Some(
+            rect()
+                .direction(Direction::Horizontal)
+                .spacing(theme::SPACE_1)
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text("Seleção Raster:")
+                        .color(theme::TEXT_SECONDARY)
+                        .font_size(theme::CAPTION_SIZE),
+                )
+                .child(quick_action_btn("Desselecionar", move |_| {
+                    let _ = run_action_token(&mut shell.write(), "ptnd.action.select.deselect");
+                }))
+                .into_element(),
+        ),
         _ => None,
     }
 }

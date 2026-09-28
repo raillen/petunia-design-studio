@@ -34,6 +34,7 @@ pub struct CanvasObjectProjection {
     pub opacity: f64,
     pub shape: Option<ShapeKind>,
     pub active: bool,
+    pub effects: Vec<petunia_design_document::EffectItem>,
     pub raster_tiles: Vec<petunia_design_raster::Tile>,
 }
 
@@ -121,6 +122,11 @@ impl PetuniaShell {
                     opacity: object.opacity,
                     shape: object.shape.clone(),
                     active: selected.contains(&object.id),
+                    effects: object
+                        .appearance
+                        .as_ref()
+                        .map(|a| a.effects.clone())
+                        .unwrap_or_default(),
                     raster_tiles: Vec::new(),
                 })
             })

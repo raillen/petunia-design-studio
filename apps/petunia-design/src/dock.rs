@@ -315,20 +315,79 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         (false, String::new(), 16.0)
     };
 
+    let star_params = selected_obj.as_ref().and_then(|obj| {
+        if let Some(ShapeKind::Star { points, inner_ratio }) = obj.shape {
+            Some((points, inner_ratio))
+        } else {
+            None
+        }
+    });
+
+    let polygon_params = selected_obj.as_ref().and_then(|obj| {
+        if let Some(ShapeKind::Polygon { sides }) = obj.shape {
+            Some(sides)
+        } else {
+            None
+        }
+    });
+
+    let rect_corners = selected_obj.as_ref().and_then(|obj| {
+        if let Some(ShapeKind::Rectangle { corner_radii }) = obj.shape {
+            Some(corner_radii[0])
+        } else {
+            None
+        }
+    });
+
+    let contour_distance = selected_obj.as_ref().and_then(|obj| {
+        obj.modifiers.iter().find_map(|m| {
+            if let petunia_design_document::ModifierKind::ContourOffset { distance, .. } = m.kind {
+                Some(distance)
+            } else {
+                None
+            }
+        })
+    });
+
+    let gaussian_blur_effect = selected_obj.as_ref().and_then(|obj| {
+        obj.appearance.as_ref().and_then(|app| {
+            app.effects.iter().find_map(|e| {
+                if let petunia_design_document::EffectKind::GaussianBlur { radius } = e.kind {
+                    Some((e.id, radius, e.visible))
+                } else {
+                    None
+                }
+            })
+        })
+    });
+
+    let drop_shadow_effect = selected_obj.as_ref().and_then(|obj| {
+        obj.appearance.as_ref().and_then(|app| {
+            app.effects.iter().find_map(|e| {
+                if let petunia_design_document::EffectKind::DropShadow { offset, blur, color, opacity } = &e.kind {
+                    Some((e.id, *offset, *blur, color.clone(), *opacity, e.visible))
+                } else {
+                    None
+                }
+            })
+        })
+    });
+
     let bounds = props.bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
     let [x, y, w, h] = bounds;
     let stroke_width = props.stroke_width;
     let opacity = (props.opacity * 100.0).round() as u32;
 
-    rect()
-        .direction(Direction::Vertical)
-        .width(Size::fill())
-        .height(Size::fill())
-        .spacing(theme::SPACE_2)
+    ScrollView::new()
         .child(
-            // Section: Transformation
-            section_header("TRANSFORMAÇÃO"),
-        )
+            rect()
+                .direction(Direction::Vertical)
+                .width(Size::fill())
+                .spacing(theme::SPACE_2)
+                .child(
+                    // Section: Transformation
+                    section_header("TRANSFORMAÇÃO"),
+                )
         .child(
             rect()
                 .direction(Direction::Horizontal)
@@ -525,6 +584,191 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                 .child(quick_color_swatch(shell, first_id, "ptnd.red/500", Color::from_rgb(0xEF, 0x44, 0x44)))
                 .child(quick_color_swatch(shell, first_id, "ptnd.amber/500", Color::from_rgb(0xF5, 0x9E, 0x0B))),
         )
+        .maybe(star_params.is_some(), |el| {
+            let (points, inner_ratio) = star_params.unwrap();
+            el.child(section_header("FORMA PARAMÉTRICA — ESTRELA"))
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .width(Size::fill())
+                        .main_align(Alignment::SpaceBetween)
+                        .cross_align(Alignment::Center)
+                        .child(
+                            label()
+                                .text(format!("Pontas: {} | Raio: {:.0}%", points, inner_ratio * 100.0))
+                                .font_size(11.)
+                                .color(theme::TEXT_SECONDARY),
+                        )
+                        .child(
+                            rect()
+                                .direction(Direction::Horizontal)
+                                .spacing(2.)
+                                .child(star_points_button(shell, first_id, "-1", -1))
+                                .child(star_points_button(shell, first_id, "+1", 1))
+                                .child(star_ratio_button(shell, first_id, "-5%", -0.05))
+                                .child(star_ratio_button(shell, first_id, "+5%", 0.05)),
+                        ),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .width(Size::fill())
+                        .main_align(Alignment::End)
+                        .child(convert_to_curves_button(shell, first_id)),
+                )
+        })
+        .maybe(polygon_params.is_some(), |el| {
+            let sides = polygon_params.unwrap();
+            el.child(section_header("FORMA PARAMÉTRICA — POLÍGONO"))
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .width(Size::fill())
+                        .main_align(Alignment::SpaceBetween)
+                        .cross_align(Alignment::Center)
+                        .child(
+                            label()
+                                .text(format!("Lados: {}", sides))
+                                .font_size(11.)
+                                .color(theme::TEXT_SECONDARY),
+                        )
+                        .child(
+                            rect()
+                                .direction(Direction::Horizontal)
+                                .spacing(2.)
+                                .child(polygon_sides_button(shell, first_id, "-1", -1))
+                                .child(polygon_sides_button(shell, first_id, "+1", 1)),
+                        ),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .width(Size::fill())
+                        .main_align(Alignment::End)
+                        .child(convert_to_curves_button(shell, first_id)),
+                )
+        })
+        .maybe(rect_corners.is_some(), |el| {
+            let r = rect_corners.unwrap();
+            el.child(section_header("FORMA PARAMÉTRICA — CANTOS"))
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .width(Size::fill())
+                        .main_align(Alignment::SpaceBetween)
+                        .cross_align(Alignment::Center)
+                        .child(
+                            label()
+                                .text(format!("Raio: {:.1} pt", r))
+                                .font_size(11.)
+                                .color(theme::TEXT_SECONDARY),
+                        )
+                        .child(
+                            rect()
+                                .direction(Direction::Horizontal)
+                                .spacing(2.)
+                                .child(corner_radius_button(shell, first_id, "-2pt", -2.0))
+                                .child(corner_radius_button(shell, first_id, "+2pt", 2.0))
+                                .child(bake_corners_button(shell, first_id)),
+                        ),
+                )
+        })
+        .child(
+            // Section: Live Modifiers (ADR 09.31)
+            section_header("MODIFICADORES VIVOS (ADR 09.31)"),
+        )
+        .child(
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::fill())
+                .main_align(Alignment::SpaceBetween)
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text(match contour_distance {
+                            Some(d) => format!("Contorno: {:.1} pt", d),
+                            None => "Contorno Vivo: Inativo".to_string(),
+                        })
+                        .font_size(11.)
+                        .color(theme::TEXT_SECONDARY),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .spacing(2.)
+                        .child(contour_offset_button(shell, first_id, "-2pt", -2.0))
+                        .child(contour_offset_button(shell, first_id, "+2pt", 2.0))
+                        .child(bake_contour_button(shell, first_id)),
+                ),
+        )
+        .child(
+            // Section: Effects & Live Filters (10.4 / 10.10)
+            section_header("EFEITOS (FX) & FILTROS VIVOS"),
+        )
+        .child(
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::fill())
+                .main_align(Alignment::SpaceBetween)
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text(match gaussian_blur_effect {
+                            Some((_, r, true)) => format!("Desfoque: {:.1} pt", r),
+                            Some((_, r, false)) => format!("Desfoque (Oculto): {:.1} pt", r),
+                            None => "Desfoque: Nenhum".to_string(),
+                        })
+                        .font_size(11.)
+                        .color(theme::TEXT_SECONDARY),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .spacing(2.)
+                        .child(blur_adjust_button(shell, first_id, "-1pt", -1.0))
+                        .child(blur_adjust_button(shell, first_id, "+1pt", 1.0))
+                        .child(blur_adjust_button(shell, first_id, "+5pt", 5.0))
+                        .child(remove_blur_button(
+                            shell,
+                            first_id,
+                            gaussian_blur_effect.map(|(id, _, _)| id).unwrap_or(101),
+                        )),
+                ),
+        )
+        .child(
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::fill())
+                .main_align(Alignment::SpaceBetween)
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text(match drop_shadow_effect {
+                            Some((_, offset, blur, _, _, true)) => {
+                                format!("Sombra: Desf {:.0}pt | Dist {:.0}pt", blur, offset[0])
+                            }
+                            Some((_, _offset, blur, _, _, false)) => {
+                                format!("Sombra (Oculta): Desf {:.0}pt", blur)
+                            }
+                            None => "Sombra: Nenhuma".to_string(),
+                        })
+                        .font_size(11.)
+                        .color(theme::TEXT_SECONDARY),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .spacing(2.)
+                        .child(shadow_dist_button(shell, first_id, "Dist -2", -2.0))
+                        .child(shadow_dist_button(shell, first_id, "Dist +2", 2.0))
+                        .child(shadow_blur_button(shell, first_id, "Desf +2", 2.0))
+                        .child(remove_shadow_button(
+                            shell,
+                            first_id,
+                            drop_shadow_effect.map(|(id, ..)| id).unwrap_or(102),
+                        )),
+                ),
+        )
         .child(
             // Section: Alignment & Booleans
             section_header("ALINHAMENTO & BOOLEANOS"),
@@ -549,7 +793,7 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                 .child(action_button(shell, "ptnd.action.vector.boolean_subtract", "Subtrair"))
                 .child(action_button(shell, "ptnd.action.vector.boolean_intersect", "Intersec"))
                 .child(action_button(shell, "ptnd.action.vector.boolean_xor", "XOR")),
-        )
+        ))
         .into_element()
 }
 
@@ -988,6 +1232,369 @@ fn action_button(
             let _ = run_action_token(&mut shell.write(), action_token);
         })
         .child(label().text(title).font_size(11.))
+}
+
+fn star_points_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    label_text: &'static str,
+    delta: i32,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let obj = shell.peek().bridge.session().and_then(|s| s.find_object(id)).cloned();
+                if let Some(obj) = obj {
+                    if let Some(ShapeKind::Star { points, inner_ratio }) = obj.shape {
+                        let new_points = (points as i32 + delta).clamp(3, 36) as u32;
+                        let _ = shell.write().bridge.submit_all(
+                            "Change star points",
+                            vec![Command::SetShape {
+                                id,
+                                shape: Some(ShapeKind::Star { points: new_points, inner_ratio }),
+                            }],
+                        );
+                    }
+                }
+            }
+        })
+        .child(label().text(label_text).font_size(10.))
+}
+
+fn star_ratio_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    label_text: &'static str,
+    delta: f64,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let obj = shell.peek().bridge.session().and_then(|s| s.find_object(id)).cloned();
+                if let Some(obj) = obj {
+                    if let Some(ShapeKind::Star { points, inner_ratio }) = obj.shape {
+                        let new_ratio = (inner_ratio + delta).clamp(0.1, 0.9);
+                        let _ = shell.write().bridge.submit_all(
+                            "Change star inner ratio",
+                            vec![Command::SetShape {
+                                id,
+                                shape: Some(ShapeKind::Star { points, inner_ratio: new_ratio }),
+                            }],
+                        );
+                    }
+                }
+            }
+        })
+        .child(label().text(label_text).font_size(10.))
+}
+
+fn polygon_sides_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    label_text: &'static str,
+    delta: i32,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let obj = shell.peek().bridge.session().and_then(|s| s.find_object(id)).cloned();
+                if let Some(obj) = obj {
+                    if let Some(ShapeKind::Polygon { sides }) = obj.shape {
+                        let new_sides = (sides as i32 + delta).clamp(3, 36) as u32;
+                        let _ = shell.write().bridge.submit_all(
+                            "Change polygon sides",
+                            vec![Command::SetShape {
+                                id,
+                                shape: Some(ShapeKind::Polygon { sides: new_sides }),
+                            }],
+                        );
+                    }
+                }
+            }
+        })
+        .child(label().text(label_text).font_size(10.))
+}
+
+fn corner_radius_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    label_text: &'static str,
+    delta: f64,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let obj = shell.peek().bridge.session().and_then(|s| s.find_object(id)).cloned();
+                if let Some(obj) = obj {
+                    if let Some(ShapeKind::Rectangle { corner_radii }) = obj.shape {
+                        let new_r = (corner_radii[0] + delta).max(0.0);
+                        let _ = shell.write().bridge.submit_all(
+                            "Change corner radius",
+                            vec![Command::SetShape {
+                                id,
+                                shape: Some(ShapeKind::Rectangle { corner_radii: [new_r, new_r, new_r, new_r] }),
+                            }],
+                        );
+                    }
+                }
+            }
+        })
+        .child(label().text(label_text).font_size(10.))
+}
+
+fn bake_corners_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let _ = shell.write().bridge.submit_all(
+                    "Bake corners",
+                    vec![Command::BakeCorners { id }],
+                );
+            }
+        })
+        .child(label().text("Fixar").font_size(10.))
+}
+
+fn contour_offset_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    label_text: &'static str,
+    delta: f64,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let current_dist = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .and_then(|o| {
+                        o.modifiers.iter().find_map(|m| {
+                            if let petunia_design_document::ModifierKind::ContourOffset { distance, .. } = m.kind {
+                                Some(distance)
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .unwrap_or(0.0);
+                let new_dist = current_dist + delta;
+                let _ = shell.write().bridge.submit_all(
+                    "Set contour offset",
+                    vec![Command::OffsetPath { id, delta: new_dist }],
+                );
+            }
+        })
+        .child(label().text(label_text).font_size(10.))
+}
+
+fn bake_contour_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let _ = shell.write().bridge.submit_all(
+                    "Bake contour",
+                    vec![Command::BakeContour { id }],
+                );
+            }
+        })
+        .child(label().text("Fixar (Bake)").font_size(10.))
+}
+
+fn convert_to_curves_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let _ = shell.write().bridge.submit_all(
+                    "Convert to curves",
+                    vec![Command::ConvertToCurves { id }],
+                );
+            }
+        })
+        .child(label().text("Para Curvas").font_size(10.))
+}
+
+fn blur_adjust_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    label_text: &'static str,
+    delta: f64,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let current_radius = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .and_then(|o| {
+                        o.appearance.as_ref().and_then(|app| {
+                            app.effects.iter().find_map(|e| {
+                                if let petunia_design_document::EffectKind::GaussianBlur { radius } = e.kind {
+                                    Some(radius)
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                    })
+                    .unwrap_or(0.0);
+                let new_radius = (current_radius + delta).max(0.5);
+                let _ = shell.write().bridge.submit_all(
+                    "Adjust blur",
+                    vec![Command::AddEffect {
+                        id,
+                        effect: petunia_design_document::EffectItem {
+                            id: 101,
+                            kind: petunia_design_document::EffectKind::GaussianBlur { radius: new_radius },
+                            visible: true,
+                        },
+                    }],
+                );
+            }
+        })
+        .child(label().text(label_text).font_size(10.))
+}
+
+fn remove_blur_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    effect_id: u32,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let _ = shell.write().bridge.submit_all(
+                    "Remove blur",
+                    vec![Command::RemoveEffect { id, effect_id }],
+                );
+            }
+        })
+        .child(label().text("✕").font_size(10.))
+}
+
+fn shadow_dist_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    label_text: &'static str,
+    delta: f64,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let existing = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .and_then(|o| {
+                        o.appearance.as_ref().and_then(|app| {
+                            app.effects.iter().find_map(|e| {
+                                if let petunia_design_document::EffectKind::DropShadow { offset, blur, color, opacity } = &e.kind {
+                                    Some((e.id, *offset, *blur, color.clone(), *opacity))
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                    });
+                let (eff_id, offset, blur, color, opacity) = existing.unwrap_or((102, [4.0, 4.0], 8.0, "ptnd.gray/900".to_string(), 0.6));
+                let new_offset = [(offset[0] + delta).max(0.0), (offset[1] + delta).max(0.0)];
+                let _ = shell.write().bridge.submit_all(
+                    "Adjust shadow distance",
+                    vec![Command::AddEffect {
+                        id,
+                        effect: petunia_design_document::EffectItem {
+                            id: eff_id,
+                            kind: petunia_design_document::EffectKind::DropShadow {
+                                offset: new_offset,
+                                blur,
+                                color,
+                                opacity,
+                            },
+                            visible: true,
+                        },
+                    }],
+                );
+            }
+        })
+        .child(label().text(label_text).font_size(10.))
+}
+
+fn shadow_blur_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    label_text: &'static str,
+    delta: f64,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let existing = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .and_then(|o| {
+                        o.appearance.as_ref().and_then(|app| {
+                            app.effects.iter().find_map(|e| {
+                                if let petunia_design_document::EffectKind::DropShadow { offset, blur, color, opacity } = &e.kind {
+                                    Some((e.id, *offset, *blur, color.clone(), *opacity))
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                    });
+                let (eff_id, offset, blur, color, opacity) = existing.unwrap_or((102, [4.0, 4.0], 8.0, "ptnd.gray/900".to_string(), 0.6));
+                let new_blur = (blur + delta).max(0.0);
+                let _ = shell.write().bridge.submit_all(
+                    "Adjust shadow blur",
+                    vec![Command::AddEffect {
+                        id,
+                        effect: petunia_design_document::EffectItem {
+                            id: eff_id,
+                            kind: petunia_design_document::EffectKind::DropShadow {
+                                offset,
+                                blur: new_blur,
+                                color,
+                                opacity,
+                            },
+                            visible: true,
+                        },
+                    }],
+                );
+            }
+        })
+        .child(label().text(label_text).font_size(10.))
+}
+
+fn remove_shadow_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    effect_id: u32,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let _ = shell.write().bridge.submit_all(
+                    "Remove shadow",
+                    vec![Command::RemoveEffect { id, effect_id }],
+                );
+            }
+        })
+        .child(label().text("✕").font_size(10.))
 }
 
 #[cfg(test)]

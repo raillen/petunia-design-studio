@@ -212,6 +212,30 @@ fn paint_object(
     if let Some(path) = object.outline.as_ref() {
         let sk_path = build_skia_path(path, camera);
         if !sk_path.is_empty() {
+            // Render visible drop shadows behind the object
+            for effect in &object.effects {
+                if !effect.visible {
+                    continue;
+                }
+                if let petunia_design_document::EffectKind::DropShadow {
+                    offset,
+                    blur: _,
+                    color,
+                    opacity: shadow_opacity,
+                } = &effect.kind {
+                    let dx = (offset[0] * camera.zoom) as f32;
+                    let dy = (offset[1] * camera.zoom) as f32;
+                    let mut shadow_paint = Paint::default();
+                    shadow_paint.set_anti_alias(true);
+                    shadow_paint.set_style(PaintStyle::Fill);
+                    let final_opacity = (opacity * shadow_opacity.clamp(0.0, 1.0) as f32).clamp(0.0, 1.0);
+                    shadow_paint.set_color(resolve_color(Some(color), final_opacity));
+                    canvas.save();
+                    canvas.translate((dx, dy));
+                    canvas.draw_path(&sk_path, &shadow_paint);
+                    canvas.restore();
+                }
+            }
             if let Some(fill_token) = object.fill.as_deref() {
                 let mut paint = Paint::default();
                 paint.set_anti_alias(true);
