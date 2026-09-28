@@ -121,6 +121,18 @@ pub enum Command {
         effect_id: u32,
         visible: bool,
     },
+    /// Append one tonal adjustment entry (Spec 10.10). Id collisions are reassigned.
+    AddAdjustment {
+        id: ObjectId,
+        adjustment: petunia_design_document::adjustments::AdjustmentItem,
+    },
+    /// Remove one tonal adjustment entry by local id (Spec 10.10).
+    RemoveAdjustment { id: ObjectId, adjustment_id: u32 },
+    /// Set/update one tonal adjustment entry (Spec 10.10).
+    SetAdjustment {
+        id: ObjectId,
+        adjustment: petunia_design_document::adjustments::AdjustmentItem,
+    },
     /// Set whole-stack opacity (F-18).
     SetStackOpacity { id: ObjectId, opacity: f64 },
     /// Set whole-stack blend mode (F-18).
@@ -431,6 +443,15 @@ pub fn execute(
             effect_id,
             visible,
         } => mutator.toggle_effect(*id, *effect_id, *visible),
+        Command::AddAdjustment { id, adjustment } => {
+            mutator.add_adjustment(*id, adjustment.clone())
+        }
+        Command::RemoveAdjustment { id, adjustment_id } => {
+            mutator.remove_adjustment(*id, *adjustment_id)
+        }
+        Command::SetAdjustment { id, adjustment } => {
+            mutator.set_adjustment(*id, adjustment.clone())
+        }
         Command::SetStackOpacity { id, opacity } => mutator.set_stack_opacity(*id, *opacity),
         Command::SetStackBlend { id, blend_mode } => mutator.set_stack_blend(*id, *blend_mode),
         Command::PasteAppearance { source_id, dest_id } => {

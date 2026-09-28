@@ -632,6 +632,20 @@ pub enum EffectKind {
         /// Blur radius in document points.
         radius: f64,
     },
+    /// Sharpen / unsharp mask live filter (Spec 10.10).
+    Sharpen {
+        /// Filter kernel radius in points.
+        radius: f64,
+        /// Filter amount / strength in [0.0, 5.0].
+        amount: f64,
+    },
+    /// Procedural noise filter (Spec 10.10).
+    Noise {
+        /// Noise intensity in [0.0, 1.0].
+        amount: f64,
+        /// Whether noise is applied identically across RGB channels.
+        monochrome: bool,
+    },
 }
 
 /// Single effect entry in the Appearance Stack.
@@ -658,6 +672,9 @@ pub struct AppearanceStack {
     /// Ordered non-destructive post-render effects.
     #[serde(default)]
     pub effects: Vec<EffectItem>,
+    /// Ordered non-destructive tonal adjustments (Spec 10.10).
+    #[serde(default)]
+    pub adjustments: Vec<crate::adjustments::AdjustmentItem>,
     /// Overall object opacity in [0.0, 1.0].
     #[serde(default = "default_one")]
     pub opacity: f64,
@@ -674,6 +691,7 @@ impl AppearanceStack {
             fills: Vec::new(),
             strokes: Vec::new(),
             effects: Vec::new(),
+            adjustments: Vec::new(),
             opacity: 1.0,
             blend_mode: BlendMode::Normal,
         }
@@ -756,6 +774,21 @@ impl AppearanceStack {
         }
     }
 
+    /// Appends a new tonal adjustment entry (Spec 10.10).
+    pub fn add_adjustment(&mut self, adjustment: crate::adjustments::AdjustmentItem) {
+        self.adjustments.push(adjustment);
+    }
+
+    /// Removes a tonal adjustment entry by local id (Spec 10.10).
+    pub fn remove_adjustment(&mut self, adj_id: u32) -> bool {
+        if let Some(pos) = self.adjustments.iter().position(|a| a.id == adj_id) {
+            self.adjustments.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Calculates expanded bounding box inflation required by active effects.
     #[must_use]
     pub fn bounds_inflation(&self) -> f64 {
@@ -773,8 +806,10 @@ impl AppearanceStack {
                 EffectKind::GaussianBlur { radius } => {
                     max_inf = max_inf.max(radius * 2.5);
                 }
-                EffectKind::InnerShadow { .. } => {
-                    // Inner shadow does not expand outer bounds
+                EffectKind::InnerShadow { .. }
+                | EffectKind::Sharpen { .. }
+                | EffectKind::Noise { .. } => {
+                    // Inner shadow and pixel filters do not expand outer bounds
                 }
             }
         }

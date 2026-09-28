@@ -326,6 +326,8 @@ fn export_object_svg(
             petunia_design_document::EffectKind::DropShadow { .. } => "drop shadow",
             petunia_design_document::EffectKind::InnerShadow { .. } => "inner shadow",
             petunia_design_document::EffectKind::GaussianBlur { .. } => "gaussian blur",
+            petunia_design_document::EffectKind::Sharpen { .. } => "sharpen",
+            petunia_design_document::EffectKind::Noise { .. } => "noise",
         };
         notes.push(format!("{kind} effect omitted"));
     }

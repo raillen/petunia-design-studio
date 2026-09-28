@@ -88,8 +88,8 @@ Modifiers alter geometry and rendering without destroying the original parametri
 | **Drop Shadow** | Layer FX | `V1 Required` | ✅ Implemented | ⚠️ Presets only | Detailed parameter editor: offset (dx, dy), blur radius, color, opacity. |
 | **Inner Shadow** | Layer FX | `V1 Required` | ✅ Implemented | ⚠️ Presets only | Parameter editor clipped to object fill. |
 | **Gaussian Blur** | Live Filter | `V1 Required` | ✅ Implemented | ⚠️ Presets only | Blur radius slider with optional exclusion mask. |
-| **Sharpen (Unsharp Mask)** | Live Filter | `V1 Required` | ⚠️ CPU baseline | ❌ Absent | Add `EffectKind::Sharpen` enum variant and UI controls. |
-| **Noise** | Live Filter | `V1 Required` | ⚠️ CPU baseline | ❌ Absent | Add `EffectKind::Noise` enum variant and intensity/monochrome controls. |
+| **Sharpen (Unsharp Mask)** | Live Filter | `V1 Required` | ✅ Implemented | ✅ Exposed | Modeled in core engine with interactive radius and amount controls in inspector dock. |
+| **Noise** | Live Filter | `V1 Required` | ✅ Implemented | ✅ Exposed | Modeled in core engine with intensity and monochrome/color toggles in inspector dock. |
 | **Outer Glow / Inner Glow** | Layer FX | `Post-V1 Candidate` | ❌ Not modeled | ❌ Absent | 360-degree radial glow dispersion. |
 | **Bevel & Emboss** | Layer FX | `Post-V1 Candidate` | ❌ Not modeled | ❌ Absent | Simulated 3D edge lighting. |
 | **Liquify** | Photo Persona | `Out of Scope` | ❌ Not modeled | ❌ Absent | Real-time fluid displacement shader engine. |
@@ -100,11 +100,11 @@ Modifiers alter geometry and rendering without destroying the original parametri
 
 | Adjustment / Analysis Feature | Scope | Engine | Freya UI Status | Implementation Gap / Required Work |
 | :--- | :--- | :--- | :--- | :--- |
-| **Levels** | `V1 Required` | ⚠️ Baseline matrix | ❌ Absent | Black/white input, gamma/midpoint, and output ranges per channel and master. |
-| **Curves** | `V1 Required` | ⚠️ Spline baseline | ❌ Absent | Interactive spline transfer graph widget with RGB/CMYK channel selector. |
-| **HSL** | `V1 Required` | ⚠️ Shader baseline | ❌ Absent | Hue rotation (-180° to +180°), saturation, and lightness per color band. |
-| **Exposure** | `V1 Required` | ⚠️ Shader baseline | ❌ Absent | Exposure (EV), offset, and gamma correction sliders. |
-| **White Balance** | `V1 Required` | ⚠️ Shader baseline | ❌ Absent | Temperature (Kelvin) and Tint (Green/Magenta) sliders. |
+| **Levels** | `V1 Required` | ✅ Implemented | ✅ Exposed | Non-destructive transfer function, gamma midpoint, and black/white clipping with inspector controls. |
+| **Curves** | `V1 Required` | ✅ Implemented | ✅ Exposed | Monotone Cubic Hermite spline transfer curve with S-Curve, Linear, and High Contrast presets and evaluation. |
+| **HSL** | `V1 Required` | ✅ Implemented | ✅ Exposed | Hue rotation (-180° to +180°), saturation, and lightness shifts with real-time preview. |
+| **Exposure** | `V1 Required` | ✅ Implemented | ✅ Exposed | EV stop multiplier, black offset, and gamma power exponent controls. |
+| **White Balance** | `V1 Required` | ✅ Implemented | ✅ Exposed | Temperature (warm/cool) and tint (green/magenta) chromatic adjustments. |
 | **Histogram** | `V1 Required` | ⚠️ CPU calculation | ❌ Absent | Dynamic luminance and RGB channel histogram graph widget. |
 | **Channel View** | `V1 Required` | ⚠️ Core logic | ❌ Absent | Non-mutating semantic channel inspection (Red, Green, Blue, Alpha). |
 | **Soft Proofing** | `V1 Required` | ✅ In `petunia_color` | ❌ Absent | View menu toggle to simulate ICC print color gamut on canvas. |

@@ -34,8 +34,9 @@ pub fn paint_raster_tile(
     canvas: &SkiaCanvas,
     tile: &petunia_design_raster::Tile,
     camera: &ViewportCamera,
+    adjustments: &[petunia_design_document::adjustments::AdjustmentItem],
 ) {
-    let rgba8 = match tile.format {
+    let mut rgba8 = match tile.format {
         petunia_design_raster::PixelFormat::Rgba8 => tile.data.clone(),
         _ => {
             let mut out = Vec::with_capacity(
@@ -53,6 +54,19 @@ pub fn paint_raster_tile(
             out
         }
     };
+    if !adjustments.is_empty() {
+        for chunk in rgba8.chunks_exact_mut(4) {
+            let rgb = [
+                chunk[0] as f32 / 255.0,
+                chunk[1] as f32 / 255.0,
+                chunk[2] as f32 / 255.0,
+            ];
+            let adjusted = petunia_design_document::adjustments::apply_adjustment_chain(rgb, adjustments);
+            chunk[0] = (adjusted[0].clamp(0.0, 1.0) * 255.0).round() as u8;
+            chunk[1] = (adjusted[1].clamp(0.0, 1.0) * 255.0).round() as u8;
+            chunk[2] = (adjusted[2].clamp(0.0, 1.0) * 255.0).round() as u8;
+        }
+    }
     let Some(image) = make_skia_image_from_rgba8(
         petunia_design_raster::TILE_SIZE as i32,
         petunia_design_raster::TILE_SIZE as i32,
@@ -206,7 +220,7 @@ fn paint_object(
     camera: &ViewportCamera,
 ) {
     for tile in &object.raster_tiles {
-        paint_raster_tile(canvas, tile, camera);
+        paint_raster_tile(canvas, tile, camera, &object.adjustments);
     }
     let opacity = object.opacity.clamp(0.0, 1.0) as f32;
     if let Some(path) = object.outline.as_ref() {
@@ -229,7 +243,11 @@ fn paint_object(
                     shadow_paint.set_anti_alias(true);
                     shadow_paint.set_style(PaintStyle::Fill);
                     let final_opacity = (opacity * shadow_opacity.clamp(0.0, 1.0) as f32).clamp(0.0, 1.0);
-                    shadow_paint.set_color(resolve_color(Some(color), final_opacity));
+                    shadow_paint.set_color(resolve_color_with_adjustments(
+                        Some(color),
+                        final_opacity,
+                        &object.adjustments,
+                    ));
                     canvas.save();
                     canvas.translate((dx, dy));
                     canvas.draw_path(&sk_path, &shadow_paint);
@@ -240,7 +258,11 @@ fn paint_object(
                 let mut paint = Paint::default();
                 paint.set_anti_alias(true);
                 paint.set_style(PaintStyle::Fill);
-                paint.set_color(resolve_color(Some(fill_token), opacity));
+                paint.set_color(resolve_color_with_adjustments(
+                    Some(fill_token),
+                    opacity,
+                    &object.adjustments,
+                ));
                 canvas.draw_path(&sk_path, &paint);
             }
             if let Some(stroke_token) = object.stroke.as_deref() {
@@ -250,7 +272,11 @@ fn paint_object(
                     paint.set_style(PaintStyle::Stroke);
                     let screen_width = (object.stroke_width * camera.zoom).max(1.0) as f32;
                     paint.set_stroke_width(screen_width);
-                    paint.set_color(resolve_color(Some(stroke_token), opacity));
+                    paint.set_color(resolve_color_with_adjustments(
+                        Some(stroke_token),
+                        opacity,
+                        &object.adjustments,
+                    ));
                     canvas.draw_path(&sk_path, &paint);
                 }
             }
@@ -352,13 +378,25 @@ fn build_skia_path(path: &GPath, camera: &ViewportCamera) -> Path {
     builder.detach()
 }
 
-/// Resolves a design-token into a Skia color with opacity.
+/// Resolves a design-token into a Skia color with opacity and optional tonal adjustments (Spec 10.10).
 fn resolve_color(token: Option<&str>, opacity: f32) -> Color {
-    let [r, g, b] = token
+    resolve_color_with_adjustments(token, opacity, &[])
+}
+
+/// Resolves a design-token and applies non-destructive tonal adjustments.
+fn resolve_color_with_adjustments(
+    token: Option<&str>,
+    opacity: f32,
+    adjustments: &[petunia_design_document::adjustments::AdjustmentItem],
+) -> Color {
+    let mut rgb = token
         .map_or([0.18, 0.5, 0.97], petunia_design_document::resolve_color_to_rgb);
+    if !adjustments.is_empty() {
+        rgb = petunia_design_document::adjustments::apply_adjustment_chain(rgb, adjustments);
+    }
     let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
     let alpha = (opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
-    Color::from_argb(alpha, channel(r), channel(g), channel(b))
+    Color::from_argb(alpha, channel(rgb[0]), channel(rgb[1]), channel(rgb[2]))
 }
 
 /// Paints overlays in one ordered pass, above the artwork.

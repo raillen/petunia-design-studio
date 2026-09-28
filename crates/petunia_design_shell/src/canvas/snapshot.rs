@@ -35,6 +35,7 @@ pub struct CanvasObjectProjection {
     pub shape: Option<ShapeKind>,
     pub active: bool,
     pub effects: Vec<petunia_design_document::EffectItem>,
+    pub adjustments: Vec<petunia_design_document::adjustments::AdjustmentItem>,
     pub raster_tiles: Vec<petunia_design_raster::Tile>,
 }
 
@@ -126,6 +127,11 @@ impl PetuniaShell {
                         .appearance
                         .as_ref()
                         .map(|a| a.effects.clone())
+                        .unwrap_or_default(),
+                    adjustments: object
+                        .appearance
+                        .as_ref()
+                        .map(|a| a.adjustments.clone())
                         .unwrap_or_default(),
                     raster_tiles: Vec::new(),
                 })

@@ -1445,6 +1445,53 @@ impl<'doc> DocumentMutator<'doc> {
         self.set_appearance(id, Some(stack))
     }
 
+    /// Appends a tonal adjustment entry, reassigning `id` on collision (Spec 10.10).
+    pub fn add_adjustment(
+        &mut self,
+        id: ObjectId,
+        mut adjustment: crate::adjustments::AdjustmentItem,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let mut stack = self.editable_stack(id)?;
+        if stack.adjustments.iter().any(|a| a.id == adjustment.id) {
+            adjustment.id = stack.adjustments.iter().map(|a| a.id).max().unwrap_or(0) + 1;
+        }
+        stack.add_adjustment(adjustment);
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Removes a tonal adjustment entry by local id (Spec 10.10).
+    pub fn remove_adjustment(
+        &mut self,
+        id: ObjectId,
+        adjustment_id: u32,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let mut stack = self.editable_stack(id)?;
+        if !stack.remove_adjustment(adjustment_id) {
+            return Err(PetuniaError::not_found(format!(
+                "adjustment `{adjustment_id}` not found on object `{id}`"
+            )));
+        }
+        self.set_appearance(id, Some(stack))
+    }
+
+    /// Updates an existing tonal adjustment entry (Spec 10.10).
+    pub fn set_adjustment(
+        &mut self,
+        id: ObjectId,
+        adjustment: crate::adjustments::AdjustmentItem,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let mut stack = self.editable_stack(id)?;
+        if let Some(entry) = stack.adjustments.iter_mut().find(|a| a.id == adjustment.id) {
+            *entry = adjustment;
+            self.set_appearance(id, Some(stack))
+        } else {
+            Err(PetuniaError::not_found(format!(
+                "adjustment `{}` not found on object `{id}`",
+                adjustment.id
+            )))
+        }
+    }
+
     /// Sets the whole-stack opacity (F-18). Mirrors to legacy opacity.
     pub fn set_stack_opacity(
         &mut self,

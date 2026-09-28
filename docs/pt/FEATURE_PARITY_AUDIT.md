@@ -88,8 +88,8 @@ Modificadores transformam a geometria e a renderização em tempo de execução 
 | **Drop Shadow (Sombra Externa)** | Layer FX | `V1 Required` | ✅ Implementado | ⚠️ Apenas presets | Editor completo: deslocamento (dx, dy), raio de desfoque, cor e opacidade. |
 | **Inner Shadow (Sombra Interna)** | Layer FX | `V1 Required` | ✅ Implementado | ⚠️ Apenas presets | Editor completo confinado ao preenchimento do objeto. |
 | **Gaussian Blur (Desfoque)** | Live Filter | `V1 Required` | ✅ Implementado | ⚠️ Apenas presets | Slider de raio com opção de máscara de exclusão. |
-| **Sharpen (Nitidez)** | Live Filter | `V1 Required` | ⚠️ CPU baseline | ❌ Ausente | Modelar variante `EffectKind::Sharpen` e adicionar controles. |
-| **Noise (Ruído)** | Live Filter | `V1 Required` | ⚠️ CPU baseline | ❌ Ausente | Modelar variante `EffectKind::Noise` e controles de intensidade. |
+| **Sharpen (Nitidez)** | Live Filter | `V1 Required` | ✅ Implementado | ✅ Exposto | Modelado no motor com controles interativos de raio e intensidade no dock de propriedades. |
+| **Noise (Ruído)** | Live Filter | `V1 Required` | ✅ Implementado | ✅ Exposto | Modelado no motor com controles de intensidade e alternador monocromático/colorido no dock. |
 | **Outer Glow / Inner Glow** | Layer FX | `Post-V1 Candidate` | ❌ Não modelado | ❌ Ausente | Brilho radial uniforme em 360 graus. |
 | **Bevel & Emboss (Chanfro)** | Layer FX | `Post-V1 Candidate` | ❌ Não modelado | ❌ Ausente | Iluminação simulada de relevo tridimensional nas bordas. |
 | **Liquify (Distorção Líquida)** | Persona Retoque | `Out of Scope` | ❌ Não modelado | ❌ Ausente | Fora do escopo da v1 (requer shaders de computação gráfica). |
@@ -100,11 +100,11 @@ Modificadores transformam a geometria e a renderização em tempo de execução 
 
 | Recurso de Ajuste / Análise | Escopo | Motor | Estado na UI Freya | Lacuna de Implementação / Trabalho Restante |
 | :--- | :--- | :--- | :--- | :--- |
-| **Levels (Níveis)** | `V1 Required` | ⚠️ Matriz base | ❌ Ausente | Pontos de entrada preto/branco, gama intermediária e limites de saída por canal. |
-| **Curves (Curvas)** | `V1 Required` | ⚠️ Spline base | ❌ Ausente | Widget gráfico de spline de transferência tonal com seleção de canais. |
-| **HSL** | `V1 Required` | ⚠️ Shader base | ❌ Ausente | Rotação de matiz (-180° a +180°), saturação e luminância por faixa. |
-| **Exposure (Exposição)** | `V1 Required` | ⚠️ Shader base | ❌ Ausente | Sliders de exposição (EV), deslocamento e correção de gama. |
-| **White Balance (Balanço Branco)**| `V1 Required` | ⚠️ Shader base | ❌ Ausente | Sliders de temperatura de cor (Kelvin) e matiz (Tint verde/magenta). |
+| **Levels (Níveis)** | `V1 Required` | ✅ Implementado | ✅ Exposto | Função de transferência não-destrutiva, gama e recorte preto/branco com controles no dock. |
+| **Curves (Curvas)** | `V1 Required` | ✅ Implementado | ✅ Exposto | Spline Monotone Cubic Hermite com presets (Curva S, Linear, Alto Contraste) e avaliação precisa. |
+| **HSL** | `V1 Required` | ✅ Implementado | ✅ Exposto | Rotação de matiz (-180° a +180°), saturação e luminância em tempo real. |
+| **Exposure (Exposição)** | `V1 Required` | ✅ Implementado | ✅ Exposto | Multiplicador de paradas EV, deslocamento de preto e expoente de gama. |
+| **White Balance (Balanço Branco)**| `V1 Required` | ✅ Implementado | ✅ Exposto | Ajustes cromáticos de temperatura (quente/frio) e matiz (verde/magenta). |
 | **Histogram (Histograma)** | `V1 Required` | ⚠️ Cálculo em CPU | ❌ Ausente | Widget gráfico dinâmico com distribuição de luminância e canais RGB. |
 | **Channel View (Canais)** | `V1 Required` | ⚠️ Lógica base | ❌ Ausente | Inspeção não-mutante de componentes Vermelho, Verde, Azul e Alfa. |
 | **Soft Proofing (Prova de Cor)** | `V1 Required` | ✅ Em `petunia_color`| ❌ Ausente | Alternador na barra/menu de visualização simulando perfis ICC de impressão. |

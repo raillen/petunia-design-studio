@@ -373,6 +373,35 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         })
     });
 
+    let sharpen_effect = selected_obj.as_ref().and_then(|obj| {
+        obj.appearance.as_ref().and_then(|app| {
+            app.effects.iter().find_map(|e| {
+                if let petunia_design_document::EffectKind::Sharpen { radius, amount } = e.kind {
+                    Some((e.id, radius, amount, e.visible))
+                } else {
+                    None
+                }
+            })
+        })
+    });
+
+    let noise_effect = selected_obj.as_ref().and_then(|obj| {
+        obj.appearance.as_ref().and_then(|app| {
+            app.effects.iter().find_map(|e| {
+                if let petunia_design_document::EffectKind::Noise { amount, monochrome } = e.kind {
+                    Some((e.id, amount, monochrome, e.visible))
+                } else {
+                    None
+                }
+            })
+        })
+    });
+
+    let adjustments = selected_obj
+        .as_ref()
+        .and_then(|obj| obj.appearance.as_ref().map(|app| app.adjustments.clone()))
+        .unwrap_or_default();
+
     let bounds = props.bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
     let [x, y, w, h] = bounds;
     let stroke_width = props.stroke_width;
@@ -768,6 +797,118 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                             drop_shadow_effect.map(|(id, ..)| id).unwrap_or(102),
                         )),
                 ),
+        )
+        .child(
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::fill())
+                .main_align(Alignment::SpaceBetween)
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text(match sharpen_effect {
+                            Some((_, r, a, true)) => {
+                                format!("Nitidez: Raio {:.1}pt | Qtd {:.0}%", r, a * 100.0)
+                            }
+                            Some((_, r, _, false)) => format!("Nitidez (Oculta): {:.1}pt", r),
+                            None => "Nitidez: Nenhuma".to_string(),
+                        })
+                        .font_size(11.)
+                        .color(theme::TEXT_SECONDARY),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .spacing(2.)
+                        .child(sharpen_adjust_button(shell, first_id, "Qtd -10%", 0.0, -0.10))
+                        .child(sharpen_adjust_button(shell, first_id, "Qtd +10%", 0.0, 0.10))
+                        .child(sharpen_adjust_button(shell, first_id, "Raio +1", 1.0, 0.0))
+                        .child(remove_sharpen_button(
+                            shell,
+                            first_id,
+                            sharpen_effect.map(|(id, ..)| id).unwrap_or(103),
+                        )),
+                ),
+        )
+        .child(
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::fill())
+                .main_align(Alignment::SpaceBetween)
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text(match noise_effect {
+                            Some((_, a, mono, true)) => format!(
+                                "Ruído: {:.0}% ({})",
+                                a * 100.0,
+                                if mono { "Mono" } else { "Cor" }
+                            ),
+                            Some((_, a, _, false)) => format!("Ruído (Oculto): {:.0}%", a * 100.0),
+                            None => "Ruído: Nenhum".to_string(),
+                        })
+                        .font_size(11.)
+                        .color(theme::TEXT_SECONDARY),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .spacing(2.)
+                        .child(noise_adjust_button(shell, first_id, "-5%", -0.05))
+                        .child(noise_adjust_button(shell, first_id, "+5%", 0.05))
+                        .child(noise_toggle_mono_button(shell, first_id))
+                        .child(remove_noise_button(
+                            shell,
+                            first_id,
+                            noise_effect.map(|(id, ..)| id).unwrap_or(104),
+                        )),
+                ),
+        )
+        .child(
+            // Section: Tonal Adjustments (Spec 10.10)
+            section_header("AJUSTES TONAIS (SPEC 10.10)"),
+        )
+        .child(
+            // Preset / Add adjustment buttons row
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::fill())
+                .main_align(Alignment::SpaceBetween)
+                .child(add_adjustment_button(
+                    shell,
+                    first_id,
+                    "+Níveis",
+                    petunia_design_document::adjustments::AdjustmentKind::default_levels(),
+                ))
+                .child(add_adjustment_button(
+                    shell,
+                    first_id,
+                    "+Curvas",
+                    petunia_design_document::adjustments::AdjustmentKind::default_curves(),
+                ))
+                .child(add_adjustment_button(
+                    shell,
+                    first_id,
+                    "+HSL",
+                    petunia_design_document::adjustments::AdjustmentKind::default_hsl(),
+                ))
+                .child(add_adjustment_button(
+                    shell,
+                    first_id,
+                    "+Exp",
+                    petunia_design_document::adjustments::AdjustmentKind::default_exposure(),
+                ))
+                .child(add_adjustment_button(
+                    shell,
+                    first_id,
+                    "+Balanço",
+                    petunia_design_document::adjustments::AdjustmentKind::default_white_balance(),
+                )),
+        )
+        .children(
+            adjustments
+                .into_iter()
+                .map(|adj| adjustment_card(shell, first_id, adj)),
         )
         .child(
             // Section: Alignment & Booleans
@@ -1597,6 +1738,629 @@ fn remove_shadow_button(
         .child(label().text("✕").font_size(10.))
 }
 
+fn sharpen_adjust_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    label_text: &'static str,
+    delta_radius: f64,
+    delta_amount: f64,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let existing = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .and_then(|o| {
+                        o.appearance.as_ref().and_then(|app| {
+                            app.effects.iter().find_map(|e| {
+                                if let petunia_design_document::EffectKind::Sharpen { radius, amount } = e.kind {
+                                    Some((e.id, radius, amount))
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                    });
+                let (eff_id, radius, amount) = existing.unwrap_or((103, 1.0, 0.5));
+                let new_radius = (radius + delta_radius).max(0.1);
+                let new_amount = (amount + delta_amount).clamp(0.0, 5.0);
+                let _ = shell.write().bridge.submit_all(
+                    "Adjust sharpen filter",
+                    vec![Command::AddEffect {
+                        id,
+                        effect: petunia_design_document::EffectItem {
+                            id: eff_id,
+                            kind: petunia_design_document::EffectKind::Sharpen {
+                                radius: new_radius,
+                                amount: new_amount,
+                            },
+                            visible: true,
+                        },
+                    }],
+                );
+            }
+        })
+        .child(label().text(label_text).font_size(10.))
+}
+
+fn remove_sharpen_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    effect_id: u32,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let _ = shell.write().bridge.submit_all(
+                    "Remove sharpen",
+                    vec![Command::RemoveEffect { id, effect_id }],
+                );
+            }
+        })
+        .child(label().text("✕").font_size(10.))
+}
+
+fn noise_adjust_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    label_text: &'static str,
+    delta: f64,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let existing = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .and_then(|o| {
+                        o.appearance.as_ref().and_then(|app| {
+                            app.effects.iter().find_map(|e| {
+                                if let petunia_design_document::EffectKind::Noise { amount, monochrome } = e.kind {
+                                    Some((e.id, amount, monochrome))
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                    });
+                let (eff_id, amount, monochrome) = existing.unwrap_or((104, 0.15, true));
+                let new_amount = (amount + delta).clamp(0.0, 1.0);
+                let _ = shell.write().bridge.submit_all(
+                    "Adjust noise filter",
+                    vec![Command::AddEffect {
+                        id,
+                        effect: petunia_design_document::EffectItem {
+                            id: eff_id,
+                            kind: petunia_design_document::EffectKind::Noise {
+                                amount: new_amount,
+                                monochrome,
+                            },
+                            visible: true,
+                        },
+                    }],
+                );
+            }
+        })
+        .child(label().text(label_text).font_size(10.))
+}
+
+fn noise_toggle_mono_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let existing = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .and_then(|o| {
+                        o.appearance.as_ref().and_then(|app| {
+                            app.effects.iter().find_map(|e| {
+                                if let petunia_design_document::EffectKind::Noise { amount, monochrome } = e.kind {
+                                    Some((e.id, amount, monochrome))
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                    });
+                let (eff_id, amount, monochrome) = existing.unwrap_or((104, 0.15, true));
+                let _ = shell.write().bridge.submit_all(
+                    "Toggle noise monochrome",
+                    vec![Command::AddEffect {
+                        id,
+                        effect: petunia_design_document::EffectItem {
+                            id: eff_id,
+                            kind: petunia_design_document::EffectKind::Noise {
+                                amount,
+                                monochrome: !monochrome,
+                            },
+                            visible: true,
+                        },
+                    }],
+                );
+            }
+        })
+        .child(label().text("Mono/Cor").font_size(10.))
+}
+
+fn remove_noise_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    effect_id: u32,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let _ = shell.write().bridge.submit_all(
+                    "Remove noise",
+                    vec![Command::RemoveEffect { id, effect_id }],
+                );
+            }
+        })
+        .child(label().text("✕").font_size(10.))
+}
+
+fn add_adjustment_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    label_text: &'static str,
+    kind: petunia_design_document::adjustments::AdjustmentKind,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let next_id = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .and_then(|o| o.appearance.as_ref())
+                    .map(|app| app.adjustments.iter().map(|a| a.id).max().unwrap_or(0) + 1)
+                    .unwrap_or(1);
+                let item = petunia_design_document::adjustments::AdjustmentItem::new(next_id, kind.clone());
+                let _ = shell.write().bridge.submit_all(
+                    "Add tonal adjustment",
+                    vec![Command::AddAdjustment {
+                        id,
+                        adjustment: item,
+                    }],
+                );
+            }
+        })
+        .child(label().text(label_text).font_size(10.))
+}
+
+fn adjustment_card(
+    shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    adj: petunia_design_document::adjustments::AdjustmentItem,
+) -> impl IntoElement {
+    let adj_id = adj.id;
+    let title = match &adj.kind {
+        petunia_design_document::adjustments::AdjustmentKind::Levels { .. } => format!("Níveis #{}", adj_id),
+        petunia_design_document::adjustments::AdjustmentKind::Curves { .. } => format!("Curvas #{}", adj_id),
+        petunia_design_document::adjustments::AdjustmentKind::Hsl { .. } => format!("HSL #{}", adj_id),
+        petunia_design_document::adjustments::AdjustmentKind::Exposure { .. } => format!("Exposição #{}", adj_id),
+        petunia_design_document::adjustments::AdjustmentKind::WhiteBalance { .. } => format!("Balanço B. #{}", adj_id),
+    };
+
+    let body = match adj.kind.clone() {
+        petunia_design_document::adjustments::AdjustmentKind::Levels { master, .. } => {
+            let mut shell_g_down = shell;
+            let mut shell_g_up = shell;
+            let mut shell_b_up = shell;
+            let mut shell_w_down = shell;
+            let adj_1 = adj.clone();
+            let adj_2 = adj.clone();
+            let adj_3 = adj.clone();
+            let adj_4 = adj.clone();
+
+            rect()
+                .direction(Direction::Vertical)
+                .width(Size::fill())
+                .spacing(2.)
+                .child(
+                    label()
+                        .text(format!("Gamma: {:.2} | In: [{:.2}, {:.2}]", master.gamma, master.input_black, master.input_white))
+                        .font_size(10.)
+                        .color(theme::TEXT_TERTIARY),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .spacing(2.)
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_1.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Levels { master: ref mut m, .. } = new_adj.kind {
+                                            m.gamma = (m.gamma - 0.1).clamp(0.1, 10.0);
+                                        }
+                                        let _ = shell_g_down.write().bridge.submit_all("Adjust levels gamma", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("γ -0.1").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_2.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Levels { master: ref mut m, .. } = new_adj.kind {
+                                            m.gamma = (m.gamma + 0.1).clamp(0.1, 10.0);
+                                        }
+                                        let _ = shell_g_up.write().bridge.submit_all("Adjust levels gamma", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("γ +0.1").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_3.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Levels { master: ref mut m, .. } = new_adj.kind {
+                                            m.input_black = (m.input_black + 0.05).clamp(0.0, 0.9);
+                                        }
+                                        let _ = shell_b_up.write().bridge.submit_all("Adjust levels black", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("Preto +").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_4.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Levels { master: ref mut m, .. } = new_adj.kind {
+                                            m.input_white = (m.input_white - 0.05).clamp(0.1, 1.0);
+                                        }
+                                        let _ = shell_w_down.write().bridge.submit_all("Adjust levels white", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("Branco -").font_size(10.)),
+                        ),
+                )
+        }
+        petunia_design_document::adjustments::AdjustmentKind::Curves { master_points, .. } => {
+            let mut shell_s = shell;
+            let mut shell_lin = shell;
+            let mut shell_hi = shell;
+            let adj_1 = adj.clone();
+            let adj_2 = adj.clone();
+            let adj_3 = adj.clone();
+
+            rect()
+                .direction(Direction::Vertical)
+                .width(Size::fill())
+                .spacing(2.)
+                .child(
+                    label()
+                        .text(format!("Pontos da Curva: {}", master_points.len()))
+                        .font_size(10.)
+                        .color(theme::TEXT_TERTIARY),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .spacing(2.)
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_1.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Curves { ref mut master_points, .. } = new_adj.kind {
+                                            *master_points = vec![[0.0, 0.0], [0.25, 0.15], [0.75, 0.85], [1.0, 1.0]];
+                                        }
+                                        let _ = shell_s.write().bridge.submit_all("Set S-Curve", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("Curva S").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_2.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Curves { ref mut master_points, .. } = new_adj.kind {
+                                            *master_points = vec![[0.0, 0.0], [1.0, 1.0]];
+                                        }
+                                        let _ = shell_lin.write().bridge.submit_all("Set Linear Curve", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("Linear").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_3.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Curves { ref mut master_points, .. } = new_adj.kind {
+                                            *master_points = vec![[0.0, 0.0], [0.35, 0.20], [0.65, 0.80], [1.0, 1.0]];
+                                        }
+                                        let _ = shell_hi.write().bridge.submit_all("Set High Contrast", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("Alto Contraste").font_size(10.)),
+                        ),
+                )
+        }
+        petunia_design_document::adjustments::AdjustmentKind::Hsl { hue_shift, saturation, lightness } => {
+            let mut shell_h = shell;
+            let mut shell_s_up = shell;
+            let mut shell_s_down = shell;
+            let mut shell_l_up = shell;
+            let adj_1 = adj.clone();
+            let adj_2 = adj.clone();
+            let adj_3 = adj.clone();
+            let adj_4 = adj.clone();
+
+            rect()
+                .direction(Direction::Vertical)
+                .width(Size::fill())
+                .spacing(2.)
+                .child(
+                    label()
+                        .text(format!("Matiz: {:+.0}° | Sat: {:+.0}% | Lum: {:+.0}%", hue_shift, saturation * 100.0, lightness * 100.0))
+                        .font_size(10.)
+                        .color(theme::TEXT_TERTIARY),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .spacing(2.)
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_1.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Hsl { ref mut hue_shift, .. } = new_adj.kind {
+                                            *hue_shift = (*hue_shift + 15.0).rem_euclid(360.0);
+                                        }
+                                        let _ = shell_h.write().bridge.submit_all("Shift Hue", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("H +15°").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_2.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Hsl { ref mut saturation, .. } = new_adj.kind {
+                                            *saturation = (*saturation - 0.1).clamp(-1.0, 1.0);
+                                        }
+                                        let _ = shell_s_down.write().bridge.submit_all("Adjust Saturation", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("S -10%").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_3.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Hsl { ref mut saturation, .. } = new_adj.kind {
+                                            *saturation = (*saturation + 0.1).clamp(-1.0, 1.0);
+                                        }
+                                        let _ = shell_s_up.write().bridge.submit_all("Adjust Saturation", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("S +10%").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_4.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Hsl { ref mut lightness, .. } = new_adj.kind {
+                                            *lightness = (*lightness + 0.1).clamp(-1.0, 1.0);
+                                        }
+                                        let _ = shell_l_up.write().bridge.submit_all("Adjust Lightness", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("L +10%").font_size(10.)),
+                        ),
+                )
+        }
+        petunia_design_document::adjustments::AdjustmentKind::Exposure { exposure, offset, gamma } => {
+            let mut shell_ev_down = shell;
+            let mut shell_ev_up = shell;
+            let mut shell_off_up = shell;
+            let mut shell_gam_up = shell;
+            let adj_1 = adj.clone();
+            let adj_2 = adj.clone();
+            let adj_3 = adj.clone();
+            let adj_4 = adj.clone();
+
+            rect()
+                .direction(Direction::Vertical)
+                .width(Size::fill())
+                .spacing(2.)
+                .child(
+                    label()
+                        .text(format!("EV: {:+.1} | Offset: {:+.2} | γ: {:.2}", exposure, offset, gamma))
+                        .font_size(10.)
+                        .color(theme::TEXT_TERTIARY),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .spacing(2.)
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_1.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Exposure { ref mut exposure, .. } = new_adj.kind {
+                                            *exposure = (*exposure - 0.5).clamp(-5.0, 5.0);
+                                        }
+                                        let _ = shell_ev_down.write().bridge.submit_all("Adjust Exposure", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("EV -0.5").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_2.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Exposure { ref mut exposure, .. } = new_adj.kind {
+                                            *exposure = (*exposure + 0.5).clamp(-5.0, 5.0);
+                                        }
+                                        let _ = shell_ev_up.write().bridge.submit_all("Adjust Exposure", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("EV +0.5").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_3.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Exposure { ref mut offset, .. } = new_adj.kind {
+                                            *offset = (*offset + 0.05).clamp(-0.5, 0.5);
+                                        }
+                                        let _ = shell_off_up.write().bridge.submit_all("Adjust Offset", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("Off +0.05").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_4.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::Exposure { ref mut gamma, .. } = new_adj.kind {
+                                            *gamma = (*gamma + 0.1).clamp(0.1, 5.0);
+                                        }
+                                        let _ = shell_gam_up.write().bridge.submit_all("Adjust Gamma", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("γ +0.1").font_size(10.)),
+                        ),
+                )
+        }
+        petunia_design_document::adjustments::AdjustmentKind::WhiteBalance { temperature, tint } => {
+            let mut shell_t_down = shell;
+            let mut shell_t_up = shell;
+            let mut shell_tint_down = shell;
+            let mut shell_tint_up = shell;
+            let adj_1 = adj.clone();
+            let adj_2 = adj.clone();
+            let adj_3 = adj.clone();
+            let adj_4 = adj.clone();
+
+            rect()
+                .direction(Direction::Vertical)
+                .width(Size::fill())
+                .spacing(2.)
+                .child(
+                    label()
+                        .text(format!("Temp: {:+.2} | Tint: {:+.2}", temperature, tint))
+                        .font_size(10.)
+                        .color(theme::TEXT_TERTIARY),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .spacing(2.)
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_1.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::WhiteBalance { ref mut temperature, .. } = new_adj.kind {
+                                            *temperature = (*temperature - 0.1).clamp(-1.0, 1.0);
+                                        }
+                                        let _ = shell_t_down.write().bridge.submit_all("Cooler Temperature", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("Frio -0.1").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_2.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::WhiteBalance { ref mut temperature, .. } = new_adj.kind {
+                                            *temperature = (*temperature + 0.1).clamp(-1.0, 1.0);
+                                        }
+                                        let _ = shell_t_up.write().bridge.submit_all("Warmer Temperature", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("Quente +0.1").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_3.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::WhiteBalance { ref mut tint, .. } = new_adj.kind {
+                                            *tint = (*tint - 0.1).clamp(-1.0, 1.0);
+                                        }
+                                        let _ = shell_tint_down.write().bridge.submit_all("Green Tint", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("Verde -0.1").font_size(10.)),
+                        )
+                        .child(
+                            Button::new()
+                                .on_press(move |_| {
+                                    if let Some(id) = target_id {
+                                        let mut new_adj = adj_4.clone();
+                                        if let petunia_design_document::adjustments::AdjustmentKind::WhiteBalance { ref mut tint, .. } = new_adj.kind {
+                                            *tint = (*tint + 0.1).clamp(-1.0, 1.0);
+                                        }
+                                        let _ = shell_tint_up.write().bridge.submit_all("Magenta Tint", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
+                                    }
+                                })
+                                .child(label().text("Magenta +0.1").font_size(10.)),
+                        ),
+                )
+        }
+    };
+
+    let mut shell_remove = shell;
+    rect()
+        .direction(Direction::Vertical)
+        .width(Size::fill())
+        .padding(Gaps::new_all(4.))
+        .background(theme::SURFACE_CHROME)
+        .spacing(2.)
+        .child(
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::fill())
+                .main_align(Alignment::SpaceBetween)
+                .cross_align(Alignment::Center)
+                .child(label().text(title).font_size(11.).color(theme::TEXT_PRIMARY))
+                .child(
+                    Button::new()
+                        .on_press(move |_| {
+                            if let Some(id) = target_id {
+                                let _ = shell_remove.write().bridge.submit_all(
+                                    "Remove adjustment",
+                                    vec![Command::RemoveAdjustment { id, adjustment_id: adj_id }],
+                                );
+                            }
+                        })
+                        .child(label().text("✕").font_size(10.)),
+                ),
+        )
+        .child(body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1715,6 +2479,169 @@ mod tests {
         let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
         assert_eq!(obj.stroke.as_deref(), Some("ptnd.gray/900"));
         assert!((obj.stroke_width - 5.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn dock_tonal_adjustments_and_live_filters_commands_mutate_object() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("TonalDoc").expect("doc opens");
+        let surf_id = shell.bridge.active_surface().unwrap();
+        let obj_id = shell.bridge.next_object_id().unwrap();
+
+        let _ = shell.bridge.submit_all(
+            "Add test shape",
+            vec![
+                Command::CreateObject {
+                    surface: surf_id,
+                    id: obj_id,
+                    name: "TonalRect".to_string(),
+                },
+                Command::SetShape {
+                    id: obj_id,
+                    shape: Some(ShapeKind::Rectangle {
+                        corner_radii: [0.0; 4],
+                    }),
+                },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([0.0, 0.0, 100.0, 100.0]),
+                    rotation: 0.0,
+                },
+            ],
+        );
+
+        // 1. Add Sharpen filter
+        let _ = shell.bridge.submit_all(
+            "Add sharpen",
+            vec![Command::AddEffect {
+                id: obj_id,
+                effect: petunia_design_document::EffectItem {
+                    id: 103,
+                    kind: petunia_design_document::EffectKind::Sharpen {
+                        radius: 2.0,
+                        amount: 1.5,
+                    },
+                    visible: true,
+                },
+            }],
+        );
+
+        // 2. Add Noise filter
+        let _ = shell.bridge.submit_all(
+            "Add noise",
+            vec![Command::AddEffect {
+                id: obj_id,
+                effect: petunia_design_document::EffectItem {
+                    id: 104,
+                    kind: petunia_design_document::EffectKind::Noise {
+                        amount: 0.25,
+                        monochrome: true,
+                    },
+                    visible: true,
+                },
+            }],
+        );
+
+        // Verify filters exist in appearance stack
+        {
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(surf_id).unwrap();
+            let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
+            let app = obj.appearance.as_ref().expect("appearance stack exists");
+            assert_eq!(app.effects.len(), 2);
+            assert!(matches!(
+                app.effects[0].kind,
+                petunia_design_document::EffectKind::Sharpen { radius, amount }
+                if (radius - 2.0).abs() < 1e-5 && (amount - 1.5).abs() < 1e-5
+            ));
+            assert!(matches!(
+                app.effects[1].kind,
+                petunia_design_document::EffectKind::Noise { amount, monochrome }
+                if (amount - 0.25).abs() < 1e-5 && monochrome
+            ));
+        }
+
+        // 3. Add Levels adjustment
+        let levels_item = petunia_design_document::adjustments::AdjustmentItem::new(
+            1,
+            petunia_design_document::adjustments::AdjustmentKind::default_levels(),
+        );
+        let _ = shell.bridge.submit_all(
+            "Add levels",
+            vec![Command::AddAdjustment {
+                id: obj_id,
+                adjustment: levels_item.clone(),
+            }],
+        );
+
+        // 4. Update Levels gamma
+        let mut updated_levels = levels_item.clone();
+        if let petunia_design_document::adjustments::AdjustmentKind::Levels { ref mut master, .. } = updated_levels.kind {
+            master.gamma = 1.8;
+        }
+        let _ = shell.bridge.submit_all(
+            "Set levels gamma",
+            vec![Command::SetAdjustment {
+                id: obj_id,
+                adjustment: updated_levels,
+            }],
+        );
+
+        // 5. Add Exposure adjustment
+        let exp_item = petunia_design_document::adjustments::AdjustmentItem::new(
+            2,
+            petunia_design_document::adjustments::AdjustmentKind::default_exposure(),
+        );
+        let _ = shell.bridge.submit_all(
+            "Add exposure",
+            vec![Command::AddAdjustment {
+                id: obj_id,
+                adjustment: exp_item,
+            }],
+        );
+
+        // Verify both adjustments exist
+        {
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(surf_id).unwrap();
+            let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
+            let app = obj.appearance.as_ref().expect("appearance stack exists");
+            assert_eq!(app.adjustments.len(), 2);
+            if let petunia_design_document::adjustments::AdjustmentKind::Levels { master, .. } = app.adjustments[0].kind {
+                assert!((master.gamma - 1.8).abs() < 1e-5);
+            } else {
+                panic!("First adjustment must be Levels");
+            }
+        }
+
+        // 6. Remove Exposure adjustment
+        let _ = shell.bridge.submit_all(
+            "Remove exposure",
+            vec![Command::RemoveAdjustment {
+                id: obj_id,
+                adjustment_id: 2,
+            }],
+        );
+
+        // Verify only Levels remains
+        {
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(surf_id).unwrap();
+            let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
+            let app = obj.appearance.as_ref().expect("appearance stack exists");
+            assert_eq!(app.adjustments.len(), 1);
+            assert_eq!(app.adjustments[0].id, 1);
+        }
+
+        // 7. Test Undo
+        let _ = shell.bridge.undo();
+        {
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(surf_id).unwrap();
+            let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
+            let app = obj.appearance.as_ref().expect("appearance stack exists");
+            assert_eq!(app.adjustments.len(), 2, "Undo restores removed adjustment");
+        }
     }
 }
 
