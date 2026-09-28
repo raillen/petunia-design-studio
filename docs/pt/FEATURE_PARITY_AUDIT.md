@@ -72,12 +72,12 @@ Modificadores transformam a geometria e a renderização em tempo de execução 
 
 | Modificador (`ModifierKind`) | Escopo | Motor (`petunia_design_document`) | Estado na UI Freya | Lacuna de Implementação / Trabalho Restante |
 | :--- | :--- | :--- | :--- | :--- |
-| **ContourOffset** | `V1 Required` | ✅ Implementado | ⚠️ Parcial | Expor estilos de junção (Miter, Round, Bevel) no inspetor de Propriedades. |
-| **TransparentGradient** | `V1 Required` | ✅ Implementado | ⚠️ Parcial | UI para configurar múltiplos pontos de parada de opacidade ao longo do vetor. |
+| **ContourOffset** | `V1 Required` | ✅ Implementado | ✅ Exposto | Ajuste de distância (-/+2pt, -/+5pt), estilos de junção interativos (Redonda, Esquadria, Chanfro), extremidades (Reta, Redonda, Quadrada) e fixação explícita (bake) na aba Propriedades do Dock. |
+| **TransparentGradient** | `V1 Required` | ✅ Implementado | ✅ Exposto | Cartão de inspeção de gradiente multi-parada, contagem de stops e comando de fixação não-destrutiva (bake transparency). |
 | **Perspective** | `V1 Required` | ✅ Implementado | ✅ Exposto | Alças de tela interativas nos 4 cantos com malha 3x3 e ação de fixação (bake) no HUD de contexto. |
-| **CropRect** | `V1 Required` | ✅ Implementado | ⚠️ Parcial | Recorte retangular não-destrutivo de caixas delimitadoras. |
+| **CropRect** | `V1 Required` | ✅ Implementado | ✅ Exposto | Recorte retangular não-destrutivo de caixas delimitadoras com botões de expansão/contração e fixação (bake geometry). |
 | **Warp / Envelope Mesh** | `Post-V1 Candidate` | ❌ Não modelado | ❌ Ausente | Deformação por malha Bézier livre NxN. |
-| **Modifier Stack Inspector** | `V1 Required` | ⚠️ Pronto no núcleo | ❌ Ausente | Seção no Dock para listar, reordenar, ocultar e dar **Bake** (converter em curvas). |
+| **Modifier Stack Inspector** | `V1 Required` | ✅ Implementado | ✅ Exposto | Seção dedicada no Dock para listar pilha de modificadores, alternar visibilidade (👁), reordenar (↑/↓), remover (×), adicionar (+ Contorno, + Recorte) e dar Bake individual ou em toda a geometria. |
 
 ---
 

@@ -72,12 +72,12 @@ Modifiers alter geometry and rendering without destroying the original parametri
 
 | Modifier (`ModifierKind`) | Scope | Engine (`petunia_design_document`) | Freya UI Status | Implementation Gap / Required Work |
 | :--- | :--- | :--- | :--- | :--- |
-| **ContourOffset** | `V1 Required` | ✅ Implemented | ⚠️ Partial | Expose join styles (Miter, Round, Bevel) in Properties inspector. |
-| **TransparentGradient** | `V1 Required` | ✅ Implemented | ⚠️ Partial | Inspector UI to manage multiple opacity stops along the gradient vector. |
+| **ContourOffset** | `V1 Required` | ✅ Implemented | ✅ Exposed | Distance adjustments (-/+2pt, -/+5pt), interactive join styles (Round, Miter, Bevel), cap styles (None, Round, Square), and explicit user bake in Properties dock. |
+| **TransparentGradient** | `V1 Required` | ✅ Implemented | ✅ Exposed | Multi-stop opacity gradient inspector card, stop count readout, and non-destructive bake transparency command. |
 | **Perspective** | `V1 Required` | ✅ Implemented | ✅ Exposed | 4-corner interactive canvas handles with 3x3 perspective mesh and context HUD bake action. |
-| **CropRect** | `V1 Required` | ✅ Implemented | ⚠️ Partial | Non-destructive vector bounding box clipping. |
+| **CropRect** | `V1 Required` | ✅ Implemented | ✅ Exposed | Non-destructive vector bounding box clipping with expand/contract controls and bake geometry action. |
 | **Warp / Envelope Mesh** | `Post-V1 Candidate` | ❌ Not modeled | ❌ Absent | Multi-node NxN Bézier mesh warping. |
-| **Modifier Stack Inspector** | `V1 Required` | ⚠️ Ready in core | ❌ Absent | UI section to list, toggle, reorder, and **Bake** (commit to curves) modifiers. |
+| **Modifier Stack Inspector** | `V1 Required` | ✅ Implemented | ✅ Exposed | Dedicated dock card stack to list, toggle (👁), reorder (↑/↓), delete (×), add modifiers (+ Contorno, + Recorte), and Bake individual or all geometry modifiers. |
 
 ---
 

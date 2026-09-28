@@ -7,6 +7,7 @@ use freya::prelude::*;
 use petunia_design_application::Command;
 use petunia_design_document::ShapeKind;
 use petunia_design_foundation::ObjectId;
+use petunia_design_geometry::{OffsetCap, OffsetJoin};
 use petunia_design_shell::panels::LayersPanelController;
 use petunia_design_shell::PetuniaShell;
 
@@ -447,15 +448,11 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         }
     });
 
-    let contour_distance = selected_obj.as_ref().and_then(|obj| {
-        obj.modifiers.iter().find_map(|m| {
-            if let petunia_design_document::ModifierKind::ContourOffset { distance, .. } = m.kind {
-                Some(distance)
-            } else {
-                None
-            }
-        })
-    });
+    let modifiers_list = selected_obj
+        .as_ref()
+        .map(|obj| obj.modifiers.clone())
+        .unwrap_or_default();
+    let obj_bounds = selected_obj.as_ref().and_then(|obj| obj.bounds);
 
     let gaussian_blur_effect = selected_obj.as_ref().and_then(|obj| {
         obj.appearance.as_ref().and_then(|app| {
@@ -823,33 +820,10 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                 )
         })
         .child(
-            // Section: Live Modifiers (ADR 09.31)
+            // Section: Live Modifiers Stack (ADR 09.31)
             section_header("MODIFICADORES VIVOS (ADR 09.31)"),
         )
-        .child(
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::fill())
-                .main_align(Alignment::SpaceBetween)
-                .cross_align(Alignment::Center)
-                .child(
-                    label()
-                        .text(match contour_distance {
-                            Some(d) => format!("Contorno: {:.1} pt", d),
-                            None => "Contorno Vivo: Inativo".to_string(),
-                        })
-                        .font_size(11.)
-                        .color(theme::TEXT_SECONDARY),
-                )
-                .child(
-                    rect()
-                        .direction(Direction::Horizontal)
-                        .spacing(2.)
-                        .child(contour_offset_button(shell, first_id, "-2pt", -2.0))
-                        .child(contour_offset_button(shell, first_id, "+2pt", 2.0))
-                        .child(bake_contour_button(shell, first_id)),
-                ),
-        )
+        .child(modifier_stack_inspector(shell, first_id, &modifiers_list, obj_bounds))
         .child(
             // Section: Effects & Live Filters (10.4 / 10.10)
             section_header("EFEITOS (FX) & FILTROS VIVOS"),
@@ -1741,6 +1715,482 @@ fn bake_contour_button(
             }
         })
         .child(label().text("Fixar (Bake)").font_size(10.))
+}
+
+fn bake_geometry_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let _ = shell.write().bridge.submit_all(
+                    "Bake geometry modifiers",
+                    vec![Command::BakeGeometry { id }],
+                );
+            }
+        })
+        .child(label().text("Fixar Geometria").font_size(10.))
+}
+
+fn bake_transparency_button(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+) -> impl IntoElement {
+    Button::new()
+        .on_press(move |_| {
+            if let Some(id) = target_id {
+                let _ = shell.write().bridge.submit_all(
+                    "Bake transparency modifier",
+                    vec![Command::BakeTransparency { id }],
+                );
+            }
+        })
+        .child(label().text("Fixar Transparência").font_size(10.))
+}
+
+fn modifier_stack_inspector(
+    mut shell: State<petunia_design_shell::PetuniaShell>,
+    target_id: Option<ObjectId>,
+    modifiers: &[petunia_design_document::ModifierItem],
+    target_bounds: Option<[f64; 4]>,
+) -> impl IntoElement {
+    let mut root = rect()
+        .direction(Direction::Vertical)
+        .width(Size::fill())
+        .spacing(4.);
+
+    if modifiers.is_empty() {
+        let add_row = rect()
+            .direction(Direction::Horizontal)
+            .width(Size::fill())
+            .main_align(Alignment::SpaceBetween)
+            .cross_align(Alignment::Center)
+            .child(
+                label()
+                    .text("Nenhum modificador ativo")
+                    .font_size(11.)
+                    .color(theme::TEXT_TERTIARY),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(4.)
+                    .child(
+                        Button::new()
+                            .on_press(move |_| {
+                                if let Some(id) = target_id {
+                                    let _ = shell.write().bridge.submit_all(
+                                        "Add contour modifier",
+                                        vec![Command::OffsetPath { id, delta: 6.0 }],
+                                    );
+                                }
+                            })
+                            .child(label().text("+ Contorno").font_size(10.)),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press(move |_| {
+                                if let Some(id) = target_id {
+                                    let r = target_bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
+                                    let crop_rect = [r[0], r[1], (r[2] * 0.8).max(10.), (r[3] * 0.8).max(10.)];
+                                    let _ = shell.write().bridge.submit_all(
+                                        "Add crop modifier",
+                                        vec![Command::SetCropRect { id, rect: crop_rect }],
+                                    );
+                                }
+                            })
+                            .child(label().text("+ Recorte").font_size(10.)),
+                    ),
+            );
+        return root.child(add_row);
+    }
+
+    // Render each modifier in the stack
+    for (idx, item) in modifiers.iter().enumerate() {
+        let item_id = item.id;
+        let is_enabled = item.enabled;
+        let can_move_up = idx > 0;
+        let can_move_down = idx + 1 < modifiers.len();
+
+        let (title, detail) = match &item.kind {
+            petunia_design_document::ModifierKind::ContourOffset { distance, join, cap } => {
+                let join_name = match join {
+                    OffsetJoin::Round => "Arredondada",
+                    OffsetJoin::Miter => "Esquadria",
+                    OffsetJoin::Bevel => "Chanfro",
+                };
+                let cap_name = match cap {
+                    OffsetCap::None => "Reta",
+                    OffsetCap::Round => "Redonda",
+                    OffsetCap::Square => "Quadrada",
+                };
+                (
+                    format!("Contorno Vivo: {:+.1} pt", distance),
+                    format!("Junção: {} | Extr: {}", join_name, cap_name),
+                )
+            }
+            petunia_design_document::ModifierKind::TransparentGradient { stops, .. } => {
+                (
+                    "Gradiente de Transparência".to_string(),
+                    format!("{} marcadores de opacidade", stops.len()),
+                )
+            }
+            petunia_design_document::ModifierKind::Perspective { .. } => {
+                (
+                    "Distorção de Perspectiva".to_string(),
+                    "Deformação quad de 4 cantos".to_string(),
+                )
+            }
+            petunia_design_document::ModifierKind::CropRect { rect } => {
+                (
+                    "Recorte Vetorial (Crop)".to_string(),
+                    format!("{:.0}x{:.0} @ {:.0},{:.0}", rect[2], rect[3], rect[0], rect[1]),
+                )
+            }
+        };
+
+        let mut card = rect()
+            .direction(Direction::Vertical)
+            .width(Size::fill())
+            .background(theme::SURFACE_CHROME_STRONG)
+            .border(
+                Border::new()
+                    .fill(if is_enabled { theme::BORDER_SUBTLE } else { theme::SURFACE_CHROME })
+                    .width(1.)
+                    .alignment(BorderAlignment::Inner),
+            )
+            .padding(Gaps::new_all(4.))
+            .spacing(3.);
+
+        // Header row: Title + Reorder/Toggle/Delete
+        let mut header_row = rect()
+            .direction(Direction::Horizontal)
+            .width(Size::fill())
+            .main_align(Alignment::SpaceBetween)
+            .cross_align(Alignment::Center)
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(4.)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        label()
+                            .text(title)
+                            .font_size(11.)
+                            .color(if is_enabled { theme::TEXT_PRIMARY } else { theme::TEXT_TERTIARY }),
+                    ),
+            );
+
+        // Action buttons
+        let mut actions = rect()
+            .direction(Direction::Horizontal)
+            .spacing(2.)
+            .cross_align(Alignment::Center);
+
+        // Toggle enabled button
+        let modifiers_clone = modifiers.to_vec();
+        actions = actions.child(
+            Button::new()
+                .on_press(move |_| {
+                    if let Some(id) = target_id {
+                        let mut next = modifiers_clone.clone();
+                        if let Some(m) = next.iter_mut().find(|m| m.id == item_id) {
+                            m.enabled = !m.enabled;
+                            let _ = shell.write().bridge.submit_all(
+                                "Toggle modifier",
+                                vec![Command::SetModifiers { id, modifiers: next }],
+                            );
+                        }
+                    }
+                })
+                .child(label().text(if is_enabled { "👁" } else { "⊘" }).font_size(10.)),
+        );
+
+        // Move up button
+        if can_move_up {
+            let modifiers_clone = modifiers.to_vec();
+            actions = actions.child(
+                Button::new()
+                    .on_press(move |_| {
+                        if let Some(id) = target_id {
+                            let mut next = modifiers_clone.clone();
+                            next.swap(idx, idx - 1);
+                            let _ = shell.write().bridge.submit_all(
+                                "Reorder modifier up",
+                                vec![Command::SetModifiers { id, modifiers: next }],
+                            );
+                        }
+                    })
+                    .child(label().text("↑").font_size(10.)),
+            );
+        }
+
+        // Move down button
+        if can_move_down {
+            let modifiers_clone = modifiers.to_vec();
+            actions = actions.child(
+                Button::new()
+                    .on_press(move |_| {
+                        if let Some(id) = target_id {
+                            let mut next = modifiers_clone.clone();
+                            next.swap(idx, idx + 1);
+                            let _ = shell.write().bridge.submit_all(
+                                "Reorder modifier down",
+                                vec![Command::SetModifiers { id, modifiers: next }],
+                            );
+                        }
+                    })
+                    .child(label().text("↓").font_size(10.)),
+            );
+        }
+
+        // Delete button
+        let modifiers_clone = modifiers.to_vec();
+        actions = actions.child(
+            Button::new()
+                .on_press(move |_| {
+                    if let Some(id) = target_id {
+                        let mut next = modifiers_clone.clone();
+                        next.retain(|m| m.id != item_id);
+                        let _ = shell.write().bridge.submit_all(
+                            "Delete modifier",
+                            vec![Command::SetModifiers { id, modifiers: next }],
+                        );
+                    }
+                })
+                .child(label().text("×").font_size(10.)),
+        );
+
+        header_row = header_row.child(actions);
+        card = card.child(header_row);
+
+        // Subdetail and parameter controls
+        match &item.kind {
+            petunia_design_document::ModifierKind::ContourOffset { distance: current_d, join: current_join, cap: current_cap } => {
+                let d_val = *current_d;
+                let j_val = *current_join;
+                let c_val = *current_cap;
+
+                card = card.child(
+                    label()
+                        .text(detail)
+                        .font_size(10.)
+                        .color(theme::TEXT_TERTIARY),
+                );
+
+                // Distance + Bake Row
+                let dist_row = rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(2.)
+                    .child(contour_offset_button(shell, target_id, "-2pt", -2.0))
+                    .child(contour_offset_button(shell, target_id, "+2pt", 2.0))
+                    .child(contour_offset_button(shell, target_id, "-5pt", -5.0))
+                    .child(contour_offset_button(shell, target_id, "+5pt", 5.0))
+                    .child(bake_contour_button(shell, target_id));
+                card = card.child(dist_row);
+
+                // Join Style selection row
+                let modifiers_join = modifiers.to_vec();
+                let join_row = rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(2.)
+                    .cross_align(Alignment::Center)
+                    .child(label().text("Junção:").font_size(10.).color(theme::TEXT_SECONDARY))
+                    .child({
+                        let modifiers_clone = modifiers_join.clone();
+                        Button::new()
+                            .on_press(move |_| {
+                                if let Some(id) = target_id {
+                                    let mut next = modifiers_clone.clone();
+                                    if let Some(m) = next.iter_mut().find(|m| m.id == item_id) {
+                                        m.kind = petunia_design_document::ModifierKind::ContourOffset {
+                                            distance: d_val,
+                                            join: OffsetJoin::Round,
+                                            cap: c_val,
+                                        };
+                                        let _ = shell.write().bridge.submit_all(
+                                            "Set contour join round",
+                                            vec![Command::SetModifiers { id, modifiers: next }],
+                                        );
+                                    }
+                                }
+                            })
+                            .child(label().text(if j_val == OffsetJoin::Round { "[Redonda]" } else { "Redonda" }).font_size(10.))
+                    })
+                    .child({
+                        let modifiers_clone = modifiers_join.clone();
+                        Button::new()
+                            .on_press(move |_| {
+                                if let Some(id) = target_id {
+                                    let mut next = modifiers_clone.clone();
+                                    if let Some(m) = next.iter_mut().find(|m| m.id == item_id) {
+                                        m.kind = petunia_design_document::ModifierKind::ContourOffset {
+                                            distance: d_val,
+                                            join: OffsetJoin::Miter,
+                                            cap: c_val,
+                                        };
+                                        let _ = shell.write().bridge.submit_all(
+                                            "Set contour join miter",
+                                            vec![Command::SetModifiers { id, modifiers: next }],
+                                        );
+                                    }
+                                }
+                            })
+                            .child(label().text(if j_val == OffsetJoin::Miter { "[Esquadria]" } else { "Esquadria" }).font_size(10.))
+                    })
+                    .child({
+                        let modifiers_clone = modifiers_join.clone();
+                        Button::new()
+                            .on_press(move |_| {
+                                if let Some(id) = target_id {
+                                    let mut next = modifiers_clone.clone();
+                                    if let Some(m) = next.iter_mut().find(|m| m.id == item_id) {
+                                        m.kind = petunia_design_document::ModifierKind::ContourOffset {
+                                            distance: d_val,
+                                            join: OffsetJoin::Bevel,
+                                            cap: c_val,
+                                        };
+                                        let _ = shell.write().bridge.submit_all(
+                                            "Set contour join bevel",
+                                            vec![Command::SetModifiers { id, modifiers: next }],
+                                        );
+                                    }
+                                }
+                            })
+                            .child(label().text(if j_val == OffsetJoin::Bevel { "[Chanfro]" } else { "Chanfro" }).font_size(10.))
+                    });
+                card = card.child(join_row);
+            }
+            petunia_design_document::ModifierKind::CropRect { rect: current_rect } => {
+                let r_val = *current_rect;
+                card = card.child(
+                    label()
+                        .text(detail)
+                        .font_size(10.)
+                        .color(theme::TEXT_TERTIARY),
+                );
+                let modifiers_crop = modifiers.to_vec();
+                let crop_row = rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(2.)
+                    .child({
+                        let modifiers_clone = modifiers_crop.clone();
+                        Button::new()
+                            .on_press(move |_| {
+                                if let Some(id) = target_id {
+                                    let mut next = modifiers_clone.clone();
+                                    if let Some(m) = next.iter_mut().find(|m| m.id == item_id) {
+                                        m.kind = petunia_design_document::ModifierKind::CropRect {
+                                            rect: [r_val[0] - 5., r_val[1] - 5., r_val[2] + 10., r_val[3] + 10.],
+                                        };
+                                        let _ = shell.write().bridge.submit_all(
+                                            "Expand crop rect",
+                                            vec![Command::SetModifiers { id, modifiers: next }],
+                                        );
+                                    }
+                                }
+                            })
+                            .child(label().text("Expandir +10pt").font_size(10.))
+                    })
+                    .child({
+                        let modifiers_clone = modifiers_crop.clone();
+                        Button::new()
+                            .on_press(move |_| {
+                                if let Some(id) = target_id {
+                                    let mut next = modifiers_clone.clone();
+                                    if let Some(m) = next.iter_mut().find(|m| m.id == item_id) {
+                                        m.kind = petunia_design_document::ModifierKind::CropRect {
+                                            rect: [r_val[0] + 5., r_val[1] + 5., (r_val[2] - 10.).max(10.), (r_val[3] - 10.).max(10.)],
+                                        };
+                                        let _ = shell.write().bridge.submit_all(
+                                            "Contract crop rect",
+                                            vec![Command::SetModifiers { id, modifiers: next }],
+                                        );
+                                    }
+                                }
+                            })
+                            .child(label().text("Recortar -10pt").font_size(10.))
+                    })
+                    .child(bake_geometry_button(shell, target_id));
+                card = card.child(crop_row);
+            }
+            petunia_design_document::ModifierKind::TransparentGradient { .. } => {
+                card = card.child(
+                    label()
+                        .text(detail)
+                        .font_size(10.)
+                        .color(theme::TEXT_TERTIARY),
+                );
+                let trans_row = rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(2.)
+                    .child(bake_transparency_button(shell, target_id));
+                card = card.child(trans_row);
+            }
+            petunia_design_document::ModifierKind::Perspective { .. } => {
+                card = card.child(
+                    label()
+                        .text(detail)
+                        .font_size(10.)
+                        .color(theme::TEXT_TERTIARY),
+                );
+                let pers_row = rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(2.)
+                    .child(bake_geometry_button(shell, target_id));
+                card = card.child(pers_row);
+            }
+        }
+
+        root = root.child(card);
+    }
+
+    // Add extra "+ Modificador" buttons when stack is non-empty
+    let has_contour = modifiers.iter().any(|m| matches!(m.kind, petunia_design_document::ModifierKind::ContourOffset { .. }));
+    let has_crop = modifiers.iter().any(|m| matches!(m.kind, petunia_design_document::ModifierKind::CropRect { .. }));
+    if !has_contour || !has_crop || modifiers.len() > 1 {
+        let mut extra_row = rect()
+            .direction(Direction::Horizontal)
+            .spacing(4.)
+            .cross_align(Alignment::Center);
+        if !has_contour {
+            extra_row = extra_row.child(
+                Button::new()
+                    .on_press(move |_| {
+                        if let Some(id) = target_id {
+                            let _ = shell.write().bridge.submit_all(
+                                "Add contour modifier",
+                                vec![Command::OffsetPath { id, delta: 6.0 }],
+                            );
+                        }
+                    })
+                    .child(label().text("+ Contorno").font_size(10.)),
+            );
+        }
+        if !has_crop {
+            extra_row = extra_row.child(
+                Button::new()
+                    .on_press(move |_| {
+                        if let Some(id) = target_id {
+                            let r = target_bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
+                            let crop_rect = [r[0], r[1], (r[2] * 0.8).max(10.), (r[3] * 0.8).max(10.)];
+                            let _ = shell.write().bridge.submit_all(
+                                "Add crop modifier",
+                                vec![Command::SetCropRect { id, rect: crop_rect }],
+                            );
+                        }
+                    })
+                    .child(label().text("+ Recorte").font_size(10.)),
+            );
+        }
+        if modifiers.len() > 1 {
+            extra_row = extra_row.child(bake_geometry_button(shell, target_id));
+        }
+        root = root.child(extra_row);
+    }
+
+    root
 }
 
 fn convert_to_curves_button(
@@ -3551,5 +4001,137 @@ mod tests {
             assert!(!shadow.visible, "Drop shadow must now be hidden");
         }
     }
+
+    #[test]
+    fn modifier_stack_inspector_and_bake_commands_mutate_object() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("TestDoc").expect("doc opens");
+        let surf_id = shell.bridge.active_surface().unwrap();
+        let obj_id = shell.bridge.next_object_id().unwrap();
+
+        // 1. Create a rectangle object
+        let _ = shell.bridge.submit_all(
+            "Create rect",
+            vec![
+                Command::CreateObject {
+                    surface: surf_id,
+                    id: obj_id,
+                    name: "RectMod".to_string(),
+                },
+                Command::SetShape {
+                    id: obj_id,
+                    shape: Some(ShapeKind::Rectangle {
+                        corner_radii: [0.0; 4],
+                    }),
+                },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([50.0, 50.0, 100.0, 80.0]),
+                    rotation: 0.0,
+                },
+            ],
+        );
+
+        // 2. Add a live ContourOffset modifier
+        let _ = shell.bridge.submit_all(
+            "Add contour modifier",
+            vec![Command::OffsetPath { id: obj_id, delta: 8.0 }],
+        );
+
+        {
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(surf_id).unwrap();
+            let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
+            assert_eq!(obj.modifiers.len(), 1);
+            if let petunia_design_document::ModifierKind::ContourOffset { distance, join, cap } = &obj.modifiers[0].kind {
+                assert_eq!(*distance, 8.0);
+                assert_eq!(*join, OffsetJoin::Round);
+                assert_eq!(*cap, OffsetCap::None);
+            } else {
+                panic!("Expected ContourOffset modifier");
+            }
+        }
+
+        // 3. Update join style to Miter via SetModifiers
+        let _ = shell.bridge.submit_all(
+            "Update contour join to Miter",
+            vec![Command::SetModifiers {
+                id: obj_id,
+                modifiers: vec![petunia_design_document::ModifierItem {
+                    id: 1,
+                    kind: petunia_design_document::ModifierKind::ContourOffset {
+                        distance: 8.0,
+                        join: OffsetJoin::Miter,
+                        cap: OffsetCap::Round,
+                    },
+                    enabled: true,
+                }],
+            }],
+        );
+
+        {
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(surf_id).unwrap();
+            let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
+            if let petunia_design_document::ModifierKind::ContourOffset { join, cap, .. } = &obj.modifiers[0].kind {
+                assert_eq!(*join, OffsetJoin::Miter);
+                assert_eq!(*cap, OffsetCap::Round);
+            }
+        }
+
+        // 4. Add a CropRect modifier, reorder and toggle enabled
+        let _ = shell.bridge.submit_all(
+            "Add crop and reorder",
+            vec![Command::SetModifiers {
+                id: obj_id,
+                modifiers: vec![
+                    petunia_design_document::ModifierItem {
+                        id: 2,
+                        kind: petunia_design_document::ModifierKind::CropRect {
+                            rect: [50.0, 50.0, 80.0, 60.0],
+                        },
+                        enabled: false,
+                    },
+                    petunia_design_document::ModifierItem {
+                        id: 1,
+                        kind: petunia_design_document::ModifierKind::ContourOffset {
+                            distance: 8.0,
+                            join: OffsetJoin::Miter,
+                            cap: OffsetCap::Round,
+                        },
+                        enabled: true,
+                    },
+                ],
+            }],
+        );
+
+        {
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(surf_id).unwrap();
+            let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
+            assert_eq!(obj.modifiers.len(), 2);
+            assert_eq!(obj.modifiers[0].id, 2);
+            assert!(!obj.modifiers[0].enabled);
+            assert_eq!(obj.modifiers[1].id, 1);
+            assert!(obj.modifiers[1].enabled);
+        }
+
+        // 5. Bake Contour commits contour into base curve geometry
+        let _ = shell.bridge.submit_all(
+            "Bake contour",
+            vec![Command::BakeContour { id: obj_id }],
+        );
+
+        {
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(surf_id).unwrap();
+            let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
+            // Contour modifier was baked out of the chain
+            assert!(!obj.modifiers.iter().any(|m| matches!(m.kind, petunia_design_document::ModifierKind::ContourOffset { .. })));
+            // Shape is now a Path (converted to curves)
+            assert!(matches!(obj.shape, Some(ShapeKind::Path { .. })));
+        }
+    }
 }
+
 
