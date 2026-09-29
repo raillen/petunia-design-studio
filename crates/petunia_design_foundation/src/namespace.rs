@@ -64,7 +64,9 @@ pub fn normalize_action_id(action_id: &str) -> String {
         return action_id.to_owned();
     };
     let migrates = if domain == "surface" {
-        let verb = remainder.split_once('.').map_or(remainder, |(verb, _)| verb);
+        let verb = remainder
+            .split_once('.')
+            .map_or(remainder, |(verb, _)| verb);
         SURFACE_ACTION_VERBS.contains(&verb)
     } else {
         ACTION_DOMAINS.contains(&domain)
@@ -107,12 +109,27 @@ mod tests {
 
     #[test]
     fn pre_grammar_actions_are_rewritten_once() {
-        assert_eq!(normalize_action_id("ptnd.object.align"), "ptnd.action.object.align");
-        assert_eq!(normalize_action_id("ptnd.edit.delete"), "ptnd.action.edit.delete");
+        assert_eq!(
+            normalize_action_id("ptnd.object.align"),
+            "ptnd.action.object.align"
+        );
+        assert_eq!(
+            normalize_action_id("ptnd.edit.delete"),
+            "ptnd.action.edit.delete"
+        );
         assert_eq!(normalize_action_id("ptnd.fill.set"), "ptnd.action.fill.set");
-        assert_eq!(normalize_action_id("ptnd.surface.create"), "ptnd.action.surface.create");
-        assert_eq!(normalize_action_id("ptnd.view.zoom_in"), "ptnd.action.view.zoom_in");
-        assert_eq!(normalize_action_id("ptnd.file.save"), "ptnd.action.file.save");
+        assert_eq!(
+            normalize_action_id("ptnd.surface.create"),
+            "ptnd.action.surface.create"
+        );
+        assert_eq!(
+            normalize_action_id("ptnd.view.zoom_in"),
+            "ptnd.action.view.zoom_in"
+        );
+        assert_eq!(
+            normalize_action_id("ptnd.file.save"),
+            "ptnd.action.file.save"
+        );
         let canonical = normalize_action_id("ptnd.object.align");
         assert_eq!(normalize_action_id(&canonical), canonical);
         assert!(is_canonical_action_id(&canonical));
@@ -121,13 +138,19 @@ mod tests {
     #[test]
     fn tools_and_foreign_ids_keep_their_namespace() {
         assert_eq!(normalize_action_id("ptnd.tool.pen"), "ptnd.tool.pen");
-        assert_eq!(normalize_action_id("ptnd.panel.layers"), "ptnd.panel.layers");
+        assert_eq!(
+            normalize_action_id("ptnd.panel.layers"),
+            "ptnd.panel.layers"
+        );
         // `ptnd.surface.shell.*` is a UI region, not an action.
         assert_eq!(
             normalize_action_id("ptnd.surface.shell.brand"),
             "ptnd.surface.shell.brand"
         );
-        assert_eq!(normalize_action_id("aubrieta.object.align"), "aubrieta.object.align");
+        assert_eq!(
+            normalize_action_id("aubrieta.object.align"),
+            "aubrieta.object.align"
+        );
         assert_eq!(normalize_action_id("ptnd"), "ptnd");
         assert!(!is_canonical_action_id("ptnd.tool.pen"));
     }

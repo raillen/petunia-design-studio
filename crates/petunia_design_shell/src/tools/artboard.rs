@@ -7,7 +7,9 @@ use petunia_design_geometry::{GPoint, GRect};
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Interactive tool for creating new Surfaces / Artboards directly on the canvas (10.7).
 #[derive(Clone, Debug, Default)]

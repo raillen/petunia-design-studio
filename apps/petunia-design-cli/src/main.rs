@@ -13,7 +13,9 @@ use petunia_design_document::Document;
 use petunia_design_evaluation::Evaluator;
 use petunia_design_extension::{PluginHost, PluginId, PluginManifest, PluginPermission};
 use petunia_design_foundation::IdGenerator;
-use petunia_design_geometry::{boolean_op, BooleanInput, BooleanOp, GAffine, GPath, GPoint, PathVerb};
+use petunia_design_geometry::{
+    boolean_op, BooleanInput, BooleanOp, GAffine, GPath, GPoint, PathVerb,
+};
 use petunia_design_io::{
     export_document_pdf, export_raster, import_raster, PdfExportOptions, RasterExportOptions,
     RawRasterImage,
@@ -191,7 +193,8 @@ fn run() -> Result<(), String> {
     let svg_content = petunia_design_io::export_document_svg(&document);
     assert!(svg_content.contains("<svg"));
     let path_d = petunia_design_io::export_path_d(&triangle);
-    let parsed_path = petunia_design_io::parse_path_d(&path_d).map_err(|e| format!("svg parse: {e}"))?;
+    let parsed_path =
+        petunia_design_io::parse_path_d(&path_d).map_err(|e| format!("svg parse: {e}"))?;
     assert_eq!(parsed_path.verbs.len(), triangle.verbs.len());
 
     // 10. Resource Pack, DTCG Tokens & i18n (petunia_design_resources).
@@ -284,7 +287,16 @@ fn run() -> Result<(), String> {
     let discover_req = McpRequest::new(1, "ptnd.discover", json!({}));
     let discover_resp = mcp_server.dispatch(discover_req);
     assert!(discover_resp.error.is_none());
-    assert_eq!(discover_resp.result.unwrap()["app"], "Aubrieta Design");
+    // The product name has exactly one source: the resource string catalog
+    // (09.16). Asserting against a second literal here is how this check went
+    // stale across the rename.
+    assert_eq!(
+        discover_resp.result.unwrap()["app"],
+        petunia_design_resources::i18n::LocalizationService::with_defaults().text(
+            petunia_design_resources::i18n::ID_APP_NAME,
+            &petunia_design_resources::i18n::Locale::EnUs,
+        )
+    );
 
     let create_surface_req = McpRequest::new(
         2,

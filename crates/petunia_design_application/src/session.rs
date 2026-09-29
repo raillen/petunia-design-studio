@@ -6,10 +6,10 @@
 //! `execute_command` / `dispatch_action` / `undo` / `redo` (A2).
 
 use petunia_design_document::{
-    AlignmentMode, ChangeSet, DataBinding, DataSourceDefinition, DistributionAxis, Document,
-    DocumentObject, Surface,
+    AlignmentMode, ChangeSet, ContainerRole, DataBinding, DataSourceDefinition, DistributionAxis,
+    Document, DocumentObject, Surface,
 };
-use petunia_design_foundation::{PetuniaError, IdGenerator, ObjectId, SurfaceId};
+use petunia_design_foundation::{IdGenerator, ObjectId, PetuniaError, SurfaceId};
 
 use super::view_models::{
     DataBindingViewModel, DataMergePresentationModel, DataSourceViewModel, DocumentSummary,
@@ -88,6 +88,11 @@ pub struct DocumentSession {
     history: History,
     /// Viewport/window-shared selection session.
     pub selection: SelectionSession,
+    /// R-tree over evaluated bounds, rebuilt lazily per revision (F3).
+    pub spatial: std::cell::RefCell<crate::spatial_index::SpatialIndex>,
+    /// Memoized evaluated geometry, keyed by `current_revision` (F1).
+    /// Interior-mutable so `&self` readers share it without signature churn.
+    pub geo_cache: std::cell::RefCell<crate::geo_cache::GeoCache>,
     /// Transient raster selection mask (marching ants, 10.9).
     /// Session state like object selection: gestures write it directly,
     /// never through undo history.
@@ -133,6 +138,8 @@ impl DocumentSession {
             document,
             history: History::new(0),
             selection: SelectionSession::new(),
+            spatial: std::cell::RefCell::new(crate::spatial_index::SpatialIndex::new()),
+            geo_cache: std::cell::RefCell::new(crate::geo_cache::GeoCache::new()),
             raster_selection: crate::selection_mask::RasterSelection::new(),
             view: crate::view_camera::ViewState::default(),
             id_generator: IdGenerator::with_start(max_id + 1),
@@ -164,6 +171,8 @@ impl DocumentSession {
             document,
             history: History::new(0),
             selection: SelectionSession::new(),
+            spatial: std::cell::RefCell::new(crate::spatial_index::SpatialIndex::new()),
+            geo_cache: std::cell::RefCell::new(crate::geo_cache::GeoCache::new()),
             raster_selection: crate::selection_mask::RasterSelection::new(),
             view: crate::view_camera::ViewState::default(),
             id_generator: IdGenerator::with_start(max_id + 1),
@@ -248,7 +257,12 @@ impl DocumentSession {
 
     /// Switches the active editing surface.
     pub fn set_active_surface(&mut self, surface: SurfaceId) {
+        if self.active_surface == Some(surface) {
+            return;
+        }
         self.active_surface = Some(surface);
+        self.spatial.borrow_mut().clear();
+        self.geo_cache.borrow_mut().clear();
     }
 
     /// Current monotonic revision.
@@ -290,9 +304,10 @@ impl DocumentSession {
         let target = petunia_design_io::with_native_extension(path);
         petunia_design_io::save_package(&self.document, &target)?;
         self.path = Some(target.clone());
-        self.title = target
-            .file_name()
-            .map_or_else(|| self.title.clone(), |name| name.to_string_lossy().into_owned());
+        self.title = target.file_name().map_or_else(
+            || self.title.clone(),
+            |name| name.to_string_lossy().into_owned(),
+        );
         self.mark_saved();
         Ok(target)
     }
@@ -422,6 +437,53 @@ impl DocumentSession {
                 self.save_to(&path)?;
                 Ok(ChangeSet::empty())
             }
+            "ptnd.action.file.place" => {
+                let active_surface = self.active_surface().ok_or_else(|| {
+                    PetuniaError::invalid_input("no active surface to place image")
+                })?;
+                let path_buf = request_path(&request.payload)
+                    .or_else(|_| {
+                        request.payload
+                            .as_str()
+                            .filter(|s| !s.trim().is_empty())
+                            .map(std::path::PathBuf::from)
+                            .ok_or_else(|| PetuniaError::invalid_input("no path"))
+                    })
+                    .unwrap_or_else(|_| std::path::PathBuf::from("sample_image.png"));
+                let path = path_buf.to_string_lossy().to_string();
+                let id = self.next_object_id();
+                let name = path_buf
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Image")
+                    .to_string();
+                let mut bounds = [100.0, 100.0, 300.0, 200.0];
+                let mut data = None;
+                if let Ok(bytes) = std::fs::read(&path_buf) {
+                    if let Ok(imported) = petunia_design_io::import_raster(&bytes, 32 * 1024 * 1024) {
+                        bounds[2] = imported.width as f64;
+                        bounds[3] = imported.height as f64;
+                    }
+                    data = Some(bytes);
+                }
+                let shape = petunia_design_document::ShapeKind::Image {
+                    path,
+                    data,
+                };
+                let cmd = CommandRequest::new(Command::CreateShapeObject {
+                    surface: active_surface,
+                    id,
+                    name,
+                    shape,
+                    bounds: Some(bounds),
+                    fill: None,
+                    stroke: None,
+                    stroke_width: 0.0,
+                });
+                let changes = self.execute_command(cmd)?;
+                self.selection.selected_ids = vec![id];
+                Ok(changes)
+            }
             // View actions mutate view state, not the document, so they
             // return an empty ChangeSet: something observable happened, but
             // nothing entered history (15.B).
@@ -435,6 +497,23 @@ impl DocumentSession {
             }
             "ptnd.action.view.zoom_100" => {
                 self.view.camera.reset_100();
+                Ok(ChangeSet::empty())
+            }
+            // The zoom box and the View submenu offer the same levels through
+            // one action: the level travels in the payload, so a new preset is
+            // a registry row and never a new command.
+            "ptnd.action.view.zoom_set" => {
+                let zoom = request
+                    .payload
+                    .get("zoom")
+                    .and_then(serde_json::Value::as_f64)
+                    .filter(|value| value.is_finite() && *value > 0.0)
+                    .ok_or_else(|| {
+                        PetuniaError::invalid_input(
+                            "view.zoom_set requires a positive `zoom` payload field",
+                        )
+                    })?;
+                self.view.camera.set_zoom(zoom);
                 Ok(ChangeSet::empty())
             }
             "ptnd.action.view.fit_surface" => {
@@ -490,11 +569,22 @@ impl DocumentSession {
                 if groups.is_empty() {
                     return Ok(ChangeSet::empty());
                 }
+                let mut released_children = Vec::new();
+                for &gid in &groups {
+                    if let Some(group) = self.document.find_object(gid) {
+                        released_children.extend(group.children.iter().copied());
+                    }
+                }
                 let cmds = groups
                     .into_iter()
                     .map(|group_id| Command::Ungroup { group_id })
                     .collect();
-                self.transact("Ungroup", cmds)
+                let changes = self.transact("Ungroup", cmds)?;
+                if !released_children.is_empty() {
+                    self.selection.select_exact(released_children);
+                    self.prune_selection();
+                }
+                Ok(changes)
             }
             // Duplicate copies the selection with fresh identities and a small
             // visual offset, so the copy is distinguishable from the original.
@@ -551,15 +641,125 @@ impl DocumentSession {
                     .collect();
                 self.transact("Lock", cmds)
             }
+            // Align and distribute are parameterized by mode/axis, and their
+            // targets default to the live selection: the menu names the
+            // verb, the session owns "what is selected" (15.B).
             "ptnd.action.object.align" => {
-                let (surface, ids, mode) = align_payload(&request.payload)?;
+                let payload = self.with_selection_targets(&request.payload);
+                let (surface, ids, mode) = align_payload(&payload)?;
                 let cmd = CommandRequest::new(Command::AlignObjects { surface, ids, mode });
                 self.execute_command(cmd)
             }
             "ptnd.action.object.distribute" => {
-                let (surface, ids, axis) = distribute_payload(&request.payload)?;
+                let payload = self.with_selection_targets(&request.payload);
+                let (surface, ids, axis) = distribute_payload(&payload)?;
                 let cmd = CommandRequest::new(Command::DistributeObjects { surface, ids, axis });
                 self.execute_command(cmd)
+            }
+            // Vector booleans keep the canonical `object.boolean` id and take
+            // their operator from the payload, so one ActionId covers the four
+            // operators without inventing near-duplicate ids.
+            "ptnd.action.object.boolean" => {
+                let payload = self.with_selection_targets(&request.payload);
+                let ids = target_ids(&payload)?;
+                if ids.len() < 2 {
+                    return Err(PetuniaError::invalid_input(
+                        "object.boolean needs at least two objects (subject + clip)",
+                    ));
+                }
+                let op = match payload.get("op").and_then(serde_json::Value::as_str) {
+                    Some("union") => petunia_design_geometry::BooleanOp::Union,
+                    Some("difference") => petunia_design_geometry::BooleanOp::Difference,
+                    Some("intersection") => petunia_design_geometry::BooleanOp::Intersection,
+                    Some("exclusion") => petunia_design_geometry::BooleanOp::Xor,
+                    other => {
+                        return Err(PetuniaError::invalid_input(format!(
+                            "object.boolean op must be union|difference|intersection|exclusion, got {other:?}"
+                        )));
+                    }
+                };
+                let surface = self.target_surface(&ids)?;
+                let target_id = self.next_object_id();
+                let cmd = CommandRequest::new(Command::ApplyBoolean {
+                    surface,
+                    target_id,
+                    subject_id: ids[0],
+                    clip_id: ids[1],
+                    op,
+                });
+                let changes = self.execute_command(cmd)?;
+                self.selection.selected_ids = vec![target_id];
+                Ok(changes)
+            }
+            // Explicit, user-invoked destructive conversions (A1/A5): they
+            // bake parametric geometry into paths, never silently.
+            "ptnd.action.object.convert_to_curves" => {
+                let payload = self.with_selection_targets(&request.payload);
+                let cmds = target_ids(&payload)?
+                    .into_iter()
+                    .map(|id| Command::ConvertToCurves { id })
+                    .collect();
+                self.transact("Convert to curves", cmds)
+            }
+            "ptnd.action.object.bake_corners" => {
+                let payload = self.with_selection_targets(&request.payload);
+                let cmds = target_ids(&payload)?
+                    .into_iter()
+                    .map(|id| Command::BakeCorners { id })
+                    .collect();
+                self.transact("Bake corners", cmds)
+            }
+            // Clipping masks: the first selected object is the mask boundary
+            // (10.5 Table B), mirrored from `hierarchy_service` so the panel
+            // and the Action lane cannot drift apart.
+            "ptnd.action.object.clip_mask.create" => {
+                let payload = self.with_selection_targets(&request.payload);
+                let ids = target_ids(&payload)?;
+                let surface = self.target_surface(&ids)?;
+                let group_id = self.id_generator.next_object();
+                let plan = crate::hierarchy_service::plan_clip_group(surface, group_id, &ids)?;
+                let changes = self.transact(
+                    "Create clip group",
+                    crate::hierarchy_service::clip_group_commands(plan),
+                )?;
+                self.selection.selected_ids = vec![group_id];
+                Ok(changes)
+            }
+            "ptnd.action.object.clip_mask.release" => {
+                let payload = self.with_selection_targets(&request.payload);
+                let groups: Vec<ObjectId> = target_ids(&payload)?
+                    .into_iter()
+                    .filter(|id| {
+                        self.document
+                            .find_object(*id)
+                            .is_some_and(|o| o.role == Some(ContainerRole::ClipGroup))
+                    })
+                    .collect();
+                if groups.is_empty() {
+                    return Ok(ChangeSet::empty());
+                }
+                let cmds = groups
+                    .into_iter()
+                    .map(|group_id| Command::ReleaseClipGroup { group_id })
+                    .collect();
+                self.transact("Release clip group", cmds)
+            }
+            // Export writes a rendered artifact; like save it never mutates
+            // the document, so it reports an empty ChangeSet and stays out of
+            // history (15.B).
+            "ptnd.action.file.export" => {
+                let request = crate::export_service::ExportRequest::from_payload(
+                    &request.payload,
+                    self.active_surface,
+                )?;
+                crate::export_service::export_document(&self.document, &request)?;
+                Ok(ChangeSet::empty())
+            }
+            // The palette is view state (08.2), so opening it travels the same
+            // lane as rulers and snapping instead of being a UI-only shortcut.
+            "ptnd.action.view.command_palette" => {
+                self.view.toggle_command_palette();
+                Ok(ChangeSet::empty())
             }
             _ => Err(PetuniaError::invalid_input(format!(
                 "unsupported action in session: `{}`",
@@ -568,14 +768,50 @@ impl DocumentSession {
         }
     }
 
+    /// Fills `ids` and `surface` from the live selection when a payload does
+    /// not name explicit targets, so the same action works from a menu click,
+    /// a shortcut, the command palette, MCP or a plugin.
+    fn with_selection_targets(&self, payload: &serde_json::Value) -> serde_json::Value {
+        let mut merged = if payload.is_object() {
+            payload.clone()
+        } else {
+            serde_json::Value::Object(serde_json::Map::new())
+        };
+        if merged.get("ids").is_none() {
+            let ids: Vec<u64> = self
+                .selection
+                .selected_ids
+                .iter()
+                .map(|id| id.raw())
+                .collect();
+            merged["ids"] = serde_json::json!(ids);
+        }
+        if merged.get("surface").is_none() {
+            let surface = self.active_surface.or_else(|| {
+                self.selection
+                    .selected_ids
+                    .first()
+                    .and_then(|id| self.document.find_object_surface(*id))
+            });
+            if let Some(surface) = surface {
+                merged["surface"] = serde_json::json!(surface.raw());
+            }
+        }
+        merged
+    }
+
+    /// Surface owning the first of `ids`, falling back to the active surface.
+    fn target_surface(&self, ids: &[ObjectId]) -> Result<SurfaceId, PetuniaError> {
+        ids.first()
+            .and_then(|id| self.document.find_object_surface(*id))
+            .or(self.active_surface)
+            .ok_or_else(|| PetuniaError::invalid_input("no surface for the requested objects"))
+    }
+
     /// Executes a batch of commands atomically as one undo entry (F-01).
     /// Used by creation gestures (pen/pencil/shape/text/artboard): one
     /// gesture commits exactly one history entry. Empty batches are a NoOp.
-    pub fn transact(
-        &mut self,
-        label: &str,
-        cmds: Vec<Command>,
-    ) -> Result<ChangeSet, PetuniaError> {
+    pub fn transact(&mut self, label: &str, cmds: Vec<Command>) -> Result<ChangeSet, PetuniaError> {
         if cmds.is_empty() {
             return Ok(ChangeSet::empty());
         }
@@ -632,12 +868,18 @@ impl DocumentSession {
             .flat_map(|s| s.objects().iter().map(|o| o.id))
             .collect();
         self.selection.prune_missing(&valid_ids);
+        self.geo_cache.borrow_mut().prune(&valid_ids);
     }
 
     /// Resolves high-level document metrics.
     #[must_use]
     pub fn summary(&self) -> DocumentSummary {
-        let total_objects = self.document.surfaces().iter().map(|s| s.objects().len()).sum();
+        let total_objects = self
+            .document
+            .surfaces()
+            .iter()
+            .map(|s| s.objects().len())
+            .sum();
         DocumentSummary {
             title: self.title.clone(),
             surface_count: self.document.surfaces().len(),
@@ -661,15 +903,16 @@ impl DocumentSession {
         let mut has_bounds = false;
 
         for &id in &self.selection.selected_ids {
-            if let Some(obj) = self.document.find_object(id) {
-                // Selection follows the evaluated outline (09.31).
-                if let Some([x, y, w, h]) = obj.evaluated_bounds() {
-                    has_bounds = true;
-                    min_x = min_x.min(x);
-                    min_y = min_y.min(y);
-                    max_x = max_x.max(x + w);
-                    max_y = max_y.max(y + h);
-                }
+            if let Some([x, y, w, h]) = self
+                .cached_world_bounds(id)
+                .or_else(|| self.cached_world_frame_bounds(id))
+                .or_else(|| self.cached_bounds(id))
+            {
+                has_bounds = true;
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x + w);
+                max_y = max_y.max(y + h);
             }
         }
 
@@ -679,10 +922,28 @@ impl DocumentSession {
             None
         };
 
+        let (primary_bounds, primary_rotation, primary_transform) =
+            if self.selection.selected_ids.len() == 1 {
+                let id = self.selection.selected_ids[0];
+                if let Some(obj) = self.document.find_object(id) {
+                    let transform = self
+                        .cached_world_transform(id)
+                        .or_else(|| self.document.world_transform_checked(id).ok());
+                    (obj.bounds, obj.rotation, transform)
+                } else {
+                    (None, 0.0, None)
+                }
+            } else {
+                (None, 0.0, None)
+            };
+
         SelectionViewModel {
             selected_ids: self.selection.selected_ids.clone(),
             key_object,
             combined_bounds,
+            primary_bounds,
+            primary_rotation,
+            primary_transform,
             count,
             is_empty: count == 0,
         }
@@ -691,7 +952,12 @@ impl DocumentSession {
     /// Builds a full session snapshot.
     #[must_use]
     pub fn snapshot(&self) -> SessionSnapshot {
-        let total_objects = self.document.surfaces().iter().map(|s| s.objects().len()).sum();
+        let total_objects = self
+            .document
+            .surfaces()
+            .iter()
+            .map(|s| s.objects().len())
+            .sum();
         SessionSnapshot {
             active_surface: self.active_surface,
             title: self.title.clone(),
@@ -962,14 +1228,7 @@ impl DocumentSession {
 /// Parses an align payload: `{surface: u64, ids: [u64], mode: left|center|right|top|middle|bottom}`.
 fn align_payload(
     payload: &serde_json::Value,
-) -> Result<
-    (
-        SurfaceId,
-        Vec<ObjectId>,
-        AlignmentMode,
-    ),
-    PetuniaError,
-> {
+) -> Result<(SurfaceId, Vec<ObjectId>, AlignmentMode), PetuniaError> {
     let surface = payload
         .get("surface")
         .and_then(serde_json::Value::as_u64)
@@ -984,9 +1243,7 @@ fn align_payload(
                 .collect::<Vec<_>>()
         })
         .filter(|ids| ids.len() >= 2)
-        .ok_or_else(|| {
-            PetuniaError::invalid_input("align payload requires at least 2 `ids`")
-        })?;
+        .ok_or_else(|| PetuniaError::invalid_input("align payload requires at least 2 `ids`"))?;
     let mode = match payload.get("mode").and_then(serde_json::Value::as_str) {
         Some("left") => AlignmentMode::Left,
         Some("center") => AlignmentMode::Center,
@@ -1006,21 +1263,12 @@ fn align_payload(
 /// Parses a distribute payload: `{surface: u64, ids: [u64], axis: horizontal|vertical}`.
 fn distribute_payload(
     payload: &serde_json::Value,
-) -> Result<
-    (
-        SurfaceId,
-        Vec<ObjectId>,
-        DistributionAxis,
-    ),
-    PetuniaError,
-> {
+) -> Result<(SurfaceId, Vec<ObjectId>, DistributionAxis), PetuniaError> {
     let surface = payload
         .get("surface")
         .and_then(serde_json::Value::as_u64)
         .map(SurfaceId::new)
-        .ok_or_else(|| {
-            PetuniaError::invalid_input("distribute payload requires `surface` id")
-        })?;
+        .ok_or_else(|| PetuniaError::invalid_input("distribute payload requires `surface` id"))?;
     let ids = payload
         .get("ids")
         .and_then(|v| v.as_array())
@@ -1043,6 +1291,24 @@ fn distribute_payload(
         }
     };
     Ok((surface, ids, axis))
+}
+
+/// Object ids named by a payload.
+///
+/// Fails loudly when the payload names none: every caller needs at least one
+/// target, and a silent NoOp would hide a mis-wired caller (15.F §2).
+fn target_ids(payload: &serde_json::Value) -> Result<Vec<ObjectId>, PetuniaError> {
+    payload
+        .get("ids")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_u64().map(ObjectId::new))
+                .collect::<Vec<ObjectId>>()
+        })
+        .filter(|ids| !ids.is_empty())
+        .ok_or_else(|| PetuniaError::invalid_input("action payload names no target object ids"))
 }
 
 #[cfg(test)]
@@ -1076,7 +1342,62 @@ mod view_action_tests {
         dispatch(&mut session, "ptnd.action.view.zoom_100");
         assert!((session.view.camera.zoom - 1.0).abs() < 1e-9);
 
-        assert_eq!(session.current_revision(), revision, "view must not mutate the document");
+        assert_eq!(
+            session.current_revision(),
+            revision,
+            "view must not mutate the document"
+        );
+    }
+
+    #[test]
+    fn zoom_set_applies_the_level_the_payload_names() {
+        let mut session = session();
+        let revision = session.current_revision();
+
+        session
+            .dispatch_action(ActionRequest::new(
+                ActionId::new("ptnd.action.view.zoom_set"),
+                json!({ "zoom": 2.0 }),
+            ))
+            .expect("a level dispatches");
+        assert!((session.view.camera.zoom - 2.0).abs() < 1e-9);
+
+        // The camera clamps, so an absurd level lands on the ceiling instead of
+        // being applied raw.
+        session
+            .dispatch_action(ActionRequest::new(
+                ActionId::new("ptnd.action.view.zoom_set"),
+                json!({ "zoom": 10_000.0 }),
+            ))
+            .expect("a level dispatches");
+        assert!((session.view.camera.zoom - crate::view_camera::MAX_ZOOM).abs() < 1e-9);
+
+        assert_eq!(
+            session.current_revision(),
+            revision,
+            "zoom must not mutate the document"
+        );
+    }
+
+    #[test]
+    fn zoom_set_refuses_a_payload_without_a_usable_level() {
+        let mut session = session();
+        let before = session.view.camera.zoom;
+
+        for payload in [json!({}), json!({ "zoom": 0.0 }), json!({ "zoom": -2.0 })] {
+            let error = session
+                .dispatch_action(ActionRequest::new(
+                    ActionId::new("ptnd.action.view.zoom_set"),
+                    payload,
+                ))
+                .expect_err("an unusable level is refused");
+            assert!(error.to_string().contains("zoom"), "got {error}");
+        }
+
+        assert_eq!(
+            session.view.camera.zoom, before,
+            "a refused level must not move the camera"
+        );
     }
 
     #[test]
@@ -1420,12 +1741,7 @@ mod object_flag_action_tests {
         session
             .surfaces()
             .first()
-            .map(|s| {
-                s.objects()
-                    .iter()
-                    .map(|o| (o.visible, o.locked))
-                    .collect()
-            })
+            .map(|s| s.objects().iter().map(|o| (o.visible, o.locked)).collect())
             .unwrap_or_default()
     }
 
@@ -1447,7 +1763,10 @@ mod object_flag_action_tests {
         assert!(!changes.is_empty());
         let state = objects(&session);
         assert!(state.iter().all(|(_, locked)| *locked));
-        assert!(state.iter().all(|(visible, _)| *visible), "lock is not hide");
+        assert!(
+            state.iter().all(|(visible, _)| *visible),
+            "lock is not hide"
+        );
     }
 
     #[test]
@@ -1471,7 +1790,11 @@ mod object_flag_action_tests {
 
         let changes = dispatch(&mut session, "ptnd.action.object.hide");
         assert!(changes.is_empty(), "nothing selected means nothing to hide");
-        assert_eq!(session.current_revision(), revision, "a no-op must not bump the revision");
+        assert_eq!(
+            session.current_revision(),
+            revision,
+            "a no-op must not bump the revision"
+        );
     }
 }
 
@@ -1558,7 +1881,11 @@ mod arrange_action_tests {
         dispatch(&mut session, "ptnd.action.object.arrange.front");
         assert_ne!(order(&session), original);
         dispatch(&mut session, "ptnd.action.edit.undo");
-        assert_eq!(order(&session), original, "one undo restores the whole selection");
+        assert_eq!(
+            order(&session),
+            original,
+            "one undo restores the whole selection"
+        );
 
         session.selection.selected_ids.clear();
         let revision = session.current_revision();
@@ -1614,8 +1941,14 @@ mod duplicate_action_tests {
 
         let objects = &session.surfaces().first().unwrap().objects();
         assert_eq!(objects.len(), 2);
-        assert_ne!(objects[0].id, objects[1].id, "the copy needs a fresh identity");
-        assert_eq!(objects[1].fill, objects[0].fill, "appearance must carry over");
+        assert_ne!(
+            objects[0].id, objects[1].id,
+            "the copy needs a fresh identity"
+        );
+        assert_eq!(
+            objects[1].fill, objects[0].fill,
+            "appearance must carry over"
+        );
     }
 
     #[test]
@@ -1692,9 +2025,15 @@ mod group_action_tests {
         assert!(!changes.is_empty());
 
         let group = session.selection.selected_ids[0];
-        let container = session.document.find_object(group).expect("container exists");
+        let container = session
+            .document
+            .find_object(group)
+            .expect("container exists");
         assert_eq!(container.children.len(), 2, "both objects must be inside");
-        assert!(container.role.is_some(), "the container carries a group role");
+        assert!(
+            container.role.is_some(),
+            "the container carries a group role"
+        );
     }
 
     #[test]
@@ -1737,5 +2076,296 @@ mod group_action_tests {
             before,
             "ungrouping releases the children and drops the empty container"
         );
+    }
+}
+
+/// Covers the actions wired in this change: the three declared-but-unlive
+/// gaps plus the object operations the product already shipped but never
+/// routed through the Action lane.
+#[cfg(test)]
+mod newly_wired_action_tests {
+    use super::*;
+    use crate::ActionId;
+    use serde_json::json;
+
+    /// A session with one surface holding `count` rectangles at distinct
+    /// positions, all selected.
+    fn session_with_rects(count: u64) -> DocumentSession {
+        let mut session = DocumentSession::new("wire");
+        let surface = SurfaceId::new(1);
+        session
+            .execute_command(CommandRequest::new(Command::CreateSurface {
+                id: surface,
+                name: "Surface".to_string(),
+            }))
+            .unwrap();
+        for index in 0..count {
+            let id = ObjectId::new(index + 1);
+            let x = 10.0 + (index as f64) * 30.0;
+            session
+                .execute_command(CommandRequest::new(Command::CreateObject {
+                    surface,
+                    id,
+                    name: format!("Rect {id}"),
+                }))
+                .unwrap();
+            session
+                .execute_command(CommandRequest::new(Command::SetShape {
+                    id,
+                    shape: Some(petunia_design_document::ShapeKind::Rectangle {
+                        corner_radii: [0.0; 4],
+                    }),
+                }))
+                .unwrap();
+            session
+                .execute_command(CommandRequest::new(Command::SetBounds {
+                    id,
+                    bounds: Some([x, 10.0, 20.0, 20.0]),
+                    rotation: 0.0,
+                }))
+                .unwrap();
+            session
+                .execute_command(CommandRequest::new(Command::SetFill {
+                    id,
+                    fill: Some("ptnd.blue/500".to_string()),
+                }))
+                .unwrap();
+        }
+        session.selection.selected_ids = (0..count).map(|i| ObjectId::new(i + 1)).collect();
+        session
+    }
+
+    fn dispatch_with(
+        session: &mut DocumentSession,
+        action: &str,
+        payload: serde_json::Value,
+    ) -> Result<ChangeSet, PetuniaError> {
+        session.dispatch_action(ActionRequest::new(ActionId::new(action), payload))
+    }
+
+    fn bounds_of(session: &DocumentSession, id: u64) -> [f64; 4] {
+        session
+            .find_object(ObjectId::new(id))
+            .and_then(|object| object.bounds)
+            .expect("object has bounds")
+    }
+
+    #[test]
+    fn command_palette_toggles_view_state_without_touching_the_document() {
+        let mut session = session_with_rects(0);
+        let revision = session.current_revision();
+        assert!(!session.view.command_palette_open);
+
+        let changes = dispatch_with(&mut session, "ptnd.action.view.command_palette", json!({}))
+            .expect("palette action dispatches");
+        assert!(changes.is_empty());
+        assert!(session.view.command_palette_open);
+
+        dispatch_with(&mut session, "ptnd.action.view.command_palette", json!({})).unwrap();
+        assert!(!session.view.command_palette_open, "the action toggles");
+        assert_eq!(session.current_revision(), revision);
+    }
+
+    #[test]
+    fn align_defaults_its_targets_to_the_live_selection() {
+        let mut session = session_with_rects(3);
+        // No `surface`/`ids` in the payload: exactly what a menu item sends.
+        let changes = dispatch_with(
+            &mut session,
+            "ptnd.action.object.align",
+            json!({"mode": "left"}),
+        )
+        .expect("align resolves from the selection");
+        assert!(!changes.is_empty());
+        for id in 1..=3 {
+            assert!(
+                (bounds_of(&session, id)[0] - 10.0).abs() < 1e-9,
+                "every rectangle must share the left edge"
+            );
+        }
+    }
+
+    #[test]
+    fn distribute_defaults_its_targets_to_the_live_selection() {
+        let mut session = session_with_rects(3);
+        let changes = dispatch_with(
+            &mut session,
+            "ptnd.action.object.distribute",
+            json!({"axis": "horizontal"}),
+        )
+        .expect("distribute resolves from the selection");
+        assert!(!changes.is_empty());
+    }
+
+    #[test]
+    fn align_rejects_a_payload_without_a_mode() {
+        let mut session = session_with_rects(2);
+        let error = dispatch_with(&mut session, "ptnd.action.object.align", json!({}))
+            .expect_err("a missing mode must not be defaulted");
+        assert!(error.to_string().contains("mode"), "got {error}");
+    }
+
+    #[test]
+    fn boolean_requires_an_operator_and_reports_a_result() {
+        let mut session = session_with_rects(2);
+        let missing = dispatch_with(&mut session, "ptnd.action.object.boolean", json!({}))
+            .expect_err("a missing operator must not be defaulted");
+        assert!(missing.to_string().contains("op"), "got {missing}");
+
+        let unsupported = dispatch_with(
+            &mut session,
+            "ptnd.action.object.boolean",
+            json!({"op": "blend"}),
+        )
+        .expect_err("an unknown operator is refused");
+        assert!(unsupported.to_string().contains("op"), "got {unsupported}");
+
+        let changes = dispatch_with(
+            &mut session,
+            "ptnd.action.object.boolean",
+            json!({"op": "union"}),
+        )
+        .expect("union resolves from the selection");
+        assert!(!changes.is_empty());
+        // The result replaces both inputs and becomes the selection.
+        assert_eq!(session.selection.selected_ids.len(), 1);
+        assert_eq!(session.surfaces().first().unwrap().objects().len(), 1);
+    }
+
+    #[test]
+    fn convert_to_curves_is_one_undo_entry_for_the_whole_selection() {
+        let mut session = session_with_rects(2);
+        let changes = dispatch_with(
+            &mut session,
+            "ptnd.action.object.convert_to_curves",
+            json!({}),
+        )
+        .expect("convert dispatches");
+        assert!(!changes.is_empty());
+        let converted = session.surfaces().first().unwrap().objects().len();
+        assert_eq!(converted, 2, "both rectangles stay in the document");
+        assert!(
+            session
+                .surfaces()
+                .first()
+                .unwrap()
+                .objects()
+                .iter()
+                .all(|o| matches!(o.shape, Some(petunia_design_document::ShapeKind::Path(_)))),
+            "conversion must bake explicit paths"
+        );
+
+        dispatch_with(&mut session, "ptnd.action.edit.undo", json!({})).unwrap();
+        assert!(
+            session
+                .surfaces()
+                .first()
+                .unwrap()
+                .objects()
+                .iter()
+                .all(|o| matches!(
+                    o.shape,
+                    Some(petunia_design_document::ShapeKind::Rectangle { .. })
+                )),
+            "one undo must restore every object at once"
+        );
+    }
+
+    #[test]
+    fn bake_corners_dispatches_for_the_selection() {
+        let mut session = session_with_rects(1);
+        let changes = dispatch_with(&mut session, "ptnd.action.object.bake_corners", json!({}))
+            .expect("bake corners dispatches");
+        assert!(!changes.is_empty());
+    }
+
+    #[test]
+    fn clip_mask_requires_two_objects_and_releases_through_the_action_lane() {
+        let mut session = session_with_rects(1);
+        let blocked = dispatch_with(
+            &mut session,
+            "ptnd.action.object.clip_mask.create",
+            json!({}),
+        )
+        .expect_err("one object cannot form a mask plus content");
+        assert!(blocked.to_string().contains("two"), "got {blocked}");
+
+        let mut session = session_with_rects(3);
+        let changes = dispatch_with(
+            &mut session,
+            "ptnd.action.object.clip_mask.create",
+            json!({}),
+        )
+        .expect("clip mask dispatches over a selection");
+        assert!(!changes.is_empty());
+        let group = session.selection.selected_ids[0];
+        assert_eq!(
+            session.find_object(group).and_then(|o| o.role),
+            Some(ContainerRole::ClipGroup)
+        );
+
+        let released = dispatch_with(
+            &mut session,
+            "ptnd.action.object.clip_mask.release",
+            json!({}),
+        )
+        .expect("releasing the selected clip group dispatches");
+        assert!(!released.is_empty());
+    }
+
+    #[test]
+    fn clip_mask_release_on_a_plain_selection_is_a_no_op() {
+        let mut session = session_with_rects(2);
+        let revision = session.current_revision();
+        let changes = dispatch_with(
+            &mut session,
+            "ptnd.action.object.clip_mask.release",
+            json!({}),
+        )
+        .expect("nothing to release is not an error");
+        assert!(changes.is_empty());
+        assert_eq!(session.current_revision(), revision);
+    }
+
+    #[test]
+    fn export_writes_an_artifact_and_stays_out_of_history() {
+        let mut session = session_with_rects(1);
+        let revision = session.current_revision();
+        let dir = std::env::temp_dir().join(format!("ptnd-session-export-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let target = dir.join("artifact.png");
+
+        let changes = dispatch_with(
+            &mut session,
+            "ptnd.action.file.export",
+            json!({"path": target.to_string_lossy(), "format": "png"}),
+        )
+        .expect("export dispatches");
+        assert!(changes.is_empty(), "export is not a document mutation");
+        assert_eq!(session.current_revision(), revision);
+        assert!(target.exists(), "the artifact must exist on disk");
+        assert!(std::fs::read(&target).unwrap().starts_with(b"\x89PNG"));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn export_without_a_path_is_refused() {
+        let mut session = session_with_rects(0);
+        let error = dispatch_with(&mut session, "ptnd.action.file.export", json!({}))
+            .expect_err("export must name a destination");
+        assert!(error.to_string().contains("path"), "got {error}");
+    }
+
+    #[test]
+    fn selection_dependent_actions_report_a_missing_target() {
+        let mut session = session_with_rects(0);
+        let error = dispatch_with(
+            &mut session,
+            "ptnd.action.object.convert_to_curves",
+            json!({}),
+        )
+        .expect_err("no selection means no target");
+        assert!(error.to_string().contains("target"), "got {error}");
     }
 }

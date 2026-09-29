@@ -158,6 +158,127 @@ impl ToolManager {
         self.select_tool.set_marquee_rule(rule);
     }
 
+    /// Borrows the Measure tool.
+    #[must_use]
+    pub fn measure_tool(&self) -> &super::measure::MeasureTool {
+        &self.measure_tool
+    }
+
+    /// Mutably borrows the Measure tool.
+    pub fn measure_tool_mut(&mut self) -> &mut super::measure::MeasureTool {
+        &mut self.measure_tool
+    }
+
+    /// Borrows the Gradient tool.
+    #[must_use]
+    pub fn gradient_tool(&self) -> &super::gradient::GradientTool {
+        &self.gradient_tool
+    }
+
+    /// Mutably borrows the Gradient tool.
+    pub fn gradient_tool_mut(&mut self) -> &mut super::gradient::GradientTool {
+        &mut self.gradient_tool
+    }
+
+    /// Borrows the Node tool.
+    #[must_use]
+    pub fn node_tool(&self) -> &super::node::NodeTool {
+        &self.node_tool
+    }
+
+    /// Mutably borrows the Node tool.
+    pub fn node_tool_mut(&mut self) -> &mut super::node::NodeTool {
+        &mut self.node_tool
+    }
+
+    /// Borrows the Pen tool.
+    #[must_use]
+    pub fn pen_tool(&self) -> &super::pen::PenTool {
+        &self.pen_tool
+    }
+
+    /// Mutably borrows the Pen tool.
+    pub fn pen_tool_mut(&mut self) -> &mut super::pen::PenTool {
+        &mut self.pen_tool
+    }
+
+    /// Borrows the Pencil tool.
+    #[must_use]
+    pub fn pencil_tool(&self) -> &super::pencil::PencilTool {
+        &self.pencil_tool
+    }
+
+    /// Mutably borrows the Pencil tool.
+    pub fn pencil_tool_mut(&mut self) -> &mut super::pencil::PencilTool {
+        &mut self.pencil_tool
+    }
+
+    /// Borrows the Photo raster brush tool.
+    #[must_use]
+    pub fn photo_brush_tool(&self) -> &super::photo::PhotoTool {
+        &self.photo_brush_tool
+    }
+
+    /// Mutably borrows the Photo raster brush tool.
+    pub fn photo_brush_tool_mut(&mut self) -> &mut super::photo::PhotoTool {
+        &mut self.photo_brush_tool
+    }
+
+    /// Borrows the Photo raster eraser tool.
+    #[must_use]
+    pub fn photo_eraser_tool(&self) -> &super::photo::PhotoTool {
+        &self.photo_eraser_tool
+    }
+
+    /// Mutably borrows the Photo raster eraser tool.
+    pub fn photo_eraser_tool_mut(&mut self) -> &mut super::photo::PhotoTool {
+        &mut self.photo_eraser_tool
+    }
+
+    /// Borrows the Shape Builder tool.
+    #[must_use]
+    pub fn shape_builder_tool(&self) -> &super::shape_builder::ShapeBuilderTool {
+        &self.shape_builder_tool
+    }
+
+    /// Mutably borrows the Shape Builder tool.
+    pub fn shape_builder_tool_mut(&mut self) -> &mut super::shape_builder::ShapeBuilderTool {
+        &mut self.shape_builder_tool
+    }
+
+    /// Borrows the Smart Fill / Vector Flood Fill tool.
+    #[must_use]
+    pub fn smart_fill_tool(&self) -> &super::shape_builder::ShapeBuilderTool {
+        &self.smart_fill_tool
+    }
+
+    /// Mutably borrows the Smart Fill / Vector Flood Fill tool.
+    pub fn smart_fill_tool_mut(&mut self) -> &mut super::shape_builder::ShapeBuilderTool {
+        &mut self.smart_fill_tool
+    }
+
+    /// Borrows the Style Picker tool.
+    #[must_use]
+    pub fn style_picker_tool(&self) -> &super::picker::PickerTool {
+        &self.style_picker_tool
+    }
+
+    /// Mutably borrows the Style Picker tool.
+    pub fn style_picker_tool_mut(&mut self) -> &mut super::picker::PickerTool {
+        &mut self.style_picker_tool
+    }
+
+    /// Borrows the Color Picker tool.
+    #[must_use]
+    pub fn color_picker_tool(&self) -> &super::picker::PickerTool {
+        &self.color_picker_tool
+    }
+
+    /// Mutably borrows the Color Picker tool.
+    pub fn color_picker_tool_mut(&mut self) -> &mut super::picker::PickerTool {
+        &mut self.color_picker_tool
+    }
+
     /// Cancels any active gesture in the current tool.
     pub fn cancel_active(&mut self) {
         match self.active_kind {
@@ -332,8 +453,8 @@ impl ToolManager {
             ToolKind::Corner => self.corner_tool.overlays(bridge, camera),
             ToolKind::Contour => self.contour_tool.overlays(bridge, camera),
             ToolKind::Perspective => self.perspective_tool.overlays(bridge, camera),
-            ToolKind::Knife => self.knife_tool.overlays(),
-            ToolKind::Scissors => self.scissors_tool.overlays(),
+            ToolKind::Knife => self.knife_tool.overlays(camera, bridge),
+            ToolKind::Scissors => self.scissors_tool.overlays(camera, bridge),
             ToolKind::Rectangle => self.rectangle_tool.overlays(camera),
             ToolKind::Ellipse => self.ellipse_tool.overlays(camera),
             ToolKind::Polygon => self.polygon_tool.overlays(camera),
@@ -344,10 +465,10 @@ impl ToolManager {
             ToolKind::FrameText => self.frame_text_tool.overlays(camera, bridge),
             ToolKind::Gradient => self.gradient_tool.overlays(bridge, camera),
             ToolKind::Transparency => self.transparency_tool.overlays(bridge, camera),
-            ToolKind::ColorPicker => self.color_picker_tool.overlays(),
-            ToolKind::StylePicker => self.style_picker_tool.overlays(),
+            ToolKind::ColorPicker => self.color_picker_tool.overlays(bridge),
+            ToolKind::StylePicker => self.style_picker_tool.overlays(bridge),
             ToolKind::Artboard => self.artboard_tool.overlays(camera),
-            ToolKind::Measure => self.measure_tool.overlays(),
+            ToolKind::Measure => self.measure_tool.overlays(camera),
             ToolKind::Zoom => self.zoom_tool.overlays(),
             ToolKind::Hand => self.hand_tool.overlays(),
             ToolKind::MarqueeRect => self.photo_marquee_rect_tool.overlays(camera, bridge),

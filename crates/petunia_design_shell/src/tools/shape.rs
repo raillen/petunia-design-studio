@@ -7,7 +7,9 @@ use petunia_design_geometry::{GPoint, GRect};
 use crate::bridge::*;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Supported parametric shape variants (10.3).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -24,6 +26,8 @@ pub struct ShapeTool {
     kind: ShapeKind,
     start_doc: Option<GPoint>,
     current_doc: Option<GPoint>,
+    constrain: bool,
+    from_center: bool,
 }
 
 impl ShapeTool {
@@ -34,6 +38,8 @@ impl ShapeTool {
             kind,
             start_doc: None,
             current_doc: None,
+            constrain: false,
+            from_center: false,
         }
     }
 
@@ -41,6 +47,8 @@ impl ShapeTool {
     pub fn cancel(&mut self) {
         self.start_doc = None;
         self.current_doc = None;
+        self.constrain = false;
+        self.from_center = false;
     }
 
     /// Handles normalized pointer events.
@@ -60,6 +68,8 @@ impl ShapeTool {
                 if !event.modifiers.disable_snap {
                     pt = snap.snap_point(pt, camera, &[]).point;
                 }
+                self.constrain = event.modifiers.constrain;
+                self.from_center = event.modifiers.from_center;
                 self.start_doc = Some(pt);
                 self.current_doc = Some(pt);
                 Ok(ChangeSet::empty())
@@ -70,6 +80,8 @@ impl ShapeTool {
                     if !event.modifiers.disable_snap {
                         pt = snap.snap_point(pt, camera, &[]).point;
                     }
+                    self.constrain = event.modifiers.constrain;
+                    self.from_center = event.modifiers.from_center;
                     self.current_doc = Some(pt);
                 }
                 Ok(ChangeSet::empty())
@@ -77,6 +89,8 @@ impl ShapeTool {
             PointerPhase::Up => {
                 let start = self.start_doc.take();
                 let current = self.current_doc.take();
+                self.constrain = false;
+                self.from_center = false;
 
                 if let (Some(p0), Some(p1)) = (start, current) {
                     let mut w = (p1.x - p0.x).abs();
@@ -154,8 +168,20 @@ impl ShapeTool {
     pub fn overlays(&self, camera: &ViewportCamera) -> CanvasOverlays {
         let mut overlays = CanvasOverlays::default();
         if let (Some(p0), Some(p1)) = (self.start_doc, self.current_doc) {
-            let s0 = camera.doc_to_screen(p0);
-            let s1 = camera.doc_to_screen(p1);
+            let mut w = (p1.x - p0.x).abs();
+            let mut h = (p1.y - p0.y).abs();
+            if self.constrain {
+                let max_dim = w.max(h);
+                w = max_dim;
+                h = max_dim;
+            }
+            let (x, y) = if self.from_center {
+                (p0.x - w / 2.0, p0.y - h / 2.0)
+            } else {
+                (p0.x.min(p1.x), p0.y.min(p1.y))
+            };
+            let s0 = camera.doc_to_screen(GPoint::new(x, y));
+            let s1 = camera.doc_to_screen(GPoint::new(x + w, y + h));
             overlays.marquee_screen = Some(GRect::new(s0.x, s0.y, s1.x, s1.y));
         }
         overlays

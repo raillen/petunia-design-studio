@@ -26,6 +26,12 @@ pub enum Change {
         #[serde(default)]
         index: usize,
     },
+    /// An object's human-readable name changed.
+    NameChanged {
+        id: ObjectId,
+        previous: String,
+        next: String,
+    },
     /// An object's fill token changed; previous value kept for undo.
     FillChanged {
         id: ObjectId,

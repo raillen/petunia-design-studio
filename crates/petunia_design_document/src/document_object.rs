@@ -2,6 +2,46 @@
 
 use petunia_design_foundation::ObjectId;
 use serde::{Deserialize, Serialize};
+use std::fmt;
+
+/// Failure raised when an object cannot be projected into an explicit frame.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GeometryFrameError {
+    /// A stored placement frame cannot be projected safely.
+    MissingBounds(ObjectId),
+    /// The placement frame is finite but has invalid dimensions.
+    InvalidBounds(ObjectId),
+    /// A coordinate or transform contains a non-finite value.
+    NonFinite(ObjectId),
+    /// A v1 explicit path has no persisted frame marker and must be migrated.
+    AmbiguousPath(ObjectId),
+    /// A v1 modifier has document-space parameters without an explicit frame.
+    AmbiguousModifier(ObjectId, &'static str),
+    /// An object or parent reference does not exist.
+    MissingObject(ObjectId),
+    /// The parent chain contains a cycle.
+    HierarchyCycle(ObjectId),
+}
+
+impl fmt::Display for GeometryFrameError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingBounds(id) => write!(formatter, "object `{id}` has no placement bounds"),
+            Self::InvalidBounds(id) => write!(formatter, "object `{id}` has invalid placement bounds"),
+            Self::NonFinite(id) => write!(formatter, "object `{id}` has non-finite geometry data"),
+            Self::AmbiguousPath(id) => {
+                write!(formatter, "object `{id}` has an unversioned path frame; migrate it explicitly")
+            }
+            Self::AmbiguousModifier(id, kind) => {
+                write!(formatter, "object `{id}` has unversioned `{kind}` modifier coordinates")
+            }
+            Self::MissingObject(id) => write!(formatter, "object `{id}` does not exist"),
+            Self::HierarchyCycle(id) => write!(formatter, "object hierarchy contains a cycle at `{id}`"),
+        }
+    }
+}
+
+impl std::error::Error for GeometryFrameError {}
 
 fn default_true() -> bool {
     true
@@ -132,6 +172,12 @@ pub enum ShapeKind {
         #[serde(default)]
         on_path: Option<TextOnPathAttachment>,
     },
+    /// Placed raster image object with path or encoded data.
+    Image {
+        path: String,
+        #[serde(default)]
+        data: Option<Vec<u8>>,
+    },
 }
 
 impl DocumentObject {
@@ -161,15 +207,123 @@ impl DocumentObject {
         }
     }
 
-    /// Returns the canonical outline `GPath` for this object based on its shape and bounds.
-    /// Polygon/Star use `min(w,h)/2` as radius with center at bounds center so
-    /// non-square bounds do not distort (F-20). Text has no outline: returns an
-    /// empty path so `ConvertToCurves` must reject it explicitly instead of
-    /// silently substituting a rectangle.
+    /// Returns the canonical local outline for this object without applying placement.
     ///
-    /// This is the editable BASE source. Readers that must see live modifiers
-    /// (render, hit-test, selection, booleans, export) use
-    /// [`Self::evaluated_path`] instead. Node editing always targets base.
+    /// Parametric shapes are generated in a frame whose origin is `[0, 0]`;
+    /// `bounds` and `rotation` are placement data and are not embedded here.
+    /// Explicit paths must already be local. Text and containers have no local
+    /// vector outline and return an empty path.
+    pub fn base_path_local(&self) -> Result<petunia_design_geometry::GPath, crate::GeometryFrameError> {
+        if self.shape.is_none() && self.modifiers.is_empty() && self.bounds.is_none() {
+            return Ok(petunia_design_geometry::GPath::new());
+        }
+        let b = self.bounds.ok_or(crate::GeometryFrameError::MissingBounds(self.id))?;
+        if !b.iter().all(|value| value.is_finite()) {
+            return Err(crate::GeometryFrameError::NonFinite(self.id));
+        }
+        if b[2] <= 0.0 || b[3] <= 0.0 {
+            return Err(crate::GeometryFrameError::InvalidBounds(self.id));
+        }
+        let rect = petunia_design_geometry::GRect::new(0.0, 0.0, b[2], b[3]);
+        match &self.shape {
+            Some(ShapeKind::Rectangle { corner_radii }) => {
+                Ok(petunia_design_geometry::GPath::rect_corners(rect, *corner_radii))
+            }
+            Some(ShapeKind::Ellipse) => {
+                let rx = b[2] / 2.0;
+                let ry = b[3] / 2.0;
+                let center = petunia_design_geometry::GPoint::new(rx, ry);
+                Ok(petunia_design_geometry::GPath::ellipse(center, rx, ry))
+            }
+            Some(ShapeKind::Path(_)) => Err(crate::GeometryFrameError::AmbiguousPath(self.id)),
+            Some(ShapeKind::Polygon { sides }) => {
+                let radius = b[2].min(b[3]) / 2.0;
+                let center = petunia_design_geometry::GPoint::new(b[2] / 2.0, b[3] / 2.0);
+                Ok(petunia_design_geometry::GPath::regular_polygon(
+                    center,
+                    radius,
+                    *sides as usize,
+                ))
+            }
+            Some(ShapeKind::Star {
+                points,
+                inner_ratio,
+            }) => {
+                let outer_r = b[2].min(b[3]) / 2.0;
+                let inner_r = outer_r * inner_ratio.clamp(0.1, 0.9);
+                let center = petunia_design_geometry::GPoint::new(b[2] / 2.0, b[3] / 2.0);
+                Ok(petunia_design_geometry::GPath::star(
+                    center,
+                    outer_r,
+                    inner_r,
+                    *points as usize,
+                ))
+            }
+            Some(ShapeKind::Text { .. }) | Some(ShapeKind::Image { .. }) | None => {
+                Ok(petunia_design_geometry::GPath::new())
+            }
+        }
+    }
+
+    fn validate_local_modifiers(&self) -> Result<(), crate::GeometryFrameError> {
+        for item in self.modifiers.iter().filter(|item| item.enabled) {
+            match &item.kind {
+                crate::modifiers::ModifierKind::ContourOffset { distance, .. } => {
+                    if !distance.is_finite() {
+                        return Err(crate::GeometryFrameError::NonFinite(self.id));
+                    }
+                }
+                crate::modifiers::ModifierKind::TransparentGradient { .. } => {
+                    return Err(crate::GeometryFrameError::AmbiguousModifier(
+                        self.id,
+                        "TransparentGradient",
+                    ));
+                }
+                crate::modifiers::ModifierKind::Perspective { .. } => {
+                    return Err(crate::GeometryFrameError::AmbiguousModifier(
+                        self.id,
+                        "Perspective",
+                    ));
+                }
+                crate::modifiers::ModifierKind::CropRect { .. } => {
+                    return Err(crate::GeometryFrameError::AmbiguousModifier(
+                        self.id,
+                        "CropRect",
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Returns the live local outline after applying the modifier chain.
+    pub fn evaluated_path_local(
+        &self,
+    ) -> Result<petunia_design_geometry::GPath, crate::GeometryFrameError> {
+        self.validate_local_modifiers()?;
+        let base = self.base_path_local()?;
+        let path = crate::modifiers::evaluate_modifiers(&base, &self.modifiers);
+        if path.is_finite() {
+            Ok(path)
+        } else {
+            Err(crate::GeometryFrameError::NonFinite(self.id))
+        }
+    }
+
+    /// Returns evaluated local bounds when the local outline has geometry.
+    pub fn evaluated_bounds_local(
+        &self,
+    ) -> Result<Option<[f64; 4]>, crate::GeometryFrameError> {
+        let path = self.evaluated_path_local()?;
+        Ok(path
+            .bounding_box()
+            .map(|r| [r.x0, r.y0, r.width().max(1.0), r.height().max(1.0)]))
+    }
+
+    /// Returns the legacy outline behavior for compatibility callers.
+    ///
+    /// New code must choose [`Self::base_path_local`] or the world resolver
+    /// explicitly; this method remains while v1 consumers are migrated.
     #[must_use]
     pub fn to_path(&self) -> petunia_design_geometry::GPath {
         let b = self.bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
@@ -187,7 +341,8 @@ impl DocumentObject {
             Some(ShapeKind::Path(path)) => path.clone(),
             Some(ShapeKind::Polygon { sides }) => {
                 let radius = b[2].min(b[3]) / 2.0;
-                let center = petunia_design_geometry::GPoint::new(b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
+                let center =
+                    petunia_design_geometry::GPoint::new(b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
                 petunia_design_geometry::GPath::regular_polygon(center, radius, *sides as usize)
             }
             Some(ShapeKind::Star {
@@ -196,17 +351,19 @@ impl DocumentObject {
             }) => {
                 let outer_r = b[2].min(b[3]) / 2.0;
                 let inner_r = outer_r * inner_ratio.clamp(0.1, 0.9);
-                let center = petunia_design_geometry::GPoint::new(b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
+                let center =
+                    petunia_design_geometry::GPoint::new(b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
                 petunia_design_geometry::GPath::star(center, outer_r, inner_r, *points as usize)
             }
-            Some(ShapeKind::Text { .. }) => petunia_design_geometry::GPath::new(),
+            Some(ShapeKind::Text { .. }) | Some(ShapeKind::Image { .. }) => {
+                petunia_design_geometry::GPath::new()
+            }
             _ => petunia_design_geometry::GPath::rect(rect, 0.0, 0.0),
         }
     }
 
-    /// Folds the live modifier chain over the base path (09.31).
-    /// Render, hit-testing, selection, booleans, and export read this;
-    /// editing tools write base. Empty chain returns base unchanged.
+    /// Folds the live modifier chain over the legacy path while old callers
+    /// migrate. New world-scoped readers must use the explicit resolver.
     #[must_use]
     pub fn evaluated_path(&self) -> petunia_design_geometry::GPath {
         crate::modifiers::evaluate_modifiers(&self.to_path(), &self.modifiers)

@@ -319,9 +319,7 @@ impl SoftwarePixelCompositor {
             // no fill but a stroke exists, preview with the stroke color.
             let fill_color: Option<[u8; 4]> = eff
                 .primary_fill()
-                .and_then(|f| {
-                    paint_to_rgba8(&f.paint, 0.5, f.opacity as f32 * eff.opacity as f32)
-                })
+                .and_then(|f| paint_to_rgba8(&f.paint, 0.5, f.opacity as f32 * eff.opacity as f32))
                 .or_else(|| {
                     eff.primary_stroke().and_then(|s| {
                         paint_to_rgba8(&s.paint, 0.5, s.opacity as f32 * eff.opacity as f32)
@@ -381,11 +379,7 @@ impl SoftwarePixelCompositor {
 }
 
 /// Converts a `Paint` to premultiplied-by-opacity RGBA8 via center sampling.
-fn paint_to_rgba8(
-    paint: &petunia_design_document::Paint,
-    t: f64,
-    opacity: f32,
-) -> Option<[u8; 4]> {
+fn paint_to_rgba8(paint: &petunia_design_document::Paint, t: f64, opacity: f32) -> Option<[u8; 4]> {
     match paint {
         petunia_design_document::Paint::None => None,
         petunia_design_document::Paint::Solid(token) => Some(token_to_rgba8(token, opacity)),

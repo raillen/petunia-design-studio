@@ -2,9 +2,9 @@
 
 use petunia_design_application::{ActionId, ActionRequest, Command, CommandRequest};
 use petunia_design_document::ChangeSet;
-use petunia_design_foundation::{PetuniaError, ObjectId, SurfaceId};
+use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
 
-use crate::bridge::{PetuniaDesignGuiBridge, LayersPresentationModel};
+use crate::bridge::{LayersPresentationModel, PetuniaDesignGuiBridge};
 
 /// Controller managing the Layers Panel interactions over the unified object tree (10.5).
 #[derive(Debug, Default)]
@@ -86,6 +86,32 @@ impl LayersPanelController {
         bridge.submit_command(cmd)
     }
 
+    /// Changes an object's z-order (forward, backward, front, back).
+    pub fn arrange_row(
+        &self,
+        bridge: &mut PetuniaDesignGuiBridge,
+        surface: SurfaceId,
+        id: ObjectId,
+        position: petunia_design_document::ArrangePosition,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let cmd = CommandRequest::new(Command::ArrangeObject {
+            surface,
+            id,
+            position,
+        });
+        bridge.submit_command(cmd)
+    }
+
+    /// Renames a layer row by ID.
+    pub fn rename_row(
+        &self,
+        bridge: &mut PetuniaDesignGuiBridge,
+        id: ObjectId,
+        name: impl Into<String>,
+    ) -> Result<ChangeSet, PetuniaError> {
+        bridge.rename_object(id, name)
+    }
+
     /// Deletes all currently selected objects via semantic action.
     pub fn delete_selected(
         &self,
@@ -109,10 +135,8 @@ impl LayersPanelController {
             .ok_or_else(|| PetuniaError::invalid_input("no active surface"))?;
         let group_id = bridge.next_object_id()?;
         let plan = hierarchy_service::plan_group(surface, group_id, sel_ids, role)?;
-        let changes = bridge.submit_all(
-            "Group objects",
-            hierarchy_service::group_commands(plan),
-        )?;
+        let changes =
+            bridge.submit_all("Group objects", hierarchy_service::group_commands(plan))?;
         bridge.set_selection(vec![group_id]);
         Ok(changes)
     }

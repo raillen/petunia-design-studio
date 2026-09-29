@@ -2,9 +2,9 @@
 
 use crate::manifest::{PluginId, PluginManifest, PluginPermission};
 use crate::security::{CapabilityBroker, PluginSecurityError};
+use mlua::{Lua, LuaOptions, StdLib};
 use petunia_design_application::{ActionId, ActionRequest};
 use petunia_design_document::Document;
-use mlua::{Lua, LuaOptions, StdLib};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -147,8 +147,7 @@ impl PluginHost {
             .map_err(|e| PluginSecurityError::ScriptError(e.to_string()))?;
         app.set("version", "0.1.0")
             .map_err(|e| PluginSecurityError::ScriptError(e.to_string()))?;
-        ptnd
-            .set("app", app)
+        ptnd.set("app", app)
             .map_err(|e| PluginSecurityError::ScriptError(e.to_string()))?;
 
         // ptnd.log
@@ -161,8 +160,7 @@ impl PluginHost {
                 Ok(())
             })
             .map_err(|e| PluginSecurityError::ScriptError(e.to_string()))?;
-        ptnd
-            .set("log", log_fn)
+        ptnd.set("log", log_fn)
             .map_err(|e| PluginSecurityError::ScriptError(e.to_string()))?;
 
         // ptnd.document
@@ -186,8 +184,7 @@ impl PluginHost {
             .set("surface_count", surface_count_fn)
             .map_err(|e| PluginSecurityError::ScriptError(e.to_string()))?;
 
-        ptnd
-            .set("document", doc_table)
+        ptnd.set("document", doc_table)
             .map_err(|e| PluginSecurityError::ScriptError(e.to_string()))?;
 
         // ptnd.clipboard
@@ -228,8 +225,7 @@ impl PluginHost {
             .set("set_text", set_text_fn)
             .map_err(|e| PluginSecurityError::ScriptError(e.to_string()))?;
 
-        ptnd
-            .set("clipboard", clip_table)
+        ptnd.set("clipboard", clip_table)
             .map_err(|e| PluginSecurityError::ScriptError(e.to_string()))?;
 
         // ptnd.actions
@@ -262,8 +258,7 @@ impl PluginHost {
             .set("request", request_fn)
             .map_err(|e| PluginSecurityError::ScriptError(e.to_string()))?;
 
-        ptnd
-            .set("actions", act_table)
+        ptnd.set("actions", act_table)
             .map_err(|e| PluginSecurityError::ScriptError(e.to_string()))?;
 
         globals

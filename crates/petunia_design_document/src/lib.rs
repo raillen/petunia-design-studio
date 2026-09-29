@@ -5,6 +5,7 @@
 //! Nothing touches storage directly. Mutations arrive as [`CommandRequest`]
 //! analogues via [`DocumentMutator`] and produce a [`ChangeSet`].
 
+pub mod adjustments;
 pub mod appearance;
 mod changeset;
 mod document;
@@ -16,6 +17,10 @@ pub mod shape_factory;
 pub mod surface_metadata;
 pub mod variable_data;
 
+pub use adjustments::{
+    AdjustmentChannel, AdjustmentItem, AdjustmentKind, ChannelLevels, apply_adjustment_chain,
+    apply_exposure, apply_hsl, apply_white_balance, evaluate_curve,
+};
 pub use appearance::{
     AppearanceStack, BlendMode, EffectItem, EffectKind, FillItem, GradientStop, LinearGradient,
     Paint, RadialGradient, StrokeAlignment, StrokeCap, StrokeItem, StrokeJoin,
@@ -23,7 +28,10 @@ pub use appearance::{
 };
 pub use changeset::{Change, ChangeSet};
 pub use document::{Document, Surface};
-pub use document_object::{AlignmentMode, ArrangePosition, DistributionAxis, DocumentObject, ShapeKind, TextOnPathAttachment};
+pub use document_object::{
+    AlignmentMode, ArrangePosition, DistributionAxis, DocumentObject, GeometryFrameError, ShapeKind,
+    TextOnPathAttachment,
+};
 pub use hierarchy::{ContainerRole, HierarchyValidation, MaskMode};
 pub use modifiers::{ModifierItem, ModifierKind, OpacityStop, evaluate_modifiers, evaluate_opacity_at};
 pub use mutator::DocumentMutator;

@@ -119,7 +119,10 @@ impl McpServer {
     /// Runs one command through the shared `History` (F-19, F-22).
     /// NoOp change sets neither bump the revision nor clear redo; only real
     /// commits advance the revision and evaluator generation.
-    fn run_command(&mut self, cmd: Command) -> Result<petunia_design_document::ChangeSet, McpError> {
+    fn run_command(
+        &mut self,
+        cmd: Command,
+    ) -> Result<petunia_design_document::ChangeSet, McpError> {
         match self
             .history
             .execute(&mut self.document, &CommandRequest::new(cmd))
@@ -175,7 +178,10 @@ impl McpServer {
         McpResponse::success(
             id,
             json!({
-                "app": "Petunia Design Studio",
+                "app": petunia_design_resources::i18n::LocalizationService::with_defaults().text(
+                    petunia_design_resources::i18n::ID_APP_NAME,
+                    &petunia_design_resources::i18n::Locale::EnUs,
+                ),
                 "version": "0.1.0",
                 "schema_version": NATIVE_SCHEMA_VERSION,
                 "capabilities": capabilities,
@@ -315,7 +321,11 @@ impl McpServer {
         }
     }
 
-    fn handle_set_bounds(&mut self, id: serde_json::Value, params: serde_json::Value) -> McpResponse {
+    fn handle_set_bounds(
+        &mut self,
+        id: serde_json::Value,
+        params: serde_json::Value,
+    ) -> McpResponse {
         if let Err(e) = self.check_revision(&params) {
             return McpResponse::error(id, e);
         }
@@ -529,7 +539,10 @@ impl McpServer {
             _ => {
                 return McpResponse::error(
                     id,
-                    McpError::new(INVALID_PARAMS, "parameter `axis` must be horizontal|vertical"),
+                    McpError::new(
+                        INVALID_PARAMS,
+                        "parameter `axis` must be horizontal|vertical",
+                    ),
                 )
             }
         };

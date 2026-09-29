@@ -13,11 +13,7 @@ pub const MIN_CROP_SIZE: f64 = 10.0;
 /// Builds crop commands clamping a drag rectangle to a surface geometry update.
 /// Normalizes corner order and enforces [`MIN_CROP_SIZE`].
 #[must_use]
-pub fn crop_commands(
-    surface: SurfaceId,
-    p0: [f64; 2],
-    p1: [f64; 2],
-) -> Vec<Command> {
+pub fn crop_commands(surface: SurfaceId, p0: [f64; 2], p1: [f64; 2]) -> Vec<Command> {
     let x = p0[0].min(p1[0]);
     let y = p0[1].min(p1[1]);
     let w = (p1[0] - p0[0]).abs().max(MIN_CROP_SIZE);

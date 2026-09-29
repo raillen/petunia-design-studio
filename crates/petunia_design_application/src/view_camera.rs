@@ -138,8 +138,11 @@ pub const ZOOM_STEP: f64 = 1.25;
 
 /// Non-document view state owned by an editing session.
 ///
-/// Rulers and snapping are view preferences (08.6): they change what the user
-/// sees and how input is interpreted, never the document itself.
+/// Rulers, snapping and the command palette are view concerns (08.6, 08.2):
+/// they change what the user sees and how input is interpreted, never the
+/// document itself. Keeping the palette flag here is what lets
+/// `ptnd.action.view.command_palette` travel the normal Action lane instead of
+/// being a UI-only shortcut.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ViewState {
     /// Pan/zoom camera for the active viewport.
@@ -148,6 +151,8 @@ pub struct ViewState {
     pub rulers_visible: bool,
     /// Whether snapping is armed for interactive transform.
     pub snapping_enabled: bool,
+    /// Whether the command palette overlay (Ctrl+K) is open.
+    pub command_palette_open: bool,
 }
 
 impl Default for ViewState {
@@ -156,6 +161,7 @@ impl Default for ViewState {
             camera: ViewportCamera::default(),
             rulers_visible: true,
             snapping_enabled: true,
+            command_palette_open: false,
         }
     }
 }
@@ -195,6 +201,16 @@ impl ViewState {
     /// Toggles snapping.
     pub fn toggle_snapping(&mut self) {
         self.snapping_enabled = !self.snapping_enabled;
+    }
+
+    /// Toggles the command palette overlay (08.2).
+    pub fn toggle_command_palette(&mut self) {
+        self.command_palette_open = !self.command_palette_open;
+    }
+
+    /// Closes the command palette overlay, if open.
+    pub fn close_command_palette(&mut self) {
+        self.command_palette_open = false;
     }
 }
 
@@ -236,6 +252,18 @@ mod view_state_tests {
         assert_eq!(view.rulers_visible, !rulers);
         assert_eq!(view.snapping_enabled, !snapping);
         assert_eq!(view.camera, camera);
+    }
+
+    #[test]
+    fn command_palette_opens_closes_and_closes_idempotently() {
+        let mut view = ViewState::default();
+        assert!(!view.command_palette_open);
+        view.toggle_command_palette();
+        assert!(view.command_palette_open);
+        view.toggle_command_palette();
+        assert!(!view.command_palette_open);
+        view.close_command_palette();
+        assert!(!view.command_palette_open);
     }
 
     #[test]

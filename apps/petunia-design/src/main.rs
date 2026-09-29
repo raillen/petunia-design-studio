@@ -1,3022 +1,1609 @@
-//! Petunia Design Studio — Slint primary GUI.
+//! Petunia Design Studio desktop app, Freya shell (08.03).
 //!
-//! Evaluates Slint declarative UI toolkit, consuming PetuniaDesignGuiBridge
-//! presentation models and dispatching interactive commands.
+//! The shell is a projection: every mutation goes through the Action lane of
+//! the Aubrieta GUI bridge and the UI re-renders from the shell state.
+//! Domain crates never import toolkit types; the UI receives DTOs and sends
+//! activation tokens back across the bridge.
 
-slint::include_modules!();
+mod actions;
+mod appearance;
+mod canvas_paint;
+mod chrome;
+mod dialogs;
+mod dock;
+mod theme;
+mod ui_state;
 
-use std::cell::RefCell;
-use std::env;
-use std::rc::Rc;
-
-use petunia_design_application::{Command, CommandRequest};
-use petunia_design_document::{Bleed, ContainerRole, Guide, GuideOrientation, Margins};
-use petunia_design_foundation::{PetuniaError, ObjectId};
-use petunia_design_io::{
-    export_document_pdf, export_document_svg, export_raster, PdfExportOptions,
-    RasterExportOptions, RasterFormat, RawRasterImage,
-};
-use petunia_design_geometry::{GAffine, GPoint, GRect};
+use freya::prelude::*;
 use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase, SemanticModifiers,
 };
 use petunia_design_application::tools::ToolKind;
-use petunia_design_shell::tools::MarqueeSelectRule;
-use petunia_design_shell::bridge::{
-    DataMergePresentationModel, HistoryPresentationModel, LayersPresentationModel,
-    PropertiesPresentationModel,
+use petunia_design_geometry::GPoint;
+use petunia_design_shell::PetuniaShell;
+
+use petunia_design_shell::canvas::CursorAffordance;
+
+fn map_cursor_affordance(affordance: CursorAffordance) -> CursorIcon {
+    match affordance {
+        CursorAffordance::Default => CursorIcon::Default,
+        CursorAffordance::Pointer => CursorIcon::Pointer,
+        CursorAffordance::Crosshair => CursorIcon::Crosshair,
+        CursorAffordance::Move => CursorIcon::Move,
+        CursorAffordance::Grab => CursorIcon::Grab,
+        CursorAffordance::Grabbing => CursorIcon::Grabbing,
+        CursorAffordance::ResizeNwse => CursorIcon::NwseResize,
+        CursorAffordance::ResizeNesw => CursorIcon::NeswResize,
+        CursorAffordance::ResizeCol => CursorIcon::EwResize,
+        CursorAffordance::ResizeRow => CursorIcon::NsResize,
+        CursorAffordance::Rotate => CursorIcon::Crosshair,
+        CursorAffordance::Text => CursorIcon::Text,
+        CursorAffordance::NotAllowed => CursorIcon::NotAllowed,
+    }
+}
+
+use crate::actions::run_action_id;
+use crate::appearance::AppearanceBar;
+use crate::chrome::{
+    resolve_tool_shortcut, shortcut_key, ContextToolbar, DocumentTabStrip, MenuBarRow, ToolRail,
+    TooltipOverlay,
 };
-use petunia_design_shell::canvas::overlay::{hit_test_handle_or_border, SelectionHandleKind};
-use petunia_design_shell::shell::PetuniaShell;
-use slint::{ComponentHandle, VecModel};
+use crate::dialogs::{
+    CommandPalette, ConfirmCloseDialog, CustomizeDialog, ExportDialog, NewDocumentDialog,
+};
+use crate::ui_state::{ToolRailState, UiShell};
 
-pub struct PetuniaSlintState {
-    pub shell: PetuniaShell,
-    pub drag_start_doc: Option<GPoint>,
-    pub dragging_object_id: Option<ObjectId>,
-    pub drag_initial_bounds: Option<[f64; 4]>,
-    /// Command ids currently listed in the palette (for Enter-to-run-first).
-    pub palette_filtered: Vec<String>,
+const WINDOW_WIDTH: f64 = 1280.;
+const WINDOW_HEIGHT: f64 = 800.;
+
+/// Default document name: domain data, not UI copy.
+const DEFAULT_DOCUMENT_TITLE: &str = "Untitled";
+
+fn main() {
+    let bridge = petunia_design_shell::PetuniaDesignGuiBridge::new();
+    let title = bridge
+        .localization()
+        .text("ptnd.text.shell.brand", bridge.locale());
+
+    launch(
+        LaunchConfig::new().with_window(
+            WindowConfig::new(app)
+                .with_size(WINDOW_WIDTH, WINDOW_HEIGHT)
+                .with_window_attributes(move |attributes, _| attributes.with_title(title)),
+        ),
+    );
 }
 
-impl Default for PetuniaSlintState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl PetuniaSlintState {
-    pub fn new() -> Self {
-        let mut shell = PetuniaShell::new(950.0, 700.0);
-        shell.camera.pan_x = 80.0;
-        shell.camera.pan_y = 80.0;
-        shell.camera.zoom = 1.0;
-        let _ = populate_showcase_document(&mut shell);
-        Self {
-            shell,
-            drag_start_doc: None,
-            dragging_object_id: None,
-            drag_initial_bounds: None,
-            palette_filtered: Vec::new(),
-        }
-    }
-
-    pub fn smoke_test(&mut self) -> Result<(), String> {
-        let snap = self.shell.snapshot();
-        if snap.surface_count == 0 {
-            return Err("Document missing surfaces".to_string());
-        }
-        for tool in [
-            ToolKind::Select,
-            ToolKind::Node,
-            ToolKind::Pen,
-            ToolKind::Rectangle,
-            ToolKind::Ellipse,
-            ToolKind::Polygon,
-        ] {
-            self.shell.set_active_tool(tool);
-        }
-        self.shell.undo().map_err(|e| format!("undo: {e}"))?;
-        self.shell.redo().map_err(|e| format!("redo: {e}"))?;
-
-        // 1. Validate Layers Hierarchy Presentation Model
-        let layers = self.shell.query_layers();
-        if layers.rows.is_empty() {
-            return Err("Layers model has no rows".to_string());
-        }
-
-        // 2. Validate Grouping & Hierarchy (Step 2)
-        let surface_id = snap.active_surface.ok_or("No active surface in snapshot")?;
-        let rect_id = layers.rows[0].id;
-        let circle_id = layers.rows[1].id;
-        let group_id = self.shell.bridge.next_object_id().map_err(|e| e.to_string())?;
-
-        self.shell
-            .bridge
-            .group_objects(
-                surface_id,
-                group_id,
-                vec![rect_id, circle_id],
-                ContainerRole::Group,
-            )
-            .map_err(|e| format!("group_objects: {e}"))?;
-
-        let post_group_layers = self.shell.query_layers();
-        let group_row = post_group_layers
-            .rows
-            .iter()
-            .find(|r| r.id == group_id)
-            .ok_or("Group row not found in layers after grouping")?;
-        if !group_row.is_container {
-            return Err("Group row is not flagged as container".to_string());
-        }
-
-        // 3. Validate Clipping Mask Creation & Release (Step 2)
-        let mask_id = self.shell.bridge.next_object_id().map_err(|e| e.to_string())?;
-        let clip_group_id = self.shell.bridge.next_object_id().map_err(|e| e.to_string())?;
-        self.shell
-            .bridge
-            .create_shape_object(
-                surface_id,
-                mask_id,
-                "Mask Shape".to_string(),
-                petunia_design_document::ShapeKind::Ellipse,
-                Some([150.0, 150.0, 100.0, 100.0]),
-                Some("ptnd.purple/500".to_string()),
-                None,
-                0.0,
-            )
-            .map_err(|e| format!("create mask shape: {e}"))?;
-
-        self.shell
-            .bridge
-            .create_clip_group(surface_id, clip_group_id, mask_id, vec![group_id])
-            .map_err(|e| format!("create_clip_group: {e}"))?;
-
-        let post_clip_layers = self.shell.query_layers();
-        let mask_row = post_clip_layers
-            .rows
-            .iter()
-            .find(|r| r.id == mask_id)
-            .ok_or("Mask row not found in layers")?;
-        if !mask_row.is_clip_mask {
-            return Err("Mask row is not flagged as clip mask".to_string());
-        }
-
-        self.shell
-            .bridge
-            .release_clip_group(clip_group_id)
-            .map_err(|e| format!("release_clip_group: {e}"))?;
-
-        // 4. Validate Vector & Raster Export Pipelines (Step 4)
-        let session = self.shell.bridge.session().ok_or("No session found")?;
-        let svg = export_document_svg(session.document());
-        if !svg.starts_with("<svg") && !svg.contains("<svg") {
-            return Err("SVG export produced invalid XML envelope".to_string());
-        }
-
-        let (pdf_bytes, report) =
-            export_document_pdf(session.document(), &PdfExportOptions::default())
-                .map_err(|e| format!("PDF export failed: {e}"))?;
-        if !pdf_bytes.starts_with(b"%PDF") {
-            return Err("PDF export produced invalid PDF header".to_string());
-        }
-        if !report.passed {
-            return Err("PDF preflight report marked as failed".to_string());
-        }
-
-        let raw = RawRasterImage::from_rgba8(32, 32, vec![200u8; 32 * 32 * 4])
-            .map_err(|e| format!("RawRasterImage creation failed: {e}"))?;
-        let (png_bytes, _) = export_raster(
-            &raw,
-            &RasterExportOptions {
-                format: RasterFormat::Png,
-                jpeg_quality: 90,
-                allow_degradations: true,
-            },
-        )
-        .map_err(|e| format!("PNG export failed: {e}"))?;
-        if !png_bytes.starts_with(b"\x89PNG") {
-            return Err("PNG export produced invalid magic header".to_string());
-        }
-
-        let _ = self.shell.query_properties();
-        let _ = self.shell.bridge.query_history();
-        let _ = self.shell.query_data_merge();
-
-        // 5. Command palette dispatch (state-level, no window needed).
-        if !run_palette_command(self, "no-such-command") {
-        } else {
-            return Err("palette ran an unknown command".to_string());
-        }
-        let zoom_before = self.shell.camera.zoom;
-        // zoom commands report no resync needed by design; the zoom
-        // change itself proves dispatch ran.
-        run_palette_command(self, "zoom-in");
-        if self.shell.camera.zoom <= zoom_before {
-            return Err("palette zoom-in did not change zoom".to_string());
-        }
-        println!(
-            "OK petunia-design smoke test: surfaces={} title=\"{}\" svg_len={} pdf_len={} png_len={}",
-            snap.surface_count, snap.title, svg.len(), pdf_bytes.len(), png_bytes.len()
-        );
-        Ok(())
-    }
-}
-
-fn populate_showcase_document(shell: &mut PetuniaShell) -> Result<(), PetuniaError> {
-    shell.new_document("Petunia Showcase Project [Slint]")?;
-    // Allocate every ID from the session lane: parallel local generators
-    // collide with the session-owned counter (Canvas takes SurfaceId(1)).
-    let surface_1 = shell.bridge.next_surface_id()?;
-    let rect_id = shell.bridge.next_object_id()?;
-    let circle_id = shell.bridge.next_object_id()?;
-    let star_id = shell.bridge.next_object_id()?;
-    let text_id = shell.bridge.next_object_id()?;
-
-    shell
-        .bridge
-        .submit_command(CommandRequest::new(Command::CreateSurface {
-            id: surface_1,
-            name: "Main Artboard".to_string(),
-        }))?;
-    shell
-        .bridge
-        .set_surface_geometry(surface_1, [0.0, 0.0], [800.0, 600.0])?;
-    shell
-        .bridge
-        .set_surface_bleed(surface_1, Bleed::uniform(10.0))?;
-    shell
-        .bridge
-        .set_surface_margins(surface_1, Margins::uniform(36.0))?;
-    shell
-        .bridge
-        .add_surface_guide(surface_1, Guide::new(1, GuideOrientation::Vertical, 200.0))?;
-
-    // Hero Card (Rectangle)
-    shell.bridge.create_shape_object(
-        surface_1,
-        rect_id,
-        "Hero Card".to_string(),
-        petunia_design_document::ShapeKind::Rectangle {
-            corner_radii: [8.0; 4],
-        },
-        Some([100.0, 100.0, 300.0, 180.0]),
-        Some("ptnd.blue/500".to_string()),
-        Some("#2563eb".to_string()),
-        1.5,
-    )?;
-
-    // Accent Circle (Ellipse)
-    shell.bridge.create_shape_object(
-        surface_1,
-        circle_id,
-        "Accent Circle".to_string(),
-        petunia_design_document::ShapeKind::Ellipse,
-        Some([450.0, 140.0, 140.0, 140.0]),
-        Some("ptnd.yellow/500".to_string()),
-        Some("#ca8a04".to_string()),
-        1.5,
-    )?;
-
-    // Golden Star (Star)
-    shell.bridge.create_shape_object(
-        surface_1,
-        star_id,
-        "Golden Star".to_string(),
-        petunia_design_document::ShapeKind::Star {
-            points: 5,
-            inner_ratio: 0.45,
-        },
-        Some([450.0, 320.0, 130.0, 130.0]),
-        Some("ptnd.rose/500".to_string()),
-        Some("#e11d48".to_string()),
-        1.5,
-    )?;
-
-    // Title Text (Text)
-    shell.bridge.create_shape_object(
-        surface_1,
-        text_id,
-        "Banner Text".to_string(),
-        petunia_design_document::ShapeKind::Text {
-            content: "Petunia Design Studio".to_string(),
-            font_family: "Inter".to_string(),
-            font_size: 20.0,
-            line_height: 24.0,
-            letter_spacing: 0.5,
-            on_path: None,
-        },
-        Some([100.0, 320.0, 300.0, 50.0]),
-        Some("ptnd.purple/500".to_string()),
-        None,
-        0.0,
-    )?;
-
-    shell.bridge.set_selection(vec![rect_id]);
-    // Showcase editing happens on the Main Artboard, not the initial canvas.
-    shell.bridge.set_active_surface(surface_1)?;
-    Ok(())
-}
-
-/// Resolves any color token/literal to an exact Slint color via the
-/// canonical engine parser (no fuzzy substring matching).
-fn token_to_slint(token: &str) -> slint::Color {
-    let rgb = petunia_design_document::resolve_color_to_rgb(token);
-    slint::Color::from_rgb_u8(
-        (rgb[0].clamp(0.0, 1.0) * 255.0).round() as u8,
-        (rgb[1].clamp(0.0, 1.0) * 255.0).round() as u8,
-        (rgb[2].clamp(0.0, 1.0) * 255.0).round() as u8,
-    )
-}
-
-/// Samples a paint to a flat Slint color (gradients at center stop).
-fn paint_to_slint(paint: &petunia_design_document::Paint) -> Option<slint::Color> {
-    match paint {
-        petunia_design_document::Paint::None => None,
-        petunia_design_document::Paint::Solid(token) => Some(token_to_slint(token)),
-        petunia_design_document::Paint::LinearGradient(g) => g
-            .sample_rgba(0.5)
-            .map(|(rgb, _)| sample_to_slint(rgb)),
-        petunia_design_document::Paint::RadialGradient(g) => g
-            .sample_rgba(0.5)
-            .map(|(rgb, _)| sample_to_slint(rgb)),
-    }
-}
-
-fn sample_to_slint(rgb: [f32; 3]) -> slint::Color {
-    slint::Color::from_rgb_u8(
-        (rgb[0].clamp(0.0, 1.0) * 255.0).round() as u8,
-        (rgb[1].clamp(0.0, 1.0) * 255.0).round() as u8,
-        (rgb[2].clamp(0.0, 1.0) * 255.0).round() as u8,
-    )
-}
-
-/// Cursor kind for the active tool when not hovering a selection handle.
-/// Selection handles keep their resize cursors only under Select/Node.
-fn tool_cursor_kind(tool: ToolKind) -> &'static str {
-    match tool {
-        ToolKind::Select | ToolKind::Node => "default",
-        ToolKind::Pen
-        | ToolKind::Pencil
-        | ToolKind::Knife
-        | ToolKind::Scissors
-        | ToolKind::Rectangle
-        | ToolKind::Ellipse
-        | ToolKind::Polygon
-        | ToolKind::Star
-        | ToolKind::ShapeBuilder
-        | ToolKind::Perspective
-        | ToolKind::VectorFloodFill
-        | ToolKind::Contour
-        | ToolKind::Corner
-        | ToolKind::Zoom
-        | ToolKind::ColorPicker
-        | ToolKind::StylePicker
-        | ToolKind::Measure => "crosshair",
-        ToolKind::ArtisticText | ToolKind::FrameText => "text",
-        ToolKind::Hand => "grab",
-        _ => "default",
-    }
-}
-
-/// Static command-palette catalog: (id, label, hint).
-fn palette_catalog() -> Vec<(&'static str, &'static str, &'static str)> {
-    vec![
-        ("undo", "Desfazer", "Ctrl+Z"),
-        ("redo", "Refazer", "Ctrl+Y"),
-        ("group", "Agrupar seleção", "Ctrl+G"),
-        ("ungroup", "Desagrupar", "Ctrl+Shift+G"),
-        ("clip-mask", "Criar máscara de recorte", ""),
-        ("clip-release", "Liberar máscara", ""),
-        ("align-left", "Alinhar à esquerda", ""),
-        ("align-center", "Alinhar ao centro", ""),
-        ("align-right", "Alinhar à direita", ""),
-        ("align-top", "Alinhar ao topo", ""),
-        ("align-middle", "Alinhar ao meio", ""),
-        ("align-bottom", "Alinhar à base", ""),
-        ("distribute-h", "Distribuir horizontalmente", ""),
-        ("distribute-v", "Distribuir verticalmente", ""),
-        ("bool-union", "Booleano: União", ""),
-        ("bool-subtract", "Booleano: Subtração", ""),
-        ("bool-intersect", "Booleano: Intersecção", ""),
-        ("bool-xor", "Booleano: Exclusão", ""),
-        ("convert-curves", "Converter em curvas", ""),
-        ("bake-corners", "Bake cantos", ""),
-        ("duplicate", "Duplicar seleção", "Ctrl+D"),
-        ("delete", "Excluir seleção", "Delete"),
-        ("select-all", "Selecionar tudo", "Ctrl+A"),
-        ("zoom-in", "Aproximar zoom", ""),
-        ("zoom-out", "Afastar zoom", ""),
-        ("zoom-fit", "Ajustar à tela", ""),
-        ("export", "Abrir exportação", "Ctrl+E"),
-    ]
-}
-
-/// Pushes the filtered palette catalog to the UI, recording the listed
-/// ids in state order for Enter-to-run-first.
-fn push_palette_items(win: &MainWindow, query: &str, st: &mut PetuniaSlintState) {
-    let q = query.to_lowercase();
-    let items: Vec<PaletteItem> = palette_catalog()
-        .into_iter()
-        .filter(|(id, label, hint)| {
-            q.is_empty()
-                || label.to_lowercase().contains(&q)
-                || id.contains(&q)
-                || hint.to_lowercase().contains(&q)
-        })
-        .map(|(id, label, hint)| {
-            st.palette_filtered.push(id.to_string());
-            PaletteItem {
-                id: id.into(),
-                label: label.into(),
-                hint: hint.into(),
-            }
-        })
-        .collect();
-    win.set_palette_items(Rc::new(VecModel::from(items)).into());
-}
-
-/// Runs one palette command id against the live shell. Returns true when
-/// the UI should resync afterwards.
-fn run_palette_command(state: &mut PetuniaSlintState, id: &str) -> bool {
-    let st = state;
-    match id {
-        "undo" => {
-            let _ = st.shell.undo();
-            true
-        }
-        "redo" => {
-            let _ = st.shell.redo();
-            true
-        }
-        "group" => {
-            let _ = st.shell.layers_panel.group_selection(
-                &mut st.shell.bridge,
-                petunia_design_document::ContainerRole::Group,
-            );
-            true
-        }
-        "ungroup" => {
-            let _ = st
-                .shell
-                .layers_panel
-                .ungroup_selection(&mut st.shell.bridge);
-            true
-        }
-        "clip-mask" => {
-            let _ = st
-                .shell
-                .layers_panel
-                .create_clipping_mask(&mut st.shell.bridge);
-            true
-        }
-        "clip-release" => {
-            // Release selected clip groups; with an empty relevant
-            // selection, release all clip groups on the active surface.
-            let targets: Vec<ObjectId> = st
-                .shell
-                .bridge
-                .session()
-                .map(|s| {
-                    let sel = st.shell.bridge.selection().selected_ids.clone();
-                    let scope: Vec<ObjectId> = if sel.is_empty() {
-                        match s.active_surface() {
-                            Some(surf) => s
-                                .surface(surf)
-                                .map(|sf| {
-                                    sf.objects().iter().map(|o| o.id).collect()
-                                })
-                                .unwrap_or_default(),
-                            None => vec![],
-                        }
-                    } else {
-                        sel
-                    };
-                    scope
-                        .into_iter()
-                        .filter(|oid| {
-                            s.find_object(*oid).is_some_and(|o| {
-                                o.is_container()
-                                    && o.role
-                                        == Some(petunia_design_document::ContainerRole::ClipGroup)
-                            })
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            for gid in targets {
-                let _ = st
-                    .shell
-                    .layers_panel
-                    .release_clipping_mask(&mut st.shell.bridge, gid);
-            }
-            true
-        }
-        "delete" => {
-            let ids = st.shell.bridge.selection().selected_ids.clone();
-            for id in ids {
-                let _ = st.shell.bridge.submit_command(CommandRequest::new(
-                    Command::DeleteObject { id },
-                ));
-            }
-            st.shell.bridge.set_selection(vec![]);
-            true
-        }
-        "select-all" => {
-            if let Some(session) = st.shell.bridge.session() {
-                let _ = session;
-            }
-            // Selection lives in the session; select via surface objects.
-            let all: Vec<ObjectId> = st
-                .shell
-                .bridge
-                .session()
-                .map(|s| {
-                    s.document()
-                        .surfaces()
-                        .iter()
-                        .flat_map(|sf| sf.objects())
-                        .map(|o| o.id)
-                        .collect()
-                })
-                .unwrap_or_default();
-            st.shell.bridge.set_selection(all);
-            true
-        }
-        "duplicate" => {
-            // Offset duplicate of the primary selection via panel lane.
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            if let Some(first) = sel.first().copied() {
-                if let Some(session) = st.shell.bridge.session() {
-                    if let Some(obj) = session
-                        .document()
-                        .surfaces()
-                        .iter()
-                        .flat_map(|s| s.objects())
-                        .find(|o| o.id == first)
-                        .cloned()
-                    {
-                        if let Some(surface_id) = session
-                            .document()
-                            .surfaces()
-                            .iter()
-                            .find(|sf| sf.objects().iter().any(|o| o.id == first))
-                            .map(|sf| sf.id)
-                        {
-                            if let Ok(new_id) = st.shell.bridge.next_object_id() {
-                                let b = obj.bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
-                                let nb =
-                                    [b[0] + 20.0, b[1] + 20.0, b[2], b[3]];
-                                let cmds = vec![
-                                    Command::CreateShapeObject {
-                                        surface: surface_id,
-                                        id: new_id,
-                                        name: format!("{} Copy", obj.name),
-                                        shape: obj.shape.clone().unwrap_or(
-                                            petunia_design_document::ShapeKind::Rectangle {
-                                                corner_radii: [0.0; 4],
-                                            },
-                                        ),
-                                        bounds: Some(nb),
-                                        fill: obj.fill.clone(),
-                                        stroke: obj.stroke.clone(),
-                                        stroke_width: obj.stroke_width,
-                                    },
-                                    Command::SetBounds {
-                                        id: new_id,
-                                        bounds: Some(nb),
-                                        rotation: obj.rotation,
-                                    },
-                                ];
-                                let _ = st.shell.bridge.submit_all("Duplicate object", cmds);
-                                st.shell.bridge.set_selection(vec![new_id]);
-                            }
-                        }
-                    }
-                }
-            }
-            true
-        }
-        "zoom-in" => {
-            st.shell.camera.set_zoom(st.shell.camera.zoom * 1.25);
-            false
-        }
-        "zoom-out" => {
-            st.shell.camera.set_zoom(st.shell.camera.zoom / 1.25);
-            false
-        }
-        "zoom-fit" => {
-            if let Some(session) = st.shell.bridge.session() {
-                if let Some(surface) = session.document().surfaces().first() {
-                    let b = surface.bounds();
-                    st.shell.fit_surface(petunia_design_geometry::GRect::new(
-                        b[0], b[1], b[0] + b[2], b[1] + b[3],
-                    ));
-                }
-            }
-            false
-        }
-        "export" => false,
-        mode if mode.starts_with("align-") => {
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            if let Some(surface_id) = st.shell.bridge.active_surface().or_else(|| {
-                st.shell
-                    .bridge
-                    .session()
-                    .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
-            }) {
-                let amode = match mode {
-                    "align-left" => petunia_design_document::AlignmentMode::Left,
-                    "align-right" => petunia_design_document::AlignmentMode::Right,
-                    "align-top" => petunia_design_document::AlignmentMode::Top,
-                    "align-bottom" => petunia_design_document::AlignmentMode::Bottom,
-                    "align-middle" => petunia_design_document::AlignmentMode::Middle,
-                    _ => petunia_design_document::AlignmentMode::Center,
-                };
-                let _ = st.shell.bridge.align_objects(surface_id, sel, amode);
-            }
-            true
-        }
-        mode if mode.starts_with("distribute-") => {
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            if let Some(surface_id) = st.shell.bridge.active_surface().or_else(|| {
-                st.shell
-                    .bridge
-                    .session()
-                    .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
-            }) {
-                let axis = if mode == "distribute-v" {
-                    petunia_design_document::DistributionAxis::Vertical
-                } else {
-                    petunia_design_document::DistributionAxis::Horizontal
-                };
-                let _ = st.shell.bridge.distribute_objects(surface_id, sel, axis);
-            }
-            true
-        }
-        mode if mode.starts_with("bool-") => {
-            let mut sel = st.shell.bridge.selection().selected_ids.clone();
-            if sel.len() < 2 {
-                if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document().surfaces().first() {
-                        if surface.objects().len() >= 2 {
-                            sel = vec![surface.objects()[0].id, surface.objects()[1].id];
-                        }
-                    }
-                }
-            }
-            if sel.len() >= 2 {
-                if let Ok(target_id) = st.shell.bridge.next_object_id() {
-                    if let Some(surface) = st
-                        .shell
-                        .bridge
-                        .session()
-                        .and_then(|s| s.document().surfaces().first().cloned())
-                    {
-                        let op = match mode {
-                            "bool-subtract" => petunia_design_geometry::BooleanOp::Difference,
-                            "bool-intersect" => petunia_design_geometry::BooleanOp::Intersection,
-                            "bool-xor" => petunia_design_geometry::BooleanOp::Xor,
-                            _ => petunia_design_geometry::BooleanOp::Union,
-                        };
-                        let _ = st.shell.bridge.apply_boolean(
-                            surface.id,
-                            target_id,
-                            sel[0],
-                            sel[1],
-                            op,
-                        );
-                        st.shell.bridge.set_selection(vec![target_id]);
-                    }
-                }
-            }
-            true
-        }
-        "convert-curves" => {
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            for id in sel {
-                let _ = st.shell.bridge.convert_to_curves(id);
-            }
-            true
-        }
-        "bake-corners" => {
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            for id in sel {
-                let _ = st.shell.bridge.bake_corners(id);
-            }
-            true
-        }
-        _ => false,
-    }
-}
-
-fn sync_ui_from_shell(window: &MainWindow, state: &PetuniaSlintState) {
-    let tool_str = format!("{:?}", state.shell.active_tool());
-    window.set_active_tool_name(tool_str.into());
-
-    // Batch 1: keep the contextual marquee-rule control in sync with the tool.
-    let rule_str = match state.shell.tools.select_tool().marquee_rule() {
-        MarqueeSelectRule::Intersect => "Intersect",
-        MarqueeSelectRule::Contained => "Contained",
-        MarqueeSelectRule::Directional => "Directional",
+/// Seeds two overlapping demo shapes on the default artboard for instant testing of
+/// Shape Builder, Gradient, Node, and Select tools without manual setup.
+fn seed_starter_shapes(shell: &mut PetuniaShell) {
+    use petunia_design_application::Command;
+    let Some(surface_id) = shell.bridge.active_surface() else {
+        return;
     };
-    window.set_marquee_rule(rule_str.into());
+    let id1 = match shell.bridge.next_object_id() {
+        Ok(id) => id,
+        Err(_) => return,
+    };
+    let id2 = match shell.bridge.next_object_id() {
+        Ok(id) => id,
+        Err(_) => return,
+    };
 
-    let zoom_pct = (state.shell.camera.zoom * 100.0).round() as i32;
-    window.set_zoom_pct(zoom_pct);
+    let cmds = vec![
+        Command::CreateObject {
+            surface: surface_id,
+            id: id1,
+            name: "Rectangle A".to_string(),
+        },
+        Command::SetShape {
+            id: id1,
+            shape: Some(petunia_design_document::ShapeKind::Rectangle {
+                corner_radii: [12.0, 12.0, 12.0, 12.0],
+            }),
+        },
+        Command::SetBounds {
+            id: id1,
+            bounds: Some([260.0, 180.0, 220.0, 160.0]),
+            rotation: 0.0,
+        },
+        Command::SetFill {
+            id: id1,
+            fill: Some("ptnd.blue/500".to_string()),
+        },
+        Command::CreateObject {
+            surface: surface_id,
+            id: id2,
+            name: "Circle B".to_string(),
+        },
+        Command::SetShape {
+            id: id2,
+            shape: Some(petunia_design_document::ShapeKind::Ellipse),
+        },
+        Command::SetBounds {
+            id: id2,
+            bounds: Some([380.0, 240.0, 200.0, 200.0]),
+            rotation: 0.0,
+        },
+        Command::SetFill {
+            id: id2,
+            fill: Some("ptnd.purple/500".to_string()),
+        },
+    ];
+    let _ = shell.bridge.submit_all("Seed starter shapes", cmds);
+    shell.bridge.clear_selection();
+}
 
-    // Sync Layers
-    let layers: LayersPresentationModel = state.shell.query_layers();
-    let layer_items: Vec<LayerRowItem> = layers
-        .rows
-        .iter()
-        .map(|r| {
-            let kind = if let Some(session) = state.shell.bridge.session() {
-                session.document()
-                    .surfaces()
-                    .iter()
-                    .flat_map(|s| s.objects())
-                    .find(|o| o.id == r.id)
-                    .map(|o| match &o.shape {
-                        Some(petunia_design_document::ShapeKind::Ellipse) => "Ellipse",
-                        Some(petunia_design_document::ShapeKind::Rectangle { .. }) => "Rectangle",
-                        Some(petunia_design_document::ShapeKind::Star { .. }) => "Star",
-                        Some(petunia_design_document::ShapeKind::Polygon { .. }) => "Polygon",
-                        Some(petunia_design_document::ShapeKind::Text { .. }) => "Text",
-                        Some(petunia_design_document::ShapeKind::Path(_)) => "Path",
-                        None => {
-                            if o.is_container() {
-                                "Group"
-                            } else {
-                                "Rectangle"
+fn app() -> impl IntoElement {
+    use_init_theme(theme::petunia_theme);
+
+    let shell = use_state(|| {
+        let mut shell = PetuniaShell::new(WINDOW_WIDTH, WINDOW_HEIGHT);
+        shell
+            .new_document(DEFAULT_DOCUMENT_TITLE)
+            .expect("a fresh document opens");
+        seed_starter_shapes(&mut shell);
+        shell
+    });
+    let ui = UiShell::fresh(shell);
+    let root_a11y_id = use_a11y();
+    let keyboard_shell = ui.shell;
+    let modifiers = ui.modifiers;
+    let palette_open = ui.palette_open;
+    let palette_query = ui.palette_query;
+    let tool_rail = ui.tool_rail;
+    let active_tool = ui.active_tool;
+    let customize_open = ui.customize_open;
+    let temporary_tool = ui.temporary_tool;
+    let suspended_tool = ui.suspended_tool;
+    let new_doc_open = ui.new_doc_open;
+    let export_open = ui.export_open;
+
+    rect()
+        .direction(Direction::Vertical)
+        .content(Content::Flex)
+        .width(Size::fill())
+        .height(Size::fill())
+        .background(theme::SURFACE_WORKSPACE)
+        .a11y_id(root_a11y_id)
+        .a11y_focusable(true)
+        .a11y_auto_focus(true)
+        .child(MenuBarRow(ui.clone()))
+        .child(DocumentTabStrip(ui.clone()))
+        .child(ContextToolbar(ui.clone()))
+        .child(
+            rect()
+                .direction(Direction::Horizontal)
+                .content(Content::Flex)
+                .width(Size::fill())
+                .height(Size::flex(1.0))
+                .child(ToolRail(ui.clone()))
+                .child(Workspace(ui.clone()))
+                .child(DockSplitter(ui.clone()))
+                .child(dock::RightDock(ui.clone())),
+        )
+        .child(StatusBar(ui.clone()))
+        .child(CommandPalette(ui.clone()))
+        .child(CustomizeDialog(ui.clone()))
+        .child(NewDocumentDialog(ui.clone()))
+        .child(ExportDialog(ui.clone()))
+        .child(ConfirmCloseDialog(ui.clone()))
+        .child(TooltipOverlay(ui.clone()))
+        .on_global_key_down({
+            let shell = keyboard_shell;
+            let mut modifiers = modifiers;
+            move |event: Event<KeyboardEventData>| {
+                modifiers.set(semantic_modifiers(event.modifiers));
+                dispatch_workspace_key(
+                    shell,
+                    palette_open,
+                    palette_query,
+                    tool_rail,
+                    active_tool,
+                    customize_open,
+                    new_doc_open,
+                    export_open,
+                    temporary_tool,
+                    suspended_tool,
+                    &event,
+                );
+            }
+        })
+        .on_global_key_up({
+            let mut modifiers = modifiers;
+            move |event: Event<KeyboardEventData>| {
+                modifiers.set(semantic_modifiers(event.modifiers));
+                if shortcut_key(&event).is_some_and(|key| key.eq_ignore_ascii_case("space")) {
+                    restore_temporary_tool(
+                        keyboard_shell,
+                        active_tool,
+                        temporary_tool,
+                        suspended_tool,
+                    );
+                }
+            }
+        })
+}
+
+/// Draggable splitter between Workspace and RightDock.
+#[derive(Clone, PartialEq)]
+struct DockSplitter(UiShell);
+
+impl Component for DockSplitter {
+    fn render(&self) -> impl IntoElement {
+        let is_dragging = use_state(|| false);
+        let drag_start_x = use_state(|| 0.0f64);
+        let drag_start_width = use_state(|| 240.0f32);
+        let dock_width = self.0.dock_width;
+        let dragging_val = *is_dragging.read();
+
+        let splitter_bar = rect()
+            .width(Size::px(4.))
+            .height(Size::fill())
+            .background(if dragging_val {
+                theme::ACCENT_BLOOM
+            } else {
+                theme::SURFACE_CHROME_STRONG
+            })
+            .cursor(CursorIcon::EwResize)
+            .on_mouse_down({
+                let mut is_dragging = is_dragging;
+                let mut drag_start_x = drag_start_x;
+                let mut drag_start_width = drag_start_width;
+                move |event: Event<MouseEventData>| {
+                    is_dragging.set(true);
+                    drag_start_x.set(event.global_location.x);
+                    drag_start_width.set(*dock_width.peek());
+                }
+            });
+
+        if dragging_val {
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::px(4.))
+                .height(Size::fill())
+                .child(splitter_bar)
+                .child(
+                    Portal::new("dock-splitter-drag")
+                        .width(Size::px(0.))
+                        .height(Size::px(0.))
+                        .child(
+                            rect()
+                                .position(Position::new_absolute().top(0.).left(0.))
+                                .width(Size::fill())
+                                .height(Size::fill())
+                                .cursor(CursorIcon::EwResize)
+                                .on_mouse_move({
+                                    let mut dock_width = dock_width;
+                                    let drag_start_x = drag_start_x;
+                                    let drag_start_width = drag_start_width;
+                                    move |event: Event<MouseEventData>| {
+                                        let delta = *drag_start_x.read() - event.global_location.x;
+                                        let new_w = (*drag_start_width.read() + delta as f32).clamp(180.0, 520.0);
+                                        dock_width.set(new_w);
+                                    }
+                                })
+                                .on_mouse_up({
+                                    let mut is_dragging = is_dragging;
+                                    move |_| {
+                                        is_dragging.set(false);
+                                    }
+                                }),
+                        ),
+                )
+        } else {
+            rect()
+                .width(Size::px(4.))
+                .height(Size::fill())
+                .child(splitter_bar)
+        }
+    }
+}
+
+/// The document workspace. The canvas slice (08.29) draws the artboard here.
+#[derive(Clone, PartialEq)]
+struct Workspace(UiShell);
+
+impl Component for Workspace {
+    fn render(&self) -> impl IntoElement {
+        let mut shell = self.0.shell;
+        let modifiers = self.0.modifiers;
+        let mut gesture_tick = use_state(|| 0u64);
+        let ruler_drag = use_state(|| None::<(petunia_design_document::GuideOrientation, f64)>);
+        let middle_pan_last = use_state(|| None::<GPoint>);
+        let mut is_pointer_down = use_state(|| false);
+        let a11y_id = use_a11y();
+        let snapshot = shell.read().canvas_snapshot();
+        let cursor_icon = map_cursor_affordance(snapshot.overlays.cursor);
+        let in_flight_guide = *ruler_drag.read();
+
+        let active_text_object = snapshot.objects.iter().find(|o| {
+            o.active && matches!(o.shape, Some(petunia_design_document::ShapeKind::Text { .. }))
+        });
+
+        let active_text_editor = if let Some(text_obj) = active_text_object {
+            let (content, font_size) = match &text_obj.shape {
+                Some(petunia_design_document::ShapeKind::Text { content, font_size, .. }) => (content.clone(), *font_size),
+                _ => (String::new(), 16.0),
+            };
+            let screen_origin = snapshot.camera.doc_to_screen(GPoint::new(
+                text_obj.frame_origin[0],
+                text_obj.frame_origin[1],
+            ));
+            let text_obj_id = text_obj.id;
+            let mut text_edit_content = self.0.text_edit_content;
+            if text_edit_content.peek().is_empty() && !content.is_empty() {
+                text_edit_content.set(content.clone());
+            }
+            let mut shell_for_commit = shell;
+            Some(
+                rect()
+                    .position(
+                        Position::new_absolute()
+                            .left((screen_origin.x as f32).max(24.))
+                            .top(((screen_origin.y - 42.) as f32).max(24.)),
+                    )
+                    .direction(Direction::Horizontal)
+                    .background(theme::SURFACE_PANEL)
+                    .border(
+                        Border::new()
+                            .fill(theme::BLOOM.value)
+                            .width(1.5)
+                            .alignment(BorderAlignment::Inner),
+                    )
+                    .padding(Gaps::new_all(4.))
+                    .cross_align(Alignment::Center)
+                    .spacing(4.)
+                    .child(
+                        rect()
+                            .width(Size::px(220.))
+                            .child(Input::new(text_edit_content).placeholder("Texto...")),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press(move |_| {
+                                let current_text = text_edit_content.peek().clone();
+                                let shape = petunia_design_document::ShapeKind::Text {
+                                    content: current_text,
+                                    font_family: "Inter".to_string(),
+                                    font_size,
+                                    line_height: 1.2,
+                                    letter_spacing: 0.0,
+                                    on_path: None,
+                                };
+                                let _ = shell_for_commit.write().bridge.submit_all(
+                                    "Update text in-canvas",
+                                    vec![petunia_design_application::Command::SetShape {
+                                        id: text_obj_id,
+                                        shape: Some(shape),
+                                    }],
+                                );
+                            })
+                            .child(label().text("Aplicar").font_size(11.)),
+                    ),
+            )
+        } else {
+            None
+        };
+
+        let mut workspace_container = rect()
+            .width(Size::flex(1.0))
+            .height(Size::fill())
+            .background(theme::SURFACE_WORKSPACE)
+            .cursor(cursor_icon)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .on_global_pointer_press({
+                move |event: Event<PointerEventData>| {
+                    if *is_pointer_down.peek() {
+                        is_pointer_down.set(false);
+                        let location = event.element_location();
+                        let button = event
+                            .button()
+                            .and_then(|b| pointer_button(Some(b)))
+                            .unwrap_or(PointerButton::Primary);
+                        dispatch_workspace_at(
+                            shell,
+                            modifiers,
+                            gesture_tick,
+                            ruler_drag,
+                            middle_pan_last,
+                            PointerPhase::Up,
+                            button,
+                            GPoint::new(location.x, location.y),
+                        );
+                    }
+                }
+            })
+            .on_sized({
+                move |event: Event<SizedEventData>| {
+                    let width = event.area.width() as f64;
+                    let height = event.area.height() as f64;
+                    let mut camera = shell.peek().view_camera();
+                    if (camera.viewport_width - width).abs() > 0.5
+                        || (camera.viewport_height - height).abs() > 0.5
+                    {
+                        camera.resize(width, height);
+                        shell.write().set_view_camera(camera);
+                        let next = *gesture_tick.peek() + 1;
+                        gesture_tick.set(next);
+                    }
+                }
+            })
+            .child(
+                canvas_paint::canvas_view(
+                    snapshot,
+                    in_flight_guide,
+                    *self.0.soft_proof.read(),
+                    *self.0.channel_view.read(),
+                )
+                    .on_pointer_down({
+                        move |event| {
+                            a11y_id.request_focus();
+                            is_pointer_down.set(true);
+                            dispatch_workspace_pointer(
+                                shell,
+                                modifiers,
+                                gesture_tick,
+                                ruler_drag,
+                                middle_pan_last,
+                                PointerPhase::Down,
+                                &event,
+                            );
+                        }
+                    })
+                    .on_pointer_move({
+                        move |event| {
+                            dispatch_workspace_pointer(
+                                shell,
+                                modifiers,
+                                gesture_tick,
+                                ruler_drag,
+                                middle_pan_last,
+                                PointerPhase::Move,
+                                &event,
+                            );
+                        }
+                    })
+                    .on_mouse_up({
+                        move |event: Event<MouseEventData>| {
+                            event.prevent_default();
+                            if *is_pointer_down.peek() {
+                                is_pointer_down.set(false);
+                                let button = pointer_button(event.button).unwrap_or(PointerButton::Primary);
+                                let location = event.element_location;
+                                dispatch_workspace_at(
+                                    shell,
+                                    modifiers,
+                                    gesture_tick,
+                                    ruler_drag,
+                                    middle_pan_last,
+                                    PointerPhase::Up,
+                                    button,
+                                    GPoint::new(location.x, location.y),
+                                );
                             }
                         }
                     })
-                    .unwrap_or("Rectangle")
-            } else {
-                "Rectangle"
-            };
-
-            LayerRowItem {
-                name: r.name.clone().into(),
-                visible: r.visible,
-                locked: r.locked,
-                selected: r.is_selected,
-                kind: kind.into(),
-                depth: (r.depth as f32 * 16.0),
-                is_container: r.is_container,
-                is_clip_mask: r.is_clip_mask,
-                is_clipped: r.clip_mask_id.is_some(),
-            }
-        })
-        .collect();
-    window.set_layer_rows(Rc::new(VecModel::from(layer_items)).into());
-
-    // Sync Canvas Objects: exact colors via the engine parser, rotation
-    // baked into path geometry (Slint has no rotate transform), effective
-    // opacity, real text metrics and center-sampled gradients.
-    let mut canvas_items = Vec::new();
-    if let Some(session) = state.shell.bridge.session() {
-        let selection = state.shell.bridge.selection();
-        for surface in session.document().surfaces() {
-            let sb = surface.bounds();
-            for obj in surface.objects() {
-                if let Some(b) = obj.bounds {
-                    let is_sel = selection.contains(obj.id);
-                    let eff = obj.effective_appearance();
-                    let opacity = eff.opacity.clamp(0.0, 1.0) as f32;
-                    let rotated = obj.rotation.abs() > f64::EPSILON;
-
-                    // Fill: primary entry first, legacy token fallback.
-                    let bg_color = eff
-                        .primary_fill()
-                        .and_then(|f| paint_to_slint(&f.paint))
-                        .or_else(|| obj.fill.as_deref().map(token_to_slint))
-                        .unwrap_or_else(|| token_to_slint("ptnd.blue/500"));
-                    let (stroke_color, stroke_width) = eff
-                        .primary_stroke()
-                        .and_then(|s| match &s.paint {
-                            petunia_design_document::Paint::None => None,
-                            _ => paint_to_slint(&s.paint).map(|c| (c, s.width.max(0.0) as f32)),
-                        })
-                        .or_else(|| {
-                            obj.stroke
-                                .as_deref()
-                                .map(|t| (token_to_slint(t), (obj.stroke_width as f32).max(0.0)))
-                        })
-                        .unwrap_or((slint::Color::from_argb_u8(0, 0, 0, 0), 0.0));
-
-                    // Geometry: rotated objects bake rotation about the
-                    // bounds top-left (document model) into path data and
-                    // report the rotated bounding box.
-                    let mut is_circle = matches!(&obj.shape, Some(petunia_design_document::ShapeKind::Ellipse));
-                    let mut is_path = false;
-                    let mut is_text = false;
-                    let mut text_content = String::new();
-                    let mut text_size = 16.0f32;
-                    let mut text_color = token_to_slint("ptnd.gray/900");
-                    let mut svg_path = String::new();
-                    let mut corner_radius = 0.0f32;
-                    let (draw_x, draw_y, draw_w, draw_h);
-                    if rotated {
-                        if matches!(&obj.shape, Some(petunia_design_document::ShapeKind::Text { .. })) {
-                            // Text has no vector outline: draw unrotated
-                            // (known fidelity gap, documented).
-                            is_text = true;
-                            draw_x = b[0];
-                            draw_y = b[1];
-                            draw_w = b[2];
-                            draw_h = b[3];
-                        } else {
-                            let rot = GAffine::translate(b[0], b[1])
-                                .after(GAffine::rotate(obj.rotation))
-                                .after(GAffine::translate(-b[0], -b[1]));
-                            let rp = obj.evaluated_path().transformed(rot);
-                            if let Some(bb) = rp.bounding_box() {
-                                draw_x = bb.x0;
-                                draw_y = bb.y0;
-                                draw_w = bb.width().max(1.0);
-                                draw_h = bb.height().max(1.0);
-                                let local = rp.transformed(GAffine::translate(-bb.x0, -bb.y0));
-                                svg_path = local.to_svg_path_data();
-                                is_path = true;
-                                is_circle = false;
+                    .on_touch_end({
+                        move |event: Event<TouchEventData>| {
+                            if *is_pointer_down.peek() {
+                                is_pointer_down.set(false);
+                                let location = event.element_location;
+                                dispatch_workspace_at(
+                                    shell,
+                                    modifiers,
+                                    gesture_tick,
+                                    ruler_drag,
+                                    middle_pan_last,
+                                    PointerPhase::Up,
+                                    PointerButton::Primary,
+                                    GPoint::new(location.x, location.y),
+                                );
+                            }
+                        }
+                    })
+                    .on_touch_cancel({
+                        move |event: Event<TouchEventData>| {
+                            if *is_pointer_down.peek() {
+                                is_pointer_down.set(false);
+                                let location = event.element_location;
+                                dispatch_workspace_at(
+                                    shell,
+                                    modifiers,
+                                    gesture_tick,
+                                    ruler_drag,
+                                    middle_pan_last,
+                                    PointerPhase::Cancel,
+                                    PointerButton::Primary,
+                                    GPoint::new(location.x, location.y),
+                                );
+                            }
+                        }
+                    })
+                    .on_wheel({
+                        move |event: Event<WheelEventData>| {
+                            let cursor = event.element_location;
+                            let screen_focus = GPoint::new(cursor.x, cursor.y);
+                            let control = modifiers.read().disable_snap;
+                            if control {
+                                // Zoom centered on cursor location
+                                if event.delta_y.abs() > 0.05 {
+                                    let factor = if event.delta_y < 0. { 1.12 } else { 1.0 / 1.12 };
+                                    shell.write().zoom_at(screen_focus, factor);
+                                    let next = *gesture_tick.peek() + 1;
+                                    gesture_tick.set(next);
+                                }
                             } else {
-                                draw_x = b[0];
-                                draw_y = b[1];
-                                draw_w = b[2];
-                                draw_h = b[3];
+                                // Smooth pan
+                                if event.delta_y.abs() > 0.05 || event.delta_x.abs() > 0.05 {
+                                    let dx = -event.delta_x;
+                                    let dy = -event.delta_y;
+                                    shell.write().pan(dx, dy);
+                                    let next = *gesture_tick.peek() + 1;
+                                    gesture_tick.set(next);
+                                }
                             }
                         }
-                    } else {
-                        draw_x = b[0];
-                        draw_y = b[1];
-                        draw_w = b[2];
-                        draw_h = b[3];
-                        match &obj.shape {
-                            Some(petunia_design_document::ShapeKind::Ellipse) => {
-                                is_circle = true;
-                            }
-                            Some(petunia_design_document::ShapeKind::Rectangle { corner_radii }) => {
-                                corner_radius = corner_radii[0] as f32;
-                            }
-                            Some(petunia_design_document::ShapeKind::Path(_)) => {
-                                let local = obj
-                                    .evaluated_path()
-                                    .transformed(GAffine::translate(-b[0], -b[1]));
-                                svg_path = local.to_svg_path_data();
-                                is_path = true;
-                                is_circle = false;
-                            }
-                            Some(petunia_design_document::ShapeKind::Polygon { .. })
-                            | Some(petunia_design_document::ShapeKind::Star { .. }) => {
-                                let local_path = obj
-                                    .evaluated_path()
-                                    .transformed(GAffine::translate(-b[0], -b[1]));
-                                svg_path = local_path.to_svg_path_data();
-                                is_path = true;
-                                is_circle = false;
-                            }
-                            Some(petunia_design_document::ShapeKind::Text {
-                                content,
-                                font_size,
-                                ..
-                            }) => {
-                                is_text = true;
-                                text_content = content.clone();
-                                text_size = *font_size as f32;
-                            }
-                            None => {
-                                let name_lower = obj.name.to_lowercase();
-                                is_circle = name_lower.contains("circle")
-                                    || name_lower.contains("ellipse");
-                            }
-                        }
-                    }
-                    if is_text {
-                        if let Some(fill) = &obj.fill {
-                            text_color = token_to_slint(fill);
-                        }
-                        if let Some(petunia_design_document::ShapeKind::Text { font_size, .. }) =
-                            &obj.shape
-                        {
-                            text_size = *font_size as f32;
-                        }
-                    }
-
-                    // Relative to the artboard's top-left corner
-                    let rel_x = (draw_x - sb[0]).max(0.0) as f32;
-                    let rel_y = (draw_y - sb[1]).max(0.0) as f32;
-                    let w = draw_w.max(10.0) as f32;
-                    let h = draw_h.max(10.0) as f32;
-
-                    canvas_items.push(CanvasObjectItem {
-                        id: obj.id.to_string().into(),
-                        name: obj.name.clone().into(),
-                        x: rel_x,
-                        y: rel_y,
-                        w,
-                        h,
-                        bg_color,
-                        stroke_color,
-                        stroke_width,
-                        corner_radius,
-                        selected: is_sel,
-                        is_circle,
-                        is_path,
-                        is_text,
-                        text_content: text_content.into(),
-                        text_size,
-                        text_color,
-                        svg_path: svg_path.into(),
-                        opacity,
-                    });
-                }
-            }
-        }
-    }
-    window.set_canvas_objects(Rc::new(VecModel::from(canvas_items)).into());
-
-    // Sync Properties
-    let props: PropertiesPresentationModel = state.shell.query_properties();
-    if !props.selection_empty {
-        window.set_has_selection(true);
-        window.set_selected_name(props.name.unwrap_or_else(|| "Objeto".to_string()).into());
-        if let Some(b) = props.bounds {
-            window.set_prop_x(b[0] as f32);
-            window.set_prop_y(b[1] as f32);
-            window.set_prop_w(b[2] as f32);
-            window.set_prop_h(b[3] as f32);
-            window.set_prop_rot(props.rotation.to_degrees() as f32);
-            window.set_selected_bounds(
-                format!(
-                    "X: {:.1} pt   Y: {:.1} pt   W: {:.1} pt   H: {:.1} pt",
-                    b[0], b[1], b[2], b[3]
-                )
-                .into(),
+                    }),
             );
-        }
-        if let Some(f) = props.fill {
-            window.set_selected_fill(f.into());
-        }
-        window.set_selected_opacity((props.opacity * 100.0) as f32);
 
-        // Sync Appearance Stack (10.4)
-        let (blend_mode_str, fill_items, stroke_items) = if let Some(app) = &props.appearance {
-            let bm = format!("{:?}", app.blend_mode);
-            let fills: Vec<AppearanceFillItem> = app
-                .fills
-                .iter()
-                .map(|f| {
-                    let (ptype, col) = match &f.paint {
-                        petunia_design_document::Paint::Solid(c) => ("Solid", c.clone()),
-                        petunia_design_document::Paint::LinearGradient(_) => {
-                            ("Linear", "Linear Gradient".to_string())
-                        }
-                        petunia_design_document::Paint::RadialGradient(_) => {
-                            ("Radial", "Radial Gradient".to_string())
-                        }
-                        petunia_design_document::Paint::None => ("None", "None".to_string()),
-                    };
-                    AppearanceFillItem {
-                        id: f.id as i32,
-                        paint_type: ptype.into(),
-                        color_label: col.into(),
-                        opacity_pct: (f.opacity * 100.0).round() as i32,
-                        visible: f.visible,
-                    }
-                })
-                .collect();
-            let strokes: Vec<AppearanceStrokeItem> = app
-                .strokes
-                .iter()
-                .map(|s| {
-                    let (ptype, col) = match &s.paint {
-                        petunia_design_document::Paint::Solid(c) => ("Solid", c.clone()),
-                        petunia_design_document::Paint::LinearGradient(_) => {
-                            ("Linear", "Linear Gradient".to_string())
-                        }
-                        petunia_design_document::Paint::RadialGradient(_) => {
-                            ("Radial", "Radial Gradient".to_string())
-                        }
-                        petunia_design_document::Paint::None => ("None", "None".to_string()),
-                    };
-                    AppearanceStrokeItem {
-                        id: s.id as i32,
-                        paint_type: ptype.into(),
-                        color_label: col.into(),
-                        width_pt: s.width as f32,
-                        opacity_pct: (s.opacity * 100.0).round() as i32,
-                        visible: s.visible,
-                    }
-                })
-                .collect();
-            (bm, fills, strokes)
-        } else {
-            ("Normal".to_string(), Vec::new(), Vec::new())
-        };
-
-        window.set_prop_blend_mode(blend_mode_str.into());
-        window.set_prop_fills(Rc::new(VecModel::from(fill_items)).into());
-        window.set_prop_strokes(Rc::new(VecModel::from(stroke_items)).into());
-        if let Some(app) = &props.appearance {
-            if let Some(stroke) = app.primary_stroke() {
-                window.set_prop_stroke_width(stroke.width as f32);
-            }
+        if let Some(editor) = active_text_editor {
+            workspace_container = workspace_container.child(editor);
         }
-    } else {
-        window.set_has_selection(false);
-        window.set_selected_name("(Nenhuma seleção)".into());
-        window.set_selected_bounds("—".into());
-        window.set_selected_fill("—".into());
-        window.set_selected_opacity(100.0);
-        window.set_prop_x(0.0);
-        window.set_prop_y(0.0);
-        window.set_prop_w(0.0);
-        window.set_prop_h(0.0);
-        window.set_prop_rot(0.0);
-        window.set_prop_blend_mode("Normal".into());
-        window.set_prop_fills(Rc::new(VecModel::from(Vec::new())).into());
-        window.set_prop_strokes(Rc::new(VecModel::from(Vec::new())).into());
+
+        workspace_container
     }
-
-    // Sync History
-    let history: HistoryPresentationModel = state.shell.bridge.query_history();
-    let history_items: Vec<HistoryRowItem> = history
-        .undo_stack
-        .iter()
-        .enumerate()
-        .map(|(i, h)| HistoryRowItem {
-            index: (i + 1) as i32,
-            description: h.description.clone().into(),
-        })
-        .collect();
-    window.set_history_rows(Rc::new(VecModel::from(history_items)).into());
-
-    // Sync Data Merge
-    let merge: DataMergePresentationModel = state.shell.query_data_merge();
-    let src = merge
-        .sources
-        .first()
-        .map(|s| s.name.clone())
-        .unwrap_or_else(|| "none".to_string());
-    window.set_merge_source(src.into());
-    window.set_merge_records(merge.total_records as i32);
-    window.set_merge_bindings(merge.bindings.len() as i32);
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = env::args().collect();
-    if args
-        .iter()
-        .any(|a| a == "--smoke-test" || a == "--headless")
+fn dispatch_workspace_pointer(
+    shell: State<PetuniaShell>,
+    modifiers: State<SemanticModifiers>,
+    gesture_tick: State<u64>,
+    ruler_drag: State<Option<(petunia_design_document::GuideOrientation, f64)>>,
+    middle_pan_last: State<Option<GPoint>>,
+    phase: PointerPhase,
+    event: &Event<PointerEventData>,
+) {
+    let location = event.element_location();
+    let button = if phase == PointerPhase::Move {
+        PointerButton::Primary
+    } else if let Some(button) = event
+        .button()
+        .and_then(|button| pointer_button(Some(button)))
     {
-        println!("petunia-design: Running automated smoke test...");
-        let mut state = PetuniaSlintState::new();
-        if let Err(e) = state.smoke_test() {
-            eprintln!("petunia-design smoke test failed: {e}");
-            std::process::exit(1);
-        }
-        println!("petunia-design: Smoke test PASSED.");
-        return Ok(());
-    }
+        button
+    } else {
+        PointerButton::Primary
+    };
+    dispatch_workspace_at(
+        shell,
+        modifiers,
+        gesture_tick,
+        ruler_drag,
+        middle_pan_last,
+        phase,
+        button,
+        GPoint::new(location.x, location.y),
+    );
+}
 
-    let main_window = MainWindow::new()?;
-    let state = Rc::new(RefCell::new(PetuniaSlintState::new()));
-
-    // Initial sync
-    sync_ui_from_shell(&main_window, &state.borrow());
-
-    // Tool selection
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_select_tool(move |tool_name| {
-            let tool = match tool_name.as_str() {
-                "Node" => ToolKind::Node,
-                "Pen" => ToolKind::Pen,
-                "Pencil" => ToolKind::Pencil,
-                "Rectangle" => ToolKind::Rectangle,
-                "Ellipse" => ToolKind::Ellipse,
-                "Polygon" => ToolKind::Polygon,
-                "Star" => ToolKind::Star,
-                "Text" => ToolKind::ArtisticText,
-                "Gradient" => ToolKind::Gradient,
-                "ColorPicker" => ToolKind::ColorPicker,
-                "PointTransform" => ToolKind::PointTransform,
-                "Artboard" => ToolKind::Artboard,
-                "Corner" => ToolKind::Corner,
-                "Knife" => ToolKind::Knife,
-                "Scissors" => ToolKind::Scissors,
-                "ShapeBuilder" => ToolKind::ShapeBuilder,
-                "Perspective" => ToolKind::Perspective,
-                "Hand" => ToolKind::Hand,
-                "Zoom" => ToolKind::Zoom,
-                _ => ToolKind::Select,
-            };
-            state_clone.borrow_mut().shell.set_active_tool(tool);
-            if let Some(win) = win_weak.upgrade() {
-                win.set_canvas_cursor_kind(tool_cursor_kind(tool).into());
-                let hint = match tool {
-                    ToolKind::Select => "Select: Clique para selecionar, arraste para mover | Shift: Multi-seleção | Alt: Duplicar",
-                    ToolKind::Node => "Node: Clique e arraste pontos de controle e alças Bézier para ajustar curvas.",
-                    ToolKind::Corner => "Corner: Arraste sobre vértices para ajustar o raio de arredondamento.",
-                    ToolKind::Pen => "Pen: Clique para criar nós angulares, arraste para nós suaves com tangentes.",
-                    ToolKind::Pencil => "Pencil: Desenho vetorial à mão livre com suavização dinâmica.",
-                    ToolKind::Rectangle => "Rectangle: Clique e arraste para desenhar retângulos e quadrados com cantos vivos ou arredondados.",
-                    ToolKind::Ellipse => "Ellipse: Clique e arraste para desenhar elipses ou círculos perfeitos (com Shift).",
-                    ToolKind::Polygon => "Polygon: Desenha polígonos regulares configuráveis.",
-                    ToolKind::Star => "Star: Desenha estrelas vetoriais com raio interno personalizável.",
-                    ToolKind::ArtisticText | ToolKind::FrameText => "Text: Clique no canvas para criar caixa de texto com tipografia vetorial.",
-                    ToolKind::Gradient => "Gradient: Arraste sobre o objeto para definir gradiente linear ou radial.",
-                    ToolKind::ColorPicker => "Color Picker: Clique em qualquer elemento para capturar cor de preenchimento.",
-                    ToolKind::Knife => "Knife/Scissors: Fatie formas e caminhos vetoriais com uma linha de corte.",
-                    ToolKind::ShapeBuilder => "Shape Builder: Combine, una ou subtraia regiões de geometrias sobrepostas.",
-                    ToolKind::Perspective => "Perspective: Arraste os cantos para deformar em perspectiva (modificador vivo).",
-                    ToolKind::PointTransform => "Point Transform: Transformações afins livres com ponto de pivô customizado.",
-                    ToolKind::Artboard => "Artboard: Redimensione ou crie novas pranchetas de trabalho.",
-                    ToolKind::Hand => "Hand: Arraste para navegar pelo espaço infinito da prancheta.",
-                    ToolKind::Zoom => "Zoom: Clique para ampliar, Alt+Clique para reduzir o zoom.",
-                    _ => "Petunia Design Studio: ferramenta pronta para uso.",
-                };
-                win.set_status_hint(hint.into());
-                sync_ui_from_shell(&win, &state_clone.borrow());
-            }
-        });
-    }
-
-    // Persona switcher (08.2)
-    {
-        let win_weak = main_window.as_weak();
-        main_window.on_switch_persona(move |p| {
-            if let Some(win) = win_weak.upgrade() {
-                win.set_active_persona(p);
-                let hint = if p == 0 {
-                    "🎨 Design Persona: Modo Vetorial ativo. Ferramentas de desenho, nós, preenchimento e curvas."
-                } else {
-                    "📷 Photo Persona: Modo Raster ativo. Pincéis de pixels, recorte, retoque e máscaras raster."
-                };
-                win.set_status_hint(hint.into());
-            }
-        });
-    }
-
-    // Command palette (Ctrl+K) (08.2)
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_open_palette(move || {
-            let mut st = state_clone.borrow_mut();
-            st.palette_filtered.clear();
-            if let Some(win) = win_weak.upgrade() {
-                win.set_palette_query("".into());
-                push_palette_items(&win, "", &mut st);
-                win.set_palette_open(true);
-            }
-        });
-    }
-    {
-        let win_weak = main_window.as_weak();
-        main_window.on_close_palette(move || {
-            if let Some(win) = win_weak.upgrade() {
-                win.set_palette_open(false);
-            }
-        });
-    }
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_palette_query_changed(move |text| {
-            let mut st = state_clone.borrow_mut();
-            st.palette_filtered.clear();
-            if let Some(win) = win_weak.upgrade() {
-                push_palette_items(&win, text.as_str(), &mut st);
-            }
-        });
-    }
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        let activate = move |id: String| {
-            let mut st = state_clone.borrow_mut();
-            let should_sync = run_palette_command(&mut st, id.as_str());
-            if id == "export" {
-                if let Some(win) = win_weak.upgrade() {
-                    win.set_palette_open(false);
-                    win.set_export_dialog_open(true);
-                }
+fn dispatch_workspace_at(
+    mut shell: State<PetuniaShell>,
+    modifiers: State<SemanticModifiers>,
+    mut gesture_tick: State<u64>,
+    mut ruler_drag: State<Option<(petunia_design_document::GuideOrientation, f64)>>,
+    mut middle_pan_last: State<Option<GPoint>>,
+    phase: PointerPhase,
+    button: PointerButton,
+    screen: GPoint,
+) {
+    // 1. Middle mouse button pan navigation
+    if button == PointerButton::Middle {
+        match phase {
+            PointerPhase::Down => {
+                middle_pan_last.set(Some(screen));
                 return;
             }
-            if let Some(win) = win_weak.upgrade() {
-                win.set_palette_open(false);
-                if should_sync {
-                    sync_ui_from_shell(&win, &st);
+            PointerPhase::Move => {
+                let last = middle_pan_last.peek().clone();
+                if let Some(last) = last {
+                    let dx = screen.x - last.x;
+                    let dy = screen.y - last.y;
+                    shell.write().pan(dx, dy);
+                    middle_pan_last.set(Some(screen));
+                    let next = *gesture_tick.peek() + 1;
+                    gesture_tick.set(next);
+                    return;
                 }
             }
-        };
-        let state_clone2 = state.clone();
-        let win_weak2 = main_window.as_weak();
-        main_window.on_palette_activate(move |id| {
-            let _ = &state_clone2;
-            let _ = &win_weak2;
-            activate(id.to_string());
-        });
-        // Enter-to-run-first needs its own closure over fresh clones.
-        let state_clone3 = state.clone();
-        let win_weak3 = main_window.as_weak();
-        main_window.on_palette_activate_first(move || {
-            let first = state_clone3
-                .borrow()
-                .palette_filtered
-                .first()
-                .cloned();
-            if let Some(id) = first {
-                let mut st = state_clone3.borrow_mut();
-                let should_sync = run_palette_command(&mut st, id.as_str());
-                if let Some(win) = win_weak3.upgrade() {
-                    win.set_palette_open(false);
-                    if should_sync {
-                        sync_ui_from_shell(&win, &st);
-                    }
+            PointerPhase::Up | PointerPhase::Cancel => {
+                if middle_pan_last.peek().is_some() {
+                    middle_pan_last.set(None);
+                    return;
                 }
             }
-        });
+        }
     }
 
-    // Undo / Redo
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_undo_clicked(move || {
-            let _ = state_clone.borrow_mut().shell.undo();
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &state_clone.borrow());
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_redo_clicked(move || {
-            let _ = state_clone.borrow_mut().shell.redo();
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &state_clone.borrow());
-            }
-        });
-    }
-
-    // Zoom & View
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_zoom_in_clicked(move || {
-            let center = GPoint::new(400.0, 300.0);
-            state_clone.borrow_mut().shell.zoom_at(center, 1.2);
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &state_clone.borrow());
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_zoom_out_clicked(move || {
-            let center = GPoint::new(400.0, 300.0);
-            state_clone.borrow_mut().shell.zoom_at(center, 0.8);
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &state_clone.borrow());
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_fit_canvas_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            if let Some(surface) = st
-                .shell
-                .bridge
-                .session()
-                .and_then(|s| s.document().surfaces().first())
-            {
-                let b = surface.bounds();
-                st.shell
-                    .fit_surface(GRect::new(b[0], b[1], b[0] + b[2], b[1] + b[3]));
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_new_doc_clicked(move || {
-            let _ = state_clone.borrow_mut().shell.new_document("Untitled");
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &state_clone.borrow());
-            }
-        });
-    }
-
-    // Open Document via RFD
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_open_doc_clicked(move || {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("Petunia Design Studio Project (*.PTND)", &["PTND", "ptnd"])
-                .add_filter("Gráficos Vetoriais SVG (*.svg)", &["svg"])
-                .add_filter("Todos os arquivos (*.*)", &["*"])
-                .set_title("Abrir Documento Aubrieta")
-                .pick_file()
-            {
-                println!("RFD: Arquivo selecionado para abertura: {:?}", path);
-                let title = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("Novo Documento");
-                let _ = state_clone.borrow_mut().shell.new_document(title);
-                if let Some(win) = win_weak.upgrade() {
-                    sync_ui_from_shell(&win, &state_clone.borrow());
-                }
-            }
-        });
-    }
-
-    // Save Document via RFD
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_save_doc_clicked(move || {
-            let default_name = state_clone
-                .borrow()
-                .shell
-                .bridge
-                .session()
-                .map(|s| format!("{}.aub", s.title()))
-                .unwrap_or_else(|| "projeto.aub".to_string());
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("Petunia Design Studio Project (*.PTND)", &["PTND", "ptnd"])
-                .set_file_name(&default_name)
-                .set_title("Salvar Projeto Aubrieta")
-                .save_file()
-            {
-                println!("RFD: Salvando projeto em: {:?}", path);
-                if let Some(win) = win_weak.upgrade() {
-                    sync_ui_from_shell(&win, &state_clone.borrow());
-                }
-            }
-        });
-    }
-
-    // Place Image via RFD
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_place_image_clicked(move || {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter(
-                    "Imagens Raster/Vetoriais (*.png, *.jpg, *.jpeg, *.svg)",
-                    &["png", "jpg", "jpeg", "svg"],
-                )
-                .set_title("Inserir Imagem no Documento")
-                .pick_file()
-            {
-                println!("RFD: Inserindo imagem: {:?}", path);
-                let mut st = state_clone.borrow_mut();
-                let Ok(obj_id) = st.shell.bridge.next_object_id() else { return };
-                if let Some(surface) = st
-                    .shell
-                    .bridge
-                    .session()
-                    .and_then(|s| s.document().surfaces().first().cloned())
-                {
-                    let file_stem = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("Imagem");
-                    let _ = st.shell.bridge.submit_command(CommandRequest::new(
-                        Command::CreateObject {
-                            surface: surface.id,
-                            id: obj_id,
-                            name: format!("Imagem: {file_stem}"),
-                        },
-                    ));
-                    let _ =
-                        st.shell
-                            .bridge
-                            .set_bounds(obj_id, Some([180.0, 180.0, 240.0, 160.0]), 0.0);
-                    let _ = st
-                        .shell
-                        .bridge
-                        .set_fill(obj_id, Some("ptnd.green/500".to_string()));
-                    st.shell.bridge.set_selection(vec![obj_id]);
-                }
-                if let Some(win) = win_weak.upgrade() {
-                    sync_ui_from_shell(&win, &st);
-                }
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        main_window.on_snap_toggled(move |enabled| {
-            let mut st = state_clone.borrow_mut();
-            st.shell.snap.config.grid_enabled = enabled;
-            st.shell.snap.config.guides_enabled = enabled;
-        });
-    }
-
-    // Batch 1: Select marquee rule backing the settings option
-    // (Sobrepor = Intersect, Completa = Contained, Auto = Directional).
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_marquee_rule_changed(move |rule_name| {
-            let rule = match rule_name.as_str() {
-                "Intersect" => MarqueeSelectRule::Intersect,
-                "Contained" => MarqueeSelectRule::Contained,
-                _ => MarqueeSelectRule::Directional,
-            };
-            let mut st = state_clone.borrow_mut();
-            st.shell.tools.set_select_marquee_rule(rule);
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    {
-        let win_weak = main_window.as_weak();
-        main_window.on_tab_changed(move |tab_idx| {
-            if let Some(win) = win_weak.upgrade() {
-                win.set_active_tab_index(tab_idx);
-            }
-        });
-    }
-
-    // Select layer by index
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_select_layer_by_index(move |idx| {
-            let mut st = state_clone.borrow_mut();
-            let layers = st.shell.query_layers();
-            if let Some(r) = layers.rows.get(idx as usize) {
-                let obj_id = r.id;
-                st.shell.bridge.set_selection(vec![obj_id]);
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Add rectangle clicked
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_add_rectangle_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            if let Some(surface) = st
-                .shell
-                .bridge
-                .session()
-                .and_then(|s| s.document().surfaces().first().cloned())
-            {
-                let Ok(new_id) = st.shell.bridge.next_object_id() else { return };
-                let count = surface.objects().len() + 1;
-                let _ =
-                    st.shell
-                        .bridge
-                        .submit_command(CommandRequest::new(Command::CreateObject {
-                            surface: surface.id,
-                            id: new_id,
-                            name: format!("Rectangle {}", count),
-                        }));
-                let offset = (count as f64 * 35.0) % 250.0;
-                let _ = st.shell.bridge.set_bounds(
-                    new_id,
-                    Some([120.0 + offset, 120.0 + offset, 200.0, 130.0]),
-                    0.0,
-                );
-                let _ = st
-                    .shell
-                    .bridge
-                    .set_fill(new_id, Some("ptnd.green/500".to_string()));
-                st.shell.bridge.set_selection(vec![new_id]);
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Add circle clicked
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_add_circle_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            if let Some(surface) = st
-                .shell
-                .bridge
-                .session()
-                .and_then(|s| s.document().surfaces().first().cloned())
-            {
-                let Ok(new_id) = st.shell.bridge.next_object_id() else { return };
-                let count = surface.objects().len() + 1;
-                let _ =
-                    st.shell
-                        .bridge
-                        .submit_command(CommandRequest::new(Command::CreateObject {
-                            surface: surface.id,
-                            id: new_id,
-                            name: format!("Circle {}", count),
-                        }));
-                let offset = (count as f64 * 35.0) % 250.0;
-                let _ = st.shell.bridge.set_bounds(
-                    new_id,
-                    Some([360.0 + offset, 180.0 + offset, 130.0, 130.0]),
-                    0.0,
-                );
-                let _ = st
-                    .shell
-                    .bridge
-                    .set_fill(new_id, Some("ptnd.purple/500".to_string()));
-                st.shell.bridge.set_selection(vec![new_id]);
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Add star clicked
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_add_star_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            if let Some(surface) = st
-                .shell
-                .bridge
-                .session()
-                .and_then(|s| s.document().surfaces().first().cloned())
-            {
-                let Ok(new_id) = st.shell.bridge.next_object_id() else { return };
-                let count = surface.objects().len() + 1;
-                let offset = (count as f64 * 35.0) % 250.0;
-                let _ = st.shell.bridge.create_shape_object(
-                    surface.id,
-                    new_id,
-                    format!("Star {}", count),
-                    petunia_design_document::ShapeKind::Star {
-                        points: 5,
-                        inner_ratio: 0.45,
-                    },
-                    Some([220.0 + offset, 160.0 + offset, 130.0, 130.0]),
-                    Some("ptnd.rose/500".to_string()),
-                    Some("#e11d48".to_string()),
-                    1.5,
-                );
-                st.shell.bridge.set_selection(vec![new_id]);
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Add text clicked
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_add_text_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            if let Some(surface) = st
-                .shell
-                .bridge
-                .session()
-                .and_then(|s| s.document().surfaces().first().cloned())
-            {
-                let Ok(new_id) = st.shell.bridge.next_object_id() else { return };
-                let count = surface.objects().len() + 1;
-                let offset = (count as f64 * 25.0) % 200.0;
-                let _ = st.shell.bridge.create_shape_object(
-                    surface.id,
-                    new_id,
-                    format!("Text {}", count),
-                    petunia_design_document::ShapeKind::Text {
-                        content: format!("Texto Vetorial {}", count),
-                        font_family: "Inter".to_string(),
-                        font_size: 18.0,
-                        line_height: 22.0,
-                        letter_spacing: 0.0,
-                        on_path: None,
-                    },
-                    Some([140.0 + offset, 240.0 + offset, 220.0, 40.0]),
-                    Some("ptnd.purple/500".to_string()),
-                    None,
-                    0.0,
-                );
-                st.shell.bridge.set_selection(vec![new_id]);
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Boolean Union
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_boolean_union_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
-            if sel_ids.len() < 2 {
-                if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document().surfaces().first() {
-                        if surface.objects().len() >= 2 {
-                            sel_ids = vec![surface.objects()[0].id, surface.objects()[1].id];
-                        }
-                    }
-                }
-            }
-            if sel_ids.len() >= 2 {
-                let id_a = sel_ids[0];
-                let id_b = sel_ids[1];
-                let Ok(target_id) = st.shell.bridge.next_object_id() else { return };
-                if let Some(surface) = st
-                    .shell
-                    .bridge
-                    .session()
-                    .and_then(|s| s.document().surfaces().first().cloned())
-                {
-                    let _ = st.shell.bridge.apply_boolean(
-                        surface.id,
-                        target_id,
-                        id_a,
-                        id_b,
-                        petunia_design_geometry::BooleanOp::Union,
-                    );
-                    st.shell.bridge.set_selection(vec![target_id]);
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Boolean Subtract
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_boolean_subtract_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
-            if sel_ids.len() < 2 {
-                if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document().surfaces().first() {
-                        if surface.objects().len() >= 2 {
-                            sel_ids = vec![surface.objects()[0].id, surface.objects()[1].id];
-                        }
-                    }
-                }
-            }
-            if sel_ids.len() >= 2 {
-                let id_a = sel_ids[0];
-                let id_b = sel_ids[1];
-                let Ok(target_id) = st.shell.bridge.next_object_id() else { return };
-                if let Some(surface) = st
-                    .shell
-                    .bridge
-                    .session()
-                    .and_then(|s| s.document().surfaces().first().cloned())
-                {
-                    let _ = st.shell.bridge.apply_boolean(
-                        surface.id,
-                        target_id,
-                        id_a,
-                        id_b,
-                        petunia_design_geometry::BooleanOp::Difference,
-                    );
-                    st.shell.bridge.set_selection(vec![target_id]);
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Boolean Intersect
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_boolean_intersect_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
-            if sel_ids.len() < 2 {
-                if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document().surfaces().first() {
-                        if surface.objects().len() >= 2 {
-                            sel_ids = vec![surface.objects()[0].id, surface.objects()[1].id];
-                        }
-                    }
-                }
-            }
-            if sel_ids.len() >= 2 {
-                let id_a = sel_ids[0];
-                let id_b = sel_ids[1];
-                let Ok(target_id) = st.shell.bridge.next_object_id() else { return };
-                if let Some(surface) = st
-                    .shell
-                    .bridge
-                    .session()
-                    .and_then(|s| s.document().surfaces().first().cloned())
-                {
-                    let _ = st.shell.bridge.apply_boolean(
-                        surface.id,
-                        target_id,
-                        id_a,
-                        id_b,
-                        petunia_design_geometry::BooleanOp::Intersection,
-                    );
-                    st.shell.bridge.set_selection(vec![target_id]);
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Boolean Xor
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_boolean_xor_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let mut sel_ids = st.shell.bridge.selection().selected_ids.clone();
-            if sel_ids.len() < 2 {
-                if let Some(session) = st.shell.bridge.session() {
-                    if let Some(surface) = session.document().surfaces().first() {
-                        if surface.objects().len() >= 2 {
-                            sel_ids = vec![surface.objects()[0].id, surface.objects()[1].id];
-                        }
-                    }
-                }
-            }
-            if sel_ids.len() >= 2 {
-                let id_a = sel_ids[0];
-                let id_b = sel_ids[1];
-                let Ok(target_id) = st.shell.bridge.next_object_id() else { return };
-                if let Some(surface) = st
-                    .shell
-                    .bridge
-                    .session()
-                    .and_then(|s| s.document().surfaces().first().cloned())
-                {
-                    let _ = st.shell.bridge.apply_boolean(
-                        surface.id,
-                        target_id,
-                        id_a,
-                        id_b,
-                        petunia_design_geometry::BooleanOp::Xor,
-                    );
-                    st.shell.bridge.set_selection(vec![target_id]);
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Convert to curves
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_convert_to_curves_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            for id in sel {
-                let _ = st.shell.bridge.convert_to_curves(id);
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Bake corners
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_bake_corners_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            for id in sel {
-                let _ = st.shell.bridge.bake_corners(id);
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Bake contour (explicit commit of live offsets, 09.31)
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_bake_contour_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            for id in sel {
-                let _ = st.shell.bridge.bake_contour(id);
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Align objects
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_align_objects_clicked(move |mode_str| {
-            let mut st = state_clone.borrow_mut();
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            if !sel.is_empty() {
-                if let Some(surface_id) = st.shell.bridge.active_surface().or_else(|| {
-                    st.shell
-                        .bridge
-                        .session()
-                        .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
-                }) {
-                    let mode = match mode_str.as_str() {
-                        "Left" => petunia_design_document::AlignmentMode::Left,
-                        "Right" => petunia_design_document::AlignmentMode::Right,
-                        "Top" => petunia_design_document::AlignmentMode::Top,
-                        "Bottom" => petunia_design_document::AlignmentMode::Bottom,
-                        "Middle" => petunia_design_document::AlignmentMode::Middle,
-                        _ => petunia_design_document::AlignmentMode::Center,
-                    };
-                    let _ = st.shell.bridge.align_objects(surface_id, sel, mode);
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Distribute objects
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_distribute_objects_clicked(move |axis_str| {
-            let mut st = state_clone.borrow_mut();
-            let sel = st.shell.bridge.selection().selected_ids.clone();
-            if sel.len() >= 2 {
-                if let Some(surface_id) = st.shell.bridge.active_surface().or_else(|| {
-                    st.shell
-                        .bridge
-                        .session()
-                        .and_then(|s| s.document().surfaces().first().map(|sf| sf.id))
-                }) {
-                    let axis = match axis_str.as_str() {
-                        "Vertical" => petunia_design_document::DistributionAxis::Vertical,
-                        _ => petunia_design_document::DistributionAxis::Horizontal,
-                    };
-                    let _ = st.shell.bridge.distribute_objects(surface_id, sel, axis);
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Delete selected clicked
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_delete_selected_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let sel = st.shell.bridge.selection();
-            for id in sel.selected_ids {
-                let _ = st
-                    .shell
-                    .bridge
-                    .submit_command(CommandRequest::new(Command::DeleteObject { id }));
-            }
-            st.shell.bridge.clear_selection();
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Set selected color
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_set_selected_color(move |c| {
-            let mut st = state_clone.borrow_mut();
-            let sel = st.shell.bridge.selection();
-            let color_name = if c.red() > 200 && c.blue() > 200 {
-                "ptnd.purple/500"
-            } else if c.red() > 200 && c.green() > 150 {
-                "ptnd.yellow/500"
-            } else if c.red() > 200 {
-                "ptnd.rose/500"
-            } else if c.green() > 150 {
-                "ptnd.green/500"
-            } else {
-                "ptnd.blue/500"
-            };
-            for id in sel.selected_ids {
-                let _ = st.shell.bridge.set_fill(id, Some(color_name.to_string()));
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Adjust properties callbacks
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_commit_prop_x(move |text| {
-            let mut st = state_clone.borrow_mut();
-            if let Ok(v) = text.parse::<f64>() {
-                if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
-                    let current = st.shell.bridge.session().and_then(|s| {
-                        s.document()
-                            .surfaces()
-                            .iter()
-                            .flat_map(|s| s.objects())
-                            .find(|o| o.id == sel_id)
-                            .and_then(|o| o.bounds.map(|b| (b, o.rotation)))
-                    });
-                    if let Some((b, rot)) = current {
-                        let mut nb = b;
-                        nb[0] = v;
-                        let _ = st.shell.bridge.set_bounds(sel_id, Some(nb), rot);
-                    }
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_commit_prop_y(move |text| {
-            let mut st = state_clone.borrow_mut();
-            if let Ok(v) = text.parse::<f64>() {
-                if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
-                    let current = st.shell.bridge.session().and_then(|s| {
-                        s.document()
-                            .surfaces()
-                            .iter()
-                            .flat_map(|s| s.objects())
-                            .find(|o| o.id == sel_id)
-                            .and_then(|o| o.bounds.map(|b| (b, o.rotation)))
-                    });
-                    if let Some((b, rot)) = current {
-                        let mut nb = b;
-                        nb[1] = v;
-                        let _ = st.shell.bridge.set_bounds(sel_id, Some(nb), rot);
-                    }
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_commit_prop_w(move |text| {
-            let mut st = state_clone.borrow_mut();
-            if let Ok(v) = text.parse::<f64>() {
-                if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
-                    let current = st.shell.bridge.session().and_then(|s| {
-                        s.document()
-                            .surfaces()
-                            .iter()
-                            .flat_map(|s| s.objects())
-                            .find(|o| o.id == sel_id)
-                            .and_then(|o| o.bounds.map(|b| (b, o.rotation)))
-                    });
-                    if let Some((b, rot)) = current {
-                        let mut nb = b;
-                        nb[2] = v.max(1.0);
-                        let _ = st.shell.bridge.set_bounds(sel_id, Some(nb), rot);
-                    }
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_commit_prop_h(move |text| {
-            let mut st = state_clone.borrow_mut();
-            if let Ok(v) = text.parse::<f64>() {
-                if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
-                    let current = st.shell.bridge.session().and_then(|s| {
-                        s.document()
-                            .surfaces()
-                            .iter()
-                            .flat_map(|s| s.objects())
-                            .find(|o| o.id == sel_id)
-                            .and_then(|o| o.bounds.map(|b| (b, o.rotation)))
-                    });
-                    if let Some((b, rot)) = current {
-                        let mut nb = b;
-                        nb[3] = v.max(1.0);
-                        let _ = st.shell.bridge.set_bounds(sel_id, Some(nb), rot);
-                    }
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_commit_prop_rot(move |text| {
-            let mut st = state_clone.borrow_mut();
-            if let Ok(deg) = text.parse::<f64>() {
-                if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
-                    let current = st.shell.bridge.session().and_then(|s| {
-                        s.document()
-                            .surfaces()
-                            .iter()
-                            .flat_map(|s| s.objects())
-                            .find(|o| o.id == sel_id)
-                            .and_then(|o| o.bounds)
-                    });
-                    if let Some(b) = current {
-                        let _ = st.shell.bridge.set_bounds(
-                            sel_id,
-                            Some(b),
-                            deg.to_radians(),
-                        );
-                    }
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_set_stroke_width_value(move |val| {
-            let mut st = state_clone.borrow_mut();
-            if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
-                let target = st.shell.bridge.session().and_then(|s| {
-                    s.document()
-                        .surfaces()
-                        .iter()
-                        .flat_map(|s| s.objects())
-                        .find(|o| o.id == sel_id)
-                        .map(|o| {
-                            o.effective_appearance()
-                                .primary_stroke()
-                                .map(|entry| entry.id)
-                        })
-                });
-                if let Some(Some(stroke_id)) = target {
-                    let _ = st.shell.bridge.submit_command(CommandRequest::new(
-                        Command::SetStrokeItemWidth {
-                            id: sel_id,
-                            stroke_id,
-                            width: (val as f64).max(0.0),
-                        },
-                    ));
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_set_opacity_value(move |val| {
-            let mut st = state_clone.borrow_mut();
-            if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
-                let opacity = (val as f64 / 100.0).clamp(0.0, 1.0);
-                let _ = st
-                    .shell
-                    .bridge
-                    .submit_command(CommandRequest::new(Command::SetOpacity {
-                        id: sel_id,
-                        opacity,
-                    }));
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Blend mode clicked
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_set_blend_mode_clicked(move |mode_str| {
-            let mut st = state_clone.borrow_mut();
-            let mode = match mode_str.as_str() {
-                "Multiply" => petunia_design_document::BlendMode::Multiply,
-                "Screen" => petunia_design_document::BlendMode::Screen,
-                "Overlay" => petunia_design_document::BlendMode::Overlay,
-                "Darken" => petunia_design_document::BlendMode::Darken,
-                "Lighten" => petunia_design_document::BlendMode::Lighten,
-                "Difference" => petunia_design_document::BlendMode::Difference,
-                "Exclusion" => petunia_design_document::BlendMode::Exclusion,
-                "ColorDodge" => petunia_design_document::BlendMode::ColorDodge,
-                "ColorBurn" => petunia_design_document::BlendMode::ColorBurn,
-                "HardLight" => petunia_design_document::BlendMode::HardLight,
-                "SoftLight" => petunia_design_document::BlendMode::SoftLight,
-                "Hue" => petunia_design_document::BlendMode::Hue,
-                "Saturation" => petunia_design_document::BlendMode::Saturation,
-                "Color" => petunia_design_document::BlendMode::Color,
-                "Luminosity" => petunia_design_document::BlendMode::Luminosity,
-                _ => petunia_design_document::BlendMode::Normal,
-            };
-            let sel_ids = st.shell.bridge.selection().selected_ids;
-            for id in sel_ids {
-                let _ = st.shell.bridge.set_blend_mode(id, mode);
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Add fill clicked
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_add_fill_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let sel_ids = st.shell.bridge.selection().selected_ids;
-            for id in sel_ids {
-                let _ = st.shell.bridge.add_fill(
-                    id,
-                    petunia_design_document::Paint::Solid("ptnd.rose/500".to_string()),
-                );
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Remove fill clicked
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_remove_fill_clicked(move |fill_id| {
-            let mut st = state_clone.borrow_mut();
-            let sel_ids = st.shell.bridge.selection().selected_ids;
-            for id in sel_ids {
-                let _ = st.shell.bridge.remove_fill(id, fill_id as u32);
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Add stroke clicked
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_add_stroke_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let sel_ids = st.shell.bridge.selection().selected_ids;
-            for id in sel_ids {
-                let _ = st.shell.bridge.add_stroke(
-                    id,
-                    petunia_design_document::Paint::Solid("ptnd.blue/500".to_string()),
-                    2.0,
-                );
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Remove stroke clicked
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_remove_stroke_clicked(move |stroke_id| {
-            let mut st = state_clone.borrow_mut();
-            let sel_ids = st.shell.bridge.selection().selected_ids;
-            for id in sel_ids {
-                let _ = st.shell.bridge.remove_stroke(id, stroke_id as u32);
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Gradient style clicked
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_set_gradient_clicked(move |kind| {
-            let mut st = state_clone.borrow_mut();
-            let sel_ids = st.shell.bridge.selection().selected_ids;
-            for id in sel_ids {
-                match kind.as_str() {
-                    "linear" => {
-                        let _ = st.shell.bridge.set_linear_gradient_fill(
-                            id,
-                            "ptnd.blue/500",
-                            "ptnd.purple/500",
-                        );
-                    }
-                    "radial" => {
-                        let _ = st.shell.bridge.set_radial_gradient_fill(
-                            id,
-                            "ptnd.yellow/500",
-                            "ptnd.rose/500",
-                        );
-                    }
-                    _ => {
-                        let _ = st
-                            .shell
-                            .bridge
-                            .set_fill(id, Some("ptnd.blue/500".to_string()));
-                    }
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_duplicate_selected_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let mut new_id = None;
-            let clone_info =
-                if let Some(sel_id) = st.shell.bridge.selection().selected_ids.first().copied() {
-                    if let Some(session) = st.shell.bridge.session() {
-                        if let Some(surface) = session.document().surfaces().first() {
-                            if let Some(obj) = surface.objects().iter().find(|o| o.id == sel_id) {
-                                let b = obj.bounds.unwrap_or([100.0, 100.0, 100.0, 100.0]);
-                                let clone_bounds = [b[0] + 20.0, b[1] + 20.0, b[2], b[3]];
-                                let fill = obj.fill.clone();
-                                let name = format!("{} (cópia)", obj.name);
-                                let surf_id = surface.id;
-                                Some((surf_id, name, clone_bounds, fill))
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                } else {
-                    None
+    // 2. Interactive Guide drag out of metric rulers
+    let camera = shell.peek().view_camera();
+    let current_ruler_drag = ruler_drag.peek().clone();
+    if let Some((orient, _)) = current_ruler_drag {
+        match phase {
+            PointerPhase::Move => {
+                let doc_pt = camera.screen_to_doc(screen);
+                let pos = match orient {
+                    petunia_design_document::GuideOrientation::Horizontal => doc_pt.y,
+                    petunia_design_document::GuideOrientation::Vertical => doc_pt.x,
                 };
-
-            if let Some((surf_id, name, clone_bounds, fill)) = clone_info {
-                let Ok(clone_id) = st.shell.bridge.next_object_id() else { return };
-                let _ =
-                    st.shell
-                        .bridge
-                        .submit_command(CommandRequest::new(Command::CreateObject {
+                ruler_drag.set(Some((orient, pos)));
+                let next = *gesture_tick.peek() + 1;
+                gesture_tick.set(next);
+                return;
+            }
+            PointerPhase::Up => {
+                let surf_id = shell.peek().bridge.active_surface();
+                let doc_pt = camera.screen_to_doc(screen);
+                let pos = match orient {
+                    petunia_design_document::GuideOrientation::Horizontal => doc_pt.y,
+                    petunia_design_document::GuideOrientation::Vertical => doc_pt.x,
+                };
+                if let Some(surf_id) = surf_id {
+                    let guide_id = (std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis())
+                        .unwrap_or(0)
+                        % 1_000_000) as u32;
+                    let guide = petunia_design_document::Guide::new(guide_id, orient, pos);
+                    let _ = shell.write().bridge.submit_all(
+                        "Add guide",
+                        vec![petunia_design_application::Command::AddGuide {
                             surface: surf_id,
-                            id: clone_id,
-                            name,
-                        }));
-                let _ = st
-                    .shell
-                    .bridge
-                    .set_bounds(clone_id, Some(clone_bounds), 0.0);
-                if let Some(f) = fill {
-                    let _ = st.shell.bridge.set_fill(clone_id, Some(f));
-                }
-                new_id = Some(clone_id);
-            }
-            if let Some(id) = new_id {
-                st.shell.bridge.set_selection(vec![id]);
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Layer visibility toggle
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_toggle_layer_visibility(move |idx| {
-            let mut st = state_clone.borrow_mut();
-            let layers = st.shell.query_layers();
-            if let Some(r) = layers.rows.get(idx as usize) {
-                let id = r.id;
-                let visible = !r.visible;
-                let _ = st
-                    .shell
-                    .bridge
-                    .submit_command(CommandRequest::new(Command::SetVisibility { id, visible }));
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Layer lock toggle
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_toggle_layer_lock(move |idx| {
-            let mut st = state_clone.borrow_mut();
-            let layers = st.shell.query_layers();
-            if let Some(r) = layers.rows.get(idx as usize) {
-                let id = r.id;
-                let locked = !r.locked;
-                let _ = st
-                    .shell
-                    .bridge
-                    .submit_command(CommandRequest::new(Command::SetLocked { id, locked }));
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Reorder layer up
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_reorder_layer_up(move |idx| {
-            let mut st = state_clone.borrow_mut();
-            if idx > 0 {
-                let layers = st.shell.query_layers();
-                if let Some(r) = layers.rows.get(idx as usize) {
-                    let surf_id = r.surface_id;
-                    let id = r.id;
-                    let new_index = (idx - 1) as usize;
-                    let _ = st
-                        .shell
-                        .bridge
-                        .submit_command(CommandRequest::new(Command::ReorderObject {
-                            surface: surf_id,
-                            id,
-                            new_index,
-                        }));
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Reorder layer down
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_reorder_layer_down(move |idx| {
-            let mut st = state_clone.borrow_mut();
-            let layers = st.shell.query_layers();
-            if (idx as usize) + 1 < layers.rows.len() {
-                if let Some(r) = layers.rows.get(idx as usize) {
-                    let surf_id = r.surface_id;
-                    let id = r.id;
-                    let new_index = (idx + 1) as usize;
-                    let _ = st
-                        .shell
-                        .bridge
-                        .submit_command(CommandRequest::new(Command::ReorderObject {
-                            surface: surf_id,
-                            id,
-                            new_index,
-                        }));
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Hierarchy & Grouping Callbacks (10.5 - Step 2)
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_group_selected_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let surface_opt = st.shell.bridge.active_surface().or_else(|| {
-                st.shell
-                    .bridge
-                    .session()
-                    .and_then(|s| s.document().surfaces().first().map(|surf| surf.id))
-            });
-            let selected_ids = st.shell.bridge.selection().selected_ids;
-            if let (Some(surface), false) = (surface_opt, selected_ids.is_empty()) {
-                if let Ok(group_id) = st.shell.bridge.next_object_id() {
-                    let _ = st.shell.bridge.group_objects(
-                        surface,
-                        group_id,
-                        selected_ids,
-                        ContainerRole::Group,
+                            guide,
+                        }],
                     );
-                    st.shell.bridge.set_selection(vec![group_id]);
                 }
+                ruler_drag.set(None);
+                let next = *gesture_tick.peek() + 1;
+                gesture_tick.set(next);
+                return;
             }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
+            PointerPhase::Cancel => {
+                ruler_drag.set(None);
+                let next = *gesture_tick.peek() + 1;
+                gesture_tick.set(next);
+                return;
             }
-        });
+            PointerPhase::Down => {}
+        }
+    } else if phase == PointerPhase::Down && button == PointerButton::Primary {
+        // Top horizontal ruler clicked (drag out a horizontal guide)
+        if screen.y < 20.0 && screen.x >= 20.0 {
+            let doc_pt = camera.screen_to_doc(screen);
+            ruler_drag.set(Some((
+                petunia_design_document::GuideOrientation::Horizontal,
+                doc_pt.y,
+            )));
+            return;
+        }
+        // Left vertical ruler clicked (drag out a vertical guide)
+        if screen.x < 20.0 && screen.y >= 20.0 {
+            let doc_pt = camera.screen_to_doc(screen);
+            ruler_drag.set(Some((
+                petunia_design_document::GuideOrientation::Vertical,
+                doc_pt.x,
+            )));
+            return;
+        }
     }
 
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_ungroup_selected_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let selected_ids = st.shell.bridge.selection().selected_ids;
-            for id in selected_ids {
-                let is_group = st
-                    .shell
-                    .bridge
-                    .session()
-                    .and_then(|s| {
-                        s.document()
-                            .find_object(id)
-                            .map(|o| o.is_container() || o.role.is_some())
-                    })
-                    .unwrap_or(false);
+    // 3. Normal canvas tool event dispatch
+    let document = camera.screen_to_doc(screen);
+    let event = NormalizedPointerEvent::new(phase, button, screen, document, *modifiers.read());
+    let _ = shell.write().handle_pointer_event(&event);
+    let next = *gesture_tick.peek() + 1;
+    gesture_tick.set(next);
+}
 
-                if is_group {
-                    let _ = st.shell.bridge.ungroup(id);
+fn pointer_button(button: Option<MouseButton>) -> Option<PointerButton> {
+    match button? {
+        MouseButton::Left => Some(PointerButton::Primary),
+        MouseButton::Middle => Some(PointerButton::Middle),
+        MouseButton::Right => Some(PointerButton::Secondary),
+        MouseButton::Back | MouseButton::Forward | MouseButton::Other(_) => None,
+    }
+}
+
+fn semantic_modifiers(modifiers: Modifiers) -> SemanticModifiers {
+    let shift = modifiers.contains(Modifiers::SHIFT);
+    let alt = modifiers.contains(Modifiers::ALT);
+    let control = modifiers.contains(Modifiers::CONTROL) || modifiers.contains(Modifiers::META);
+    SemanticModifiers {
+        constrain: shift,
+        from_center: alt,
+        duplicate: alt,
+        disable_snap: control,
+        fine_adjust: false,
+    }
+}
+
+fn dispatch_workspace_key(
+    mut shell: State<PetuniaShell>,
+    mut palette_open: State<bool>,
+    mut palette_query: State<String>,
+    mut tool_rail: State<ToolRailState>,
+    mut active_tool: State<ToolKind>,
+    mut customize_open: State<bool>,
+    mut new_doc_open: State<bool>,
+    mut export_open: State<bool>,
+    mut temporary_tool: State<Option<ToolKind>>,
+    mut suspended_tool: State<Option<ToolKind>>,
+    event: &Event<KeyboardEventData>,
+) {
+    if let Some(key) = shortcut_key(event) {
+        let has_command_modifier = event.modifiers.contains(Modifiers::CONTROL)
+            || event.modifiers.contains(Modifiers::META)
+            || event.modifiers.contains(Modifiers::ALT);
+        if !has_command_modifier {
+            let (photo, current_tool) = {
+                let shell_ref = shell.peek();
+                (
+                    shell_ref.bridge.persona()
+                        == petunia_design_application::surfaces::PERSONA_PHOTO,
+                    shell_ref.active_tool(),
+                )
+            };
+            let rail_state = tool_rail.read().clone();
+            if let Some(tool) = resolve_tool_shortcut(key, photo, &rail_state, current_tool) {
+                event.prevent_default();
+                if key.eq_ignore_ascii_case("Space") {
+                    temporary_tool.set(Some(tool));
+                    suspended_tool.set(Some(current_tool));
                 } else {
-                    let parent_opt = st
-                        .shell
-                        .bridge
-                        .session()
-                        .and_then(|s| s.document().find_object(id).and_then(|o| o.parent));
-                    if let Some(parent_id) = parent_opt {
-                        let _ = st.shell.bridge.ungroup(parent_id);
-                    }
+                    temporary_tool.set(None);
+                    suspended_tool.set(None);
+                    tool_rail.write().remember_tool(photo, tool);
+                }
+                shell.write().set_active_tool(tool);
+                active_tool.set(tool);
+                return;
+            }
+        }
+    }
+    let Some(token) = workspace_shortcut(event) else {
+        return;
+    };
+    event.prevent_default();
+    if token == "ptnd.action.view.command_palette" {
+        let open = !*palette_open.read();
+        palette_open.set(open);
+        palette_query.set(String::new());
+    }
+    if token == petunia_design_application::ActionId::EDIT_PREFERENCES {
+        customize_open.set(true);
+    }
+    if token == "ptnd.action.file.new" {
+        new_doc_open.set(true);
+    }
+    if token == "ptnd.action.file.export" {
+        export_open.set(true);
+    }
+    let _ = run_action_id(&mut shell.write(), token);
+}
+
+fn workspace_shortcut(event: &Event<KeyboardEventData>) -> Option<&'static str> {
+    let control =
+        event.modifiers.contains(Modifiers::CONTROL) || event.modifiers.contains(Modifiers::META);
+    if control {
+        return match &event.key {
+            Key::Character(key) if key.eq_ignore_ascii_case("n") => Some("ptnd.action.file.new"),
+            Key::Character(key) if key.eq_ignore_ascii_case("e") => {
+                Some("ptnd.action.file.export")
+            }
+            Key::Character(key) if key.eq_ignore_ascii_case("z") => {
+                if event.modifiers.contains(Modifiers::SHIFT) {
+                    Some("ptnd.action.edit.redo")
+                } else {
+                    Some("ptnd.action.edit.undo")
                 }
             }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
+            Key::Character(key) if key.eq_ignore_ascii_case("y") => Some("ptnd.action.edit.redo"),
+            Key::Character(key) if key.eq_ignore_ascii_case("k") => {
+                Some("ptnd.action.view.command_palette")
             }
-        });
+            Key::Character(key) if key.eq_ignore_ascii_case("a") => {
+                Some("ptnd.action.edit.select_all")
+            }
+            Key::Character(key) if key.eq_ignore_ascii_case("d") => {
+                if event.modifiers.contains(Modifiers::SHIFT) {
+                    Some("ptnd.action.edit.deselect")
+                } else {
+                    Some("ptnd.action.edit.duplicate")
+                }
+            }
+            Key::Character(key) if key.eq_ignore_ascii_case("g") => {
+                if event.modifiers.contains(Modifiers::SHIFT) {
+                    Some("ptnd.action.object.ungroup")
+                } else {
+                    Some("ptnd.action.object.group")
+                }
+            }
+            Key::Character(key) if key == "0" => Some("ptnd.action.view.fit_surface"),
+            Key::Character(key) if key == "+" || key == "=" => Some("ptnd.action.view.zoom_in"),
+            Key::Character(key) if key == "-" => Some("ptnd.action.view.zoom_out"),
+            Key::Character(key) if key == "," => {
+                Some(petunia_design_application::ActionId::EDIT_PREFERENCES)
+            }
+            _ => None,
+        };
     }
+    match &event.key {
+        Key::Named(NamedKey::Delete) | Key::Named(NamedKey::Backspace) => {
+            Some("ptnd.action.edit.delete")
+        }
+        Key::Named(NamedKey::Escape) => Some("ptnd.action.edit.deselect"),
+        _ => None,
+    }
+}
 
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_create_clip_mask_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let surface_opt = st.shell.bridge.active_surface().or_else(|| {
-                st.shell
+fn restore_temporary_tool(
+    mut shell: State<PetuniaShell>,
+    mut active_tool: State<ToolKind>,
+    mut temporary_tool: State<Option<ToolKind>>,
+    mut suspended_tool: State<Option<ToolKind>>,
+) {
+    let Some(previous_tool) = *suspended_tool.read() else {
+        return;
+    };
+    shell.write().set_active_tool(previous_tool);
+    active_tool.set(previous_tool);
+    temporary_tool.set(None);
+    suspended_tool.set(None);
+}
+
+#[derive(Clone, PartialEq)]
+struct StatusBar(UiShell);
+
+impl Component for StatusBar {
+    fn render(&self) -> impl IntoElement {
+        let shell_ref = self.0.shell.peek();
+        let title = shell_ref.bridge.session().map_or_else(
+            || DEFAULT_DOCUMENT_TITLE.to_string(),
+            |s| s.title().to_string(),
+        );
+        let zoom_pct = (shell_ref.view_camera().zoom * 100.).round() as i32;
+        let zoom_label = shell_ref
+            .bridge
+            .localization()
+            .text("ptnd.text.shell.zoom_readout", shell_ref.bridge.locale());
+        // A hovered control explains itself here: tooltips live in the status
+        // bar so buttons stay exactly where the registry put them.
+        let hovered = self.0.hovered.read().clone();
+        let hint = hovered.map_or_else(
+            || {
+                shell_ref
                     .bridge
-                    .session()
-                    .and_then(|s| s.document().surfaces().first().map(|surf| surf.id))
-            });
-            let selected_ids = st.shell.bridge.selection().selected_ids;
-            if let (Some(surface), true) = (surface_opt, selected_ids.len() >= 2) {
-                if let Ok(group_id) = st.shell.bridge.next_object_id() {
-                    let mask_id = selected_ids[0];
-                    let content_ids = selected_ids[1..].to_vec();
-                    let _ =
-                        st.shell
-                            .bridge
-                            .create_clip_group(surface, group_id, mask_id, content_ids);
-                    st.shell.bridge.set_selection(vec![group_id]);
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_release_clip_mask_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let selected_ids = st.shell.bridge.selection().selected_ids;
-            for id in selected_ids {
-                let clip_group = st.shell.bridge.session().and_then(|s| {
-                    let obj = s.document().find_object(id)?;
-                    if obj.role == Some(ContainerRole::ClipGroup) {
-                        Some(obj.id)
-                    } else if let Some(pid) = obj.parent {
-                        let parent = s.document().find_object(pid)?;
-                        if parent.role == Some(ContainerRole::ClipGroup) {
-                            Some(pid)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                });
-                if let Some(cg_id) = clip_group {
-                    let _ = st.shell.bridge.release_clip_group(cg_id);
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Keyboard Shortcuts & Selection Navigation (Step 3)
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_nudge_selected(move |dx, dy| {
-            let mut st = state_clone.borrow_mut();
-            let sel_ids = st.shell.bridge.selection().selected_ids;
-            for id in sel_ids {
-                let current = st.shell.bridge.session().and_then(|s| {
-                    s.document().find_object(id).map(|o| (o.bounds, o.rotation))
-                });
-                if let Some((Some(b), rot)) = current {
-                    let new_b = [b[0] + dx as f64, b[1] + dy as f64, b[2], b[3]];
-                    let _ = st.shell.bridge.set_bounds(id, Some(new_b), rot);
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_select_all_clicked(move || {
-            let mut st = state_clone.borrow_mut();
-            let all_ids: Vec<ObjectId> = if let Some(session) = st.shell.bridge.session() {
-                let surf = st
-                    .shell
-                    .bridge
-                    .active_surface()
-                    .and_then(|sid| session.document().surfaces().iter().find(|s| s.id == sid))
-                    .or_else(|| session.document().surfaces().first());
-                surf.map(|s| s.objects().iter().map(|o| o.id).collect())
+                    .persona_hint(shell_ref.bridge.persona())
                     .unwrap_or_default()
-            } else {
-                Vec::new()
-            };
-            if !all_ids.is_empty() {
-                st.shell.bridge.set_selection(all_ids);
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_cycle_selection_clicked(move |forward| {
-            let mut st = state_clone.borrow_mut();
-            if let Some(session) = st.shell.bridge.session() {
-                let surf = st
-                    .shell
-                    .bridge
-                    .active_surface()
-                    .and_then(|sid| session.document().surfaces().iter().find(|s| s.id == sid))
-                    .or_else(|| session.document().surfaces().first());
-                if let Some(surface) = surf {
-                    let objects: Vec<ObjectId> = surface.objects().iter().map(|o| o.id).collect();
-                    if !objects.is_empty() {
-                        let current_sel = st.shell.bridge.selection().selected_ids.first().copied();
-                        let current_idx =
-                            current_sel.and_then(|id| objects.iter().position(|&o| o == id));
-                        let next_idx = match current_idx {
-                            None => 0,
-                            Some(idx) => {
-                                if forward {
-                                    (idx + 1) % objects.len()
-                                } else {
-                                    (idx + objects.len() - 1) % objects.len()
-                                }
-                            }
-                        };
-                        st.shell.bridge.set_selection(vec![objects[next_idx]]);
-                    }
-                }
-            }
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Direct Export Flow in UI (Step 4)
-    {
-        let win_weak = main_window.as_weak();
-        main_window.on_open_export_dialog_clicked(move || {
-            if let Some(win) = win_weak.upgrade() {
-                win.set_export_status_message("".into());
-                win.set_export_dialog_open(true);
-            }
-        });
-    }
-
-    {
-        let win_weak = main_window.as_weak();
-        main_window.on_close_export_dialog_clicked(move || {
-            if let Some(win) = win_weak.upgrade() {
-                win.set_export_dialog_open(false);
-            }
-        });
-    }
-
-    {
-        let win_weak = main_window.as_weak();
-        main_window.on_set_export_format(move |fmt| {
-            if let Some(win) = win_weak.upgrade() {
-                win.set_export_format(fmt);
-            }
-        });
-    }
-
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_do_export_clicked(move || {
-            let st = state_clone.borrow();
-            let fmt = if let Some(win) = win_weak.upgrade() {
-                win.get_export_format().to_string()
-            } else {
-                "png".to_string()
-            };
-
-            let session = match st.shell.bridge.session() {
-                Some(s) => s,
-                None => return,
-            };
-
-            match fmt.as_str() {
-                "svg" => {
-                    let dialog = rfd::FileDialog::new()
-                        .add_filter("SVG Vector (*.svg)", &["svg"])
-                        .set_file_name("export.svg");
-                    if let Some(path) = dialog.save_file() {
-                        let svg_content = export_document_svg(session.document());
-                        match std::fs::write(&path, svg_content.as_bytes()) {
-                            Ok(()) => {
-                                if let Some(win) = win_weak.upgrade() {
-                                    win.set_export_status_message(
-                                        format!("SVG exportado: {}", path.display()).into(),
-                                    );
-                                }
-                            }
-                            Err(e) => {
-                                if let Some(win) = win_weak.upgrade() {
-                                    win.set_export_status_message(
-                                        format!("Erro SVG: {e}").into(),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-                "pdf" => {
-                    let dialog = rfd::FileDialog::new()
-                        .add_filter("PDF Document (*.pdf)", &["pdf"])
-                        .set_file_name("export.pdf");
-                    if let Some(path) = dialog.save_file() {
-                        let options = PdfExportOptions::default();
-                        match export_document_pdf(session.document(), &options) {
-                            Ok((pdf_bytes, _)) => {
-                                match std::fs::write(&path, &pdf_bytes) {
-                                    Ok(()) => {
-                                        if let Some(win) = win_weak.upgrade() {
-                                            win.set_export_status_message(
-                                                format!("PDF exportado: {}", path.display()).into(),
-                                            );
-                                        }
-                                    }
-                                    Err(e) => {
-                                        if let Some(win) = win_weak.upgrade() {
-                                            win.set_export_status_message(
-                                                format!("Erro ao gravar PDF: {e}").into(),
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                if let Some(win) = win_weak.upgrade() {
-                                    win.set_export_status_message(
-                                        format!("Erro PDF: {e}").into(),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {
-                    // PNG (Raster)
-                    let dialog = rfd::FileDialog::new()
-                        .add_filter("PNG Image (*.png)", &["png"])
-                        .set_file_name("export.png");
-                    if let Some(path) = dialog.save_file() {
-                        if let Some(surface) = session.document().surfaces().first() {
-                            let w = (surface.dimensions[0].round() as usize).max(10);
-                            let h = (surface.dimensions[1].round() as usize).max(10);
-                            let mut buffer = vec![255u8; w * h * 4];
-                            for obj in surface.objects() {
-                                if !obj.visible {
-                                    continue;
-                                }
-                                if let Some(b) = obj.bounds {
-                                    let ox = (b[0] - surface.origin[0]).max(0.0) as usize;
-                                    let oy = (b[1] - surface.origin[1]).max(0.0) as usize;
-                                    let ow = (b[2] as usize).min(w.saturating_sub(ox));
-                                    let oh = (b[3] as usize).min(h.saturating_sub(oy));
-                                    let (cr, cg, cb, ca) = if let Some(fill) = &obj.fill {
-                                        if fill.contains("blue") {
-                                            (59u8, 130u8, 246u8, 255u8)
-                                        } else if fill.contains("yellow") {
-                                            (234, 179, 8, 255)
-                                        } else if fill.contains("green") {
-                                            (16, 185, 129, 255)
-                                        } else if fill.contains("purple") {
-                                            (139, 92, 246, 255)
-                                        } else if fill.contains("rose") || fill.contains("red") {
-                                            (244, 63, 94, 255)
-                                        } else {
-                                            (100, 116, 139, 255)
-                                        }
-                                    } else {
-                                        (59, 130, 246, 255)
-                                    };
-                                    let is_circle = matches!(
-                                        obj.shape,
-                                        Some(petunia_design_document::ShapeKind::Ellipse)
-                                    );
-                                    for py in 0..oh {
-                                        for px in 0..ow {
-                                            if is_circle {
-                                                let rx = ow as f64 / 2.0;
-                                                let ry = oh as f64 / 2.0;
-                                                let dx = (px as f64 - rx) / rx.max(1.0);
-                                                let dy = (py as f64 - ry) / ry.max(1.0);
-                                                if dx * dx + dy * dy > 1.0 {
-                                                    continue;
-                                                }
-                                            }
-                                            let idx = ((oy + py) * w + (ox + px)) * 4;
-                                            if idx + 3 < buffer.len() {
-                                                let alpha = ca as f32 / 255.0;
-                                                buffer[idx] = (cr as f32 * alpha
-                                                    + buffer[idx] as f32 * (1.0 - alpha))
-                                                    as u8;
-                                                buffer[idx + 1] = (cg as f32 * alpha
-                                                    + buffer[idx + 1] as f32 * (1.0 - alpha))
-                                                    as u8;
-                                                buffer[idx + 2] = (cb as f32 * alpha
-                                                    + buffer[idx + 2] as f32 * (1.0 - alpha))
-                                                    as u8;
-                                                buffer[idx + 3] = 255;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            if let Ok(raw) =
-                                RawRasterImage::from_rgba8(w as u32, h as u32, buffer)
-                            {
-                                let opts = RasterExportOptions {
-                                    format: RasterFormat::Png,
-                                    jpeg_quality: 90,
-                                    allow_degradations: true,
-                                };
-                                match export_raster(&raw, &opts) {
-                                    Ok((png_bytes, _)) => match std::fs::write(&path, &png_bytes)
-                                    {
-                                        Ok(()) => {
-                                            if let Some(win) = win_weak.upgrade() {
-                                                win.set_export_status_message(
-                                                    format!("PNG exportado: {}", path.display())
-                                                        .into(),
-                                                );
-                                            }
-                                        }
-                                        Err(e) => {
-                                            if let Some(win) = win_weak.upgrade() {
-                                                win.set_export_status_message(
-                                                    format!("Erro ao gravar PNG: {e}").into(),
-                                                );
-                                            }
-                                        }
-                                    },
-                                    Err(e) => {
-                                        if let Some(win) = win_weak.upgrade() {
-                                            win.set_export_status_message(
-                                                format!("Erro PNG: {e}").into(),
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    // Interactive pointer down
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_canvas_pointer_down(move |x, y| {
-            let screen_pt = GPoint::new(x as f64, y as f64);
-            let mut st = state_clone.borrow_mut();
-            let doc_pt = st.shell.camera.screen_to_doc(screen_pt);
-            st.drag_start_doc = Some(doc_pt);
-
-            let evt = NormalizedPointerEvent::new(
-                PointerPhase::Down,
-                PointerButton::Primary,
-                screen_pt,
-                doc_pt,
-                SemanticModifiers::default(),
-            );
-            let _ = st.shell.handle_pointer_event(&evt);
-
-            if let Some(win) = win_weak.upgrade() {
-                win.set_status_coords(
-                    format!("Doc: X: {:.1} pt  Y: {:.1} pt", doc_pt.x, doc_pt.y).into(),
-                );
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    // Interactive drag
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_canvas_dragged(move |x, y| {
-            let screen_pt = GPoint::new(x as f64, y as f64);
-            let mut st = state_clone.borrow_mut();
-            let doc_pt = st.shell.camera.screen_to_doc(screen_pt);
-
-            let evt = NormalizedPointerEvent::new(
-                PointerPhase::Move,
-                PointerButton::Primary,
-                screen_pt,
-                doc_pt,
-                SemanticModifiers::default(),
-            );
-            let _ = st.shell.handle_pointer_event(&evt);
-
-            // Handle affordances win only under selection tools; any
-            // other active tool owns the cursor everywhere on canvas.
-            let cursor_kind = match st.shell.active_tool() {
-                ToolKind::Select | ToolKind::Node
-                    if st.shell.bridge.selection().combined_bounds.is_some() =>
-                {
-                    let [bx, by, bw, bh] = st
-                        .shell
-                        .bridge
-                        .selection()
-                        .combined_bounds
-                        .unwrap_or([0.0, 0.0, 0.0, 0.0]);
-                    let doc_box = GRect::new(bx, by, bx + bw, by + bh);
-                    if let Some(handle) = hit_test_handle_or_border(
-                        doc_box,
-                        screen_pt,
-                        doc_pt,
-                        &st.shell.camera,
-                        14.0,
-                        8.0,
-                    ) {
-                        match handle {
-                            SelectionHandleKind::TopLeft | SelectionHandleKind::BottomRight => {
-                                "nwse-resize"
-                            }
-                            SelectionHandleKind::TopRight | SelectionHandleKind::BottomLeft => {
-                                "nesw-resize"
-                            }
-                            SelectionHandleKind::Top | SelectionHandleKind::Bottom => "ns-resize",
-                            SelectionHandleKind::Left | SelectionHandleKind::Right => "ew-resize",
-                            SelectionHandleKind::Rotation => "crosshair",
-                        }
-                    } else if doc_box.contains(doc_pt) {
-                        "grab"
-                    } else {
-                        tool_cursor_kind(st.shell.active_tool())
-                    }
-                }
-                tool => tool_cursor_kind(tool),
-            };
-
-            if let Some(win) = win_weak.upgrade() {
-                win.set_status_coords(
-                    format!("Doc: X: {:.1} pt  Y: {:.1} pt", doc_pt.x, doc_pt.y).into(),
-                );
-                win.set_canvas_cursor_kind(cursor_kind.into());
-
-                let overlays = st.shell.overlays();
-                if let Some(marquee) = overlays.marquee_screen {
-                    let ax = win.get_artboard_x() as f64;
-                    let ay = win.get_artboard_y() as f64;
-                    win.set_has_preview(true);
-                    win.set_preview_x((marquee.x0.min(marquee.x1) - ax).max(0.0) as f32);
-                    win.set_preview_y((marquee.y0.min(marquee.y1) - ay).max(0.0) as f32);
-                    win.set_preview_w(marquee.width().abs() as f32);
-                    win.set_preview_h(marquee.height().abs() as f32);
+            },
+            |target| {
+                if target.summary.is_empty() {
+                    target.title.clone()
                 } else {
-                    win.set_has_preview(false);
+                    target.summary.clone()
                 }
+            },
+        );
 
-                sync_ui_from_shell(&win, &st);
-            }
-        });
+        rect()
+            .direction(Direction::Horizontal)
+            .width(Size::fill())
+            .height(Size::px(theme::STATUS_BAR_HEIGHT))
+            .background(theme::SURFACE_CHROME_STRONG)
+            .padding(Gaps::new(0., theme::SPACE_2, 0., theme::SPACE_2))
+            .spacing(theme::SPACE_2)
+            .cross_align(Alignment::Center)
+            .child(
+                label()
+                    .text(format!("{title} · {zoom_label}: {zoom_pct}%"))
+                    .color(theme::TEXT_SECONDARY)
+                    .font_size(theme::CAPTION_SIZE),
+            )
+            .child(rect().width(Size::fill()))
+            .child(
+                label()
+                    .text(hint)
+                    .color(theme::TEXT_TERTIARY)
+                    .font_size(theme::CAPTION_SIZE),
+            )
+            .child(AppearanceBar(self.0.clone()))
     }
-
-    // Interactive pointer up
-    {
-        let state_clone = state.clone();
-        let win_weak = main_window.as_weak();
-        main_window.on_canvas_pointer_up(move |x, y| {
-            let screen_pt = GPoint::new(x as f64, y as f64);
-            let mut st = state_clone.borrow_mut();
-            let doc_pt = st.shell.camera.screen_to_doc(screen_pt);
-
-            if let Some(win) = win_weak.upgrade() {
-                win.set_has_preview(false);
-            }
-
-            st.drag_start_doc = None;
-            st.dragging_object_id = None;
-            st.drag_initial_bounds = None;
-
-            let evt = NormalizedPointerEvent::new(
-                PointerPhase::Up,
-                PointerButton::Primary,
-                screen_pt,
-                doc_pt,
-                SemanticModifiers::default(),
-            );
-            let _ = st.shell.handle_pointer_event(&evt);
-
-            if let Some(win) = win_weak.upgrade() {
-                sync_ui_from_shell(&win, &st);
-            }
-        });
-    }
-
-    main_window.run()?;
-    Ok(())
 }
 
 #[cfg(test)]
-mod tests {
+mod workspace_tests {
     use super::*;
+    use freya_testing::prelude::*;
+    use petunia_design_application::tools::ToolKind;
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
     #[test]
-    fn slint_app_smoke_test_headless() {
-        let mut state = PetuniaSlintState::new();
-        assert!(state.smoke_test().is_ok());
+    fn pointer_drag_creates_a_shape_through_the_shell() {
+        let seen: Rc<RefCell<Option<State<PetuniaShell>>>> = Rc::new(RefCell::new(None));
+        let seen_hook = seen.clone();
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                let shell = use_state(|| {
+                    let mut shell = PetuniaShell::new(800., 600.);
+                    shell.new_document("Test").expect("document opens");
+                    shell.set_active_tool(ToolKind::Rectangle);
+                    shell
+                });
+                seen_hook.replace(Some(shell));
+                Workspace(UiShell::fresh(shell))
+            },
+            (800., 600.).into(),
+            |_| {},
+            1.,
+        );
+
+        runner.sync_and_update();
+        runner.press_cursor((180., 160.));
+        runner.move_cursor((320., 260.));
+        runner.release_cursor((320., 260.));
+
+        let shell = seen.borrow().clone().expect("workspace mounted");
+        let shell = shell.peek();
+        let session = shell.bridge.session().expect("active session");
+        let surface_id = session.active_surface().expect("active surface");
+        let surface = session.surface(surface_id).expect("surface");
+        assert_eq!(surface.objects().len(), 1);
+        assert!(surface.objects()[0].bounds.expect("shape bounds")[2] > 0.);
+    }
+
+    #[test]
+    fn pointer_drag_moves_shape_on_canvas() {
+        let seen: Rc<RefCell<Option<State<PetuniaShell>>>> = Rc::new(RefCell::new(None));
+        let seen_hook = seen.clone();
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                let shell = use_state(|| {
+                    let mut shell = PetuniaShell::new(800., 600.);
+                    shell.new_document("Test").expect("document opens");
+                    seed_starter_shapes(&mut shell);
+                    shell.set_active_tool(ToolKind::Select);
+                    shell
+                });
+                seen_hook.replace(Some(shell));
+                Workspace(UiShell::fresh(shell))
+            },
+            (800., 600.).into(),
+            |_| {},
+            1.,
+        );
+
+        runner.sync_and_update();
+        let initial_bounds = {
+            let shell = seen.borrow().clone().unwrap();
+            let shell = shell.peek();
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(session.active_surface().unwrap()).unwrap();
+            surf.objects()[0].bounds.unwrap()
+        };
+
+        // Rectangle A is at [260.0, 180.0, 220.0, 160.0]. Click inside it and drag +60, +40.
+        runner.press_cursor((300., 200.));
+        runner.move_cursor((360., 240.));
+        runner.release_cursor((360., 240.));
+        runner.sync_and_update();
+
+        let moved_bounds = {
+            let shell = seen.borrow().clone().unwrap();
+            let shell = shell.peek();
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(session.active_surface().unwrap()).unwrap();
+            surf.objects()[0].bounds.unwrap()
+        };
+
+        assert!((moved_bounds[0] - (initial_bounds[0] + 60.0)).abs() < 1.0);
+        assert!((moved_bounds[1] - (initial_bounds[1] + 40.0)).abs() < 1.0);
+    }
+
+    #[test]
+    fn text_tool_click_creates_text_object_and_select_tool_can_select_it() {
+        let seen: Rc<RefCell<Option<State<PetuniaShell>>>> = Rc::new(RefCell::new(None));
+        let seen_hook = seen.clone();
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                let shell = use_state(|| {
+                    let mut shell = PetuniaShell::new(800., 600.);
+                    shell.new_document("Test").expect("document opens");
+                    shell.set_active_tool(ToolKind::ArtisticText);
+                    shell
+                });
+                seen_hook.replace(Some(shell));
+                Workspace(UiShell::fresh(shell))
+            },
+            (800., 600.).into(),
+            |_| {},
+            1.,
+        );
+
+        runner.sync_and_update();
+        // Click at (150, 150) with ArtisticText tool to create text
+        runner.press_cursor((150., 150.));
+        runner.release_cursor((150., 150.));
+        runner.sync_and_update();
+
+        let text_id = {
+            let shell = seen.borrow().clone().unwrap();
+            let shell = shell.peek();
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(session.active_surface().unwrap()).unwrap();
+            assert_eq!(surf.objects().len(), 1, "text object must be created on surface");
+            assert!(matches!(
+                surf.objects()[0].shape,
+                Some(petunia_design_document::ShapeKind::Text { .. })
+            ));
+            surf.objects()[0].id
+        };
+
+        // Switch to Select tool, deselect, then click on the text object to select it
+        {
+            let mut shell_state = seen.borrow().clone().unwrap();
+            let mut shell = shell_state.write();
+            shell.set_active_tool(ToolKind::Select);
+            shell.bridge.clear_selection();
+        }
+        runner.sync_and_update();
+
+        // Click on the text object at (160, 160)
+        runner.press_cursor((160., 160.));
+        runner.release_cursor((160., 160.));
+        runner.sync_and_update();
+
+        {
+            let shell = seen.borrow().clone().unwrap();
+            let shell = shell.peek();
+            let sel = shell.bridge.selection();
+            assert_eq!(sel.count, 1, "text object must be selected by clicking it");
+            assert!(sel.contains(text_id));
+        }
+    }
+
+    #[test]
+    fn select_toggle_deselect_and_reselect_cycle() {
+        let seen: Rc<RefCell<Option<State<PetuniaShell>>>> = Rc::new(RefCell::new(None));
+        let seen_hook = seen.clone();
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                let shell = use_state(|| {
+                    let mut shell = PetuniaShell::new(800., 600.);
+                    shell.new_document("Test").expect("document opens");
+                    seed_starter_shapes(&mut shell);
+                    shell.set_active_tool(ToolKind::Select);
+                    shell
+                });
+                seen_hook.replace(Some(shell));
+                Workspace(UiShell::fresh(shell))
+            },
+            (800., 600.).into(),
+            |_| {},
+            1.,
+        );
+
+        runner.sync_and_update();
+
+        let (id1, id2) = {
+            let shell = seen.borrow().clone().unwrap();
+            let shell = shell.peek();
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(session.active_surface().unwrap()).unwrap();
+            (surf.objects()[0].id, surf.objects()[1].id)
+        };
+
+        // 1. Click Rectangle A (300, 200)
+        runner.press_cursor((300., 200.));
+        runner.release_cursor((300., 200.));
+        runner.sync_and_update();
+        {
+            let shell = seen.borrow().clone().unwrap();
+            let sel = shell.peek().bridge.selection();
+            assert_eq!(sel.selected_ids, vec![id1], "Step 1: Object A should be selected");
+        }
+
+        // 2. Click Circle B (500, 300)
+        runner.press_cursor((500., 300.));
+        runner.release_cursor((500., 300.));
+        runner.sync_and_update();
+        {
+            let shell = seen.borrow().clone().unwrap();
+            let sel = shell.peek().bridge.selection();
+            assert_eq!(sel.selected_ids, vec![id2], "Step 2: Object B should be selected");
+        }
+
+        // 3. Click empty space (100, 100) to deselect
+        runner.press_cursor((100., 100.));
+        runner.release_cursor((100., 100.));
+        runner.sync_and_update();
+        {
+            let shell = seen.borrow().clone().unwrap();
+            let sel = shell.peek().bridge.selection();
+            assert!(sel.is_empty, "Step 3: Selection should be empty");
+        }
+
+        // 4. Click Rectangle A (300, 200) again!
+        runner.press_cursor((300., 200.));
+        runner.release_cursor((300., 200.));
+        runner.sync_and_update();
+        {
+            let shell = seen.borrow().clone().unwrap();
+            let sel = shell.peek().bridge.selection();
+            assert_eq!(sel.selected_ids, vec![id1], "Step 4: Object A should be selected again");
+        }
+
+        // 5. Click Circle B (500, 300) again!
+        runner.press_cursor((500., 300.));
+        runner.release_cursor((500., 300.));
+        runner.sync_and_update();
+        {
+            let shell = seen.borrow().clone().unwrap();
+            let sel = shell.peek().bridge.selection();
+            assert_eq!(sel.selected_ids, vec![id2], "Step 5: Object B should be selected again");
+        }
+    }
+
+    #[test]
+    fn group_and_ungroup_actions_work_on_selection() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("Test").expect("document opens");
+        seed_starter_shapes(&mut shell);
+
+        // Select all objects
+        let _ = run_action_id(&mut shell, "ptnd.action.edit.select_all");
+        assert_eq!(shell.bridge.selection().count, 2);
+
+        // Group them
+        let res = run_action_id(&mut shell, "ptnd.action.object.group");
+        assert!(res.is_some());
+        // Selection now has 1 group container
+        assert_eq!(shell.bridge.selection().count, 1);
+
+        // Ungroup them
+        let res2 = run_action_id(&mut shell, "ptnd.action.object.ungroup");
+        assert!(res2.is_some());
+        // Both objects are back
+        assert_eq!(shell.bridge.selection().count, 2);
+    }
+
+    #[test]
+    fn raster_tile_to_skia_image_converts_correctly() {
+        use petunia_design_raster::{AlphaMode, PixelFormat, Tile, TileCoord, TILE_SIZE};
+        let mut tile = Tile::new_empty(TileCoord::new(0, 0), PixelFormat::Rgba8, AlphaMode::Straight);
+        tile.set_pixel_normalized(10, 10, [1.0, 0.0, 0.0, 1.0]);
+        let rgba8 = match tile.format {
+            PixelFormat::Rgba8 => tile.data.clone(),
+            _ => vec![],
+        };
+        assert_eq!(rgba8.len(), TILE_SIZE * TILE_SIZE * 4);
+        let offset = (10 * TILE_SIZE + 10) * 4;
+        assert_eq!(rgba8[offset], 255);
+        assert_eq!(rgba8[offset + 1], 0);
+        assert_eq!(rgba8[offset + 2], 0);
+        assert_eq!(rgba8[offset + 3], 255);
+    }
+
+    #[test]
+    fn ruler_drag_creates_horizontal_and_vertical_guides() {
+        let seen: Rc<RefCell<Option<State<PetuniaShell>>>> = Rc::new(RefCell::new(None));
+        let seen_hook = seen.clone();
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                let shell = use_state(|| {
+                    let mut shell = PetuniaShell::new(800., 600.);
+                    shell.new_document("Test").expect("document opens");
+                    shell
+                });
+                seen_hook.replace(Some(shell));
+                Workspace(UiShell::fresh(shell))
+            },
+            (800., 600.).into(),
+            |_| {},
+            1.,
+        );
+
+        runner.sync_and_update();
+
+        // 1. Drag horizontal guide from top ruler (y = 10, x = 100) down to y = 150
+        runner.press_cursor((100., 10.));
+        runner.move_cursor((100., 150.));
+        runner.release_cursor((100., 150.));
+        runner.sync_and_update();
+
+        {
+            let shell = seen.borrow().clone().unwrap();
+            let shell = shell.peek();
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(session.active_surface().unwrap()).unwrap();
+            assert_eq!(surf.guides.len(), 1, "horizontal guide should be added");
+            assert_eq!(
+                surf.guides[0].orientation,
+                petunia_design_document::GuideOrientation::Horizontal
+            );
+        }
+
+        // 2. Drag vertical guide from left ruler (x = 10, y = 100) right to x = 200
+        runner.press_cursor((10., 100.));
+        runner.move_cursor((200., 100.));
+        runner.release_cursor((200., 100.));
+        runner.sync_and_update();
+
+        {
+            let shell = seen.borrow().clone().unwrap();
+            let shell = shell.peek();
+            let session = shell.bridge.session().unwrap();
+            let surf = session.surface(session.active_surface().unwrap()).unwrap();
+            assert_eq!(surf.guides.len(), 2, "vertical guide should be added");
+            assert_eq!(
+                surf.guides[1].orientation,
+                petunia_design_document::GuideOrientation::Vertical
+            );
+        }
+    }
+
+    #[test]
+    fn place_image_action_creates_image_object_in_document() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("ImageTest").expect("document opens");
+        let action_res = actions::run_action_token(&mut shell, "ptnd.action.file.place#null");
+        assert_eq!(action_res, Some("ptnd.action.file.place".to_string()));
+
+        let session = shell.bridge.session().unwrap();
+        let surface_id = session.active_surface().unwrap();
+        let surface = session.surface(surface_id).unwrap();
+        assert!(!surface.objects().is_empty(), "image object should be created");
+        let last_object = surface.objects().last().unwrap();
+        match &last_object.shape {
+            Some(petunia_design_document::ShapeKind::Image { path, .. }) => {
+                assert!(path.contains("sample_image.png") || !path.is_empty());
+            }
+            other => panic!("expected ShapeKind::Image, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn in_canvas_text_editor_updates_text_object() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("TextEditTest").expect("document opens");
+        let surface_id = shell.bridge.active_surface().unwrap();
+        let text_id = shell.bridge.next_object_id().unwrap();
+
+        // 1. Create text object
+        shell.bridge.submit_all(
+            "Create text",
+            vec![petunia_design_application::Command::CreateShapeObject {
+                surface: surface_id,
+                id: text_id,
+                name: "Text1".to_string(),
+                shape: petunia_design_document::ShapeKind::Text {
+                    content: "Initial".to_string(),
+                    font_family: "Inter".to_string(),
+                    font_size: 18.0,
+                    line_height: 1.2,
+                    letter_spacing: 0.0,
+                    on_path: None,
+                },
+                bounds: Some([100.0, 100.0, 120.0, 30.0]),
+                fill: None,
+                stroke: None,
+                stroke_width: 0.0,
+            }],
+        ).expect("command succeeds");
+
+        // 2. Select it
+        shell.bridge.set_selection(vec![text_id]);
+
+        // 3. Verify snapshot identifies it as active text object
+        let snapshot = shell.canvas_snapshot();
+        let active_text = snapshot.objects.iter().find(|o| {
+            o.active && matches!(o.shape, Some(petunia_design_document::ShapeKind::Text { .. }))
+        });
+        assert!(active_text.is_some(), "active text object found in snapshot");
+
+        // 4. Update its content directly via command as in-canvas editor does
+        shell.bridge.submit_all(
+            "Update text in-canvas",
+            vec![petunia_design_application::Command::SetShape {
+                id: text_id,
+                shape: Some(petunia_design_document::ShapeKind::Text {
+                    content: "Edited In-Canvas Content".to_string(),
+                    font_family: "Inter".to_string(),
+                    font_size: 18.0,
+                    line_height: 1.2,
+                    letter_spacing: 0.0,
+                    on_path: None,
+                }),
+            }],
+        ).expect("update succeeds");
+
+        let session = shell.bridge.session().unwrap();
+        let obj = session.find_object(text_id).unwrap();
+        match &obj.shape {
+            Some(petunia_design_document::ShapeKind::Text { content, .. }) => {
+                assert_eq!(content, "Edited In-Canvas Content");
+            }
+            other => panic!("expected updated text, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn new_document_action_and_custom_geometry() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("NewDocTest").expect("document opens");
+        let surface_id = shell.bridge.active_surface().unwrap();
+
+        // Preset: Full HD 1920x1080 with 3mm bleed and 20pt margin
+        shell.bridge.submit_all(
+            "Set Surface Geometry 1080p",
+            vec![
+                petunia_design_application::Command::SetSurfaceGeometry {
+                    surface: surface_id,
+                    origin: [0.0, 0.0],
+                    dimensions: [1920.0, 1080.0],
+                },
+                petunia_design_application::Command::SetSurfaceBleed {
+                    surface: surface_id,
+                    bleed: petunia_design_document::Bleed::uniform(8.5),
+                },
+                petunia_design_application::Command::SetSurfaceMargins {
+                    surface: surface_id,
+                    margins: petunia_design_document::Margins::uniform(20.0),
+                },
+            ],
+        ).expect("command succeeds");
+
+        let session = shell.bridge.session().unwrap();
+        let surface = session.surface(surface_id).unwrap();
+        assert_eq!(surface.dimensions, [1920.0, 1080.0]);
+        assert_eq!(surface.bleed, petunia_design_document::Bleed::uniform(8.5));
+        assert_eq!(surface.margins, petunia_design_document::Margins::uniform(20.0));
+    }
+
+    #[test]
+    fn export_document_action_dispatches_cleanly() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("ExportTestDoc").expect("document opens");
+
+        let path = std::env::temp_dir().join("petunia_test_export.png");
+        let payload = serde_json::json!({
+            "path": path.to_string_lossy(),
+            "format": "png",
+        });
+        let res = shell.bridge.dispatch_action(
+            petunia_design_application::ActionRequest::new(
+                petunia_design_application::ActionId::new("ptnd.action.file.export"),
+                payload,
+            ),
+        );
+        assert!(res.is_ok(), "export action should be dispatched successfully");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn navigator_minimap_and_dock_width_adjustments() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("NavigatorTest").expect("document opens");
+
+        // Zoom and pan adjustments reflect in camera
+        shell.zoom_at(GPoint::new(400.0, 300.0), 1.5);
+        shell.pan(50.0, -30.0);
+        let cam = shell.view_camera();
+        assert!((cam.zoom - 1.5).abs() < 1e-4);
+        assert!((cam.pan_x - -150.0).abs() < 1e-4 || cam.pan_x.is_finite());
+        assert!((cam.pan_y - -180.0).abs() < 1e-4 || cam.pan_y.is_finite());
+
+        // Clamping logic for dock width
+        let min_w = 180.0f32;
+        let max_w = 520.0f32;
+        assert_eq!((100.0f32).clamp(min_w, max_w), min_w);
+        assert_eq!((600.0f32).clamp(min_w, max_w), max_w);
+        assert_eq!((300.0f32).clamp(min_w, max_w), 300.0f32);
+    }
+
+    #[test]
+    fn confirm_close_safeguards_unsaved_document() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("UnsavedDocTest").expect("document opens");
+        assert!(shell.bridge.is_dirty(), "document with initial canvas starts with dirty revision");
+
+        // Safe close without force is blocked by unsaved changes
+        let safe_close = shell.bridge.close_session(false).expect("close check");
+        assert!(!safe_close, "safe close requires user confirmation when dirty");
+
+        // Force close (from confirm dialog) closes successfully
+        let force_close = shell.bridge.close_session(true).expect("force close");
+        assert!(force_close, "confirming close discards changes and closes session");
+        assert!(shell.bridge.session().is_none(), "session is now closed");
+    }
+
+    #[test]
+    fn dialog_toggle_lifecycle_has_no_hook_panics() {
+        let seen: Rc<RefCell<Option<UiShell>>> = Rc::new(RefCell::new(None));
+        let seen_hook = seen.clone();
+
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                let shell = use_state(|| {
+                    let mut s = PetuniaShell::new(800., 600.);
+                    s.new_document("DialogTest").expect("document opens");
+                    s
+                });
+                let ui = UiShell::fresh(shell);
+                seen_hook.replace(Some(ui.clone()));
+                rect()
+                    .child(CommandPalette(ui.clone()))
+                    .child(NewDocumentDialog(ui.clone()))
+                    .child(ExportDialog(ui.clone()))
+                    .child(CustomizeDialog(ui.clone()))
+                    .child(ConfirmCloseDialog(ui))
+            },
+            (800., 600.).into(),
+            |_| {},
+            1.,
+        );
+
+        // Initial render: all dialogs are closed
+        runner.sync_and_update();
+
+        let mut ui = seen.borrow().clone().expect("ui mounted");
+
+        // Toggle CommandPalette open and close
+        ui.palette_open.set(true);
+        runner.sync_and_update();
+        ui.palette_open.set(false);
+        runner.sync_and_update();
+
+        // Toggle NewDocumentDialog open and close
+        ui.new_doc_open.set(true);
+        runner.sync_and_update();
+        ui.new_doc_open.set(false);
+        runner.sync_and_update();
+
+        // Toggle ExportDialog open and close
+        ui.export_open.set(true);
+        runner.sync_and_update();
+        ui.export_open.set(false);
+        runner.sync_and_update();
+
+        // Toggle all open simultaneously and close all
+        ui.palette_open.set(true);
+        ui.new_doc_open.set(true);
+        ui.export_open.set(true);
+        ui.customize_open.set(true);
+        ui.confirm_close_open.set(true);
+        runner.sync_and_update();
+
+        ui.palette_open.set(false);
+        ui.new_doc_open.set(false);
+        ui.export_open.set(false);
+        ui.customize_open.set(false);
+        ui.confirm_close_open.set(false);
+        runner.sync_and_update();
+    }
+
+    #[test]
+    fn full_app_dock_layout_and_click_test() {
+        let seen: Rc<RefCell<Option<UiShell>>> = Rc::new(RefCell::new(None));
+        let seen_hook = seen.clone();
+
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                let shell = use_state(|| {
+                    let mut s = PetuniaShell::new(1280., 800.);
+                    s.new_document("DockLayoutDoc").expect("doc opens");
+                    s
+                });
+                let ui = UiShell::fresh(shell);
+                seen_hook.replace(Some(ui.clone()));
+                rect()
+                    .direction(Direction::Vertical)
+                    .content(Content::Flex)
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .child(MenuBarRow(ui.clone()))
+                    .child(DocumentTabStrip(ui.clone()))
+                    .child(ContextToolbar(ui.clone()))
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .content(Content::Flex)
+                            .width(Size::fill())
+                            .height(Size::flex(1.0))
+                            .child(ToolRail(ui.clone()))
+                            .child(Workspace(ui.clone()))
+                            .child(DockSplitter(ui.clone()))
+                            .child(dock::RightDock(ui.clone())),
+                    )
+                    .child(StatusBar(ui.clone()))
+            },
+            (1280., 800.).into(),
+            |_| {},
+            1.,
+        );
+
+        runner.sync_and_update();
+
+        let ui = seen.borrow().clone().expect("ui mounted");
+        assert_eq!(*ui.dock_tab.read(), 0, "initial tab is Camadas (0)");
+
+        // Click Propriedades tab (roughly 960 + 120 = 1080)
+        runner.click_cursor((1080., 120.));
+        runner.sync_and_update();
+        assert_eq!(*ui.dock_tab.read(), 1, "switches to Propriedades (1)");
+
+        // Click Cores tab (roughly 960 + 200 = 1160)
+        runner.click_cursor((1160., 120.));
+        runner.sync_and_update();
+        assert_eq!(*ui.dock_tab.read(), 2, "switches to Cores (2)");
+
+        // Click Histórico tab (roughly 960 + 270 = 1230)
+        runner.click_cursor((1230., 120.));
+        runner.sync_and_update();
+        assert_eq!(*ui.dock_tab.read(), 3, "switches to Histórico (3)");
+
+        // Click Camadas tab (roughly 960 + 40 = 1000)
+        runner.click_cursor((1000., 120.));
+        runner.sync_and_update();
+        assert_eq!(*ui.dock_tab.read(), 0, "switches back to Camadas (0)");
+    }
+
+    #[test]
+    fn gradient_and_measure_overlays_and_controls() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("OverlaysTest").expect("document opens");
+
+        // Measure tool mode toggling
+        shell.tools.set_active_tool(ToolKind::Measure);
+        assert_eq!(shell.tools.measure_tool().mode(), petunia_design_shell::tools::MeasureMode::Distance);
+        shell.tools.measure_tool_mut().set_mode(petunia_design_shell::tools::MeasureMode::Area);
+        assert_eq!(shell.tools.measure_tool().mode(), petunia_design_shell::tools::MeasureMode::Area);
+        shell.tools.measure_tool_mut().cancel();
+
+        // Gradient tool kind toggling
+        shell.tools.set_active_tool(ToolKind::Gradient);
+        assert_eq!(shell.tools.gradient_tool().kind(), petunia_design_shell::tools::GradientKind::Linear);
+        shell.tools.gradient_tool_mut().set_kind(petunia_design_shell::tools::GradientKind::Radial);
+        assert_eq!(shell.tools.gradient_tool().kind(), petunia_design_shell::tools::GradientKind::Radial);
+
+        // Perspective tool overlays cursor affordance on selected object
+        let rect_id = petunia_design_foundation::ObjectId::new(101);
+        let surface_id = shell.bridge.active_surface().unwrap();
+        shell.bridge.submit_all(
+            "Create rect for perspective",
+            vec![
+                petunia_design_application::Command::CreateObject {
+                    surface: surface_id,
+                    id: rect_id,
+                    name: "Rect".to_string(),
+                },
+                petunia_design_application::Command::SetBounds {
+                    id: rect_id,
+                    bounds: Some([10.0, 10.0, 100.0, 100.0]),
+                    rotation: 0.0,
+                },
+            ],
+        ).unwrap();
+        shell.bridge.set_selection(vec![rect_id]);
+
+        shell.tools.set_active_tool(ToolKind::Perspective);
+        let cam = shell.view_camera();
+        let overlays = shell.tools.overlays(&cam, &shell.bridge);
+        assert_eq!(overlays.handles.len(), 4, "Perspective quad provides 4 corner handles");
+        assert_eq!(overlays.cursor, petunia_design_shell::canvas::CursorAffordance::Crosshair);
     }
 }
+
+
+

@@ -1,7 +1,7 @@
 //! Undoable commands executed through [`petunia_design_document::DocumentMutator`].
 
 use petunia_design_document::{ChangeSet, Document, DocumentMutator, DocumentObject};
-use petunia_design_foundation::{PetuniaError, ObjectId, SurfaceId};
+use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
 
 /// Single undoable command with explicit IDs (no hidden state).
 #[derive(Clone, Debug)]
@@ -41,6 +41,11 @@ pub enum Command {
         surface: SurfaceId,
         id: ObjectId,
         new_index: usize,
+    },
+    /// Renames an object by stable ID.
+    RenameObject {
+        id: ObjectId,
+        name: String,
     },
     /// Arrange an object one step or to a z-order edge (10.1, F-16).
     ArrangeObject {
@@ -121,6 +126,18 @@ pub enum Command {
         effect_id: u32,
         visible: bool,
     },
+    /// Append one tonal adjustment entry (Spec 10.10). Id collisions are reassigned.
+    AddAdjustment {
+        id: ObjectId,
+        adjustment: petunia_design_document::adjustments::AdjustmentItem,
+    },
+    /// Remove one tonal adjustment entry by local id (Spec 10.10).
+    RemoveAdjustment { id: ObjectId, adjustment_id: u32 },
+    /// Set/update one tonal adjustment entry (Spec 10.10).
+    SetAdjustment {
+        id: ObjectId,
+        adjustment: petunia_design_document::adjustments::AdjustmentItem,
+    },
     /// Set whole-stack opacity (F-18).
     SetStackOpacity { id: ObjectId, opacity: f64 },
     /// Set whole-stack blend mode (F-18).
@@ -199,13 +216,17 @@ pub enum Command {
         source: petunia_design_document::DataSourceDefinition,
     },
     /// Removes a variable data source (10.11).
-    RemoveDataSource { id: petunia_design_document::DataSourceId },
+    RemoveDataSource {
+        id: petunia_design_document::DataSourceId,
+    },
     /// Adds a data binding (10.11).
     AddDataBinding {
         binding: petunia_design_document::DataBinding,
     },
     /// Removes a data binding (10.11).
-    RemoveDataBinding { id: petunia_design_document::BindingId },
+    RemoveDataBinding {
+        id: petunia_design_document::BindingId,
+    },
     /// Materializes variable data records into surfaces (10.11).
     MaterializeDataMerge {
         source_id: petunia_design_document::DataSourceId,
@@ -383,6 +404,7 @@ pub fn execute(
             id,
             new_index,
         } => mutator.reorder_object(*surface, *id, *new_index),
+        Command::RenameObject { id, name } => mutator.rename_object(*id, name.clone()),
         Command::ArrangeObject {
             surface,
             id,
@@ -427,6 +449,15 @@ pub fn execute(
             effect_id,
             visible,
         } => mutator.toggle_effect(*id, *effect_id, *visible),
+        Command::AddAdjustment { id, adjustment } => {
+            mutator.add_adjustment(*id, adjustment.clone())
+        }
+        Command::RemoveAdjustment { id, adjustment_id } => {
+            mutator.remove_adjustment(*id, *adjustment_id)
+        }
+        Command::SetAdjustment { id, adjustment } => {
+            mutator.set_adjustment(*id, adjustment.clone())
+        }
         Command::SetStackOpacity { id, opacity } => mutator.set_stack_opacity(*id, *opacity),
         Command::SetStackBlend { id, blend_mode } => mutator.set_stack_blend(*id, *blend_mode),
         Command::PasteAppearance { source_id, dest_id } => {
@@ -543,16 +574,20 @@ pub fn execute(
             // Explicit flatten tolerance (F-21): part of the operation's
             // evidence, no longer a magic literal. Operands read evaluated
             // (09.31): live modifiers participate without being consumed.
-            let tolerance = petunia_design_geometry::GeometryTolerance::default_tolerance().clamped();
+            let tolerance =
+                petunia_design_geometry::GeometryTolerance::default_tolerance().clamped();
             let subj_path = subject.evaluated_path();
             let clip_path = clip.evaluated_path();
 
-            let subj_input =
-                petunia_design_geometry::BooleanInput::new(subj_path.to_polygons(tolerance.flatten));
-            let clip_input =
-                petunia_design_geometry::BooleanInput::new(clip_path.to_polygons(tolerance.flatten));
+            let subj_input = petunia_design_geometry::BooleanInput::new(
+                subj_path.to_polygons(tolerance.flatten),
+            );
+            let clip_input = petunia_design_geometry::BooleanInput::new(
+                clip_path.to_polygons(tolerance.flatten),
+            );
 
-            let result_contours = petunia_design_geometry::boolean_op(&subj_input, &clip_input, *op);
+            let result_contours =
+                petunia_design_geometry::boolean_op(&subj_input, &clip_input, *op);
             let result_path = petunia_design_geometry::GPath::from_polygons(&result_contours);
             let bounds = result_path
                 .bounding_box()

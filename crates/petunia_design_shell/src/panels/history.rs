@@ -2,7 +2,7 @@
 
 use petunia_design_foundation::PetuniaError;
 
-use crate::bridge::{PetuniaDesignGuiBridge, HistoryPresentationModel};
+use crate::bridge::{HistoryPresentationModel, PetuniaDesignGuiBridge};
 
 /// Controller managing the History panel and undo/redo stack interactions.
 #[derive(Debug, Default)]

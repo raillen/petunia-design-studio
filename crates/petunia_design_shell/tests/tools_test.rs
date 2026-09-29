@@ -1,10 +1,10 @@
 //! Tests for interactive vector editing tools (Select, Pen, Node, Shape).
 
 use petunia_design_application::{Command, CommandRequest};
-use petunia_design_foundation::IdGenerator;
+use petunia_design_foundation::{IdGenerator, ObjectId};
 use petunia_design_geometry::GPoint;
 use petunia_design_shell::bridge::PetuniaDesignGuiBridge;
-use petunia_design_shell::canvas::{SnapEngine, ViewportCamera};
+use petunia_design_shell::canvas::{CursorAffordance, SnapEngine, ViewportCamera};
 use petunia_design_shell::tools::*;
 
 #[test]
@@ -78,6 +78,90 @@ fn select_tool_click_and_toggle_selection() {
     tool.on_pointer_event(&ev2, &mut bridge, &camera, &mut snap)
         .unwrap();
     assert_eq!(bridge.selection().count, 2);
+}
+
+#[test]
+fn select_tool_click_cycle_select_deselect_reselect() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Select Cycle Test").expect("doc");
+    let surface_id = bridge.active_surface().unwrap();
+
+    let mut gen = IdGenerator::new();
+    let id1 = gen.next_object();
+    let id2 = gen.next_object();
+
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id: id1,
+            name: "BoxA".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id: id1,
+            bounds: Some([10.0, 10.0, 50.0, 50.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id: id2,
+            name: "BoxB".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id: id2,
+            bounds: Some([100.0, 100.0, 50.0, 50.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = SelectTool::new();
+
+    let mut click = |tool: &mut SelectTool, bridge: &mut PetuniaDesignGuiBridge, x: f64, y: f64| {
+        let down = NormalizedPointerEvent::new(
+            PointerPhase::Down,
+            PointerButton::Primary,
+            GPoint::new(x, y),
+            GPoint::new(x, y),
+            SemanticModifiers::default(),
+        );
+        tool.on_pointer_event(&down, bridge, &camera, &mut snap).unwrap();
+        let up = NormalizedPointerEvent::new(
+            PointerPhase::Up,
+            PointerButton::Primary,
+            GPoint::new(x, y),
+            GPoint::new(x, y),
+            SemanticModifiers::default(),
+        );
+        tool.on_pointer_event(&up, bridge, &camera, &mut snap).unwrap();
+    };
+
+    // 1. Click Box A
+    click(&mut tool, &mut bridge, 25.0, 25.0);
+    assert_eq!(bridge.selection().selected_ids, vec![id1]);
+
+    // 2. Click Box B
+    click(&mut tool, &mut bridge, 125.0, 125.0);
+    assert_eq!(bridge.selection().selected_ids, vec![id2]);
+
+    // 3. Click empty canvas (300, 300) -> deselect
+    click(&mut tool, &mut bridge, 300.0, 300.0);
+    assert!(bridge.selection().is_empty);
+
+    // 4. Reselect Box A
+    click(&mut tool, &mut bridge, 25.0, 25.0);
+    assert_eq!(bridge.selection().selected_ids, vec![id1]);
+
+    // 5. Reselect Box B
+    click(&mut tool, &mut bridge, 125.0, 125.0);
+    assert_eq!(bridge.selection().selected_ids, vec![id2]);
 }
 
 #[test]
@@ -391,6 +475,239 @@ fn select_hover_and_pressed_feedback_tracks_object() {
     assert_eq!(tool.pressed_object(), None);
     assert_eq!(tool.hovered_object(), Some(id1));
     assert_eq!(bridge.selection().selected_ids, vec![id1]);
+}
+
+#[test]
+fn select_drag_publishes_preview_and_clears_on_up() {
+    let (mut bridge, id1, _) = select_test_bridge_two_boxes();
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = SelectTool::new();
+    let plain = SemanticModifiers::default();
+
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 20.0, 20.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 70.0, 70.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let preview = tool
+        .overlays(&camera, &bridge)
+        .transform_preview
+        .expect("translation preview");
+    assert_eq!(preview.objects[0].bounds, [60.0, 60.0, 50.0, 50.0]);
+    assert_eq!(preview.objects[0].id, id1);
+
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 70.0, 70.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    assert!(tool.transform_preview().is_none());
+    let object = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id1)
+        .unwrap();
+    assert_eq!(object.bounds, Some([60.0, 60.0, 50.0, 50.0]));
+}
+
+#[test]
+fn select_stale_gesture_does_not_overwrite_new_document_state() {
+    let (mut bridge, id1, _) = select_test_bridge_two_boxes();
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = SelectTool::new();
+    let plain = SemanticModifiers::default();
+
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 20.0, 20.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 70.0, 70.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id: id1,
+            bounds: Some([500.0, 500.0, 20.0, 20.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 70.0, 70.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let object = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id1)
+        .unwrap();
+    assert_eq!(object.bounds, Some([500.0, 500.0, 20.0, 20.0]));
+    assert!(tool.transform_preview().is_none());
+}
+
+#[test]
+fn select_stale_preview_disappears_after_external_mutation() {
+    let (mut bridge, id1, _) = select_test_bridge_two_boxes();
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = SelectTool::new();
+    let plain = SemanticModifiers::default();
+
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 20.0, 20.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 70.0, 70.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert!(tool.overlays(&camera, &bridge).transform_preview.is_some());
+
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id: id1,
+            bounds: Some([500.0, 500.0, 20.0, 20.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+
+    assert!(tool.overlays(&camera, &bridge).transform_preview.is_none());
+}
+
+#[test]
+fn select_cancel_discards_preview_without_mutating_document() {
+    let (mut bridge, id1, _) = select_test_bridge_two_boxes();
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = SelectTool::new();
+    let plain = SemanticModifiers::default();
+
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 20.0, 20.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 70.0, 70.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Cancel, 70.0, 70.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    assert!(tool.transform_preview().is_none());
+    let object = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id1)
+        .unwrap();
+    assert_eq!(object.bounds, Some([10.0, 10.0, 50.0, 50.0]));
+}
+
+#[test]
+fn select_rotation_moves_object_origins_around_selection_center() {
+    let (mut bridge, id1, id2) = select_test_bridge_two_boxes();
+    bridge.set_selection(vec![id1, id2]);
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut tool = SelectTool::new();
+    let plain = SemanticModifiers::default();
+
+    // Combined bounds are [10, 10, 140, 140], so the rotation handle is
+    // at document point (80, -10), with the pivot at (80, 80).
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 80.0, -10.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 170.0, 80.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let preview = tool
+        .overlays(&camera, &bridge)
+        .transform_preview
+        .expect("rotation preview");
+    assert_eq!(preview.objects.len(), 2);
+    assert!((preview.objects[0].rotation - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
+    assert!((preview.objects[0].bounds[0] - 150.0).abs() < 1e-9);
+    assert!((preview.objects[1].bounds[0] - 60.0).abs() < 1e-9);
+
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 170.0, 80.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let first = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id1)
+        .unwrap();
+    let second = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id2)
+        .unwrap();
+    assert!((first.bounds.unwrap()[0] - 150.0).abs() < 1e-9);
+    assert!((second.bounds.unwrap()[0] - 60.0).abs() < 1e-9);
+    assert!((first.rotation - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
+    assert!((second.rotation - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
 }
 
 #[test]
@@ -1655,6 +1972,82 @@ fn node_marquee_selects_several_nodes() {
     assert_eq!(tool.selected_nodes().len(), 2);
 }
 
+#[test]
+fn node_overlays_render_bezier_arms_and_differentiated_glyphs() {
+    use petunia_design_geometry::PathVerb as V;
+    use petunia_design_shell::canvas::{CursorAffordance, SelectionHandleKind};
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Node Overlays").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let id = node_test_path(
+        &mut bridge,
+        vec![
+            V::MoveTo(GPoint::new(0.0, 0.0)),
+            V::LineTo(GPoint::new(50.0, 0.0)),
+            V::CubicTo(
+                GPoint::new(60.0, 20.0),
+                GPoint::new(90.0, 80.0),
+                GPoint::new(100.0, 100.0),
+            ),
+        ],
+    );
+    bridge.set_selection(vec![id]);
+    let mut tool = NodeTool::new();
+    let plain = SemanticModifiers::default();
+
+    // 1. Initial overlays without node selection: 3 node handles, 0 control lines
+    let overlays = tool.overlays(&camera, &bridge);
+    assert_eq!(overlays.handles.len(), 3);
+    assert!(overlays.node_control_lines.is_empty());
+    assert_eq!(overlays.cursor, CursorAffordance::Pointer);
+
+    // 2. Select node 1 (LineTo at 50,0 which is also the start of the cubic segment) and start drag
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Down, 50.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let overlays = tool.overlays(&camera, &bridge);
+    assert!(!overlays.node_control_lines.is_empty());
+    assert_eq!(
+        overlays.node_control_lines[0],
+        (GPoint::new(50.0, 0.0), GPoint::new(60.0, 20.0))
+    );
+    assert!(overlays
+        .handles
+        .iter()
+        .any(|h| h.kind == SelectionHandleKind::NodeControl));
+    assert!(overlays
+        .handles
+        .iter()
+        .any(|h| h.kind == SelectionHandleKind::NodeCuspSelected));
+
+    // 3. During drag of a node, in-flight path_preview and grabbing cursor are present
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Move, 55.0, 10.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let dragging_overlays = tool.overlays(&camera, &bridge);
+    assert!(dragging_overlays.path_preview.is_some());
+    assert_eq!(dragging_overlays.cursor, CursorAffordance::Grabbing);
+
+    tool.on_pointer_event(
+        &node_event(PointerPhase::Up, 55.0, 10.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+}
+
 fn corner_test_rect(
     bridge: &mut PetuniaDesignGuiBridge,
     gen: &mut IdGenerator,
@@ -2663,6 +3056,154 @@ fn gradient_radial_drag_sets_center_and_radius() {
     }
 }
 
+#[test]
+fn gradient_overlays_preview_in_flight_stop_drag() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Gradient Stop InFlight").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let _id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    let mut tool = GradientTool::new(GradientToolMode::Fill);
+    let plain = SemanticModifiers::default();
+
+    // Create linear gradient from (10, 50) to (110, 50)
+    gradient_drag(&mut tool, &mut bridge, &camera, &mut snap, 10.0, 50.0, 110.0, 50.0, plain);
+
+    // Double-click to add a stop at the midpoint (60, 50)
+    let mid = GPoint::new(60.0, 50.0);
+    for _ in 0..2 {
+        tool.on_pointer_event(
+            &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, mid, mid, plain),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    }
+
+    std::thread::sleep(std::time::Duration::from_millis(450));
+
+    // Down on the middle stop (index 1)
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, mid, mid, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    // In-flight drag of the stop to x=85 (t = 0.75)
+    let moved = GPoint::new(85.0, 50.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, moved, moved, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let overlays = tool.overlays(&bridge, &camera);
+    assert_eq!(overlays.cursor, CursorAffordance::Grabbing);
+    assert!(overlays.pen_preview.is_none(), "dragging a stop must not draw an extraneous line");
+    let gradient = overlays.gradient.expect("gradient overlay must be present");
+    // Middle stop offset in the preview must be in-flight at 0.75
+    let middle_stop = gradient.stops.iter().find(|(off, _)| (*off - 0.75).abs() < 0.05);
+    assert!(middle_stop.is_some(), "in-flight stop overlay must reflect moved offset 0.75: {:?}", gradient.stops);
+}
+
+#[test]
+fn gradient_overlays_preview_in_flight_vector_with_45_deg_snap() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Gradient Vector Snap").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let _id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    let mut tool = GradientTool::new(GradientToolMode::Fill);
+    let shift = SemanticModifiers {
+        constrain: true,
+        ..Default::default()
+    };
+
+    let p0 = GPoint::new(10.0, 50.0);
+    let p1 = GPoint::new(110.0, 100.0); // angle is atan2(50, 100) ~ 26.5°, snaps to 45°
+
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p0, p0, shift),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p1, p1, shift),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let overlays = tool.overlays(&bridge, &camera);
+    assert_eq!(overlays.cursor, CursorAffordance::Crosshair);
+    assert!(overlays.pen_preview.is_some());
+    let pen_line = overlays.pen_preview.as_ref().unwrap();
+    let dx = pen_line[1].x - pen_line[0].x;
+    let dy = pen_line[1].y - pen_line[0].y;
+    assert!((dx - dy).abs() < 1e-4, "in-flight snapped line must be at 45 degrees: dx={dx}, dy={dy}");
+
+    let gradient = overlays.gradient.expect("gradient preview");
+    let g_dx = gradient.end.x - gradient.start.x;
+    let g_dy = gradient.end.y - gradient.start.y;
+    assert!((g_dx - g_dy).abs() < 1e-4, "in-flight gradient overlay must be at 45 degrees");
+}
+
+#[test]
+fn gradient_cursor_affordances_hover_and_drag() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Gradient Cursors").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let _id = gradient_test_object(&mut bridge, "ptnd.red/500");
+    let mut tool = GradientTool::new(GradientToolMode::Fill);
+    let plain = SemanticModifiers::default();
+
+    // Create linear gradient
+    gradient_drag(&mut tool, &mut bridge, &camera, &mut snap, 10.0, 50.0, 110.0, 50.0, plain);
+
+    // Hover empty area
+    let p_empty = GPoint::new(800.0, 800.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p_empty, p_empty, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(tool.overlays(&bridge, &camera).cursor, CursorAffordance::Crosshair);
+
+    // Hover over start stop handle (10, 50)
+    let p_stop = GPoint::new(10.0, 50.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p_stop, p_stop, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(tool.overlays(&bridge, &camera).cursor, CursorAffordance::Pointer);
+
+    // Drag the stop (after double-click window)
+    std::thread::sleep(std::time::Duration::from_millis(450));
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p_stop, p_stop, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(tool.overlays(&bridge, &camera).cursor, CursorAffordance::Grabbing);
+}
+
 fn picker_test_box(
     bridge: &mut PetuniaDesignGuiBridge,
     gen: &mut IdGenerator,
@@ -2881,6 +3422,227 @@ fn picker_skips_locked_objects() {
 }
 
 #[test]
+fn picker_style_granular_filtering() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Picker Style Granular").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+
+    let source = picker_test_box(
+        &mut bridge,
+        &mut gen,
+        "Source",
+        [10.0, 10.0, 80.0, 80.0],
+        Some("ptnd.red/500"),
+        Some(("ptnd.blue/500", 4.0)),
+    );
+    let effect = petunia_design_document::EffectItem {
+        id: 1,
+        kind: petunia_design_document::EffectKind::DropShadow {
+            offset: [2.0, 4.0],
+            blur: 5.0,
+            color: "ptnd.black/500".to_string(),
+            opacity: 0.8,
+        },
+        visible: true,
+    };
+    bridge
+        .submit_command(CommandRequest::new(Command::AddEffect {
+            id: source,
+            effect,
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id: source,
+            shape: Some(petunia_design_document::ShapeKind::Text {
+                content: "Source Text".to_string(),
+                font_family: "Futura".to_string(),
+                font_size: 24.0,
+                line_height: 1.5,
+                letter_spacing: 1.0,
+                on_path: None,
+            }),
+        }))
+        .unwrap();
+
+    let target = picker_test_box(
+        &mut bridge,
+        &mut gen,
+        "Target",
+        [200.0, 200.0, 50.0, 50.0],
+        Some("ptnd.gray/500"),
+        Some(("ptnd.gray/700", 1.0)),
+    );
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id: target,
+            shape: Some(petunia_design_document::ShapeKind::Text {
+                content: "Keep Me".to_string(),
+                font_family: "Inter".to_string(),
+                font_size: 12.0,
+                line_height: 1.0,
+                letter_spacing: 0.0,
+                on_path: None,
+            }),
+        }))
+        .unwrap();
+
+    // 1. Fill-only filter
+    bridge.clear_selection();
+    bridge.set_selection(vec![target]);
+    let mut tool = PickerTool::new(PickerMode::Style);
+    tool.set_filter(StyleFilter {
+        fill: true,
+        stroke: false,
+        effects: false,
+        typography: false,
+    });
+    picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
+
+    let obj = bridge.session().unwrap().document().find_object(target).unwrap();
+    let stack = obj.effective_appearance();
+    assert_eq!(
+        stack.primary_fill().map(|f| f.paint.clone()),
+        Some(petunia_design_document::Paint::Solid("ptnd.red/500".to_string())),
+        "Fill must be copied when filter.fill is true"
+    );
+    assert_eq!(
+        stack.primary_stroke().map(|s| (s.paint.clone(), s.width)),
+        Some((petunia_design_document::Paint::Solid("ptnd.gray/700".to_string()), 1.0)),
+        "Stroke must NOT be copied when filter.stroke is false"
+    );
+    assert!(stack.effects.is_empty(), "Effects must NOT be copied when filter.effects is false");
+    if let Some(petunia_design_document::ShapeKind::Text { font_family, font_size, .. }) = &obj.shape {
+        assert_eq!(font_family, "Inter", "Typography must NOT be copied when filter.typography is false");
+        assert_eq!(*font_size, 12.0);
+    } else {
+        panic!("Target must remain text");
+    }
+
+    // 2. Stroke-only filter
+    tool.set_filter(StyleFilter {
+        fill: false,
+        stroke: true,
+        effects: false,
+        typography: false,
+    });
+    picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
+    let obj = bridge.session().unwrap().document().find_object(target).unwrap();
+    let stack = obj.effective_appearance();
+    assert_eq!(
+        stack.primary_stroke().map(|s| (s.paint.clone(), s.width)),
+        Some((petunia_design_document::Paint::Solid("ptnd.blue/500".to_string()), 4.0)),
+        "Stroke must be copied when filter.stroke is true"
+    );
+
+    // 3. Effects-only filter
+    tool.set_filter(StyleFilter {
+        fill: false,
+        stroke: false,
+        effects: true,
+        typography: false,
+    });
+    picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
+    let obj = bridge.session().unwrap().document().find_object(target).unwrap();
+    let stack = obj.effective_appearance();
+    assert_eq!(stack.effects.len(), 1, "Effects must be copied when filter.effects is true");
+
+    // 4. Typography-only filter
+    tool.set_filter(StyleFilter {
+        fill: false,
+        stroke: false,
+        effects: false,
+        typography: true,
+    });
+    picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
+    let obj = bridge.session().unwrap().document().find_object(target).unwrap();
+    if let Some(petunia_design_document::ShapeKind::Text { content, font_family, font_size, line_height, letter_spacing, .. }) = &obj.shape {
+        assert_eq!(content, "Keep Me", "Target text content must be preserved!");
+        assert_eq!(font_family, "Futura", "Target font family must be updated");
+        assert_eq!(*font_size, 24.0, "Target font size must be updated");
+        assert_eq!(*line_height, 1.5, "Target line height must be updated");
+        assert_eq!(*letter_spacing, 1.0, "Target letter spacing must be updated");
+    } else {
+        panic!("Target must remain text");
+    }
+}
+
+#[test]
+fn shape_builder_subtract_op_without_modifier() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Builder Subtract").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let objects = builder_two_rects(&mut bridge);
+    let mut tool = ShapeBuilderTool::new(BuilderMode::ShapeBuilder);
+    tool.set_op(BuilderOp::Subtract);
+
+    let p = GPoint::new(75.0, 75.0);
+    let event = NormalizedPointerEvent::new(
+        PointerPhase::Down,
+        PointerButton::Primary,
+        p,
+        p,
+        SemanticModifiers::default(),
+    );
+    tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap).unwrap();
+    let event = NormalizedPointerEvent::new(
+        PointerPhase::Up,
+        PointerButton::Primary,
+        p,
+        p,
+        SemanticModifiers::default(),
+    );
+    let cs = tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap).unwrap();
+    assert!(!cs.is_empty(), "Subtract operation must carve region and produce changes");
+
+    let session = bridge.session().unwrap();
+    let obj_a = session.find_object(objects[0]).unwrap();
+    let obj_b = session.find_object(objects[1]).unwrap();
+    assert!(obj_a.hit_test(GPoint::new(25.0, 25.0)));
+    assert!(!obj_a.hit_test(GPoint::new(75.0, 75.0)), "Overlap point must no longer be covered by object A");
+    assert!(!obj_b.hit_test(GPoint::new(75.0, 75.0)), "Overlap point must no longer be covered by object B");
+}
+
+#[test]
+fn smart_fill_uses_configured_token() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("SmartFill Custom Token").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let _objects = builder_two_rects(&mut bridge);
+    let mut tool = ShapeBuilderTool::new(BuilderMode::SmartFill);
+    tool.set_fill_token("ptnd.emerald/500");
+
+    let p = GPoint::new(75.0, 75.0);
+    let event = NormalizedPointerEvent::new(
+        PointerPhase::Down,
+        PointerButton::Primary,
+        p,
+        p,
+        SemanticModifiers::default(),
+    );
+    tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap).unwrap();
+    let event = NormalizedPointerEvent::new(
+        PointerPhase::Up,
+        PointerButton::Primary,
+        p,
+        p,
+        SemanticModifiers::default(),
+    );
+    let cs = tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap).unwrap();
+    assert!(!cs.is_empty(), "SmartFill must create region");
+
+    let selection = bridge.selection();
+    assert_eq!(selection.selected_ids.len(), 1);
+    let created_id = selection.selected_ids[0];
+    let created_obj = bridge.session().unwrap().find_object(created_id).unwrap();
+    assert_eq!(created_obj.fill.as_deref(), Some("ptnd.emerald/500"));
+}
+
+#[test]
 fn measure_area_drag_reports_rect() {
     let mut bridge = PetuniaDesignGuiBridge::new();
     bridge.new_document("Measure Area").expect("doc");
@@ -2915,7 +3677,7 @@ fn measure_area_drag_reports_rect() {
         ),
         (20.0, 30.0, 600.0, 100.0)
     );
-    assert!(tool.overlays().marquee_screen.is_some());
+    assert!(tool.overlays(&camera).marquee_screen.is_some());
     // Distance mode is untouched and still the default.
     assert_eq!(MeasureTool::new().mode(), MeasureMode::Distance);
 }
@@ -3133,6 +3895,138 @@ fn builder_drag_merges_crossed_regions_keeping_sources() {
 }
 
 #[test]
+fn builder_overlays_indicate_subtraction_when_alt_held() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Builder Subtraction Overlay").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    builder_two_rects(&mut bridge);
+    let mut tool = ShapeBuilderTool::new(BuilderMode::ShapeBuilder);
+    let alt = SemanticModifiers {
+        duplicate: true,
+        ..Default::default()
+    };
+
+    let p = GPoint::new(75.0, 75.0);
+    // Move over the overlap with Alt held:
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p, p, alt),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let overlays = tool.overlays(&bridge);
+    assert!(overlays.region_subtractive, "subtractive flag must be true when Alt held");
+    assert!(overlays.region_preview.is_some(), "overlap must have region preview");
+    assert_eq!(overlays.cursor, CursorAffordance::Pointer);
+}
+
+#[test]
+fn builder_freehand_drag_path_merges_along_curve() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Builder Curve Drag").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    builder_two_rects(&mut bridge);
+    let mut tool = ShapeBuilderTool::new(BuilderMode::ShapeBuilder);
+    let plain = SemanticModifiers::default();
+
+    let p0 = GPoint::new(10.0, 10.0);
+    let p_mid = GPoint::new(75.0, 75.0);
+    let p1 = GPoint::new(140.0, 140.0);
+
+    // Down at p0
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p0, p0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    // In-flight move to p_mid
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p_mid, p_mid, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let in_flight = tool.overlays(&bridge);
+    assert_eq!(in_flight.cursor, CursorAffordance::Grabbing);
+    assert!(in_flight.pen_preview.is_some(), "freehand cutting path must be previewed");
+    assert!(in_flight.region_preview.is_some(), "crossed regions must be previewed");
+
+    // Move to p1 and release
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p1, p1, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Up, PointerButton::Primary, p1, p1, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    assert_eq!(bridge.snapshot().total_objects, 3);
+    let region = bridge.selection().selected_ids[0];
+    let bounds = object_bounds(&bridge, region);
+    assert!((bounds[2] - 150.0).abs() < 2.0, "merged bounds width {bounds:?}");
+    assert!((bounds[3] - 150.0).abs() < 2.0, "merged bounds height {bounds:?}");
+}
+
+#[test]
+fn builder_cursor_affordances_switch_between_hover_and_drag() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Builder Cursor").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    builder_two_rects(&mut bridge);
+    let mut tool = ShapeBuilderTool::new(BuilderMode::ShapeBuilder);
+    let plain = SemanticModifiers::default();
+
+    // Hover empty canvas
+    let p_empty = GPoint::new(800.0, 800.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p_empty, p_empty, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(tool.overlays(&bridge).cursor, CursorAffordance::Crosshair);
+
+    // Hover shape region
+    let p_shape = GPoint::new(20.0, 20.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p_shape, p_shape, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(tool.overlays(&bridge).cursor, CursorAffordance::Pointer);
+
+    // Drag
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p_shape, p_shape, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(tool.overlays(&bridge).cursor, CursorAffordance::Grabbing);
+}
+
+#[test]
 fn smartfill_floods_bounded_empty_face() {
     let mut bridge = PetuniaDesignGuiBridge::new();
     bridge.new_document("Flood Frame").expect("doc");
@@ -3147,7 +4041,15 @@ fn smartfill_floods_bounded_empty_face() {
     bridge.clear_selection();
     let mut tool = ShapeBuilderTool::new(BuilderMode::SmartFill);
 
-    builder_click(&mut tool, &mut bridge, &camera, &mut snap, 50.0, 50.0, SemanticModifiers::default());
+    builder_click(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        50.0,
+        50.0,
+        SemanticModifiers::default(),
+    );
 
     assert_eq!(bridge.snapshot().total_objects, 5);
     let region = bridge.selection().selected_ids[0];
@@ -3157,7 +4059,12 @@ fn smartfill_floods_bounded_empty_face() {
     assert!((bounds[2] - 80.0).abs() < 1.0, "got {bounds:?}");
     assert!((bounds[3] - 80.0).abs() < 1.0, "got {bounds:?}");
     // Default SmartFill token, undo removes the flood.
-    let obj = bridge.session().unwrap().document().find_object(region).unwrap();
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(region)
+        .unwrap();
     assert!(matches!(
         obj.effective_appearance().primary_fill().map(|f| f.paint.clone()),
         Some(petunia_design_document::Paint::Solid(ref t)) if t == "ptnd.blue/500"
@@ -3178,7 +4085,15 @@ fn smartfill_unbounded_click_is_noop() {
     let mut tool = ShapeBuilderTool::new(BuilderMode::SmartFill);
 
     // Far outside: the face touches the frame (unbounded) → NoOp.
-    builder_click(&mut tool, &mut bridge, &camera, &mut snap, 500.0, 500.0, SemanticModifiers::default());
+    builder_click(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        500.0,
+        500.0,
+        SemanticModifiers::default(),
+    );
 
     assert_eq!(bridge.snapshot().total_objects, 1);
 }
@@ -3228,13 +4143,23 @@ fn smartfill_flood_bounded_by_open_strokes() {
                 rotation: 0.0,
             }))
             .unwrap();
-        bridge.set_stroke(id, Some("ptnd.gray/900".to_string()), 10.0).unwrap();
+        bridge
+            .set_stroke(id, Some("ptnd.gray/900".to_string()), 10.0)
+            .unwrap();
     }
     bridge.clear_selection();
     let mut tool = ShapeBuilderTool::new(BuilderMode::SmartFill);
 
     // Inside the stroked box: open centerlines still bound the face.
-    builder_click(&mut tool, &mut bridge, &camera, &mut snap, 50.0, 50.0, SemanticModifiers::default());
+    builder_click(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        50.0,
+        50.0,
+        SemanticModifiers::default(),
+    );
 
     assert_eq!(bridge.snapshot().total_objects, 5);
     let region = bridge.selection().selected_ids[0];
@@ -3785,14 +4710,26 @@ fn photo_drag(
     let p0 = GPoint::new(x0, y0);
     let p1 = GPoint::new(x1, y1);
     tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p0, p0, modifiers),
+        &NormalizedPointerEvent::new(
+            PointerPhase::Down,
+            PointerButton::Primary,
+            p0,
+            p0,
+            modifiers,
+        ),
         bridge,
         camera,
         snap,
     )
     .unwrap();
     tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p1, p1, modifiers),
+        &NormalizedPointerEvent::new(
+            PointerPhase::Move,
+            PointerButton::Primary,
+            p1,
+            p1,
+            modifiers,
+        ),
         bridge,
         camera,
         snap,
@@ -3818,11 +4755,25 @@ fn marquee_rect_commits_mask_without_undo() {
     // Session transient state: no new undo entry, no document mutation.
     // (new_document itself owns the single pre-existing entry.)
     let undo_before = bridge.can_undo();
-    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 10.0, 10.0, 110.0, 60.0, SemanticModifiers::default());
+    photo_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        10.0,
+        10.0,
+        110.0,
+        60.0,
+        SemanticModifiers::default(),
+    );
     assert_eq!(bridge.can_undo(), undo_before);
     let mask = bridge.raster_selection();
     assert!(!mask.is_empty());
-    assert!((mask.signed_area().abs() - 5000.0).abs() < 1.0, "got {}", mask.signed_area());
+    assert!(
+        (mask.signed_area().abs() - 5000.0).abs() < 1.0,
+        "got {}",
+        mask.signed_area()
+    );
     assert!(mask.contains(GPoint::new(60.0, 35.0)));
     assert!(!mask.contains(GPoint::new(200.0, 200.0)));
     assert_eq!(bridge.snapshot().total_objects, 0);
@@ -3838,7 +4789,17 @@ fn marquee_ellipse_covers_center_not_corners() {
     let mut snap = SnapEngine::new();
     let mut tool = PhotoTool::new(PhotoToolKind::MarqueeEllipse);
 
-    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 0.0, 0.0, 100.0, 100.0, SemanticModifiers::default());
+    photo_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        0.0,
+        0.0,
+        100.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
 
     let mask = bridge.raster_selection();
     assert!(mask.contains(GPoint::new(50.0, 50.0)));
@@ -3854,9 +4815,29 @@ fn marquee_click_clears_mask() {
     let mut tool = PhotoTool::new(PhotoToolKind::MarqueeRect);
     let plain = SemanticModifiers::default();
 
-    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 10.0, 10.0, 110.0, 60.0, plain);
+    photo_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        10.0,
+        10.0,
+        110.0,
+        60.0,
+        plain,
+    );
     assert!(!bridge.raster_selection().is_empty());
-    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 500.0, 500.0, 500.0, 500.0, plain);
+    photo_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        500.0,
+        500.0,
+        500.0,
+        500.0,
+        plain,
+    );
     assert!(bridge.raster_selection().is_empty());
 }
 
@@ -3876,16 +4857,48 @@ fn marquee_shift_adds_and_alt_subtracts() {
         ..Default::default()
     };
 
-    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 0.0, 0.0, 100.0, 100.0, SemanticModifiers::default());
-    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 50.0, 50.0, 150.0, 150.0, shift);
+    photo_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        0.0,
+        0.0,
+        100.0,
+        100.0,
+        SemanticModifiers::default(),
+    );
+    photo_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        50.0,
+        50.0,
+        150.0,
+        150.0,
+        shift,
+    );
     let added = bridge.raster_selection().signed_area().abs();
     assert!((added - 17500.0).abs() < 2.0, "got {added}");
 
-    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 0.0, 0.0, 100.0, 100.0, alt);
+    photo_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        0.0,
+        0.0,
+        100.0,
+        100.0,
+        alt,
+    );
     let carved = bridge.raster_selection().signed_area().abs();
     assert!((carved - 7500.0).abs() < 2.0, "got {carved}");
     assert!(!bridge.raster_selection().contains(GPoint::new(25.0, 25.0)));
-    assert!(bridge.raster_selection().contains(GPoint::new(125.0, 125.0)));
+    assert!(bridge
+        .raster_selection()
+        .contains(GPoint::new(125.0, 125.0)));
 }
 
 #[test]
@@ -3925,7 +4938,11 @@ fn lasso_encloses_polygon_mask() {
     .unwrap();
 
     let mask = bridge.raster_selection();
-    assert!((mask.signed_area().abs() - 10000.0).abs() < 1.0, "got {}", mask.signed_area());
+    assert!(
+        (mask.signed_area().abs() - 10000.0).abs() < 1.0,
+        "got {}",
+        mask.signed_area()
+    );
     assert!(mask.contains(GPoint::new(50.0, 50.0)));
 }
 
@@ -3936,7 +4953,17 @@ fn raster_bridge_api_inverts_grows_feathers() {
     let camera = ViewportCamera::new(1000.0, 1000.0);
     let mut snap = SnapEngine::new();
     let mut tool = PhotoTool::new(PhotoToolKind::MarqueeRect);
-    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 0.0, 0.0, 10.0, 10.0, SemanticModifiers::default());
+    photo_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        0.0,
+        0.0,
+        10.0,
+        10.0,
+        SemanticModifiers::default(),
+    );
 
     bridge.set_raster_feather(2.5);
     assert!((bridge.raster_selection().feather - 2.5).abs() < 1e-9);
@@ -4002,7 +5029,12 @@ fn perspective_drag_moves_corner_with_one_undo() {
     // Live quad stored; base untouched; outline pinched.
     let mods = bridge.modifiers(id);
     assert_eq!(mods.len(), 1);
-    let obj = bridge.session().unwrap().document().find_object(id).unwrap();
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
     assert!(matches!(
         obj.shape,
         Some(petunia_design_document::ShapeKind::Rectangle { .. })
@@ -4026,7 +5058,9 @@ fn perspective_second_drag_replaces_quad() {
     let mut tool = PerspectiveTool::new();
     let plain = SemanticModifiers::default();
 
-    bridge.set_perspective(id, [[0.0, 0.0], [100.0, 25.0], [100.0, 75.0], [0.0, 100.0]]).unwrap();
+    bridge
+        .set_perspective(id, [[0.0, 0.0], [100.0, 25.0], [100.0, 75.0], [0.0, 100.0]])
+        .unwrap();
     assert_eq!(bridge.modifiers(id).len(), 1);
 
     // Drag the bottom-right corner: same entry, new quad (no stacking).
@@ -4061,12 +5095,27 @@ fn vector_crop_clips_with_one_undo() {
     let mut tool = PhotoTool::new(PhotoToolKind::Crop);
     let plain = SemanticModifiers::default();
 
-    photo_drag(&mut tool, &mut bridge, &camera, &mut snap, 25.0, 25.0, 75.0, 75.0, plain);
+    photo_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        25.0,
+        25.0,
+        75.0,
+        75.0,
+        plain,
+    );
 
     // Live crop entry; base untouched; evaluated outline is the window.
     let mods = bridge.modifiers(id);
     assert_eq!(mods.len(), 1);
-    let obj = bridge.session().unwrap().document().find_object(id).unwrap();
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
     assert!(matches!(
         obj.shape,
         Some(petunia_design_document::ShapeKind::Rectangle { .. })
@@ -4076,6 +5125,102 @@ fn vector_crop_clips_with_one_undo() {
 
     bridge.undo().unwrap();
     assert!(bridge.modifiers(id).is_empty());
+}
+
+#[test]
+fn raster_tools_refuse_the_gesture_instead_of_discarding_it() {
+    // SelectionBrush, FloodSelect, Brush and Eraser need pixel layers that do
+    // not exist yet. They used to accept a drag and return an empty changeset,
+    // which reported a successful edit the document never received. They must
+    // now fail at `Down`, before any gesture state is accumulated.
+    for kind in [
+        PhotoToolKind::SelectionBrush,
+        PhotoToolKind::FloodSelect,
+        PhotoToolKind::Brush,
+        PhotoToolKind::Eraser,
+    ] {
+        let mut bridge = PetuniaDesignGuiBridge::new();
+        bridge.new_document("Raster Stub").expect("doc");
+        let camera = ViewportCamera::new(1000.0, 1000.0);
+        let mut snap = SnapEngine::new();
+        let mut tool = PhotoTool::new(kind);
+        let p0 = GPoint::new(10.0, 10.0);
+        // `new_document` owns the single pre-existing entry; the refused
+        // gesture must not add another one.
+        let undo_before = bridge.can_undo();
+
+        let error = tool
+            .on_pointer_event(
+                &NormalizedPointerEvent::new(
+                    PointerPhase::Down,
+                    PointerButton::Primary,
+                    p0,
+                    p0,
+                    SemanticModifiers::default(),
+                ),
+                &mut bridge,
+                &camera,
+                &mut snap,
+            )
+            .expect_err("a raster tool without pixel layers must refuse the drag");
+
+        assert!(
+            matches!(
+                error,
+                petunia_design_foundation::PetuniaError::CapabilityUnavailable { .. }
+            ),
+            "{kind:?} should report a missing capability, got {error:?}"
+        );
+        assert!(
+            !tool.is_active(),
+            "{kind:?} must not accumulate gesture state before it can act"
+        );
+        assert_eq!(
+            bridge.can_undo(),
+            undo_before,
+            "{kind:?} must not create an undo entry it cannot honour"
+        );
+    }
+}
+
+#[test]
+fn blocked_photo_tools_are_not_exposed_as_wired() {
+    // The rail and the menus resolve availability from the registry, so a tool
+    // whose handler refuses must not be advertised as `Wired`.
+    use petunia_design_application::surfaces::{SurfaceKind, SurfaceStatus, SURFACES};
+
+    for action in [
+        "ptnd.tool.photo.selection_brush",
+        "ptnd.tool.photo.flood_select",
+        "ptnd.tool.photo.brush",
+        "ptnd.tool.photo.eraser",
+    ] {
+        let entry = SURFACES
+            .iter()
+            .find(|entry| entry.kind == SurfaceKind::Tool && entry.action == Some(action))
+            .unwrap_or_else(|| panic!("`{action}` is missing from the registry"));
+        assert!(
+            matches!(entry.status, SurfaceStatus::Disabled(_)),
+            "`{action}` refuses its gesture, so it must be Disabled, got {:?}",
+            entry.status
+        );
+    }
+}
+
+#[test]
+fn shape_builder_is_wired_because_it_commits_real_booleans() {
+    // The registry used to call Shape Builder "planned after V1" while the rail
+    // exposed it and nine tests exercised boolean combine/subtract, Smart Fill
+    // and one-entry undo. The registry was wrong, not the tool.
+    use petunia_design_application::surfaces::{SurfaceKind, SurfaceStatus, SURFACES};
+
+    let entry = SURFACES
+        .iter()
+        .find(|entry| {
+            entry.kind == SurfaceKind::Tool && entry.action == Some("ptnd.tool.shape_builder")
+        })
+        .expect("shape builder registry row");
+    assert_eq!(entry.status, SurfaceStatus::Wired);
 }
 
 #[test]
@@ -4114,14 +5259,30 @@ fn bake_geometry_commits_warp_and_crop_keeping_transparency() {
     let mut gen = IdGenerator::new();
     let id = perspective_test_rect(&mut bridge, &mut gen);
 
-    bridge.set_perspective(id, [[0.0, 0.0], [100.0, 25.0], [100.0, 75.0], [0.0, 100.0]]).unwrap();
+    bridge
+        .set_perspective(id, [[0.0, 0.0], [100.0, 25.0], [100.0, 75.0], [0.0, 100.0]])
+        .unwrap();
     bridge.set_crop_rect(id, [0.0, 0.0, 60.0, 100.0]).unwrap();
     let mut gtool = GradientTool::new(GradientToolMode::Transparency);
-    transparency_drag(&mut gtool, &mut bridge, &camera, &mut snap, 0.0, 0.0, 100.0, 0.0);
+    transparency_drag(
+        &mut gtool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+    );
     assert_eq!(bridge.modifiers(id).len(), 3);
 
     bridge.bake_geometry(id).unwrap();
-    let obj = bridge.session().unwrap().document().find_object(id).unwrap();
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
     assert!(matches!(
         obj.shape,
         Some(petunia_design_document::ShapeKind::Path(_))
@@ -4134,3 +5295,798 @@ fn bake_geometry_commits_warp_and_crop_keeping_transparency() {
         petunia_design_document::ModifierKind::TransparentGradient { .. }
     ));
 }
+
+fn cache_test_box(
+    bridge: &mut PetuniaDesignGuiBridge,
+    gen: &mut IdGenerator,
+    bounds: [f64; 4],
+) -> petunia_design_foundation::ObjectId {
+    let surface_id = bridge.active_surface().unwrap();
+    let id = gen.next_object();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id,
+            name: "CacheBox".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some(bounds),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    bridge.clear_selection();
+    id
+}
+
+#[test]
+fn geo_cache_memoizes_repeated_reads() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Geo Cache").expect("doc");
+    let mut gen = IdGenerator::new();
+    let id = cache_test_box(&mut bridge, &mut gen, [10.0, 10.0, 50.0, 50.0]);
+
+    assert_eq!(bridge.geo_cache_len(), 0);
+    let first = bridge.cached_bounds(id).expect("bounds");
+    assert_eq!(bridge.geo_cache_len(), 1);
+    // Repeated reads reuse the entry: no growth, identical values.
+    for _ in 0..10 {
+        assert_eq!(bridge.cached_bounds(id), Some(first));
+        assert!(bridge.cached_hit(id, GPoint::new(20.0, 20.0), 0.5));
+    }
+    assert_eq!(bridge.geo_cache_len(), 1);
+    assert!(!bridge.cached_hit(id, GPoint::new(500.0, 500.0), 0.5));
+}
+
+#[test]
+fn geo_cache_invalidates_on_mutation_and_undo() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Geo Invalidate").expect("doc");
+    let mut gen = IdGenerator::new();
+    let id = cache_test_box(&mut bridge, &mut gen, [10.0, 10.0, 50.0, 50.0]);
+    assert_eq!(bridge.cached_bounds(id), Some([10.0, 10.0, 50.0, 50.0]));
+
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some([30.0, 30.0, 50.0, 50.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    // Revision bumped: fresh evaluation, same single entry.
+    assert_eq!(bridge.cached_bounds(id), Some([30.0, 30.0, 50.0, 50.0]));
+    assert_eq!(bridge.geo_cache_len(), 1);
+    assert!(bridge.cached_hit(id, GPoint::new(40.0, 40.0), 0.5));
+    assert!(!bridge.cached_hit(id, GPoint::new(15.0, 15.0), 0.5));
+
+    bridge.undo().unwrap();
+    assert_eq!(bridge.cached_bounds(id), Some([10.0, 10.0, 50.0, 50.0]));
+}
+
+#[test]
+fn geo_cache_matches_direct_evaluation_with_modifiers() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Geo Modifier").expect("doc");
+    let mut gen = IdGenerator::new();
+    let id = cache_test_box(&mut bridge, &mut gen, [0.0, 0.0, 100.0, 100.0]);
+    bridge.offset_path(id, 10.0).unwrap();
+
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(id)
+        .unwrap();
+    let direct_path = obj.evaluated_path();
+    let direct_bounds = obj.evaluated_bounds();
+    let cached_path = bridge.cached_path(id).expect("path");
+    assert_eq!(cached_path.verbs, direct_path.verbs);
+    assert_eq!(bridge.cached_bounds(id), direct_bounds);
+    // Evaluated outline grew; base bounds stayed.
+    assert_eq!(obj.bounds, Some([0.0, 0.0, 100.0, 100.0]));
+    assert!((direct_bounds.unwrap()[2] - 120.0).abs() < 2.0);
+}
+
+#[test]
+fn spatial_index_uses_rotated_world_aabb_for_select() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Rotated Spatial").expect("doc");
+    let surface = bridge.active_surface().unwrap();
+    let id = ObjectId::new(1);
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface,
+            id,
+            name: "Rotated".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            }),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some([100.0, 100.0, 80.0, 20.0]),
+            rotation: std::f64::consts::FRAC_PI_2,
+        }))
+        .unwrap();
+
+    let session = bridge.session().unwrap();
+    let world_bounds = session.cached_world_frame_bounds(id).expect("world frame");
+    assert!(world_bounds[0].is_finite() && world_bounds[1].is_finite());
+    assert!(session
+        .spatial_candidates_point(
+            GPoint::new(world_bounds[0] + 2.0, world_bounds[1] + 2.0),
+            0.0,
+        )
+        .contains(&id));
+}
+
+#[test]
+fn geo_cache_prunes_deleted_objects() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Geo Prune").expect("doc");
+    let mut gen = IdGenerator::new();
+    let id = cache_test_box(&mut bridge, &mut gen, [10.0, 10.0, 50.0, 50.0]);
+    assert!(bridge.cached_bounds(id).is_some());
+    assert_eq!(bridge.geo_cache_len(), 1);
+
+    bridge
+        .submit_command(CommandRequest::new(Command::DeleteObject { id }))
+        .unwrap();
+    assert_eq!(bridge.geo_cache_len(), 0);
+    assert!(bridge.cached_bounds(id).is_none());
+}
+
+#[test]
+fn zoom_flatten_tol_scales_with_zoom() {
+    use petunia_design_geometry::zoom_flatten_tol;
+    assert!((zoom_flatten_tol(1.0) - 0.5).abs() < 1e-9);
+    assert!((zoom_flatten_tol(0.1) - 4.0).abs() < 1e-9);
+    assert!((zoom_flatten_tol(10.0) - 0.05).abs() < 1e-9);
+    assert!((zoom_flatten_tol(1000.0) - 0.05).abs() < 1e-9);
+}
+
+#[test]
+fn cached_sample_and_nearest_match_direct_methods() {
+    use petunia_design_geometry::PathVerb as V;
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Cached Sample").expect("doc");
+    let surface_id = bridge.active_surface().unwrap();
+    let mut gen = IdGenerator::new();
+    let id = gen.next_object();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id,
+            name: "Curve".to_string(),
+        }))
+        .unwrap();
+    let mut path = petunia_design_geometry::GPath::new();
+    path.push(V::MoveTo(GPoint::new(0.0, 0.0))).unwrap();
+    path.push(V::CubicTo(
+        GPoint::new(30.0, 0.0),
+        GPoint::new(70.0, 100.0),
+        GPoint::new(100.0, 100.0),
+    ))
+    .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Path(path.clone())),
+        }))
+        .unwrap();
+    bridge.clear_selection();
+
+    for tol in [0.1, 0.5, 2.0] {
+        for i in 0..=10 {
+            let t = i as f64 / 10.0;
+            let direct = path.sample_at(t, tol).expect("direct");
+            let cached = bridge.cached_sample_at(id, t, tol).expect("cached");
+            assert!((direct.0.x - cached.0.x).abs() < 1e-6, "t={t} tol={tol}");
+            assert!((direct.0.y - cached.0.y).abs() < 1e-6, "t={t} tol={tol}");
+        }
+        let probe = GPoint::new(40.0, 30.0);
+        assert!(
+            (path.nearest_t(probe, tol).unwrap()
+                - bridge.cached_nearest_t(id, probe, tol).unwrap())
+            .abs()
+                < 1e-6
+        );
+        let cached_polys = bridge.cached_polygons(id, tol).expect("polys");
+        assert_eq!(cached_polys, path.to_polygons(tol));
+    }
+}
+
+#[test]
+fn cached_hit_respects_zoom_tolerance() {
+    use petunia_design_geometry::PathVerb as V;
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Cached Hit Tol").expect("doc");
+    let surface_id = bridge.active_surface().unwrap();
+    let mut gen = IdGenerator::new();
+    let id = gen.next_object();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: surface_id,
+            id,
+            name: "Bulge".to_string(),
+        }))
+        .unwrap();
+    // Closed bulging curve: coarse flattening cuts corners vs fine.
+    let mut path = petunia_design_geometry::GPath::new();
+    path.push(V::MoveTo(GPoint::new(0.0, 0.0))).unwrap();
+    path.push(V::CubicTo(
+        GPoint::new(100.0, 0.0),
+        GPoint::new(100.0, 100.0),
+        GPoint::new(0.0, 100.0),
+    ))
+    .unwrap();
+    path.push(V::Close).unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Path(path)),
+        }))
+        .unwrap();
+    bridge.clear_selection();
+
+    let coarse = bridge.cached_polygons(id, 4.0).expect("coarse");
+    let fine = bridge.cached_polygons(id, 0.05).expect("fine");
+    let count = |polys: &Vec<Vec<GPoint>>| polys.iter().map(|p| p.len()).sum::<usize>();
+    assert!(
+        count(&fine) >= count(&coarse),
+        "coarse={} fine={}",
+        count(&coarse),
+        count(&fine)
+    );
+    // Deep interior hits at every tolerance.
+    assert!(bridge.cached_hit(id, GPoint::new(20.0, 50.0), 4.0));
+    assert!(bridge.cached_hit(id, GPoint::new(20.0, 50.0), 0.05));
+    assert!(!bridge.cached_hit(id, GPoint::new(500.0, 500.0), 4.0));
+}
+
+fn spatial_test_scene(
+    bridge: &mut PetuniaDesignGuiBridge,
+    gen: &mut IdGenerator,
+    count: usize,
+) -> Vec<petunia_design_foundation::ObjectId> {
+    let mut ids = Vec::new();
+    for i in 0..count {
+        let x = (i % 20) as f64 * 60.0;
+        let y = (i / 20) as f64 * 60.0;
+        ids.push(cache_test_box(bridge, gen, [x, y, 50.0, 50.0]));
+    }
+    ids
+}
+
+#[test]
+fn spatial_point_query_returns_topmost_first() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Spatial Point").expect("doc");
+    let mut gen = IdGenerator::new();
+    let a = cache_test_box(&mut bridge, &mut gen, [0.0, 0.0, 100.0, 100.0]);
+    let b = cache_test_box(&mut bridge, &mut gen, [50.0, 50.0, 100.0, 100.0]);
+    let session = bridge.session().unwrap();
+
+    // Overlap zone: later (topmost) object first.
+    assert_eq!(
+        session.spatial_candidates_point(GPoint::new(75.0, 75.0), 0.0),
+        vec![b, a]
+    );
+    // Outside everything: empty.
+    assert!(session
+        .spatial_candidates_point(GPoint::new(500.0, 500.0), 0.0)
+        .is_empty());
+    // Tolerance expands the query box: (102, 60) is 2pt past A's edge.
+    assert_eq!(
+        session.spatial_candidates_point(GPoint::new(102.0, 60.0), 5.0),
+        vec![b, a]
+    );
+    assert!(session
+        .spatial_candidates_point(GPoint::new(102.0, 60.0), 1.0)
+        .eq(&vec![b]));
+    assert_eq!(session.spatial_len(), 2);
+}
+
+#[test]
+fn spatial_rect_query_matches_brute_force() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Spatial Rect").expect("doc");
+    let mut gen = IdGenerator::new();
+    let ids = spatial_test_scene(&mut bridge, &mut gen, 60);
+    let session = bridge.session().unwrap();
+
+    let rect = [0.0, 0.0, 200.0, 200.0];
+    let mut indexed = session.spatial_candidates_rect(rect);
+    indexed.sort();
+    let mut brute: Vec<_> = ids
+        .iter()
+        .filter(|id| {
+            session
+                .find_object(**id)
+                .and_then(|o| o.bounds)
+                .is_some_and(|[x, y, w, h]| {
+                    x < rect[2] && x + w > rect[0] && y < rect[3] && y + h > rect[1]
+                })
+        })
+        .copied()
+        .collect();
+    brute.sort();
+    assert_eq!(indexed, brute);
+    assert_eq!(session.spatial_len(), 60);
+}
+
+#[test]
+fn spatial_index_rebuilds_on_mutation() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Spatial Rebuild").expect("doc");
+    let mut gen = IdGenerator::new();
+    let id = cache_test_box(&mut bridge, &mut gen, [0.0, 0.0, 50.0, 50.0]);
+    assert_eq!(
+        bridge
+            .session()
+            .unwrap()
+            .spatial_candidates_point(GPoint::new(25.0, 25.0), 0.0),
+        vec![id]
+    );
+
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some([300.0, 300.0, 50.0, 50.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    let session = bridge.session().unwrap();
+    assert!(session
+        .spatial_candidates_point(GPoint::new(25.0, 25.0), 0.0)
+        .is_empty());
+    assert_eq!(
+        session.spatial_candidates_point(GPoint::new(325.0, 325.0), 0.0),
+        vec![id]
+    );
+}
+
+#[test]
+fn spatial_tool_integration_and_performance() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Spatial Tools").expect("doc");
+    let mut gen = IdGenerator::new();
+    let ids = spatial_test_scene(&mut bridge, &mut gen, 200);
+
+    // Warm up the spatial index
+    let session = bridge.session().unwrap();
+    assert_eq!(session.spatial_len(), 200);
+
+    // Candidate lookup on 200 objects: must take < 50µs (F3 acceptance)
+    let t0 = std::time::Instant::now();
+    for _ in 0..10 {
+        let _ = session.spatial_candidates_point(GPoint::new(125.0, 65.0), 4.0);
+    }
+    let elapsed = t0.elapsed();
+    assert!(
+        elapsed.as_millis() < 50,
+        "Spatial query took too long: {:?}",
+        elapsed
+    );
+
+    // Select tool click hit-test uses spatial candidates
+    let mut select = SelectTool::new();
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let ev = NormalizedPointerEvent::new(
+        PointerPhase::Down,
+        PointerButton::Primary,
+        GPoint::new(10.0, 10.0),
+        GPoint::new(10.0, 10.0),
+        SemanticModifiers::default(),
+    );
+    let _ = select.on_pointer_event(&ev, &mut bridge, &camera, &mut snap);
+    assert_eq!(bridge.selection().selected_ids, vec![ids[0]]);
+}
+
+#[test]
+fn contour_lod_drag_preview_fast_on_dense_path() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Contour LOD").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let sid = bridge.active_surface().unwrap();
+    let id = gen.next_object();
+
+    // Create a 200-vertex circle path
+    let pts: Vec<GPoint> = (0..200)
+        .map(|i| {
+            let angle = (i as f64) * std::f64::consts::TAU / 200.0;
+            GPoint::new(100.0 + 50.0 * angle.cos(), 100.0 + 50.0 * angle.sin())
+        })
+        .collect();
+    let dense_path = petunia_design_geometry::GPath::from_polygons(&[pts]);
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateObject {
+            surface: sid,
+            id,
+            name: "Dense".to_string(),
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Path(dense_path)),
+        }))
+        .unwrap();
+    bridge.set_selection(vec![id]);
+
+    let mut tool = ContourTool::new(ContourMode::Contour);
+    let plain = SemanticModifiers::default();
+
+    // Start drag
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 100.0, 100.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 140.0, 100.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    // In-flight overlay query (F4 LOD) must execute rapidly (< 50ms for 5 runs)
+    let t0 = std::time::Instant::now();
+    for _ in 0..5 {
+        let ov = tool.overlays(&bridge, &camera);
+        assert!(ov.marquee_screen.is_some());
+    }
+    let elapsed = t0.elapsed();
+    assert!(
+        elapsed.as_millis() < 50,
+        "Contour LOD overlay took too long: {:?}",
+        elapsed
+    );
+
+    // Up commits the full exact offset
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 140.0, 100.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(bridge.modifiers(id).len(), 1);
+}
+
+#[test]
+fn desktop_shell_overlays_avoids_redundant_snapping() {
+    let mut shell = petunia_design_shell::PetuniaShell::new(1000.0, 1000.0);
+    shell.new_document("Shell Overlays").expect("doc");
+
+    // Overlays should return empty snap guides initially (no redundant snap_point(ORIGIN))
+    let ov = shell.overlays();
+    assert!(ov.snap_guides.is_empty());
+}
+
+#[test]
+fn shell_overlays_include_specialized_tool_preview() {
+    let mut shell = petunia_design_shell::PetuniaShell::new(1000.0, 1000.0);
+    shell.new_document("Specialized Overlay").expect("doc");
+    let mut gen = IdGenerator::new();
+    let id = corner_test_rect(&mut shell.bridge, &mut gen, [0.0, 0.0, 100.0, 100.0]);
+    shell.bridge.set_selection(vec![id]);
+    shell.set_active_tool(ToolKind::Contour);
+
+    let event = NormalizedPointerEvent::new(
+        PointerPhase::Down,
+        PointerButton::Primary,
+        GPoint::new(50.0, 50.0),
+        GPoint::new(50.0, 50.0),
+        SemanticModifiers::default(),
+    );
+    shell.handle_pointer_event(&event).expect("contour down");
+    let move_event = NormalizedPointerEvent::new(
+        PointerPhase::Move,
+        PointerButton::Primary,
+        GPoint::new(70.0, 70.0),
+        GPoint::new(70.0, 70.0),
+        SemanticModifiers::default(),
+    );
+    shell
+        .handle_pointer_event(&move_event)
+        .expect("contour move");
+
+    let overlays = shell.overlays();
+    assert!(
+        overlays.marquee_screen.is_some(),
+        "specialized contour preview missing"
+    );
+}
+
+#[test]
+fn builder_multi_shape_drag_performance() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Builder Multi-Shape").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let mut ids = Vec::new();
+    for i in 0..10 {
+        let x = i as f64 * 25.0;
+        let y = i as f64 * 15.0;
+        ids.push(cache_test_box(&mut bridge, &mut gen, [x, y, 60.0, 60.0]));
+    }
+    bridge.set_selection(ids.clone());
+
+    let mut tool = ShapeBuilderTool::new(BuilderMode::ShapeBuilder);
+    let plain = SemanticModifiers::default();
+
+    // Start drag crossing multiple overlapping shapes
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 10.0, 10.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 200.0, 100.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    // Overlays must calculate in < 16ms (60 fps frame budget acceptance F5)
+    let t0 = std::time::Instant::now();
+    let ov = tool.overlays(&bridge);
+    let elapsed = t0.elapsed();
+    assert!(
+        elapsed.as_millis() < 16,
+        "Builder drag overlay took too long on 10 shapes: {:?}",
+        elapsed
+    );
+    let _ = ov;
+
+    // Release drag commits merged shape
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 200.0, 100.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+}
+
+#[test]
+fn corner_cursor_and_handles_on_rectangles() {
+    use petunia_design_shell::canvas::SelectionHandleKind;
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Corner Widgets").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let id = corner_test_rect(&mut bridge, &mut gen, [0.0, 0.0, 100.0, 100.0]);
+    bridge.set_selection(vec![id]);
+
+    let mut tool = ContourTool::new(ContourMode::Corner);
+    let plain = SemanticModifiers::default();
+
+    // 1. Initial state: 4 corner handles present with NodeSmooth, cursor Crosshair
+    let ov_init = tool.overlays(&bridge, &camera);
+    assert_eq!(ov_init.cursor, CursorAffordance::Crosshair);
+    assert_eq!(ov_init.handles.len(), 4);
+    assert!(ov_init.handles.iter().all(|h| h.kind == SelectionHandleKind::NodeSmooth));
+
+    // 2. Hover over top-left corner (0, 0): cursor Pointer, handle kind NodeSmoothSelected
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 0.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    let ov_hover = tool.overlays(&bridge, &camera);
+    assert_eq!(ov_hover.cursor, CursorAffordance::Pointer);
+    assert_eq!(ov_hover.handles[0].kind, SelectionHandleKind::NodeSmoothSelected);
+
+    // 3. Dragging corner: cursor ResizeNwse, path_preview populated with live rounded geometry
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 0.0, 0.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 20.0, 20.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    let ov_drag = tool.overlays(&bridge, &camera);
+    assert_eq!(ov_drag.cursor, CursorAffordance::ResizeNwse);
+    assert!(ov_drag.path_preview.is_some(), "path_preview must be populated during corner drag");
+
+    // 4. Release commits the corner
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 20.0, 20.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+}
+
+#[test]
+fn contour_overlays_publish_path_preview_and_grabbing_cursor() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Contour Preview").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let id = corner_test_rect(&mut bridge, &mut gen, [0.0, 0.0, 100.0, 100.0]);
+    bridge.set_selection(vec![id]);
+
+    let mut tool = ContourTool::new(ContourMode::Contour);
+    let plain = SemanticModifiers::default();
+
+    let ov_idle = tool.overlays(&bridge, &camera);
+    assert_eq!(ov_idle.cursor, CursorAffordance::Crosshair);
+
+    // Drag outward
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 50.0, 50.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 80.0, 50.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let ov_drag = tool.overlays(&bridge, &camera);
+    assert_eq!(ov_drag.cursor, CursorAffordance::Grabbing);
+    assert!(ov_drag.path_preview.is_some(), "Contour drag must emit path_preview");
+    assert!(ov_drag.marquee_screen.is_some());
+    assert!(ov_drag.pen_preview.is_some(), "Contour drag must emit radial drag vector");
+    assert!(ov_drag.measure_badge.is_some(), "Contour drag must emit measurement badge");
+    assert!(!ov_drag.handles.is_empty(), "Contour drag must emit on-canvas handle knob");
+}
+
+#[test]
+fn knife_shift_snaps_cut_line_to_45_degrees() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Knife Shift Snap").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let _id = knife_closed_rect(&mut bridge);
+
+    let mut tool = KnifeTool::new(KnifeMode::Knife);
+    let shift = SemanticModifiers {
+        constrain: true,
+        ..Default::default()
+    };
+
+    // Drag starting at (0, 50) and moving toward (100, 70) with Shift held
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 0.0, 50.0, shift),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 100.0, 70.0, shift),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let ov = tool.overlays(&camera, &bridge);
+    assert_eq!(ov.cursor, CursorAffordance::Crosshair);
+    assert!(ov.region_subtractive, "Knife must show subtractive cut styling");
+    let pen = ov.pen_preview.expect("cut line must be previewed");
+    assert_eq!(pen.len(), 2);
+    // (100, 70) from (0, 50) has dy=20, dx=100 (angle ~11.3 deg), which snaps to 0 deg (horizontal)
+    assert!((pen[1].y - 50.0).abs() < 1e-4, "Line must snap to horizontal 0 deg");
+    assert!(pen[1].x > 0.0);
+}
+
+#[test]
+fn scissors_cursor_affordance_over_cuttable_shape() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Scissors Hover").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let _id = knife_closed_rect(&mut bridge); // rect from (0,0) to (100,100)
+
+    let mut tool = KnifeTool::new(KnifeMode::Scissors);
+    let plain = SemanticModifiers::default();
+
+    // Hover far away
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 500.0, 500.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(tool.overlays(&camera, &bridge).cursor, CursorAffordance::Crosshair);
+
+    // Hover directly on boundary of sliceable shape (0, 50)
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 0.0, 50.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    let ov_hover = tool.overlays(&camera, &bridge);
+    assert_eq!(ov_hover.cursor, CursorAffordance::Pointer);
+    assert!(!ov_hover.handles.is_empty(), "Scissors hover must emit target snap handle");
+}
+
+#[test]
+fn pencil_overlays_publish_live_fitted_curve() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Pencil Live Fit").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+
+    let mut tool = PencilTool::new();
+    let plain = SemanticModifiers::default();
+
+    // Down + 3 distinct move samples
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 10.0, 10.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 30.0, 20.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 60.0, 40.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 90.0, 70.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+
+    let ov = tool.overlays();
+    assert_eq!(ov.cursor, CursorAffordance::Crosshair);
+    assert!(ov.path_preview.is_some(), "Pencil must emit live fitted path_preview during freehand drawing");
+}
+

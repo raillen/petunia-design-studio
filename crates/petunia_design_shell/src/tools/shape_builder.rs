@@ -13,7 +13,7 @@ use petunia_design_foundation::{ObjectId, PetuniaError};
 use petunia_design_geometry::{GPath, GPoint};
 
 use crate::bridge::PetuniaDesignGuiBridge;
-use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
+use crate::canvas::{CanvasOverlays, CursorAffordance, SnapEngine, ViewportCamera};
 
 use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase,
@@ -21,8 +21,8 @@ use petunia_design_application::interaction::{
 
 /// Click-vs-drag threshold in screen pixels.
 const CLICK_THRESHOLD_PX: f64 = 3.0;
-/// Drag sampling step in document points for region collection.
-const DRAG_SAMPLE_STEP: f64 = 4.0;
+/// Drag sampling step in document points for region collection (F4 LOD).
+const DRAG_SAMPLE_STEP: f64 = 8.0;
 /// Flatten tolerance for region booleans (F-21).
 const REGION_TOLERANCE: f64 = 0.5;
 /// Default SmartFill token (matches gradient-tool default precedent).
@@ -37,13 +37,26 @@ pub enum BuilderMode {
     SmartFill,
 }
 
+/// Operation mode for Shape Builder: Add (unify region) or Subtract (carve region out).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuilderOp {
+    /// Add candidate regions together.
+    Add,
+    /// Subtract candidate regions from covering shapes.
+    Subtract,
+}
+
 /// Interactive tool for constructive geometry region synthesis.
 #[derive(Clone, Debug)]
 pub struct ShapeBuilderTool {
     mode: BuilderMode,
+    op: BuilderOp,
+    fill_token: String,
     start_doc: Option<GPoint>,
     current_doc: Option<GPoint>,
     hover_doc: Option<GPoint>,
+    drag_path: Vec<GPoint>,
+    subtract_mode: bool,
 }
 
 impl ShapeBuilderTool {
@@ -52,9 +65,13 @@ impl ShapeBuilderTool {
     pub fn new(mode: BuilderMode) -> Self {
         Self {
             mode,
+            op: BuilderOp::Add,
+            fill_token: SMART_FILL_TOKEN.to_string(),
             start_doc: None,
             current_doc: None,
             hover_doc: None,
+            drag_path: Vec::new(),
+            subtract_mode: false,
         }
     }
 
@@ -64,17 +81,47 @@ impl ShapeBuilderTool {
         self.mode
     }
 
+    /// Returns the builder operation (Add vs Subtract).
+    #[must_use]
+    pub fn op(&self) -> BuilderOp {
+        self.op
+    }
+
+    /// Sets the builder operation (Add vs Subtract).
+    pub fn set_op(&mut self, op: BuilderOp) {
+        self.op = op;
+    }
+
+    /// Returns the fill token used for SmartFill.
+    #[must_use]
+    pub fn fill_token(&self) -> &str {
+        &self.fill_token
+    }
+
+    /// Sets the fill token used for SmartFill.
+    pub fn set_fill_token(&mut self, token: impl Into<String>) {
+        self.fill_token = token.into();
+    }
+
     /// Resets active drag.
     pub fn cancel(&mut self) {
         self.start_doc = None;
         self.current_doc = None;
         self.hover_doc = None;
+        self.drag_path.clear();
+        self.subtract_mode = false;
     }
 
     /// True while a drag gesture is in flight.
     #[must_use]
     pub fn is_active(&self) -> bool {
         self.start_doc.is_some()
+    }
+
+    /// True while subtraction mode is active (Alt / Option held or Subtract op).
+    #[must_use]
+    pub fn is_subtract_mode(&self) -> bool {
+        self.subtract_mode || self.op == BuilderOp::Subtract
     }
 
     /// Handles pointer events.
@@ -93,12 +140,22 @@ impl ShapeBuilderTool {
                 snap.reset_hysteresis();
                 self.start_doc = Some(event.doc_pos);
                 self.current_doc = Some(event.doc_pos);
+                self.drag_path = vec![event.doc_pos];
                 self.hover_doc = None;
+                self.subtract_mode = event.modifiers.duplicate || self.op == BuilderOp::Subtract;
                 Ok(ChangeSet::empty())
             }
             PointerPhase::Move => {
+                self.subtract_mode = event.modifiers.duplicate || self.op == BuilderOp::Subtract;
                 if self.start_doc.is_some() {
                     self.current_doc = Some(event.doc_pos);
+                    if let Some(last) = self.drag_path.last() {
+                        if last.distance_to(event.doc_pos) >= 2.0 {
+                            self.drag_path.push(event.doc_pos);
+                        }
+                    } else {
+                        self.drag_path.push(event.doc_pos);
+                    }
                 } else {
                     self.hover_doc = Some(event.doc_pos);
                 }
@@ -107,16 +164,19 @@ impl ShapeBuilderTool {
             PointerPhase::Up => {
                 let start = self.start_doc.take();
                 let current = self.current_doc.take();
+                let drag_path = std::mem::take(&mut self.drag_path);
                 self.hover_doc = None;
                 let (Some(p0), Some(p1)) = (start, current) else {
+                    self.subtract_mode = false;
                     return Ok(ChangeSet::empty());
                 };
                 let clicked = p0.distance_to(p1) * camera.zoom.max(0.1) <= CLICK_THRESHOLD_PX;
-                let subtract = event.modifiers.duplicate;
+                let subtract = event.modifiers.duplicate || self.subtract_mode || self.op == BuilderOp::Subtract;
+                self.subtract_mode = false;
                 if clicked {
                     self.click_region(p0, subtract, bridge)
                 } else {
-                    self.drag_regions(p0, p1, subtract, bridge)
+                    self.drag_regions_path(&drag_path, p0, p1, subtract, bridge)
                 }
             }
             PointerPhase::Cancel => {
@@ -139,7 +199,7 @@ impl ShapeBuilderTool {
         let covering = covering_set(bridge, pt);
         if covering.is_empty() {
             if self.mode == BuilderMode::SmartFill && !subtract {
-                return flood_empty_face(bridge, pt);
+                return flood_empty_face(bridge, pt, &self.fill_token);
             }
             return Ok(ChangeSet::empty());
         }
@@ -150,68 +210,64 @@ impl ShapeBuilderTool {
         if subtract {
             subtract_region(bridge, &covering, &region)
         } else {
-            create_region(bridge, &covering, &region, self.mode)
+            create_region(bridge, &covering, &region, self.mode, &self.fill_token)
         }
     }
 
-    /// Drags across regions: merges every crossed region into one object,
+    /// Drags across regions along the freehand path: merges every crossed region into one object,
     /// or subtracts their union (Alt) from the covering objects.
-    fn drag_regions(
+    fn drag_regions_path(
         &mut self,
+        path: &[GPoint],
         p0: GPoint,
         p1: GPoint,
         subtract: bool,
         bridge: &mut PetuniaDesignGuiBridge,
     ) -> Result<ChangeSet, PetuniaError> {
-        let length = p0.distance_to(p1);
-        let steps = ((length / DRAG_SAMPLE_STEP).ceil() as usize).clamp(1, 256);
+        let segments: Vec<(GPoint, GPoint)> = if path.len() >= 2 {
+            path.windows(2).map(|w| (w[0], w[1])).collect()
+        } else {
+            vec![(p0, p1)]
+        };
         let mut signatures: Vec<Vec<ObjectId>> = Vec::new();
-        for i in 0..=steps {
-            let t = (i as f64) / (steps as f64);
-            let pt = GPoint::new(p0.x + (p1.x - p0.x) * t, p0.y + (p1.y - p0.y) * t);
-            let mut covering = covering_set(bridge, pt);
-            covering.sort();
-            if !covering.is_empty() && !signatures.contains(&covering) {
-                signatures.push(covering);
+        for (seg_start, seg_end) in segments {
+            let length = seg_start.distance_to(seg_end);
+            let steps = ((length / DRAG_SAMPLE_STEP).ceil() as usize).clamp(1, 64);
+            for i in 0..=steps {
+                let t = (i as f64) / (steps as f64);
+                let pt = GPoint::new(
+                    seg_start.x + (seg_end.x - seg_start.x) * t,
+                    seg_start.y + (seg_end.y - seg_start.y) * t,
+                );
+                let mut covering = covering_set(bridge, pt);
+                covering.sort();
+                if !covering.is_empty() && !signatures.contains(&covering) {
+                    signatures.push(covering);
+                }
             }
         }
         if signatures.is_empty() {
             // SmartFill drags flood at the release point (click semantics).
             if self.mode == BuilderMode::SmartFill && !subtract {
-                return flood_empty_face(bridge, p1);
+                return flood_empty_face(bridge, p1, &self.fill_token);
             }
             return Ok(ChangeSet::empty());
         }
+        let mut regions: Vec<Vec<GPoint>> = Vec::new();
+        for signature in &signatures {
+            regions.extend(region_polygons(bridge, signature));
+        }
+        let merged = union_all(&regions);
+        let covering: Vec<ObjectId> = {
+            let mut all = signatures.concat();
+            all.sort();
+            all.dedup();
+            all
+        };
         if subtract {
-            // Union of crossed regions, carved from every covering object.
-            let mut merged: Vec<Vec<GPoint>> = Vec::new();
-            for signature in &signatures {
-                for poly in region_polygons(bridge, signature) {
-                    merged = union_polygons(&merged, &[poly]);
-                }
-            }
-            let covering: Vec<ObjectId> = {
-                let mut all = signatures.concat();
-                all.sort();
-                all.dedup();
-                all
-            };
             subtract_region(bridge, &covering, &merged)
         } else {
-            // Union of crossed regions into one new object.
-            let mut merged: Vec<Vec<GPoint>> = Vec::new();
-            for signature in &signatures {
-                for poly in region_polygons(bridge, signature) {
-                    merged = union_polygons(&merged, &[poly]);
-                }
-            }
-            let covering: Vec<ObjectId> = {
-                let mut all = signatures.concat();
-                all.sort();
-                all.dedup();
-                all
-            };
-            create_region(bridge, &covering, &merged, self.mode)
+            create_region(bridge, &covering, &merged, self.mode, &self.fill_token)
         }
     }
 
@@ -219,9 +275,14 @@ impl ShapeBuilderTool {
     #[must_use]
     pub fn overlays(&self, bridge: &PetuniaDesignGuiBridge) -> CanvasOverlays {
         let mut overlays = CanvasOverlays::default();
+        overlays.region_subtractive = self.subtract_mode || self.op == BuilderOp::Subtract;
+
         let preview = if let (Some(p0), Some(p1)) = (self.start_doc, self.current_doc) {
-            // In-flight drag: outline the merged crossed regions.
-            drag_preview(bridge, p0, p1)
+            // In-flight drag: outline the merged crossed regions and render cutting path.
+            if self.drag_path.len() >= 2 {
+                overlays.pen_preview = Some(self.drag_path.clone());
+            }
+            drag_path_preview(bridge, &self.drag_path, p0, p1)
         } else if let Some(hover) = self.hover_doc {
             let covering = covering_set(bridge, hover);
             if covering.is_empty() {
@@ -242,6 +303,23 @@ impl ShapeBuilderTool {
                 overlays.region_preview = Some(points);
             }
         }
+
+        overlays.cursor = if self.is_active() {
+            CursorAffordance::Grabbing
+        } else if let Some(hover) = self.hover_doc {
+            let covering = covering_set(bridge, hover);
+            if !covering.is_empty()
+                || (self.mode == BuilderMode::SmartFill
+                    && flood_face_polygons(bridge, hover).is_some())
+            {
+                CursorAffordance::Pointer
+            } else {
+                CursorAffordance::Crosshair
+            }
+        } else {
+            CursorAffordance::Crosshair
+        };
+
         overlays
     }
 }
@@ -257,7 +335,9 @@ fn covering_set(bridge: &PetuniaDesignGuiBridge, pt: GPoint) -> Vec<ObjectId> {
         .iter()
         .filter_map(|id| session.find_object(*id))
         .filter(|obj| obj.visible && !obj.locked)
-        .filter(|obj| obj.evaluated_path().contains_point(pt, 0.5))
+        // Fixed tolerance here (overlays lack camera context); the shared
+        // flatten cache still dedups repeated queries at this tolerance.
+        .filter(|obj| bridge.cached_hit(obj.id, pt, 0.5))
         .map(|obj| obj.id)
         .collect()
 }
@@ -269,19 +349,30 @@ fn region_polygons(bridge: &PetuniaDesignGuiBridge, covering: &[ObjectId]) -> Ve
         return Vec::new();
     };
     let outlines = |id: ObjectId| -> Vec<Vec<GPoint>> {
-        session
-            .find_object(id)
-            .map(|obj| obj.evaluated_path().to_polygons(REGION_TOLERANCE))
+        bridge
+            .cached_polygons(id, REGION_TOLERANCE)
             .unwrap_or_default()
     };
     // Intersect all covering outlines.
     let mut acc: Option<Vec<Vec<GPoint>>> = None;
     for id in covering {
         let polys = outlines(*id);
+        if polys.is_empty() {
+            return Vec::new();
+        }
         acc = Some(match acc {
             None => polys,
-            Some(current) => intersect_many(&current, &polys),
+            Some(current) => {
+                // Bounding box early out (F5): disjoint bounding boxes cannot intersect
+                if !polys_intersect_bbox(&current, &polys) {
+                    return Vec::new();
+                }
+                intersect_many(&current, &polys)
+            }
         });
+        if acc.as_ref().is_some_and(|a| a.is_empty()) {
+            return Vec::new();
+        }
     }
     let Some(mut acc) = acc else {
         return Vec::new();
@@ -295,6 +386,10 @@ fn region_polygons(bridge: &PetuniaDesignGuiBridge, covering: &[ObjectId]) -> Ve
         if other.is_empty() {
             continue;
         }
+        // Bounding box early out (F5): disjoint other cannot carve anything
+        if !polys_intersect_bbox(&acc, &other) {
+            continue;
+        }
         acc = difference_many(&acc, &other);
         if acc.is_empty() {
             break;
@@ -305,26 +400,40 @@ fn region_polygons(bridge: &PetuniaDesignGuiBridge, covering: &[ObjectId]) -> Ve
         .collect()
 }
 
-/// Preview outline for an in-flight drag: merged crossed regions flattened.
-fn drag_preview(bridge: &PetuniaDesignGuiBridge, p0: GPoint, p1: GPoint) -> Option<Vec<GPoint>> {
-    let length = p0.distance_to(p1);
-    let steps = ((length / DRAG_SAMPLE_STEP).ceil() as usize).clamp(1, 64);
+/// Preview outline for an in-flight drag along the gesture path: merged crossed regions flattened.
+fn drag_path_preview(
+    bridge: &PetuniaDesignGuiBridge,
+    path: &[GPoint],
+    p0: GPoint,
+    p1: GPoint,
+) -> Option<Vec<GPoint>> {
+    let segments: Vec<(GPoint, GPoint)> = if path.len() >= 2 {
+        path.windows(2).map(|w| (w[0], w[1])).collect()
+    } else {
+        vec![(p0, p1)]
+    };
     let mut signatures: Vec<Vec<ObjectId>> = Vec::new();
-    for i in 0..=steps {
-        let t = (i as f64) / (steps as f64);
-        let pt = GPoint::new(p0.x + (p1.x - p0.x) * t, p0.y + (p1.y - p0.y) * t);
-        let mut covering = covering_set(bridge, pt);
-        covering.sort();
-        if !covering.is_empty() && !signatures.contains(&covering) {
-            signatures.push(covering);
+    for (seg_start, seg_end) in segments {
+        let length = seg_start.distance_to(seg_end);
+        let steps = ((length / DRAG_SAMPLE_STEP).ceil() as usize).clamp(1, 32);
+        for i in 0..=steps {
+            let t = (i as f64) / (steps as f64);
+            let pt = GPoint::new(
+                seg_start.x + (seg_end.x - seg_start.x) * t,
+                seg_start.y + (seg_end.y - seg_start.y) * t,
+            );
+            let mut covering = covering_set(bridge, pt);
+            covering.sort();
+            if !covering.is_empty() && !signatures.contains(&covering) {
+                signatures.push(covering);
+            }
         }
     }
-    let mut merged: Vec<Vec<GPoint>> = Vec::new();
+    let mut regions: Vec<Vec<GPoint>> = Vec::new();
     for signature in &signatures {
-        for poly in region_polygons(bridge, signature) {
-            merged = union_polygons(&merged, &[poly]);
-        }
+        regions.extend(region_polygons(bridge, signature));
     }
+    let merged = union_all(&regions);
     let flat: Vec<GPoint> = merged.into_iter().flatten().collect();
     if flat.len() >= 2 {
         Some(flat)
@@ -334,12 +443,13 @@ fn drag_preview(bridge: &PetuniaDesignGuiBridge, p0: GPoint, p1: GPoint) -> Opti
 }
 
 /// Creates one object from region polygons (merge path).
-/// Builder clones the first covering style; SmartFill uses the default token.
+/// Builder clones the first covering style; SmartFill uses the configured fill token.
 fn create_region(
     bridge: &mut PetuniaDesignGuiBridge,
     covering: &[ObjectId],
     region: &[Vec<GPoint>],
     mode: BuilderMode,
+    fill_token: &str,
 ) -> Result<ChangeSet, PetuniaError> {
     let path = GPath::from_polygons(region);
     if path.is_empty() {
@@ -373,7 +483,7 @@ fn create_region(
         ),
         _ => (
             "Smart Fill".to_string(),
-            Some(SMART_FILL_TOKEN.to_string()),
+            Some(fill_token.to_string()),
             None,
             1.0,
             1.0,
@@ -457,27 +567,90 @@ fn subtract_region(
     bridge.submit_all("Shape builder subtract", cmds)
 }
 
-/// Intersects two polygon sets pairwise, keeping non-degenerate results.
+/// Intersects two polygon sets in ONE overlay call (F5).
 fn intersect_many(a: &[Vec<GPoint>], b: &[Vec<GPoint>]) -> Vec<Vec<GPoint>> {
-    boolean_pairwise(a, b, petunia_design_geometry::BooleanOp::Intersection)
+    use petunia_design_geometry::{boolean_op, BooleanInput};
+    if a.is_empty() || b.is_empty() {
+        return Vec::new();
+    }
+    boolean_op(
+        &BooleanInput::new(a.to_vec()),
+        &BooleanInput::new(b.to_vec()),
+        petunia_design_geometry::BooleanOp::Intersection,
+    )
+    .into_iter()
+    .filter(|contour| contour.len() >= 3 && poly_area(contour).abs() >= 1e-6)
+    .collect()
 }
 
-/// Unions two polygon sets (empty side is the identity).
+/// Unions two polygon sets in ONE overlay call (F5).
 fn union_polygons(a: &[Vec<GPoint>], b: &[Vec<GPoint>]) -> Vec<Vec<GPoint>> {
+    use petunia_design_geometry::{boolean_op, BooleanInput};
     if a.is_empty() {
         return b.to_vec();
     }
     if b.is_empty() {
         return a.to_vec();
     }
-    boolean_pairwise(a, b, petunia_design_geometry::BooleanOp::Union)
+    boolean_op(
+        &BooleanInput::new(a.to_vec()),
+        &BooleanInput::new(b.to_vec()),
+        petunia_design_geometry::BooleanOp::Union,
+    )
+    .into_iter()
+    .filter(|contour| contour.len() >= 3 && poly_area(contour).abs() >= 1e-6)
+    .collect()
+}
+
+/// Unions multiple polygon sets using divide-and-conquer tree reduction (F5).
+fn union_all(polys: &[Vec<GPoint>]) -> Vec<Vec<GPoint>> {
+    if polys.is_empty() {
+        return Vec::new();
+    }
+    if polys.len() == 1 {
+        return polys.to_vec();
+    }
+    let half = polys.len() / 2;
+    let (left, right) = polys.split_at(half);
+    union_polygons(&union_all(left), &union_all(right))
+}
+
+/// True when bounding boxes of two polygon sets overlap (F5 early-out).
+fn polys_intersect_bbox(a: &[Vec<GPoint>], b: &[Vec<GPoint>]) -> bool {
+    let (Some(ba), Some(bb)) = (polys_bbox(a), polys_bbox(b)) else {
+        return false;
+    };
+    ba[0] < bb[2] && ba[2] > bb[0] && ba[1] < bb[3] && ba[3] > bb[1]
+}
+
+/// Computes envelope `[x0, y0, x1, y1]` over polygon set (F5 early-out).
+fn polys_bbox(polys: &[Vec<GPoint>]) -> Option<[f64; 4]> {
+    let mut min_x = f64::MAX;
+    let mut min_y = f64::MAX;
+    let mut max_x = f64::MIN;
+    let mut max_y = f64::MIN;
+    let mut has_points = false;
+    for poly in polys {
+        for p in poly {
+            has_points = true;
+            min_x = min_x.min(p.x);
+            min_y = min_y.min(p.y);
+            max_x = max_x.max(p.x);
+            max_y = max_y.max(p.y);
+        }
+    }
+    if has_points {
+        Some([min_x, min_y, max_x, max_y])
+    } else {
+        None
+    }
 }
 
 /// Subtracts polygon set `b` from `a` in ONE overlay call.
 /// Per-contour pairwise subtraction would break hole semantics (holes are
 /// sibling contours; each step must see the whole shape at once).
 fn difference_many(a: &[Vec<GPoint>], b: &[Vec<GPoint>]) -> Vec<Vec<GPoint>> {
-    use petunia_design_geometry::{BooleanInput, boolean_op};
+    use petunia_design_geometry::{boolean_op, BooleanInput};
     if a.is_empty() {
         return Vec::new();
     }
@@ -492,30 +665,6 @@ fn difference_many(a: &[Vec<GPoint>], b: &[Vec<GPoint>]) -> Vec<Vec<GPoint>> {
     .into_iter()
     .filter(|contour| contour.len() >= 3 && poly_area(contour).abs() >= 1e-6)
     .collect()
-}
-
-/// Applies one boolean op to every contour pair, dropping degenerates.
-fn boolean_pairwise(
-    a: &[Vec<GPoint>],
-    b: &[Vec<GPoint>],
-    op: petunia_design_geometry::BooleanOp,
-) -> Vec<Vec<GPoint>> {
-    use petunia_design_geometry::{boolean_op, BooleanInput};
-    let mut out = Vec::new();
-    for subject in a {
-        for clip in b {
-            for contour in boolean_op(
-                &BooleanInput::single(subject.clone()),
-                &BooleanInput::single(clip.clone()),
-                op,
-            ) {
-                if contour.len() >= 3 && poly_area(&contour).abs() >= 1e-6 {
-                    out.push(contour);
-                }
-            }
-        }
-    }
-    out
 }
 
 /// Flood scope: the selection when non-empty, else every visible
@@ -544,7 +693,7 @@ fn flood_scope_ids(bridge: &PetuniaDesignGuiBridge) -> Vec<ObjectId> {
 /// Obstacle polygons for flood: evaluated outlines; open paths buffer by
 /// half stroke width into closed bands so strokes bound faces too.
 fn obstacle_polygons(bridge: &PetuniaDesignGuiBridge, ids: &[ObjectId]) -> Vec<Vec<GPoint>> {
-    use petunia_design_geometry::{OffsetCap, OffsetJoin, offset_path};
+    use petunia_design_geometry::{offset_path, OffsetCap, OffsetJoin};
     let Some(session) = bridge.session() else {
         return Vec::new();
     };
@@ -564,7 +713,10 @@ fn obstacle_polygons(bridge: &PetuniaDesignGuiBridge, ids: &[ObjectId]) -> Vec<V
         if path.is_empty() {
             continue;
         }
-        if path.verbs.contains(&petunia_design_geometry::PathVerb::Close) {
+        if path
+            .verbs
+            .contains(&petunia_design_geometry::PathVerb::Close)
+        {
             out.extend(path.to_polygons(REGION_TOLERANCE));
         } else {
             // Open stroke: band it so it bounds the flood face.
@@ -584,19 +736,17 @@ fn obstacle_polygons(bridge: &PetuniaDesignGuiBridge, ids: &[ObjectId]) -> Vec<V
 fn flood_empty_face(
     bridge: &mut PetuniaDesignGuiBridge,
     pt: GPoint,
+    fill_token: &str,
 ) -> Result<ChangeSet, PetuniaError> {
     let Some(face) = flood_face_polygons(bridge, pt) else {
         return Ok(ChangeSet::empty());
     };
-    create_region(bridge, &[], &face, BuilderMode::SmartFill)
+    create_region(bridge, &[], &face, BuilderMode::SmartFill, fill_token)
 }
 
 /// Computes the bounded face containing `pt`, if it is enclosed.
 /// Returns the face components, or `None` for unbounded/missing faces.
-fn flood_face_polygons(
-    bridge: &PetuniaDesignGuiBridge,
-    pt: GPoint,
-) -> Option<Vec<Vec<GPoint>>> {
+fn flood_face_polygons(bridge: &PetuniaDesignGuiBridge, pt: GPoint) -> Option<Vec<Vec<GPoint>>> {
     let ids = flood_scope_ids(bridge);
     if ids.is_empty() {
         return None;

@@ -94,9 +94,7 @@ mod tests {
     #[test]
     fn missing_capability_is_an_error_not_a_panic() {
         let registry = CapabilityRegistry::new();
-        let err = registry
-            .require("ptnd.export.pdf")
-            .expect_err("missing");
+        let err = registry.require("ptnd.export.pdf").expect_err("missing");
         assert!(err.to_string().contains("not registered"));
     }
 
@@ -108,9 +106,7 @@ mod tests {
             "petunia_design_io",
             "PDF adapter not compiled in this build",
         ));
-        let err = registry
-            .require("ptnd.export.pdf")
-            .expect_err("disabled");
+        let err = registry.require("ptnd.export.pdf").expect_err("disabled");
         assert!(err.to_string().contains("not compiled"));
     }
 }

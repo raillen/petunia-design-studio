@@ -248,3 +248,93 @@ The research does **not** make current Affinity feature breadth Aubrieta V1 scop
 ## Updated residual risk
 
 No new documentation Critical/High contradiction was introduced by this pass. The remaining material risk is now whether implementation and CI actually produce the evidence required by section 14. Before an Aubrieta milestone is called implementation-ready, at minimum the repository must instantiate the evidence IDs/corpus, dependency/detach checks, representative performance tiers, semantic UI fixtures and migration/fuzz gates described there.
+
+# Wave 0 — Tool, Canvas and Runtime Conformance Baseline — 2026-09-25
+
+This section is the canonical detailed conformance ledger for the active Freya worktree. It reconciles the 35 `ToolKind` values in `petunia_design_application::tools`, the public `SURFACES` registry, the Freya rail/menu/toolbar exposure, current implementations and existing headless/UI evidence. It does not create a second scope authority: functional behavior remains owned by pages 10.1–10.13, interaction by 08.23–08.33, architecture by 09.4–09.7 and evidence by 14.1–14.8.
+
+## Evidence vocabulary
+
+- **Core implemented** — the active state machine has meaningful domain behavior and at least one focused regression test.
+- **Core partial** — useful behavior exists, but the canonical state machine, presentation or evidence contract is incomplete.
+- **Stub** — routing/state exists, but the declared tool semantics are not implemented.
+- **Absent** — no active implementation or capability exists.
+- **Not Applicable** — the evidence layer is explicitly non-applicable and the reason is recorded.
+- **Proven** is intentionally not assigned in this baseline. A tool can become `Proven` only after its applicable 14.1–14.8 evidence packet is current.
+
+## Cross-cutting Wave 0 findings
+
+1. `ToolManager` routes all 35 `ToolKind` variants, but routing and registry `Wired` status do not prove complete tool semantics.
+2. The Freya canvas currently projects artwork mostly as rectangles derived from evaluated bounds. Bézier paths, text, strokes, gradients, images, perspective, crop and effects are therefore not displayed with canonical semantics.
+3. The Freya adapter reads a restricted `workspace_overlays` policy, while `PetuniaShell::overlays` exposes the complete tool policy plus active snap guides. Specialized overlays can therefore be lost before rendering.
+4. Freya pointer dispatch hardcodes `PointerButton::Primary`; Pen's documented secondary-button behavior and future Pen/pen inputs cannot reach the tool reliably.
+5. Select stores transform gesture state but the canvas receives no semantic transform-preview geometry. Preview is therefore incomplete even when the final commit is correct.
+6. Object snapping in Select currently calls `snap_point` without object candidates, so grid/guide snapping can work while object/center snapping is not evaluated.
+7. F1–F5 cache/index/LOD/boolean work exists in the shared core. Current headless tests pass, but the full Freya canvas, release rendering and hardware-tier evidence remain open.
+8. The active product shell is Freya. Canonical pages 05.2, 15.B, 15.F and related `docs/` indexes still describe Slint as primary. This is an authority/indexing defect, not a reason to route new implementation into Slint.
+9. The repository requires an en-US canonical source plus a synchronized pt-BR mirror before release. The current canonical atlas has no systematic pt-BR mirror or executable freshness gate; Wave 0 bilingual coverage is therefore **NEEDS-EVIDENCE**.
+
+## Canonical 35-tool matrix
+
+| ToolId / SurfaceId | Canonical scope | Core state | Freya surface state | Current evidence | Material gap / next gate |
+| --- | --- | --- | --- | --- | --- |
+| `ptnd.tool.select` / `ptnd.tool.vector.move` | V1 Required, 10.1 | Core implemented | Wired in rail/menu | Select click, marquee, additive/subtractive lasso, move, duplicate-drag, resize, rotate, overlap cycle, cache/index tests | Transform preview is not projected; object-snap candidates are absent; button/modifier adapter loss; Wave 0 vertical slice required |
+| `ptnd.tool.node` / `ptnd.tool.vector.node` | V1 Required, 10.2 | Core implemented | Wired in rail/menu | Anchor/handle editing, node kinds, split/join/close/reverse and undo tests | Complete transaction/UI-preview/accessibility and save-reopen packet; canvas must draw evaluated paths |
+| `ptnd.tool.point_transform` / `ptnd.tool.vector.point_transform` | V1 capability folded into Transform HUD, 10.1 | Core partial | Registry `Disabled`, not in default rail | Pivot/rotation/scale unit behavior exists | Resolve registry and rail to the canonical Transform HUD contract; expose exact numeric/pivot interaction before promotion |
+| `ptnd.tool.pen` / `ptnd.tool.vector.pen` | V1 Required, 10.2 | Core implemented | Wired in rail/menu | Bézier construction, symmetric/cusp handles, path continuation, close, Alt-break, undo and SVG tests | Secondary-button input is lost in Freya; pressure/tilt, full preview fidelity and complete accessibility packet remain |
+| `ptnd.tool.pencil` / `ptnd.tool.vector.pencil` | V1 Required, 10.2 | Core partial | Wired in rail/menu | Freehand sampling, smoothing, fidelity modes, sculpt and close tests | Stabilizer controls, pressure/velocity input mapping and release benchmarks are incomplete |
+| `ptnd.tool.corner` / `ptnd.tool.vector.corner` | V1 Required, 10.2 | Core implemented | Wired in rail/menu | Per-corner live edit, Shift all corners, one undo and bake tests | Preview is lost by `workspace_overlays`; chamfer/concave types and numeric takeover remain open |
+| `ptnd.tool.contour` / `ptnd.tool.vector.contour` | V1 Required, 10.2/09.31 | Core implemented | Wired in rail/menu | Live offset, LOD preview, modifier chain, one undo, bake and performance tests | Preview is lost by `workspace_overlays`; zero-crossing/diagnostic HUD and complete tolerance contract remain |
+| `ptnd.tool.perspective` / `ptnd.tool.vector.perspective` | V1 Required, 10.8/09.31 | Core implemented | Wired in rail/menu | Four-corner live modifier, second-corner replacement, one undo, bake and DLT guards | Overlay is lost by `workspace_overlays`; grid/plane/envelope remains separate canonical scope |
+| `ptnd.tool.knife` / `ptnd.tool.vector.knife` | V1 Required, 10.2 | Core implemented | Wired in rail/menu | Straight/freehand cut, multi-piece commit, conversion batch and undo tests | Preview line is lost by `workspace_overlays`; complete UI/headless edge-case packet required |
+| `ptnd.tool.scissors` / `ptnd.tool.vector.scissors` | V1 Required, 10.2 | Core implemented | Wired in rail/menu | Click split, open/closed-path cases and undo tests | Scissors point preview is lost by `workspace_overlays`; cursor/a11y/keyboard alternatives required |
+| `ptnd.tool.shape.rectangle` / `ptnd.tool.vector.rectangle` | V1 Required, 10.3 | Core implemented | Wired in rail/menu | Drag/default creation, constrain/from-center, snap and undo tests | Canvas path fidelity, numeric takeover, resize-after-create and performance packet required |
+| `ptnd.tool.shape.ellipse` / `ptnd.tool.vector.ellipse` | V1 Required, 10.3 | Core implemented | Wired in rail/menu | Creation, constraints, snap and undo tests | Same rectangle vertical gap; ellipse/arc parameter and exact numeric controls |
+| `ptnd.tool.shape.polygon` / `ptnd.tool.vector.polygon` | V1 Required, 10.3 | Core partial | Wired in rail/menu | Basic creation and constraint tests | Side count, inner/outer radius, star-like construction and context controls are not proven |
+| `ptnd.tool.shape.star` / `ptnd.tool.vector.star` | V1 Required, 10.3 | Core partial | Wired in rail/menu | Basic creation and constraint tests | Point count, inner/outer radius and interactive context controls are not proven |
+| `ptnd.tool.shape_builder` / `ptnd.tool.vector.shape_builder` | V1 Required, 10.3 | Core implemented | Wired in rail/menu | 9 tests: click overlap/subtract, alt-click carve with one undo, drag merge, empty no-op, Smart Fill bounded/unbounded/default, multi-shape performance | **Reconciled 2026-09-25:** registry was wrong, not the tool. Reclassified `PostV1Candidate/Disabled` → `V1Required/Wired`; the rail and the registry now agree, and `shape_builder_is_wired_because_it_commits_real_booleans` guards it | Still needs candidate-region states in the UI and a full proof packet |
+| `ptnd.tool.vector_flood_fill` / `ptnd.tool.vector.vector_flood_fill` | V1 Required, 10.3 | Core implemented | Wired in rail/menu | Bounded/unbounded region selection and flood tests | Must prove result policy and canvas preview for create/replace/appearance modes on large scenes |
+| `ptnd.tool.text.artistic` / `ptnd.tool.vector.artistic_text` | V1 Required, 10.6 | Core partial | Wired in rail/menu | Click/drag creation and persistence tests | No complete inline editing/IME/line-height/font UI; Freya renders text as artwork rectangle |
+| `ptnd.tool.text.frame` / `ptnd.tool.vector.frame_text` | V1 Required, 10.6 | Core partial | Wired in rail/menu | Frame creation and bounds tests | Text flow, editing, overflow and multiline fixtures remain incomplete |
+| `ptnd.tool.gradient` / `ptnd.tool.vector.gradient` | V1 Required, 10.4 | Core implemented | Wired in rail/menu | Linear/radial creation, stop editing, one undo and 45-degree tests | Full appearance rendering and bitmap/pattern scope remain separate; proof packet required |
+| `ptnd.tool.transparency` / `ptnd.tool.vector.transparency` | V1 Required, 10.4/09.31 | Core partial | Wired in rail/menu | Live TransparentGradient, composition, bake and undo tests | Full spatial opacity rendering and Freya artwork representation remain incomplete |
+| `ptnd.tool.color_picker` / `ptnd.tool.vector.eyedropper` | V1 Required, 10.4 | Core implemented | Wired in rail/menu | Fill+stroke sampling, locked-object exclusion and application tests | Radius/averaging, preview and exact color-context evidence remain open |
+| `ptnd.tool.style_picker` / `ptnd.tool.vector.style_picker` | V1 Required, 10.4 | Core implemented | Wired in rail/menu | Appearance-stack sampling and application tests | Preview, heterogeneous-selection policy and complete UI evidence remain |
+| `ptnd.tool.artboard` / `ptnd.tool.vector.surface` | V1 Required, 10.7 | Core implemented | Wired in rail/menu | Create/default size, snap, one undo and active-surface tests | Resize workflow, presets and multi-artboard canvas presentation require a dedicated packet |
+| `ptnd.tool.measure` / `ptnd.tool.vector.measure` | V1 Required, 08.27 | Core partial | Wired in rail/menu | Distance/angle/area and selection-area tests | Polylines are approximated as horizontal rects in Freya; numeric precision and cursor/label evidence required |
+| `ptnd.tool.zoom` / `ptnd.tool.vector.zoom` | V1 Required, 08.6 | Core partial | Wired in rail/menu | Cursor-centered zoom and state transition tests | Marquee zoom, temporary override and full input/cursor evidence required |
+| `ptnd.tool.pan` / `ptnd.tool.vector.hand` | V1 Required, 08.6 | Core partial | Wired in rail/menu; Space temporary handling exists | Pan tests and global keyboard binding | Capture loss, focus-loss cancel and touch/pen behavior require evidence |
+| `ptnd.tool.photo.marquee_rect` / `ptnd.tool.photo.marquee_rect` | V1 Required, 10.9 | Core implemented | Wired in Photo rail | Replace/add/subtract/intersect and mask composition tests | Feather rendering, reflow/editable mask and materialization workflow remain |
+| `ptnd.tool.photo.marquee_ellipse` / `ptnd.tool.photo.marquee_ellipse` | V1 Required, 10.9 | Core implemented | Wired in Photo rail | Elliptical mask and composition tests | Freya overlay/feather fidelity and antialias evidence remain |
+| `ptnd.tool.photo.lasso` / `ptnd.tool.photo.lasso` | V1 Required, 10.9 | Core implemented | Wired in Photo rail | Freehand lasso, modes and mask tests | Accurate non-axis-aligned rendering, edge refinement and fixture corpus required |
+| `ptnd.tool.photo.selection_brush` / `ptnd.tool.photo.selection_brush` | V1 Required, 10.9 | Blocked by design | Registry now `Disabled`; rail renders it as non-selectable with a reason | `raster_tools_refuse_the_gesture_instead_of_discarding_it`, `blocked_photo_tools_are_not_exposed_as_wired` | **Reconciled 2026-09-25:** the handler used to accept a drag and return an empty changeset (silent false success). It now refuses at `Down` with `CapabilityUnavailable`, and the rail consults the registry. Requires PixelLayer/sample source, width/hardness, edge snap, preview and mutation-free stroke commit |
+| `ptnd.tool.photo.flood_select` / `ptnd.tool.photo.flood_select` | V1 Required, 10.9 | Blocked by design | Registry now `Disabled`; rail renders it as non-selectable with a reason | `raster_tools_refuse_the_gesture_instead_of_discarding_it`, `blocked_photo_tools_are_not_exposed_as_wired` | **Reconciled 2026-09-25:** refuses at `Down` with `CapabilityUnavailable` instead of silently discarding the drag. Requires decoded pixel source, tolerance/contiguity, preview, modes and reproducible result |
+| `ptnd.tool.photo.brush` / `ptnd.tool.photo.brush` | V1 Required, 10.9 | Blocked by design | Registry `Disabled`; rail renders it as non-selectable | `raster_tools_refuse_the_gesture_instead_of_discarding_it` | **Reconciled 2026-09-25:** refuses at `Down` with `CapabilityUnavailable`; the dead in-memory dab buffer was deleted. Requires PixelLayer target, stamp/undo, pressure/stabilizer and tile benchmark; registry reason must reflect the missing pixel layer rather than Post-V1 |
+| `ptnd.tool.photo.eraser` / `ptnd.tool.photo.eraser` | V1 Required, 10.9 | Blocked by design | Registry `Disabled`; rail renders it as non-selectable | `raster_tools_refuse_the_gesture_instead_of_discarding_it` | **Reconciled 2026-09-25:** refuses at `Down`; the dead dab buffer was deleted. Requires destructive alpha/erase or mask target, one-stroke undo and tile benchmark |
+| `ptnd.tool.photo.gradient` / `ptnd.tool.photo.gradient` | V1 Required, 10.9 | Core partial/proxy | Wired in Photo rail | Reuses vector GradientTool against selected objects | It is not a PixelLayer/mask gradient; implement raster target semantics or mark the current surface unavailable |
+| `ptnd.tool.photo.crop` / `ptnd.tool.photo.crop` | V1 Required, 10.9 | Core partial | Wired in Photo rail | Surface crop and vector modifier crop tests | PixelLayer destructive/nondestructive crop and Straighten remain absent |
+
+## Wave 0 evidence status
+
+| Control | Evidence ID | State | Result / blocker |
+| --- | --- | --- | --- |
+| Shared tool regression corpus | `PTND-CONF-TOOLS-*` | PASS_WITH_GAPS | 105 tool tests pass in the current worktree (was 95); three new integrity tests cover the refusal contract, the registry rows and the rail gate. Gaps are recorded per row above |
+| Freya UI chrome | `PTND-CONF-FREYA-CHROME-*` | PASS_WITH_GAPS | 10 click-smoke tests pass (was 9); the new one proves the rail never activates a registry-blocked tool. Canvas/preview/secondary-pointer coverage is still incomplete |
+| Overlay parity | `PTND-CONF-CANVAS-OVERLAYS-*` | PASS_WITH_GAPS | Resolved 2026-09-25: the parallel `workspace_overlays` whitelist was removed, so specialized tool overlays and snap guides now reach the canvas; `shell_overlays_include_specialized_tool_preview` proves it |
+| Canvas semantic rendering | `PTND-CONF-CANVAS-RENDER-*` | FAIL | The Freya adapter consumes a toolkit-neutral `CanvasSnapshot` carrying world frame/AABB, but still paints bounds-derived proxies; no vector/text/image semantic packet |
+| Select/Transform vertical slice | `PTND-CONF-SELECT-TRANSFORM-*` | PASS_WITH_GAPS | Delivered 2026-09-25: transient `TransformPreview` DTO, stale-revision rejection, cancel cleanup, multi-object rotation around the selection centre, and the same rotation maths in preview and commit. Gaps: no real path/handle editing, no framebuffer evidence |
+| Release performance tiers | `PTND-PERF-CANVAS-*` | PASS_WITH_GAPS | Measured 2026-09-25 in `PERF_REPORT_2026-09-23.md` §8: 500/2.000/10.000 synthetic objects, p50/p95/p99, per-operation normalization. Dominant cost is `canvas-snapshot` (108 µs → 3,159 ms); `select-marquee` costs 18,3 ms at 10k. No paint, composition or memory baseline yet |
+| Registry/UI integrity | `PTND-CONF-REGISTRY-TRUTH-*` | PASS | Reconciled 2026-09-25: the rail now derives availability from the registry, blocked tools render as non-selectable with a reason, no handler returns a false success, and `ShapeBuilder` was reclassified `Wired` because nine tests prove it commits real booleans |
+| EN/pt-BR documentation freshness | `PTND-DOC-I18N-*` | BLOCKED_EXTERNAL | No systematic canonical atlas mirror or executable freshness gate exists |
+| Slint retirement authority | `PTND-DOC-ADR-UI-SHELL-*` | NEEDS_DECISION_RECORD | Runtime uses Freya, while several canonical/index pages still declare Slint primary |
+
+## Wave 0 sequencing
+
+1. Reconcile authority and runtime-shell records.
+2. Unify complete overlay and snap-guide projection.
+3. Preserve real pointer button, phase and per-event modifiers at the Freya boundary.
+4. Deliver Select/Transform preview, commit, cancel and save/reopen as the first vertical slice.
+5. Establish synthetic hover/marquee/transform/release benchmarks.
+6. Only then advance Pen/Node, Shapes, appearance, text, Photo and Perspective using the same evidence packet.
+
+The detailed rows above are owned here. `TOOLS_DECISIONS.md` records the execution decision; `PERF_REPORT_2026-09-23.md` and `GAUNTLET_LOG.md` record evidence; `15.E` tracks migration status. No tool is `Proven` at this baseline.

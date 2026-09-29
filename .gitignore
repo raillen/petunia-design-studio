@@ -10,5 +10,13 @@ target/
 # Node modules in opencode tooling
 .opencode/node_modules/
 
+# VitePress living-docs site
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
+# Vercel CLI link state (org/project IDs, local only)
+.vercel
+
 # Archives
 *.zip

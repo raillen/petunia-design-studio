@@ -1,0 +1,59 @@
+{
+  "acceptance": [
+    "Replace this placeholder with objective acceptance criteria."
+  ],
+  "constraints": [],
+  "context": {
+    "budget_profile": "medium",
+    "max_delegation_depth": 1
+  },
+  "dependencies": [],
+  "evidence": [],
+  "gates": {
+    "build": "required",
+    "documentation_impact": "required",
+    "project_intelligence": "required",
+    "review": "required",
+    "tests": "required"
+  },
+  "history": [
+    {
+      "at": "2026-09-25T13:45:21.541471166Z",
+      "event": "created",
+      "state": "DRAFT"
+    },
+    {
+      "at": "2026-09-25T13:45:47.050072267Z",
+      "event": "state-transition",
+      "from": "DRAFT",
+      "reason": "",
+      "to": "PLANNED"
+    },
+    {
+      "at": "2026-09-25T14:56:32.465895032Z",
+      "event": "state-transition",
+      "from": "PLANNED",
+      "reason": "",
+      "to": "LOCKED"
+    },
+    {
+      "at": "2026-09-25T14:56:35.849165124Z",
+      "event": "state-transition",
+      "from": "LOCKED",
+      "reason": "",
+      "to": "EXECUTING"
+    }
+  ],
+  "id": "P07-G05",
+  "lock": {
+    "digest": "a3a751d590461685f9954db733ebb95bfdad57d1ca0ba05ad23021bf20b966c4",
+    "locked_at": "2026-09-25T14:56:32.465892728Z",
+    "revision": 1
+  },
+  "non_goals": [],
+  "objective": "Make the Freya canvas consume an explicit Local/Parent/World/Screen coordinate contract, then provide deterministic fixtures and release benchmarks for Select and world geometry without silently migrating existing documents.",
+  "phase": "P07",
+  "revision": 1,
+  "state": "EXECUTING",
+  "title": "Canvas World Frame and Reproducible Performance"
+}

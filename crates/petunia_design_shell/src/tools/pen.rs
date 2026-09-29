@@ -7,10 +7,13 @@ use std::time::Instant;
 
 use petunia_design_document::{ChangeSet, ShapeKind};
 use petunia_design_foundation::{ObjectId, PetuniaError};
-use petunia_design_geometry::{GPath, GPoint, PathVerb};
+use petunia_design_geometry::{GPath, GPoint, GRect, PathVerb};
 
 use crate::bridge::*;
-use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
+use crate::canvas::{
+    CanvasOverlays, CursorAffordance, SelectionHandle, SelectionHandleKind, SnapEngine,
+    ViewportCamera,
+};
 
 use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase,
@@ -79,11 +82,24 @@ pub enum PenPhase {
     ClosePreview { cursor_doc: GPoint },
 }
 
+/// Pen tool construction mode (Bézier curves, polygon segments, or straight lines).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum PenMode {
+    /// Standard Bézier curve construction with smooth/tangent handles.
+    #[default]
+    Bezier,
+    /// Polygon mode: sharp cusp vertices, drag does not create curved handles.
+    Polygon,
+    /// Line mode: commits two-point straight line segments.
+    Line,
+}
+
 /// Interactive vector Pen tool (10.2).
 #[derive(Clone, Debug)]
 pub struct PenTool {
     anchors: Vec<PenAnchor>,
     phase: PenPhase,
+    mode: PenMode,
     close_threshold_px: f64,
     /// Existing path object being extended, if any (10.2 continuation).
     continuing_object: Option<ObjectId>,
@@ -104,6 +120,7 @@ impl PenTool {
         Self {
             anchors: Vec::new(),
             phase: PenPhase::Idle,
+            mode: PenMode::Bezier,
             close_threshold_px: ENDPOINT_HIT_PX,
             continuing_object: None,
             last_down: None,
@@ -114,6 +131,17 @@ impl PenTool {
     #[must_use]
     pub fn is_active(&self) -> bool {
         !self.anchors.is_empty()
+    }
+
+    /// Construction mode (Bézier, Polygon, Line).
+    #[must_use]
+    pub fn mode(&self) -> PenMode {
+        self.mode
+    }
+
+    /// Sets the construction mode.
+    pub fn set_mode(&mut self, mode: PenMode) {
+        self.mode = mode;
     }
 
     /// In-flight anchors (read-only, for tests and HUD).
@@ -193,7 +221,7 @@ impl PenTool {
         match event.phase {
             PointerPhase::Down => self.on_down(event, bridge, camera, snap),
             PointerPhase::Move => self.on_move(event, camera, snap),
-            PointerPhase::Up => self.on_up(event),
+            PointerPhase::Up => self.on_up(event, bridge),
             PointerPhase::Cancel => {
                 self.cancel();
                 Ok(ChangeSet::empty())
@@ -320,6 +348,9 @@ impl PenTool {
                 anchor_idx,
                 handle_pos,
             } => {
+                if self.mode != PenMode::Bezier {
+                    return Ok(ChangeSet::empty());
+                }
                 let idx = *anchor_idx;
                 let anchor_pt = self.anchors.get(idx).map(|a| a.point).unwrap_or(pt);
                 // Shift locks handle angle to 15° steps (spec 10.1 modifier).
@@ -356,12 +387,19 @@ impl PenTool {
         Ok(ChangeSet::empty())
     }
 
-    fn on_up(&mut self, _event: &NormalizedPointerEvent) -> Result<ChangeSet, PetuniaError> {
+    fn on_up(
+        &mut self,
+        _event: &NormalizedPointerEvent,
+        bridge: &mut PetuniaDesignGuiBridge,
+    ) -> Result<ChangeSet, PetuniaError> {
         if let PenPhase::HandleAdjust { .. } = self.phase {
             let last_pt = self.anchors.last().map_or(GPoint::ORIGIN, |a| a.point);
             self.phase = PenPhase::SegmentPreview {
                 cursor_doc: last_pt,
             };
+        }
+        if self.mode == PenMode::Line && self.anchors.len() >= 2 {
+            return self.commit_path(bridge, false);
         }
         Ok(ChangeSet::empty())
     }
@@ -497,6 +535,18 @@ impl PenTool {
     #[must_use]
     pub fn overlays(&self) -> CanvasOverlays {
         let mut overlays = CanvasOverlays::default();
+        overlays.cursor = match &self.phase {
+            PenPhase::ClosePreview { .. } => CursorAffordance::Pointer,
+            PenPhase::HandleAdjust { .. } => CursorAffordance::Crosshair,
+            _ => {
+                if self.continuing_object.is_some() {
+                    CursorAffordance::Pointer
+                } else {
+                    CursorAffordance::Crosshair
+                }
+            }
+        };
+
         if self.anchors.is_empty() {
             return overlays;
         }
@@ -509,8 +559,72 @@ impl PenTool {
             }
             _ => {}
         }
-
         overlays.pen_preview = Some(pts);
+
+        // Control lines and anchor handles
+        for a in &self.anchors {
+            let half = 3.5;
+            let a_kind = match a.node_type {
+                NodeType::Cusp => SelectionHandleKind::NodeCusp,
+                NodeType::Smooth => SelectionHandleKind::NodeSmooth,
+                NodeType::Symmetric => SelectionHandleKind::NodeSymmetric,
+            };
+            overlays.handles.push(SelectionHandle {
+                kind: a_kind,
+                doc_point: a.point,
+                screen_hit_box: GRect::new(
+                    a.point.x - half,
+                    a.point.y - half,
+                    a.point.x + half,
+                    a.point.y + half,
+                ),
+            });
+
+            if let Some(h_in) = a.handle_in {
+                overlays.node_control_lines.push((a.point, h_in));
+                overlays.handles.push(SelectionHandle {
+                    kind: SelectionHandleKind::NodeControl,
+                    doc_point: h_in,
+                    screen_hit_box: GRect::new(
+                        h_in.x - 3.0,
+                        h_in.y - 3.0,
+                        h_in.x + 3.0,
+                        h_in.y + 3.0,
+                    ),
+                });
+            }
+            if let Some(h_out) = a.handle_out {
+                overlays.node_control_lines.push((a.point, h_out));
+                overlays.handles.push(SelectionHandle {
+                    kind: SelectionHandleKind::NodeControl,
+                    doc_point: h_out,
+                    screen_hit_box: GRect::new(
+                        h_out.x - 3.0,
+                        h_out.y - 3.0,
+                        h_out.x + 3.0,
+                        h_out.y + 3.0,
+                    ),
+                });
+            }
+        }
+
+        // Live curve preview using anchors_to_path
+        let has_handles = self
+            .anchors
+            .iter()
+            .any(|a| a.handle_in.is_some() || a.handle_out.is_some());
+        if has_handles && self.anchors.len() >= 2 {
+            let is_closed = matches!(self.phase, PenPhase::ClosePreview { .. });
+            let tuple_anchors: Vec<(GPoint, Option<GPoint>, Option<GPoint>)> = self
+                .anchors
+                .iter()
+                .map(|a| (a.point, a.handle_in, a.handle_out))
+                .collect();
+            if let Ok(path) = petunia_design_geometry::anchors_to_path(&tuple_anchors, is_closed) {
+                overlays.path_preview = Some(path);
+            }
+        }
+
         overlays
     }
 }
@@ -544,10 +658,12 @@ fn find_open_endpoint(
     threshold_px: f64,
 ) -> Option<(ObjectId, Vec<PenAnchor>, bool)> {
     let session = bridge.session()?;
-    let surface_id = session.active_surface()?;
-    let surface = session.surface(surface_id).ok()?;
-    // Topmost first.
-    for obj in surface.objects().iter().rev() {
+    let tol = threshold_px / camera.zoom.max(0.1);
+    // Topmost first (F3 spatial).
+    for id in session.spatial_candidates_point(pt, tol) {
+        let Some(obj) = session.find_object(id) else {
+            continue;
+        };
         if !obj.visible || obj.locked {
             continue;
         }

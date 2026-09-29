@@ -53,6 +53,8 @@ pub struct DocumentSummary {
     pub is_dirty: bool,
 }
 
+use petunia_design_geometry::GAffine;
+
 /// Selection summary without widget ownership.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct SelectionViewModel {
@@ -62,6 +64,15 @@ pub struct SelectionViewModel {
     pub key_object: Option<ObjectId>,
     /// Combined bounding box `[x, y, width, height]` in document points.
     pub combined_bounds: Option<[f64; 4]>,
+    /// Nominal frame bounds of the primary/single selected object `[x, y, width, height]`.
+    #[serde(default)]
+    pub primary_bounds: Option<[f64; 4]>,
+    /// In-plane rotation angle of the primary/single selected object in radians.
+    #[serde(default)]
+    pub primary_rotation: f64,
+    /// World affine transform of the primary/single selected object.
+    #[serde(default)]
+    pub primary_transform: Option<GAffine>,
     /// Number of selected objects.
     pub count: usize,
     /// True when nothing is selected.
@@ -252,9 +263,57 @@ pub struct ActionStateMap {
 
 impl ActionStateMap {
     /// Looks up the state for an action.
+    ///
+    /// Read-side migration only (15.A): the map is keyed by canonical
+    /// `ptnd.action.*` ids, but a caller still holding a pre-grammar spelling
+    /// (`ptnd.file.save`) or a legacy `aubrieta.*` id resolves too. The map
+    /// never *emits* the old spelling.
     #[must_use]
     pub fn get(&self, action: &ActionId) -> Option<&ActionStateViewModel> {
-        self.states.get(action.as_str())
+        if let Some(state) = self.states.get(action.as_str()) {
+            return Some(state);
+        }
+        let canonical = petunia_design_foundation::normalize_action_id(
+            &petunia_design_foundation::normalized(action.as_str()),
+        );
+        self.states.get(&canonical)
+    }
+}
+
+#[cfg(test)]
+mod action_state_map_tests {
+    use super::*;
+
+    fn map_with(id: &str, enabled: bool) -> ActionStateMap {
+        let mut states = HashMap::new();
+        states.insert(
+            id.to_string(),
+            ActionStateViewModel {
+                action_id: ActionId::new(id),
+                is_enabled: enabled,
+                is_checked: false,
+                disabled_reason: None,
+            },
+        );
+        ActionStateMap { states }
+    }
+
+    #[test]
+    fn lookup_accepts_canonical_spellings() {
+        let map = map_with("ptnd.action.file.save", true);
+        assert!(map
+            .get(&ActionId::new("ptnd.action.file.save"))
+            .is_some_and(|state| state.is_enabled));
+    }
+
+    #[test]
+    fn lookup_migrates_read_side_ids_without_emitting_them() {
+        let map = map_with("ptnd.action.file.save", true);
+        assert!(map.get(&ActionId::new("ptnd.file.save")).is_some());
+        assert!(map
+            .get(&ActionId::new("aubrieta.action.file.save"))
+            .is_some());
+        assert!(map.get(&ActionId::new("ptnd.action.file.nope")).is_none());
     }
 }
 

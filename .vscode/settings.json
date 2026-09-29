@@ -1,10 +1,10 @@
 {
   "slint.includePaths": [
-    "${workspaceFolder}/apps/aubrieta-slint/ui",
-    "${workspaceFolder}/apps/aubrieta-slint/ui/slintcn"
+    "${workspaceFolder}/apps/petunia-design/ui",
+    "${workspaceFolder}/apps/petunia-design/ui/slintcn"
   ],
   "slint.libraryPaths": {
-    "lucide": "${workspaceFolder}/apps/aubrieta-slint/ui/lucide-shim.slint"
+    "lucide": "${workspaceFolder}/apps/petunia-design/ui/lucide-shim.slint"
   },
   "rust-analyzer.linkedProjects": [
     "Cargo.toml"

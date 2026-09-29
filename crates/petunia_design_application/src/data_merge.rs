@@ -3,7 +3,9 @@
 //! Pure over `&Document`: unbound-field warnings plus blocking record
 //! findings (missing required values, image path-security violations).
 
-use petunia_design_document::{DataSourceId, Document, FieldValue, MissingValuePolicy, PreflightFinding};
+use petunia_design_document::{
+    DataSourceId, Document, FieldValue, MissingValuePolicy, PreflightFinding,
+};
 use petunia_design_foundation::PetuniaError;
 
 /// Runs merge preflight for one data source.
@@ -12,9 +14,9 @@ pub fn preflight(
     document: &Document,
     source_id: DataSourceId,
 ) -> Result<Vec<PreflightFinding>, PetuniaError> {
-    let source = document.data_source(source_id).ok_or_else(|| {
-        PetuniaError::not_found(format!("data source `{source_id}` not found"))
-    })?;
+    let source = document
+        .data_source(source_id)
+        .ok_or_else(|| PetuniaError::not_found(format!("data source `{source_id}` not found")))?;
 
     let mut findings = Vec::new();
 
@@ -57,7 +59,9 @@ pub fn preflight(
                     }
                 }
                 Some(FieldValue::ImageRef(path)) => {
-                    if let Err(e) = petunia_design_document::PathSecurity::sanitize_relative_path(path) {
+                    if let Err(e) =
+                        petunia_design_document::PathSecurity::sanitize_relative_path(path)
+                    {
                         findings.push(PreflightFinding {
                             record_key: record.key.clone(),
                             object_id: Some(binding.target_object),

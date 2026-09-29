@@ -6,10 +6,13 @@
 use petunia_design_application::Command;
 use petunia_design_document::{ChangeSet, ShapeKind};
 use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
-use petunia_design_geometry::GPoint;
+use petunia_design_geometry::{GPoint, GRect};
 
 use crate::bridge::PetuniaDesignGuiBridge;
-use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
+use crate::canvas::{
+    CanvasOverlays, CursorAffordance, SelectionHandle, SelectionHandleKind, SnapEngine,
+    ViewportCamera,
+};
 
 use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase,
@@ -17,6 +20,20 @@ use petunia_design_application::interaction::{
 
 /// Click-vs-drag threshold in screen pixels (scissors click = split).
 const CLICK_THRESHOLD_PX: f64 = 3.0;
+
+/// Snaps a 2D line segment to the nearest 45-degree angle (0, 45, 90, 135, etc.).
+fn snap_linear_45(p0: GPoint, p1: GPoint) -> GPoint {
+    let dx = p1.x - p0.x;
+    let dy = p1.y - p0.y;
+    let dist = dx.hypot(dy);
+    if dist < 1e-6 {
+        return p1;
+    }
+    let angle = dy.atan2(dx);
+    let step = std::f64::consts::FRAC_PI_4;
+    let snapped = (angle / step).round() * step;
+    GPoint::new(p0.x + dist * snapped.cos(), p0.y + dist * snapped.sin())
+}
 
 /// Slicing tool mode (10.2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,6 +51,7 @@ pub struct KnifeTool {
     start_doc: Option<GPoint>,
     current_doc: Option<GPoint>,
     cut_point: Option<GPoint>,
+    hover_doc: Option<GPoint>,
 }
 
 impl KnifeTool {
@@ -45,6 +63,7 @@ impl KnifeTool {
             start_doc: None,
             current_doc: None,
             cut_point: None,
+            hover_doc: None,
         }
     }
 
@@ -59,6 +78,7 @@ impl KnifeTool {
         self.start_doc = None;
         self.current_doc = None;
         self.cut_point = None;
+        self.hover_doc = None;
     }
 
     /// Handles pointer events for vector slicing.
@@ -78,20 +98,30 @@ impl KnifeTool {
                 self.start_doc = Some(event.doc_pos);
                 self.current_doc = Some(event.doc_pos);
                 self.cut_point = None;
+                self.hover_doc = Some(event.doc_pos);
                 Ok(ChangeSet::empty())
             }
             PointerPhase::Move => {
-                if self.start_doc.is_some() {
-                    self.current_doc = Some(event.doc_pos);
+                self.hover_doc = Some(event.doc_pos);
+                if let Some(p0) = self.start_doc {
+                    let mut pt = event.doc_pos;
+                    if event.modifiers.constrain {
+                        pt = snap_linear_45(p0, pt);
+                    }
+                    self.current_doc = Some(pt);
                 }
                 Ok(ChangeSet::empty())
             }
             PointerPhase::Up => {
                 let start = self.start_doc.take();
                 let current = self.current_doc.take();
-                let (Some(p0), Some(p1)) = (start, current) else {
+                self.hover_doc = Some(event.doc_pos);
+                let (Some(p0), Some(mut p1)) = (start, current) else {
                     return Ok(ChangeSet::empty());
                 };
+                if event.modifiers.constrain {
+                    p1 = snap_linear_45(p0, p1);
+                }
                 // Scissors ignores drags; knife ignores clicks.
                 let zoom = camera.zoom.max(0.1);
                 let dragged = p0.distance_to(p1) * zoom > CLICK_THRESHOLD_PX;
@@ -187,17 +217,48 @@ impl KnifeTool {
 
     /// Resolves overlays: knife shows the cut line, scissors the cut point.
     #[must_use]
-    pub fn overlays(&self) -> CanvasOverlays {
+    pub fn overlays(
+        &self,
+        camera: &ViewportCamera,
+        bridge: &PetuniaDesignGuiBridge,
+    ) -> CanvasOverlays {
         let mut overlays = CanvasOverlays::default();
         match self.mode {
             KnifeMode::Knife => {
+                overlays.cursor = CursorAffordance::Crosshair;
                 if let (Some(p0), Some(p1)) = (self.start_doc, self.current_doc) {
                     overlays.pen_preview = Some(vec![p0, p1]);
+                    overlays.region_subtractive = true;
                 }
             }
             KnifeMode::Scissors => {
+                let tol = 8.0 / camera.zoom.max(0.1);
+                let hovered_sliceable = self
+                    .hover_doc
+                    .and_then(|pt| hit_object_top(pt, tol, bridge))
+                    .is_some();
+                if hovered_sliceable {
+                    overlays.cursor = CursorAffordance::Pointer;
+                    if let Some(hover) = self.hover_doc {
+                        let s = camera.doc_to_screen(hover);
+                        let half_sz = 4.0;
+                        overlays.handles.push(SelectionHandle {
+                            kind: SelectionHandleKind::NodeCuspSelected,
+                            doc_point: hover,
+                            screen_hit_box: GRect::new(
+                                s.x - half_sz,
+                                s.y - half_sz,
+                                s.x + half_sz,
+                                s.y + half_sz,
+                            ),
+                        });
+                    }
+                } else {
+                    overlays.cursor = CursorAffordance::Crosshair;
+                }
                 if let Some(pt) = self.cut_point {
                     overlays.pen_preview = Some(vec![pt]);
+                    overlays.region_subtractive = true;
                 }
             }
         }
@@ -217,16 +278,22 @@ fn hit_targets_along(
     let Some(session) = bridge.session() else {
         return Vec::new();
     };
-    let Some(surface_id) = session.active_surface() else {
-        return Vec::new();
-    };
-    let Ok(surface) = session.surface(surface_id) else {
-        return Vec::new();
-    };
+    // Candidates come from the active-surface spatial index (F3).
     let length = p0.distance_to(p1);
     let steps = ((length / 2.0).ceil() as usize).clamp(1, 64);
+    // Spatial prefilter (F3): segment bbox over evaluated bounds, then the
+    // exact sampled test only on candidates.
+    let seg = [
+        p0.x.min(p1.x) - tol,
+        p0.y.min(p1.y) - tol,
+        p0.x.max(p1.x) + tol,
+        p0.y.max(p1.y) + tol,
+    ];
     let mut targets = Vec::new();
-    for obj in surface.objects().iter().rev() {
+    for id in session.spatial_candidates_rect(seg) {
+        let Some(obj) = session.find_object(id) else {
+            continue;
+        };
         if !obj.visible || obj.locked || !is_sliceable(&obj.shape) {
             continue;
         }
@@ -250,7 +317,7 @@ fn hit_targets_along(
 fn is_sliceable(shape: &Option<ShapeKind>) -> bool {
     match shape {
         Some(ShapeKind::Path(_)) => true,
-        Some(ShapeKind::Text { .. }) | None => false,
+        Some(ShapeKind::Text { .. }) | Some(ShapeKind::Image { .. }) | None => false,
         Some(_) => true,
     }
 }
@@ -353,16 +420,15 @@ fn push_cut_commands(
 /// Topmost sliceable object under `pt`, if any.
 fn hit_object_top(pt: GPoint, tol: f64, bridge: &PetuniaDesignGuiBridge) -> Option<ObjectId> {
     let session = bridge.session()?;
-    let surface_id = session.active_surface()?;
-    let surface = session.surface(surface_id).ok()?;
-    surface
-        .objects()
-        .iter()
-        .rev()
-        .find(|obj| {
-            obj.visible && !obj.locked && is_sliceable(&obj.shape) && near_object(obj, pt, tol)
-        })
-        .map(|obj| obj.id)
+    for id in session.spatial_candidates_point(pt, tol) {
+        let Some(obj) = session.find_object(id) else {
+            continue;
+        };
+        if obj.visible && !obj.locked && is_sliceable(&obj.shape) && near_object(obj, pt, tol) {
+            return Some(id);
+        }
+    }
+    None
 }
 
 /// True on fill hit or within `tol` of the evaluated outline.

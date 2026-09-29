@@ -16,9 +16,10 @@ petunia_design_document = { path = "../../crates/petunia_design_document" }
 petunia_design_application = { path = "../../crates/petunia_design_application" }
 petunia_design_shell = { path = "../../crates/petunia_design_shell" }
 petunia_design_io = { path = "../../crates/petunia_design_io" }
-slint = { version = "1.18", default-features = true }
-rfd = "0.15"
+petunia_design_raster = { path = "../../crates/petunia_design_raster" }
+serde_json = { workspace = true }
+freya = "0.5.0-rc.7"
+freya-engine = "0.5.0-rc.7"
 
-[build-dependencies]
-slint-build = "1.18"
-lucide-slint = "1.47"
+[dev-dependencies]
+freya-testing = "0.5.0-rc.7"

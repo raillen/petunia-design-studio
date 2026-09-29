@@ -164,10 +164,7 @@ mod tests {
         assert_eq!(scene.fragments.len(), 1);
         assert_eq!(
             scene.fragments[0].fills,
-            vec![
-                "linear-gradient".to_string(),
-                "ptnd.gray/900".to_string()
-            ]
+            vec!["linear-gradient".to_string(), "ptnd.gray/900".to_string()]
         );
     }
 }

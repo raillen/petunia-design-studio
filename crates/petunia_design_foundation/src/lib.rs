@@ -9,7 +9,7 @@ mod diagnostics;
 mod ids;
 mod namespace;
 
-pub use diagnostics::{PetuniaError, Diagnostic, DiagnosticCode};
+pub use diagnostics::{Diagnostic, DiagnosticCode, PetuniaError};
 pub use ids::{EffectId, IdGenerator, ObjectId, ResourceId, StyleId, SurfaceId, TextStoryId};
 pub use namespace::{
     is_canonical_action_id, is_current_namespace, normalize_action_id, normalize_legacy_namespace,

@@ -1,0 +1,23 @@
+{
+  "name": "petunia-docs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Living documentation site for Petunia Design Studio (VitePress + Mermaid, EN default + pt-BR).",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview",
+    "check-i18n": "node ../scripts/check-i18n.js"
+  },
+  "dependencies": {
+    "dayjs": "^1.11.23",
+    "mermaid": "^11.4.1",
+    "vitepress": "^1.6.4",
+    "vitepress-plugin-mermaid": "^2.0.17",
+    "vue": "^3.5.13"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -13,10 +13,13 @@ use petunia_design_geometry::GPoint;
 
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{
-    CanvasOverlays, SelectionHandle, SelectionHandleKind, SnapEngine, ViewportCamera,
+    CanvasOverlays, CursorAffordance, SelectionHandle, SelectionHandleKind, SnapEngine,
+    ViewportCamera,
 };
 
-use petunia_design_application::interaction::{NormalizedPointerEvent, PointerButton, PointerPhase};
+use petunia_design_application::interaction::{
+    NormalizedPointerEvent, PointerButton, PointerPhase,
+};
 
 /// Corner hit radius in screen pixels.
 const CORNER_HIT_PX: f64 = 14.0;
@@ -147,6 +150,11 @@ impl PerspectiveTool {
         let Some(quad) = current_quad(bridge) else {
             return overlays;
         };
+        overlays.cursor = if self.drag.is_some() {
+            CursorAffordance::Grabbing
+        } else {
+            CursorAffordance::Crosshair
+        };
         let kinds = [
             SelectionHandleKind::TopLeft,
             SelectionHandleKind::TopRight,
@@ -191,8 +199,7 @@ fn current_quad(bridge: &PetuniaDesignGuiBridge) -> Option<[GPoint; 4]> {
                 if !modifier.enabled {
                     continue;
                 }
-                if let petunia_design_document::ModifierKind::Perspective { quad } =
-                    &modifier.kind
+                if let petunia_design_document::ModifierKind::Perspective { quad } = &modifier.kind
                 {
                     return Some(quad.map(|[x, y]| GPoint::new(x, y)));
                 }
@@ -236,8 +243,10 @@ fn pending_outline(bridge: &PetuniaDesignGuiBridge, quad: [GPoint; 4]) -> Option
     if base.is_empty() {
         return None;
     }
-    let warped = petunia_design_geometry::warp_path_to_quad(&base, quad, 0.5)?;
-    let flat: Vec<GPoint> = warped.to_polygons(0.5).into_iter().flatten().collect();
+    // LOD optimization (F4): adaptive tolerance for interactive drag preview
+    let tol = if base.verbs.len() > 80 { 1.5 } else { 0.5 };
+    let warped = petunia_design_geometry::warp_path_to_quad(&base, quad, tol)?;
+    let flat: Vec<GPoint> = warped.to_polygons(tol).into_iter().flatten().collect();
     if flat.len() >= 2 {
         Some(flat)
     } else {

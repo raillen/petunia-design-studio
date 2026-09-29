@@ -2,7 +2,7 @@
 
 use petunia_design_application::Command;
 use petunia_design_document::ChangeSet;
-use petunia_design_foundation::{PetuniaError, ObjectId};
+use petunia_design_foundation::{ObjectId, PetuniaError};
 
 use crate::bridge::{PetuniaDesignGuiBridge, PropertiesPresentationModel};
 
@@ -207,7 +207,12 @@ fn combined_selection_bounds(
 }
 
 /// Current bounds of one object translated by `(dx, dy)`.
-fn moved_bounds(bridge: &PetuniaDesignGuiBridge, id: ObjectId, dx: f64, dy: f64) -> Option<[f64; 4]> {
+fn moved_bounds(
+    bridge: &PetuniaDesignGuiBridge,
+    id: ObjectId,
+    dx: f64,
+    dy: f64,
+) -> Option<[f64; 4]> {
     bridge
         .session()?
         .find_object(id)

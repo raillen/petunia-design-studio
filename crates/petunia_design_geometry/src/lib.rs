@@ -25,7 +25,7 @@ pub use measure::{area_readout, measure_readout, AreaReadout, MeasurementReadout
 pub use node_edit::{move_verb, move_verb_to};
 pub use offset::{offset_path, OffsetCap, OffsetJoin};
 pub use warp::{clip_path_to_rect, homography_quad_to_quad, warp_path, warp_path_to_quad, Homography};
-pub use path::{GPath, PathVerb};
+pub use path::{GPath, PathVerb, zoom_flatten_tol};
 pub use point::GPoint;
 pub use rect::{resize_rect_from_handle, step_corner_radius, MIN_RESIZE_SIZE, ResizeHandle, GRect};
 pub use smooth::{anchors_to_path, chaikin_smooth, fit_midpoint_quads, midpoint, simplify_rdp, smooth_samples};

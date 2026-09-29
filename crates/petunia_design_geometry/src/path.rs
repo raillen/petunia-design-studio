@@ -2,12 +2,20 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{GAffine, GPoint, GRect};
 use crate::boolean::FillRule;
+use crate::{GAffine, GPoint, GRect};
 
 /// Cross-product sign of edge `a->b` relative to `p`: >0 when `p` is left.
 fn is_left(a: GPoint, b: GPoint, p: GPoint) -> f64 {
     (b.x - a.x) * (p.y - a.y) - (p.x - a.x) * (b.y - a.y)
+}
+
+/// Flatten tolerance scaled by viewport zoom (GAUNTLET F2, Inkscape-like).
+/// Zoomed-out views need fewer polygon points; zoomed-in views need tighter
+/// error. Clamped so callers never pass degenerate tolerances.
+#[must_use]
+pub fn zoom_flatten_tol(zoom: f64) -> f64 {
+    (0.5 / zoom.max(0.05)).clamp(0.05, 4.0)
 }
 
 /// Single path verb with explicit coordinates.
@@ -43,6 +51,19 @@ impl GPath {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.verbs.is_empty()
+    }
+
+    /// True when every path coordinate is finite.
+    #[must_use]
+    pub fn is_finite(&self) -> bool {
+        self.verbs.iter().all(|verb| match *verb {
+            PathVerb::MoveTo(point) | PathVerb::LineTo(point) => point.is_finite(),
+            PathVerb::QuadTo(control, point) => control.is_finite() && point.is_finite(),
+            PathVerb::CubicTo(control1, control2, point) => {
+                control1.is_finite() && control2.is_finite() && point.is_finite()
+            }
+            PathVerb::Close => true,
+        })
     }
 
     /// Number of `MoveTo` verbs (subpath starts).
@@ -120,7 +141,10 @@ impl GPath {
     #[must_use]
     pub fn scaled_about(&self, center: GPoint, sx: f64, sy: f64) -> Self {
         let map = |p: GPoint| {
-            GPoint::new(center.x + (p.x - center.x) * sx, center.y + (p.y - center.y) * sy)
+            GPoint::new(
+                center.x + (p.x - center.x) * sx,
+                center.y + (p.y - center.y) * sy,
+            )
         };
         let verbs = self
             .verbs
@@ -129,9 +153,7 @@ impl GPath {
                 PathVerb::MoveTo(p) => PathVerb::MoveTo(map(p)),
                 PathVerb::LineTo(p) => PathVerb::LineTo(map(p)),
                 PathVerb::QuadTo(c, p) => PathVerb::QuadTo(map(c), map(p)),
-                PathVerb::CubicTo(c1, c2, p) => {
-                    PathVerb::CubicTo(map(c1), map(c2), map(p))
-                }
+                PathVerb::CubicTo(c1, c2, p) => PathVerb::CubicTo(map(c1), map(c2), map(p)),
                 PathVerb::Close => PathVerb::Close,
             })
             .collect();
@@ -560,9 +582,7 @@ impl GPath {
                         let pi = contour[i];
                         let pj = contour[(i + 1) % n];
                         if pi.y <= point.y {
-                            if pj.y > point.y
-                                && is_left(pi, pj, point) > 0.0
-                            {
+                            if pj.y > point.y && is_left(pi, pj, point) > 0.0 {
                                 winding += 1;
                             }
                         } else if pj.y <= point.y && is_left(pi, pj, point) < 0.0 {

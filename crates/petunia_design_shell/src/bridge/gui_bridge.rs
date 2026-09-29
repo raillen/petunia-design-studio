@@ -5,14 +5,17 @@
 
 use std::collections::HashMap;
 
-use petunia_design_application::{ActionId, ActionRequest, CapabilityRegistry, Command, CommandRequest};
+use petunia_design_application::{
+    ActionId, ActionRequest, CapabilityRegistry, Command, CommandRequest,
+};
 use petunia_design_document::{
     AppearanceStack, BindingId, Bleed, ChangeSet, ContainerRole, DataBinding, DataSourceDefinition,
     DataSourceId, Document, Guide, Margins, ShapeKind,
 };
-use petunia_design_foundation::{PetuniaError, ObjectId, SurfaceId};
+use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
 use petunia_design_geometry::BooleanOp;
 
+use petunia_design_application::menus::{self, ActionContext};
 use petunia_design_application::ports::{
     ActionQueryPort, CommandPort, DocumentQueryPort, HierarchyPort, InspectionPort, PropertyPort,
     SelectionPort, SurfacePort, VariableDataPort,
@@ -23,6 +26,12 @@ use petunia_design_application::view_models::{
     HistoryItemViewModel, HistoryPresentationModel, LayersPresentationModel,
     PropertiesPresentationModel, SelectionViewModel, SessionSnapshot,
 };
+use petunia_design_resources::i18n::{Locale, LocalizationService};
+
+use petunia_design_application::tools::ToolKind;
+
+use crate::context_toolbar;
+use crate::menu::{self, MenuBarPresentationModel, MenuItemPresentation};
 
 /// Coarse-grained facade connecting external UI adapters to the Petunia engine.
 #[derive(Debug)]
@@ -31,6 +40,17 @@ pub struct PetuniaDesignGuiBridge {
     active_session: Option<DocumentSession>,
     /// Global capability registry for tool/command authorization.
     capabilities: CapabilityRegistry,
+    /// Localization service carrying the canonical shell/menu catalog (09.16).
+    localization: LocalizationService,
+    /// Active UI locale. Canonical source is `en-US`; the UI sets the product
+    /// default, the bridge does not guess one (12.6).
+    locale: Locale,
+    /// Persona the shell is in (15.G). Always a registered persona id: the
+    /// shell switches by id, never by a UI-local index.
+    active_persona: &'static str,
+    /// User order and visibility of the context toolbar. The catalog stays the
+    /// source of which entries exist; this only arranges them.
+    toolbar_layout: context_toolbar::ToolbarLayout,
 }
 
 impl Default for PetuniaDesignGuiBridge {
@@ -65,7 +85,179 @@ impl PetuniaDesignGuiBridge {
         Self {
             active_session: None,
             capabilities,
+            localization: LocalizationService::with_shell_catalog(),
+            locale: Locale::EnUs,
+            active_persona: petunia_design_application::surfaces::PERSONA_VECTOR,
+            toolbar_layout: context_toolbar::ToolbarLayout::canonical(),
         }
+    }
+
+    /// Switches the UI locale for every resolved label (12.6).
+    pub fn set_locale(&mut self, locale: Locale) {
+        self.locale = locale;
+    }
+
+    /// The active UI locale.
+    #[must_use]
+    pub fn locale(&self) -> &Locale {
+        &self.locale
+    }
+
+    /// The persona the shell is currently in (15.G).
+    #[must_use]
+    pub fn persona(&self) -> &'static str {
+        self.active_persona
+    }
+
+    /// Switches persona, by registered id.
+    ///
+    /// Returns `false` for an id the registry does not know and for one that is
+    /// not a persona, so the shell cannot invent a mode the registry has never
+    /// declared.
+    pub fn set_persona(&mut self, persona: &str) -> bool {
+        let Some(entry) = petunia_design_application::surfaces::surface(persona) else {
+            return false;
+        };
+        if entry.kind != petunia_design_application::surfaces::SurfaceKind::Persona {
+            return false;
+        }
+        self.active_persona = entry.id;
+        true
+    }
+
+    /// Every persona the switcher offers, resolved for the active locale.
+    #[must_use]
+    pub fn personas(&self) -> Vec<menu::PersonaPresentation> {
+        menu::present_personas(&self.localization, &self.locale)
+    }
+
+    /// The one-line hint describing what the given persona is for.
+    #[must_use]
+    pub fn persona_hint(&self, persona: &str) -> Option<String> {
+        menu::persona_hint_text_id(persona).map(|id| self.localization.text(id, &self.locale))
+    }
+
+    /// The localization service resolving `ptnd.text.*` ids.
+    #[must_use]
+    pub fn localization(&self) -> &LocalizationService {
+        &self.localization
+    }
+
+    /// Session facts that decide what the menu and palette can offer (15.G).
+    #[must_use]
+    pub fn action_context(&self) -> ActionContext {
+        match &self.active_session {
+            Some(session) => ActionContext {
+                has_document: true,
+                selection_count: session.selection.selected_ids.len(),
+                can_undo: session.history().can_undo(),
+                can_redo: session.history().can_redo(),
+                is_dirty: session.is_dirty(),
+                command_palette_open: session.view.command_palette_open,
+                persona: self.active_persona,
+            },
+            None => ActionContext {
+                has_document: false,
+                command_palette_open: false,
+                persona: self.active_persona,
+                ..ActionContext::default()
+            },
+        }
+    }
+
+    /// Registry-driven menu bar with localized labels (15.G, 08.2).
+    ///
+    /// The structure comes from `petunia_design_application::menus`; this text
+    /// is the only thing the shell adds.
+    #[must_use]
+    pub fn query_menu_bar(&self) -> MenuBarPresentationModel {
+        let families = menus::menu_bar(&self.action_context());
+        menu::present_menu_bar(&families, &self.localization, &self.locale)
+    }
+
+    /// Command palette index: exactly the currently enabled menu items.
+    #[must_use]
+    pub fn query_command_index(&self) -> Vec<MenuItemPresentation> {
+        menu::present_command_index(&self.localization, &self.locale, &self.action_context())
+    }
+
+    /// The centred shell control cluster, resolved for the active locale.
+    #[must_use]
+    pub fn query_shell_controls(&self) -> Vec<menu::ShellControlPresentation> {
+        menu::present_shell_controls(&self.localization, &self.locale, &self.action_context())
+    }
+
+    /// Rows of the popup under the zoom readout (08.2). Same registry items the
+    /// View submenu shows, resolved for the active locale.
+    #[must_use]
+    pub fn query_zoom_levels(&self) -> Vec<MenuItemPresentation> {
+        menu::present_zoom_levels(&self.localization, &self.locale, &self.action_context())
+    }
+
+    /// The localized label of any registry surface, by id.
+    #[must_use]
+    pub fn surface_label(&self, id: &str) -> Option<String> {
+        menu::surface_label(&self.localization, &self.locale, id)
+    }
+
+    /// The canonical context toolbar, resolved for the active tool (08.23).
+    ///
+    /// Contextuality lives here, not in the UI: entries that do not apply to
+    /// this tool are absent from the answer, and entries that apply but cannot
+    /// run carry the localized reason they cannot.
+    #[must_use]
+    pub fn query_context_toolbar(
+        &self,
+        tool: ToolKind,
+        has_selection: bool,
+    ) -> Vec<context_toolbar::ToolbarItemPresentation> {
+        context_toolbar::present_layout(
+            &self.toolbar_layout,
+            &self.localization,
+            &self.locale,
+            &self.action_context(),
+            tool,
+            has_selection,
+        )
+    }
+
+    /// The context toolbar as the customization dialog edits it: every slot,
+    /// hidden ones included, with catalog labels.
+    #[must_use]
+    pub fn query_toolbar_catalog(&self) -> Vec<context_toolbar::ToolbarCatalogRow> {
+        context_toolbar::present_catalog(&self.toolbar_layout, &self.localization, &self.locale)
+    }
+
+    /// Shows or hides one catalog entry. Returns false when the id is unknown
+    /// or the entry may not be hidden (the spacer).
+    pub fn toolbar_set_visible(&mut self, id: &str, visible: bool) -> bool {
+        self.toolbar_layout.set_visible(id, visible)
+    }
+
+    /// Shows or hides the slot at `index`. User dividers share an empty id, so
+    /// the dialog addresses them by place, not by id.
+    pub fn toolbar_set_slot_visible(&mut self, index: usize, visible: bool) -> bool {
+        self.toolbar_layout.set_slot_visible(index, visible)
+    }
+
+    /// Moves one slot by `delta` places. Negative moves toward the start.
+    pub fn toolbar_move(&mut self, index: usize, delta: i32) -> bool {
+        self.toolbar_layout.move_slot(index, delta)
+    }
+
+    /// Inserts a user divider after `after`. `None` appends.
+    pub fn toolbar_insert_divider(&mut self, after: Option<usize>) {
+        self.toolbar_layout.insert_divider(after);
+    }
+
+    /// Removes a user-inserted divider. A catalog entry cannot be removed.
+    pub fn toolbar_remove_divider(&mut self, index: usize) -> bool {
+        self.toolbar_layout.remove_divider(index)
+    }
+
+    /// Restores the catalog order, every entry visible.
+    pub fn toolbar_reset(&mut self) {
+        self.toolbar_layout = context_toolbar::ToolbarLayout::canonical();
     }
 
     /// Initializes a new empty document session with default surface (A1).
@@ -106,9 +298,10 @@ impl PetuniaDesignGuiBridge {
     /// original `.aubrieta`/`.aubri` file is never overwritten (15.A).
     pub fn open_path(&mut self, path: &std::path::Path) -> Result<(), PetuniaError> {
         let opened = petunia_design_io::open_package(path)?;
-        let title = path
-            .file_name()
-            .map_or_else(|| "Untitled".to_string(), |n| n.to_string_lossy().into_owned());
+        let title = path.file_name().map_or_else(
+            || "Untitled".to_string(),
+            |n| n.to_string_lossy().into_owned(),
+        );
         let mut session = DocumentSession::with_document(title, opened.document);
         if session.active_surface().is_none() {
             if let Some(first) = session.surfaces().first() {
@@ -137,6 +330,19 @@ impl PetuniaDesignGuiBridge {
     #[must_use]
     pub fn session(&self) -> Option<&DocumentSession> {
         self.active_session.as_ref()
+    }
+
+    /// Mutable access to the active session's **view** state only.
+    ///
+    /// View state (camera, rulers, snapping, palette) is not document state:
+    /// it does not travel the command lane, and the `document`/`history`
+    /// fields stay private so this cannot become a mutation back door (A2).
+    pub fn view_state_mut(
+        &mut self,
+    ) -> Option<&mut petunia_design_application::view_camera::ViewState> {
+        self.active_session
+            .as_mut()
+            .map(|session| &mut session.view)
     }
 
     /// Returns a reference to the global capability registry.
@@ -246,6 +452,89 @@ impl PetuniaDesignGuiBridge {
         self.session()
             .map(|s| s.raster_selection.clone())
             .unwrap_or_default()
+    }
+
+    /// Evaluated outline, memoized by session revision (F1).
+    /// Hot loops (hover, overlays, covering) must prefer this over
+    /// `find_object().evaluated_path()`.
+    #[must_use]
+    pub fn cached_path(&self, id: ObjectId) -> Option<petunia_design_geometry::GPath> {
+        self.session()?.cached_path(id)
+    }
+
+    /// Evaluated bounds, memoized by session revision (F1).
+    #[must_use]
+    pub fn cached_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
+        self.session()?.cached_bounds(id)
+    }
+
+    /// Explicit world evaluated bounds, when the frame is migrated.
+    #[must_use]
+    pub fn cached_world_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
+        self.session()?.cached_world_bounds(id)
+    }
+
+    /// Nominal world frame bounds, available for legacy paths too.
+    #[must_use]
+    pub fn cached_world_frame_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
+        self.session()?.cached_world_frame_bounds(id)
+    }
+
+    /// Exact hit against the explicit world-space outline.
+    #[must_use]
+    pub fn cached_world_hit(
+        &self,
+        id: ObjectId,
+        pt: petunia_design_geometry::GPoint,
+        tol: f64,
+    ) -> bool {
+        self.session()
+            .is_some_and(|s| s.cached_world_hit(id, pt, tol))
+    }
+    /// Hit-test against the memoized evaluated outline (F1 + F2).
+    /// `tol` should come from `zoom_flatten_tol`. Visibility/locking stay
+    /// at the call site, as with `hit_test` today.
+    #[must_use]
+    pub fn cached_hit(&self, id: ObjectId, pt: petunia_design_geometry::GPoint, tol: f64) -> bool {
+        self.session().is_some_and(|s| s.cached_hit(id, pt, tol))
+    }
+
+    /// Flattened evaluated outline at `tol`, memoized (F2).
+    #[must_use]
+    pub fn cached_polygons(
+        &self,
+        id: ObjectId,
+        tol: f64,
+    ) -> Option<Vec<Vec<petunia_design_geometry::GPoint>>> {
+        self.session()?.cached_polygons(id, tol)
+    }
+
+    /// Outline sample at fraction `t`, memoized (F2).
+    #[must_use]
+    pub fn cached_sample_at(
+        &self,
+        id: ObjectId,
+        t: f64,
+        tol: f64,
+    ) -> Option<(petunia_design_geometry::GPoint, f64)> {
+        self.session()?.cached_sample_at(id, t, tol)
+    }
+
+    /// Nearest outline fraction, memoized (F2).
+    #[must_use]
+    pub fn cached_nearest_t(
+        &self,
+        id: ObjectId,
+        pt: petunia_design_geometry::GPoint,
+        tol: f64,
+    ) -> Option<f64> {
+        self.session()?.cached_nearest_t(id, pt, tol)
+    }
+
+    /// Cache entry count (diagnostics and tests).
+    #[must_use]
+    pub fn geo_cache_len(&self) -> usize {
+        self.session().map_or(0, |s| s.geo_cache.borrow().len())
     }
 
     /// Combines one shape into the raster mask (session state, no undo).
@@ -420,6 +709,18 @@ impl PetuniaDesignGuiBridge {
         self.submit_command(CommandRequest::new(Command::ConvertToCurves { id }))
     }
 
+    /// Renames an object by stable ID.
+    pub fn rename_object(
+        &mut self,
+        id: ObjectId,
+        name: impl Into<String>,
+    ) -> Result<ChangeSet, PetuniaError> {
+        self.submit_command(CommandRequest::new(Command::RenameObject {
+            id,
+            name: name.into(),
+        }))
+    }
+
     /// Bakes corner geometry into an explicit vector path (10.2, 10.3).
     pub fn bake_corners(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
         self.submit_command(CommandRequest::new(Command::BakeCorners { id }))
@@ -477,7 +778,11 @@ impl PetuniaDesignGuiBridge {
                 let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
                 next.push(petunia_design_document::ModifierItem::enabled(
                     nid,
-                    petunia_design_document::ModifierKind::ContourOffset { distance, join, cap },
+                    petunia_design_document::ModifierKind::ContourOffset {
+                        distance,
+                        join,
+                        cap,
+                    },
                 ));
             }
             next
@@ -629,7 +934,10 @@ impl PetuniaDesignGuiBridge {
         id: ObjectId,
         blend_mode: petunia_design_document::BlendMode,
     ) -> Result<ChangeSet, PetuniaError> {
-        self.submit_command(CommandRequest::new(Command::SetStackBlend { id, blend_mode }))
+        self.submit_command(CommandRequest::new(Command::SetStackBlend {
+            id,
+            blend_mode,
+        }))
     }
 
     /// Adds a fill layer to the object's appearance stack (10.4, F-18).
@@ -651,11 +959,7 @@ impl PetuniaDesignGuiBridge {
     }
 
     /// Removes a fill layer by its ID (10.4, F-18).
-    pub fn remove_fill(
-        &mut self,
-        id: ObjectId,
-        fill_id: u32,
-    ) -> Result<ChangeSet, PetuniaError> {
+    pub fn remove_fill(&mut self, id: ObjectId, fill_id: u32) -> Result<ChangeSet, PetuniaError> {
         self.submit_command(CommandRequest::new(Command::RemoveFill { id, fill_id }))
     }
 
@@ -666,8 +970,7 @@ impl PetuniaDesignGuiBridge {
         paint: petunia_design_document::Paint,
         width: f64,
     ) -> Result<ChangeSet, PetuniaError> {
-        let mut stroke_item =
-            petunia_design_document::StrokeItem::solid(0, "ptnd.gray/700", width);
+        let mut stroke_item = petunia_design_document::StrokeItem::solid(0, "ptnd.gray/700", width);
         stroke_item.paint = paint;
         self.submit_command(CommandRequest::new(Command::AddStroke {
             id,
@@ -778,11 +1081,7 @@ impl PetuniaDesignGuiBridge {
     }
 
     /// Slices or splits a path object at a specific point (10.2).
-    pub fn slice_path(
-        &mut self,
-        id: ObjectId,
-        point: [f64; 2],
-    ) -> Result<ChangeSet, PetuniaError> {
+    pub fn slice_path(&mut self, id: ObjectId, point: [f64; 2]) -> Result<ChangeSet, PetuniaError> {
         self.submit_command(CommandRequest::new(Command::SlicePath { id, point }))
     }
 
@@ -1007,103 +1306,33 @@ impl PetuniaDesignGuiBridge {
 
 impl ActionQueryPort for PetuniaDesignGuiBridge {
     fn query_actions(&self) -> ActionStateMap {
-        let mut states = HashMap::new();
-        let has_session = self.active_session.is_some();
-        let has_selection = self
-            .active_session
-            .as_ref()
-            .is_some_and(|s| !s.selection.selected_ids.is_empty());
-        let can_undo = self
-            .active_session
-            .as_ref()
-            .is_some_and(|s| s.history().can_undo());
-        let can_redo = self
-            .active_session
-            .as_ref()
-            .is_some_and(|s| s.history().can_redo());
-        let is_dirty = self.active_session.as_ref().is_some_and(|s| s.is_dirty());
-
-        let actions = [
-            (
-                "ptnd.file.save",
-                has_session && is_dirty,
-                if !has_session {
-                    Some("No active document".to_string())
-                } else if !is_dirty {
-                    Some("No unsaved modifications".to_string())
-                } else {
-                    None
-                },
-            ),
-            (
-                "ptnd.file.export",
-                has_session,
-                if has_session {
-                    None
-                } else {
-                    Some("No active document".to_string())
-                },
-            ),
-            (
-                "ptnd.action.edit.undo",
-                can_undo,
-                if can_undo {
-                    None
-                } else {
-                    Some("Nothing to undo".to_string())
-                },
-            ),
-            (
-                "ptnd.action.edit.redo",
-                can_redo,
-                if can_redo {
-                    None
-                } else {
-                    Some("Nothing to redo".to_string())
-                },
-            ),
-            (
-                "ptnd.action.edit.delete",
-                has_selection,
-                if has_selection {
-                    None
-                } else {
-                    Some("No selection to delete".to_string())
-                },
-            ),
-            (
-                "ptnd.action.edit.select_all",
-                has_session,
-                if has_session {
-                    None
-                } else {
-                    Some("No active document".to_string())
-                },
-            ),
-            (
-                "ptnd.action.edit.deselect",
-                has_selection,
-                if has_selection {
-                    None
-                } else {
-                    Some("No selection to deselect".to_string())
-                },
-            ),
-        ];
-
-        for (id_str, enabled, disabled_reason) in actions {
-            let action_id = ActionId::new(id_str);
-            states.insert(
-                id_str.to_string(),
-                ActionStateViewModel {
-                    action_id,
-                    is_enabled: enabled,
-                    is_checked: false,
-                    disabled_reason,
-                },
-            );
+        // Derived from the same registry rule table the menu uses, so a menu
+        // item and an action query can never disagree about availability.
+        let context = self.action_context();
+        let mut states: HashMap<String, ActionStateViewModel> = HashMap::new();
+        for family in menus::menu_bar(&context) {
+            for item in family.items() {
+                // One action may own several parameterized items (align,
+                // boolean): the action is invokable when any variant is.
+                let reason = item
+                    .disabled_reason_id
+                    .as_deref()
+                    .map(|id| self.localization.text(id, &self.locale));
+                let entry =
+                    states
+                        .entry(item.action_id.clone())
+                        .or_insert_with(|| ActionStateViewModel {
+                            action_id: ActionId::new(item.action_id.clone()),
+                            is_enabled: false,
+                            is_checked: false,
+                            disabled_reason: reason,
+                        });
+                if item.enabled {
+                    entry.is_enabled = true;
+                    entry.disabled_reason = None;
+                }
+            }
         }
-
         ActionStateMap { states }
     }
 
@@ -1129,7 +1358,9 @@ impl ActionQueryPort for PetuniaDesignGuiBridge {
                     .and_then(serde_json::Value::as_str)
                     .filter(|value| !value.trim().is_empty())
                     .ok_or_else(|| {
-                        PetuniaError::invalid_input("file.open requires a non-empty `path` payload field")
+                        PetuniaError::invalid_input(
+                            "file.open requires a non-empty `path` payload field",
+                        )
                     })?;
                 self.open_path(std::path::Path::new(path))?;
                 return Ok(ChangeSet::empty());
@@ -1302,7 +1533,9 @@ impl SelectionPort for PetuniaDesignGuiBridge {
 
 impl InspectionPort for PetuniaDesignGuiBridge {
     fn active_surface(&self) -> Option<SurfaceId> {
-        self.active_session.as_ref().and_then(|s| s.active_surface())
+        self.active_session
+            .as_ref()
+            .and_then(|s| s.active_surface())
     }
 
     fn set_active_surface(&mut self, id: SurfaceId) -> Result<(), PetuniaError> {

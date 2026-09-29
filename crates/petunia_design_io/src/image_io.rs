@@ -1,12 +1,12 @@
 #![allow(clippy::chunks_exact_to_as_chunks)]
 
 use crate::pdf::{DegradationItem, FidelityGrade};
-use petunia_design_foundation::PetuniaError;
-use petunia_design_raster::{PixelFormat, Tile, TileCoord, TILE_SIZE};
 use image::{
     codecs::jpeg::JpegEncoder, codecs::png::PngEncoder, ExtendedColorType, ImageEncoder,
     ImageReader,
 };
+use petunia_design_foundation::PetuniaError;
+use petunia_design_raster::{PixelFormat, Tile, TileCoord, TILE_SIZE};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 
@@ -365,9 +365,7 @@ pub fn export_raster(
                     let dyn_img = image::DynamicImage::ImageRgba16(
                         image::ImageBuffer::from_raw(image.width, image.height, u16_data)
                             .ok_or_else(|| {
-                                PetuniaError::invalid_input(
-                                    "Failed to assemble TIFF 16-bit buffer",
-                                )
+                                PetuniaError::invalid_input("Failed to assemble TIFF 16-bit buffer")
                             })?,
                     );
                     dyn_img
@@ -386,9 +384,7 @@ pub fn export_raster(
                     );
                     dyn_img
                         .write_to(&mut cursor, image::ImageFormat::Tiff)
-                        .map_err(|e| {
-                            PetuniaError::io(format!("TIFF 8-bit encoding error: {e}"))
-                        })?;
+                        .map_err(|e| PetuniaError::io(format!("TIFF 8-bit encoding error: {e}")))?;
                 }
             }
         }

@@ -6,7 +6,7 @@ use petunia_design_document::{
 };
 use petunia_design_foundation::{PetuniaError, SurfaceId};
 
-use crate::bridge::{PetuniaDesignGuiBridge, DataMergePresentationModel};
+use crate::bridge::{DataMergePresentationModel, PetuniaDesignGuiBridge};
 
 /// Controller managing the Variable Data / Data Merge panel (10.11).
 #[derive(Debug, Default)]

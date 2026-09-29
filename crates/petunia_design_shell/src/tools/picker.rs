@@ -8,9 +8,10 @@
 use petunia_design_application::Command;
 use petunia_design_document::{AppearanceStack, ChangeSet, Paint};
 use petunia_design_foundation::{ObjectId, PetuniaError};
+use petunia_design_geometry::GPoint;
 
 use crate::bridge::PetuniaDesignGuiBridge;
-use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
+use crate::canvas::{CanvasOverlays, CursorAffordance, SnapEngine, ViewportCamera};
 
 use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase,
@@ -40,13 +41,19 @@ pub struct ColorSample {
 #[derive(Clone, Debug)]
 pub struct PickerTool {
     mode: PickerMode,
+    filter: petunia_design_application::appearance_service::StyleFilter,
+    hover_doc: Option<GPoint>,
 }
 
 impl PickerTool {
     /// Creates a picker tool in color or style mode.
     #[must_use]
     pub fn new(mode: PickerMode) -> Self {
-        Self { mode }
+        Self {
+            mode,
+            filter: petunia_design_application::appearance_service::StyleFilter::default(),
+            hover_doc: None,
+        }
     }
 
     /// Current mode.
@@ -55,8 +62,31 @@ impl PickerTool {
         self.mode
     }
 
+    /// Granular style property filter.
+    #[must_use]
+    pub fn filter(&self) -> petunia_design_application::appearance_service::StyleFilter {
+        self.filter
+    }
+
+    /// Mutably borrows the style property filter.
+    pub fn filter_mut(
+        &mut self,
+    ) -> &mut petunia_design_application::appearance_service::StyleFilter {
+        &mut self.filter
+    }
+
+    /// Sets the style property filter.
+    pub fn set_filter(
+        &mut self,
+        filter: petunia_design_application::appearance_service::StyleFilter,
+    ) {
+        self.filter = filter;
+    }
+
     /// Resets tool state.
-    pub fn cancel(&mut self) {}
+    pub fn cancel(&mut self) {
+        self.hover_doc = None;
+    }
 
     /// Handles normalized pointer events.
     pub fn on_pointer_event(
@@ -66,35 +96,37 @@ impl PickerTool {
         _camera: &ViewportCamera,
         _snap: &mut SnapEngine,
     ) -> Result<ChangeSet, PetuniaError> {
+        if event.phase == PointerPhase::Move {
+            self.hover_doc = Some(event.doc_pos);
+            return Ok(ChangeSet::empty());
+        }
+        if event.phase == PointerPhase::Cancel {
+            self.cancel();
+            return Ok(ChangeSet::empty());
+        }
         if event.phase != PointerPhase::Up || event.button != PointerButton::Primary {
             return Ok(ChangeSet::empty());
         }
 
         let pt = event.doc_pos;
+        self.hover_doc = Some(pt);
         let session = match bridge.session() {
             Some(s) => s,
             None => return Ok(ChangeSet::empty()),
         };
 
-        let active_surface_id = match session.active_surface() {
-            Some(id) => id,
-            None => return Ok(ChangeSet::empty()),
-        };
-
-        let surface = match session.surface(active_surface_id) {
-            Ok(s) => s,
-            Err(_) => return Ok(ChangeSet::empty()),
-        };
-
-        // Hit-test in reverse draw order (topmost first), skipping locked.
-        let hit_object = surface
-            .objects()
-            .iter()
-            .rev()
-            .find(|obj| obj.visible && !obj.locked && obj.hit_test(pt))
-            .cloned();
-
-        let hit = match hit_object {
+        // Hit-test in reverse draw order (topmost first), skipping locked (F3 spatial).
+        let hit = match session
+            .spatial_candidates_point(pt, 0.0)
+            .into_iter()
+            .find_map(|id| {
+                let obj = session.find_object(id)?;
+                if obj.visible && !obj.locked && obj.hit_test(pt) {
+                    Some(obj.clone())
+                } else {
+                    None
+                }
+            }) {
             Some(obj) => obj,
             None => return Ok(ChangeSet::empty()),
         };
@@ -110,13 +142,16 @@ impl PickerTool {
                 }
             }
             PickerMode::Style => {
-                let style = petunia_design_application::appearance_service::sample_style(&hit);
                 for sel_id in selected_ids {
-                    all_cmds.extend(
-                        petunia_design_application::appearance_service::style_sample_commands(
-                            sel_id, &style,
-                        ),
-                    );
+                    if let Some(target) = session.find_object(sel_id) {
+                        all_cmds.extend(
+                            petunia_design_application::appearance_service::filtered_style_commands(
+                                target,
+                                &hit,
+                                &self.filter,
+                            ),
+                        );
+                    }
                 }
             }
         }
@@ -131,10 +166,28 @@ impl PickerTool {
         bridge.submit_all(label, all_cmds)
     }
 
-    /// Resolves overlays (none for eyedropper sampling).
+    /// Resolves overlays with hover highlighting and cursor affordances.
     #[must_use]
-    pub fn overlays(&self) -> CanvasOverlays {
-        CanvasOverlays::default()
+    pub fn overlays(&self, bridge: &PetuniaDesignGuiBridge) -> CanvasOverlays {
+        let mut overlays = CanvasOverlays::default();
+        overlays.cursor = CursorAffordance::Crosshair;
+        if let Some(pt) = self.hover_doc {
+            if let Some(session) = bridge.session() {
+                let hit = session
+                    .spatial_candidates_point(pt, 0.0)
+                    .into_iter()
+                    .find(|id| {
+                        session.find_object(*id).is_some_and(|obj| {
+                            obj.visible && !obj.locked && obj.hit_test(pt)
+                        })
+                    });
+                overlays.hovered_object = hit;
+                if hit.is_some() {
+                    overlays.cursor = CursorAffordance::Pointer;
+                }
+            }
+        }
+        overlays
     }
 }
 
