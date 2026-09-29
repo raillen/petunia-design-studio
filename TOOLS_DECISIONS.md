@@ -247,3 +247,28 @@ Doutrina-mãe: ADR 09.31 (`petunia-design-studio/09 31 — Non-Destructive Editi
   - Suíte `petunia-design` ampliada para 24 testes (14 testes unitários de workspace/dock + 10 testes de chrome), todos com 100% de sucesso.
   - `cargo test --workspace` 100% verde em todos os crates da aplicação, shell, geometria, documentos e testkit.
   - `cargo check --workspace` com zero warnings e zero erros.
+
+## Decisão — Shell Freya, sem fork (2026-09-29)
+
+- **Decisão:** ficar no Freya upstream pinado (`freya 0.5.0-rc.7`, `Cargo.lock`
+  travado, binary-cache do Skia). **Sem fork** — nem hard, nem soft — até um
+  gatilho abaixo disparar.
+- **Porquê:** os 4 gargalos abertos (snapshot O(n) F6, texto real F7, raster
+  paint, tetos de modelo) moram no nosso código, não no framework. Fork herdaria
+  ~93k SLoC de binding Skia + upgrades `winit` + bugs por plataforma
+  (GL/Vulkan/softbuffer) e desviaria ~20–30% do time do editor para manter GUI,
+  sem acelerar nenhum item do caminho crítico.
+- **Fronteira que dispensa o fork:** `PetuniaShell` + `CanvasSnapshot`/`CanvasOverlays`
+  (DTOs toolkit-neutral em `petunia_design_shell::canvas`) já isolam a cena.
+  A UI só recebe projeções e só emite `ActionRequest`/`Command` — trocar ou
+  forkar o renderer continua possível sem tocar o domínio.
+- **Exit strategy (`SceneRenderer`):** quando a F6 começar, extrair trait
+  `SceneRenderer` atrás de `canvas_paint.rs` (snapshot → pintura Skia), para que
+  um backend alternativo (egui-textura, `PaintCallback` nativo, Vello futuro)
+  seja plugável por medição, não por reescrita.
+- **Gatilhos para soft-fork (`[patch]`/fork rastreado, nunca hard de imediato):**
+  1. Freya bloqueia 2 releases seguidos nossos; 2. PR com necessidade nossa fica
+  sem resposta >60 dias; 3. breaking change custa >1 semana de porte.
+  Sem gatilho disparado, fork é custo sem retorno ( rever em cada Wave ).
+- **Estado dos gatilhos hoje:** nenhum disparado. A11y quebrada no Freya é débito
+  registrado (fora de V1), não bloqueador.
