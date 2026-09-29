@@ -329,7 +329,8 @@ pub fn evaluate_curve(points: &[[f64; 2]], x: f32) -> f32 {
             let h01 = -2.0 * t3 + 3.0 * t2;
             let h11 = t3 - t2;
 
-            let y = h00 * points[i][1] + h10 * h * d[i] + h01 * points[i + 1][1] + h11 * h * d[i + 1];
+            let y =
+                h00 * points[i][1] + h10 * h * d[i] + h01 * points[i + 1][1] + h11 * h * d[i + 1];
             return y.clamp(0.0, 1.0) as f32;
         }
     }

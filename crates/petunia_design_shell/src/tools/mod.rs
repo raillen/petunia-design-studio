@@ -16,6 +16,7 @@ pub mod point_transform;
 pub mod select;
 pub mod shape;
 pub mod shape_builder;
+pub mod stroke_hit;
 pub mod text;
 pub mod view;
 

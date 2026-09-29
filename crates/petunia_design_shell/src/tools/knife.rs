@@ -14,6 +14,8 @@ use crate::canvas::{
     ViewportCamera,
 };
 
+use super::stroke_hit::contours_near_point;
+
 use petunia_design_application::interaction::{
     NormalizedPointerEvent, PointerButton, PointerPhase,
 };
@@ -433,23 +435,12 @@ fn hit_object_top(pt: GPoint, tol: f64, bridge: &PetuniaDesignGuiBridge) -> Opti
 
 /// True on fill hit or within `tol` of the evaluated outline.
 /// Open strokes have no interior, so outline proximity is the only way
-/// to target them (global stroke-aware hit-test stays future work).
+/// to target them. Segment math is shared with the Select tool
+/// (`super::stroke_hit`); only the polygon source stays local (direct
+/// `evaluated_path` for cut targeting vs. memoized `GeoCache` in Select).
 fn near_object(obj: &petunia_design_document::DocumentObject, pt: GPoint, tol: f64) -> bool {
     if obj.hit_test(pt) {
         return true;
     }
-    obj.evaluated_path()
-        .to_polygons(0.5)
-        .iter()
-        .flat_map(|contour| contour.windows(2))
-        .any(|w| dist_to_segment(pt, w[0], w[1]) <= tol)
-}
-
-/// Shortest distance from `pt` to segment `a->b`.
-fn dist_to_segment(pt: GPoint, a: GPoint, b: GPoint) -> f64 {
-    let abx = b.x - a.x;
-    let aby = b.y - a.y;
-    let len2 = (abx * abx + aby * aby).max(1e-12);
-    let t = (((pt.x - a.x) * abx + (pt.y - a.y) * aby) / len2).clamp(0.0, 1.0);
-    pt.distance_to(GPoint::new(a.x + abx * t, a.y + aby * t))
+    contours_near_point(&obj.evaluated_path().to_polygons(0.5), pt, tol)
 }

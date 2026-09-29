@@ -18,22 +18,24 @@ pub mod surface_metadata;
 pub mod variable_data;
 
 pub use adjustments::{
-    AdjustmentChannel, AdjustmentItem, AdjustmentKind, ChannelLevels, apply_adjustment_chain,
-    apply_exposure, apply_hsl, apply_white_balance, evaluate_curve,
+    apply_adjustment_chain, apply_exposure, apply_hsl, apply_white_balance, evaluate_curve,
+    AdjustmentChannel, AdjustmentItem, AdjustmentKind, ChannelLevels,
 };
 pub use appearance::{
-    AppearanceStack, BlendMode, EffectItem, EffectKind, FillItem, GradientStop, LinearGradient,
-    Paint, RadialGradient, StrokeAlignment, StrokeCap, StrokeItem, StrokeJoin,
-    resolve_color_to_rgb,
+    resolve_color_to_rgb, AppearanceStack, BlendMode, EffectItem, EffectKind, FillItem,
+    GradientStop, LinearGradient, Paint, RadialGradient, StrokeAlignment, StrokeCap, StrokeItem,
+    StrokeJoin,
 };
 pub use changeset::{Change, ChangeSet};
 pub use document::{Document, Surface};
 pub use document_object::{
-    AlignmentMode, ArrangePosition, DistributionAxis, DocumentObject, GeometryFrameError, ShapeKind,
-    TextOnPathAttachment,
+    AlignmentMode, ArrangePosition, DistributionAxis, DocumentObject, GeometryFrameError,
+    ShapeKind, TextOnPathAttachment,
 };
 pub use hierarchy::{ContainerRole, HierarchyValidation, MaskMode};
-pub use modifiers::{ModifierItem, ModifierKind, OpacityStop, evaluate_modifiers, evaluate_opacity_at};
+pub use modifiers::{
+    evaluate_modifiers, evaluate_opacity_at, ModifierItem, ModifierKind, OpacityStop,
+};
 pub use mutator::DocumentMutator;
 pub use surface_metadata::{Bleed, Guide, GuideOrientation, Margins};
 pub use variable_data::{

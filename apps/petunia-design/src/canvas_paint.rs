@@ -65,16 +65,11 @@ pub fn paint_raster_tile(
             ];
             let a = chunk[3] as f32 / 255.0;
             if !adjustments.is_empty() {
-                rgb = petunia_design_document::adjustments::apply_adjustment_chain(rgb, adjustments);
+                rgb =
+                    petunia_design_document::adjustments::apply_adjustment_chain(rgb, adjustments);
             }
-            let (r, g, b, a_out) = apply_color_proof_and_channels(
-                rgb[0],
-                rgb[1],
-                rgb[2],
-                a,
-                soft_proof,
-                channel_view,
-            );
+            let (r, g, b, a_out) =
+                apply_color_proof_and_channels(rgb[0], rgb[1], rgb[2], a, soft_proof, channel_view);
             chunk[0] = (r.clamp(0.0, 1.0) * 255.0).round() as u8;
             chunk[1] = (g.clamp(0.0, 1.0) * 255.0).round() as u8;
             chunk[2] = (b.clamp(0.0, 1.0) * 255.0).round() as u8;
@@ -149,9 +144,11 @@ pub fn apply_color_proof_and_channels(
     channel_view: usize,
 ) -> (f32, f32, f32, f32) {
     if soft_proof {
-        use petunia_design_color::proof::{ColorManagementProvider, DefaultColorManagementProvider, ProofContext};
+        use petunia_design_color::proof::{
+            ColorManagementProvider, DefaultColorManagementProvider, ProofContext,
+        };
         use petunia_design_color::{ColorValue, Srgb};
-        let provider = DefaultColorManagementProvider::default();
+        let provider = DefaultColorManagementProvider;
         let ctx = ProofContext::for_profile("US Web Coated (SWOP) v2");
         let (simulated, _) = provider.soft_proof(&ColorValue::Rgb(Srgb::clamped(r, g, b)), &ctx);
         r = simulated.r;
@@ -159,11 +156,11 @@ pub fn apply_color_proof_and_channels(
         b = simulated.b;
     }
     match channel_view {
-        1 => (r, r, r, a),         // Red channel monochrome
-        2 => (g, g, g, a),         // Green channel monochrome
-        3 => (b, b, b, a),         // Blue channel monochrome
-        4 => (a, a, a, 1.0),       // Alpha channel mask (white = opaque, black = transparent)
-        _ => (r, g, b, a),         // Full RGB
+        1 => (r, r, r, a),   // Red channel monochrome
+        2 => (g, g, g, a),   // Green channel monochrome
+        3 => (b, b, b, a),   // Blue channel monochrome
+        4 => (a, a, a, 1.0), // Alpha channel mask (white = opaque, black = transparent)
+        _ => (r, g, b, a),   // Full RGB
     }
 }
 
@@ -175,11 +172,15 @@ pub fn canvas_view(
     channel_view: usize,
 ) -> Canvas {
     let on_render = RenderCallback::new(move |context: &mut CanvasContext| {
-        paint_scene(&snapshot, context, in_flight_guide, soft_proof, channel_view);
+        paint_scene(
+            &snapshot,
+            context,
+            in_flight_guide,
+            soft_proof,
+            channel_view,
+        );
     });
-    canvas(on_render)
-        .width(Size::fill())
-        .height(Size::fill())
+    canvas(on_render).width(Size::fill()).height(Size::fill())
 }
 
 /// Paints background, artwork, overlays and handles in a single ordered pass.
@@ -191,11 +192,22 @@ fn paint_scene(
     channel_view: usize,
 ) {
     let canvas = context.canvas;
-    paint_surface(canvas, snapshot.surface.as_ref(), &snapshot.camera, soft_proof, channel_view);
+    paint_surface(
+        canvas,
+        snapshot.surface.as_ref(),
+        &snapshot.camera,
+        soft_proof,
+        channel_view,
+    );
     for object in &snapshot.objects {
         paint_object(canvas, object, &snapshot.camera, soft_proof, channel_view);
     }
-    paint_overlays(canvas, &snapshot.overlays, snapshot.surface.as_ref(), &snapshot.camera);
+    paint_overlays(
+        canvas,
+        &snapshot.overlays,
+        snapshot.surface.as_ref(),
+        &snapshot.camera,
+    );
     if let Some((orient, pos)) = in_flight_guide {
         let guide_color = Color::from_rgb(0x00, 0xE5, 0xFF);
         let guide_paint = outline_paint(guide_color, 1.5);
@@ -256,7 +268,12 @@ fn paint_surface(
         channel_view,
     );
     let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
-    paint.set_color(Color::from_argb(channel(a), channel(r), channel(g), channel(b)));
+    paint.set_color(Color::from_argb(
+        channel(a),
+        channel(r),
+        channel(g),
+        channel(b),
+    ));
     canvas.draw_rect(
         SkRect::new(
             top_left.x as f32,
@@ -281,10 +298,17 @@ fn paint_object(
     channel_view: usize,
 ) {
     for tile in &object.raster_tiles {
-        paint_raster_tile(canvas, tile, camera, &object.adjustments, soft_proof, channel_view);
+        paint_raster_tile(
+            canvas,
+            tile,
+            camera,
+            &object.adjustments,
+            soft_proof,
+            channel_view,
+        );
     }
     let opacity = object.opacity.clamp(0.0, 1.0) as f32;
-    if let Some(path) = object.outline.as_ref() {
+    if let Some(path) = object.outline.as_deref() {
         let sk_path = build_skia_path(path, camera);
         if !sk_path.is_empty() {
             // Check for live Gaussian blur filter
@@ -300,7 +324,7 @@ fn paint_object(
             });
 
             // Render visible drop shadows behind the object
-            for effect in &object.effects {
+            for effect in object.effects.iter() {
                 if !effect.visible {
                     continue;
                 }
@@ -309,7 +333,8 @@ fn paint_object(
                     blur,
                     color,
                     opacity: shadow_opacity,
-                } = &effect.kind {
+                } = &effect.kind
+                {
                     let dx = (offset[0] * camera.zoom) as f32;
                     let dy = (offset[1] * camera.zoom) as f32;
                     let mut shadow_paint = Paint::default();
@@ -317,9 +342,14 @@ fn paint_object(
                     shadow_paint.set_style(PaintStyle::Fill);
                     if *blur > 0.0 {
                         let sigma = ((*blur * camera.zoom) as f32).max(0.5);
-                        shadow_paint.set_mask_filter(MaskFilter::blur(BlurStyle::Normal, sigma, None));
+                        shadow_paint.set_mask_filter(MaskFilter::blur(
+                            BlurStyle::Normal,
+                            sigma,
+                            None,
+                        ));
                     }
-                    let final_opacity = (opacity * shadow_opacity.clamp(0.0, 1.0) as f32).clamp(0.0, 1.0);
+                    let final_opacity =
+                        (opacity * shadow_opacity.clamp(0.0, 1.0) as f32).clamp(0.0, 1.0);
                     shadow_paint.set_color(resolve_color_with_adjustments(
                         Some(color),
                         final_opacity,
@@ -351,7 +381,7 @@ fn paint_object(
                 canvas.draw_path(&sk_path, &paint);
             }
             // Render visible inner shadows clipped to the object fill
-            for effect in &object.effects {
+            for effect in object.effects.iter() {
                 if !effect.visible {
                     continue;
                 }
@@ -360,7 +390,8 @@ fn paint_object(
                     blur,
                     color,
                     opacity: shadow_opacity,
-                } = &effect.kind {
+                } = &effect.kind
+                {
                     let dx = (offset[0] * camera.zoom) as f32;
                     let dy = (offset[1] * camera.zoom) as f32;
                     let mut inner_paint = Paint::default();
@@ -368,9 +399,14 @@ fn paint_object(
                     inner_paint.set_style(PaintStyle::Fill);
                     if *blur > 0.0 {
                         let sigma = ((*blur * camera.zoom) as f32).max(0.5);
-                        inner_paint.set_mask_filter(MaskFilter::blur(BlurStyle::Inner, sigma, None));
+                        inner_paint.set_mask_filter(MaskFilter::blur(
+                            BlurStyle::Inner,
+                            sigma,
+                            None,
+                        ));
                     }
-                    let final_opacity = (opacity * shadow_opacity.clamp(0.0, 1.0) as f32).clamp(0.0, 1.0);
+                    let final_opacity =
+                        (opacity * shadow_opacity.clamp(0.0, 1.0) as f32).clamp(0.0, 1.0);
                     inner_paint.set_color(resolve_color_with_adjustments(
                         Some(color),
                         final_opacity,
@@ -411,26 +447,10 @@ fn paint_object(
                 canvas.draw_path(&sk_path, &selection_paint);
             }
         }
-    } else if let Some(petunia_design_document::ShapeKind::Text {
-        content,
-        font_size,
-        ..
-    }) = object.shape.as_ref()
-    {
-        paint_text_object(
-            canvas,
-            object,
-            content,
-            *font_size,
-            camera,
-            opacity,
-            soft_proof,
-            channel_view,
-        );
-    } else if let Some(petunia_design_document::ShapeKind::Image {
-        path,
-        data,
-    }) = object.shape.as_ref()
+    } else if let Some(petunia_design_document::ShapeKind::Text { .. }) = object.shape.as_deref() {
+        paint_text_object(canvas, object, camera, opacity, soft_proof, channel_view);
+    } else if let Some(petunia_design_document::ShapeKind::Image { path, data }) =
+        object.shape.as_deref()
     {
         paint_image_object(canvas, object, path, data.as_deref(), camera, opacity);
     }
@@ -440,26 +460,31 @@ fn paint_object(
 fn paint_text_object(
     canvas: &SkiaCanvas,
     object: &CanvasObjectProjection,
-    content: &str,
-    font_size: f64,
     camera: &ViewportCamera,
     opacity: f32,
     soft_proof: bool,
     channel_view: usize,
 ) {
+    let Some(petunia_design_document::ShapeKind::Text {
+        content, font_size, ..
+    }) = object.shape.as_deref()
+    else {
+        return;
+    };
     if content.is_empty() {
         return;
     }
-    let screen_origin = camera.doc_to_screen(GPoint::new(
-        object.frame_origin[0],
-        object.frame_origin[1],
-    ));
+    let screen_origin =
+        camera.doc_to_screen(GPoint::new(object.frame_origin[0], object.frame_origin[1]));
     canvas.save();
     canvas.translate((screen_origin.x as f32, screen_origin.y as f32));
     if object.rotation.abs() > f64::EPSILON {
-        canvas.rotate((object.rotation * 180.0 / std::f64::consts::PI) as f32, None);
+        canvas.rotate(
+            (object.rotation * 180.0 / std::f64::consts::PI) as f32,
+            None,
+        );
     }
-    let screen_font_size = (font_size * camera.zoom).max(6.0) as f32;
+    let screen_font_size = (*font_size * camera.zoom).max(6.0) as f32;
     let mut font = Font::default();
     font.set_size(screen_font_size);
 
@@ -506,12 +531,10 @@ fn build_skia_path(path: &GPath, camera: &ViewportCamera) -> Path {
                 builder.line_to(to_point(p));
             }
             PathVerb::QuadTo(control, p) => {
-                builder
-                    .quad_to(to_point(control), to_point(p));
+                builder.quad_to(to_point(control), to_point(p));
             }
             PathVerb::CubicTo(control1, control2, p) => {
-                builder
-                    .cubic_to(to_point(control1), to_point(control2), to_point(p));
+                builder.cubic_to(to_point(control1), to_point(control2), to_point(p));
             }
             PathVerb::Close => {
                 builder.close();
@@ -535,8 +558,10 @@ fn resolve_color_with_adjustments(
     soft_proof: bool,
     channel_view: usize,
 ) -> Color {
-    let mut rgb = token
-        .map_or([0.18, 0.5, 0.97], petunia_design_document::resolve_color_to_rgb);
+    let mut rgb = token.map_or(
+        [0.18, 0.5, 0.97],
+        petunia_design_document::resolve_color_to_rgb,
+    );
     if !adjustments.is_empty() {
         rgb = petunia_design_document::adjustments::apply_adjustment_chain(rgb, adjustments);
     }
@@ -656,15 +681,9 @@ fn paint_overlays(
     }
     if let Some(region) = overlays.region_preview.as_ref() {
         let (fill_color, outline_color) = if overlays.region_subtractive {
-            (
-                Color::from_argb(0x4D, 0xF0, 0x6C, 0x8D),
-                SUBTRACTIVE,
-            )
+            (Color::from_argb(0x4D, 0xF0, 0x6C, 0x8D), SUBTRACTIVE)
         } else {
-            (
-                Color::from_argb(0x4D, 0xB7, 0x7A, 0xFF),
-                ACCENT,
-            )
+            (Color::from_argb(0x4D, 0xB7, 0x7A, 0xFF), ACCENT)
         };
         if region.len() >= 3 {
             let mut builder = PathBuilder::default();
@@ -697,7 +716,13 @@ fn paint_overlays(
     for &(anchor, control) in &overlays.node_control_lines {
         let s_anchor = camera.doc_to_screen(anchor);
         let s_control = camera.doc_to_screen(control);
-        stroke_line(canvas, s_anchor, s_control, Color::from_argb(0xCC, 0xB7, 0x7A, 0xFF), 1.0);
+        stroke_line(
+            canvas,
+            s_anchor,
+            s_control,
+            Color::from_argb(0xCC, 0xB7, 0x7A, 0xFF),
+            1.0,
+        );
     }
     if let Some(dabs) = &overlays.brush_preview {
         for dab in dabs {
@@ -705,7 +730,13 @@ fn paint_overlays(
         }
     }
     if let Some((pos_doc, label)) = &overlays.measure_badge {
-        paint_measure_overlay(canvas, pos_doc, label, overlays.pen_preview.as_deref(), camera);
+        paint_measure_overlay(
+            canvas,
+            pos_doc,
+            label,
+            overlays.pen_preview.as_deref(),
+            camera,
+        );
     }
     paint_selection_bounding_box(canvas, &overlays.handles, camera);
     for handle in &overlays.handles {
@@ -845,13 +876,7 @@ fn paint_polyline(
 }
 
 /// Strokes a straight line between two document-space points.
-fn stroke_line(
-    canvas: &SkiaCanvas,
-    start: GPoint,
-    end: GPoint,
-    color: Color,
-    width: f32,
-) {
+fn stroke_line(canvas: &SkiaCanvas, start: GPoint, end: GPoint, color: Color, width: f32) {
     let mut builder = PathBuilder::default();
     builder.move_to((start.x as f32, start.y as f32));
     builder.line_to((end.x as f32, end.y as f32));
@@ -935,12 +960,7 @@ fn paint_marching_ants_polyline(canvas: &SkiaCanvas, points: &[GPoint], camera: 
 }
 
 /// Paints a measurement badge pill at the midpoint of a snap guide.
-fn paint_guide_badge(
-    canvas: &SkiaCanvas,
-    label: &str,
-    start: GPoint,
-    end: GPoint,
-) {
+fn paint_guide_badge(canvas: &SkiaCanvas, label: &str, start: GPoint, end: GPoint) {
     let mid_x = ((start.x + end.x) / 2.0) as f32;
     let mid_y = ((start.y + end.y) / 2.0) as f32;
 
@@ -1066,13 +1086,23 @@ fn paint_gradient_overlay(
     }
 
     // 2. Vector line with drop shadow for contrast
-    stroke_line(canvas, p_start, p_end, Color::from_argb(0x80, 0x00, 0x00, 0x00), 2.5);
+    stroke_line(
+        canvas,
+        p_start,
+        p_end,
+        Color::from_argb(0x80, 0x00, 0x00, 0x00),
+        2.5,
+    );
     stroke_line(canvas, p_start, p_end, ACCENT, 1.5);
 
     // 3. Intermediate stops with resolved stop colors
     for (i, &(_offset, stop_screen)) in gradient.stops.iter().enumerate() {
         let (sx, sy) = (stop_screen.x as f32, stop_screen.y as f32);
-        let rgb = gradient.stop_colors.get(i).copied().unwrap_or([1.0, 1.0, 1.0]);
+        let rgb = gradient
+            .stop_colors
+            .get(i)
+            .copied()
+            .unwrap_or([1.0, 1.0, 1.0]);
         let stop_color = Color::from_rgb(
             (rgb[0].clamp(0.0, 1.0) * 255.0).round() as u8,
             (rgb[1].clamp(0.0, 1.0) * 255.0).round() as u8,
@@ -1318,10 +1348,8 @@ fn paint_image_object(
     camera: &ViewportCamera,
     _opacity: f32,
 ) {
-    let screen_origin = camera.doc_to_screen(GPoint::new(
-        object.frame_origin[0],
-        object.frame_origin[1],
-    ));
+    let screen_origin =
+        camera.doc_to_screen(GPoint::new(object.frame_origin[0], object.frame_origin[1]));
     let w = (object.size[0] * camera.zoom).max(10.0) as f32;
     let h = (object.size[1] * camera.zoom).max(10.0) as f32;
     let dst = SkRect::new(
@@ -1355,7 +1383,7 @@ fn paint_image_object(
         let mut text_paint = Paint::default();
         text_paint.set_color(Color::from_rgb(0x37, 0x41, 0x51));
         canvas.draw_str(
-            &format!("🖼 {}", path),
+            format!("🖼 {}", path),
             Point::new(screen_origin.x as f32 + 8.0, screen_origin.y as f32 + 20.0),
             &font,
             &text_paint,
@@ -1417,9 +1445,18 @@ fn paint_rulers(canvas: &SkiaCanvas, camera: &ViewportCamera) {
     while curr_x <= end_doc_x {
         let sx = camera.doc_to_screen(GPoint::new(curr_x, 0.0)).x as f32;
         if sx >= ruler_w {
-            canvas.draw_line(Point::new(sx, ruler_w - 6.0), Point::new(sx, ruler_w), &tick_paint);
+            canvas.draw_line(
+                Point::new(sx, ruler_w - 6.0),
+                Point::new(sx, ruler_w),
+                &tick_paint,
+            );
             let label_str = format!("{:.0}", curr_x);
-            canvas.draw_str(&label_str, Point::new(sx + 2.0, ruler_w - 8.0), &font, &text_paint);
+            canvas.draw_str(
+                &label_str,
+                Point::new(sx + 2.0, ruler_w - 8.0),
+                &font,
+                &text_paint,
+            );
         }
         curr_x += doc_step;
     }
@@ -1433,7 +1470,11 @@ fn paint_rulers(canvas: &SkiaCanvas, camera: &ViewportCamera) {
     while curr_y <= end_doc_y {
         let sy = camera.doc_to_screen(GPoint::new(0.0, curr_y)).y as f32;
         if sy >= ruler_w {
-            canvas.draw_line(Point::new(ruler_w - 6.0, sy), Point::new(ruler_w, sy), &tick_paint);
+            canvas.draw_line(
+                Point::new(ruler_w - 6.0, sy),
+                Point::new(ruler_w, sy),
+                &tick_paint,
+            );
             let label_str = format!("{:.0}", curr_y);
             canvas.save();
             canvas.translate((ruler_w - 8.0, sy + 2.0));
@@ -1508,4 +1549,3 @@ mod tests {
         assert_eq!(col_normal.a(), 255);
     }
 }
-

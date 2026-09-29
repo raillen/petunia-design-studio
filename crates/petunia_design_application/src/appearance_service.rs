@@ -194,9 +194,7 @@ pub fn filtered_style_commands(
                 ..
             }),
             Some(petunia_design_document::ShapeKind::Text {
-                content,
-                on_path,
-                ..
+                content, on_path, ..
             }),
         ) = (&source.shape, &target.shape)
         {
@@ -208,7 +206,7 @@ pub fn filtered_style_commands(
                     font_size: *font_size,
                     line_height: *line_height,
                     letter_spacing: *letter_spacing,
-                    on_path: on_path.clone(),
+                    on_path: *on_path,
                 }),
             });
         }

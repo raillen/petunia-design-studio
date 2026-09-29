@@ -613,12 +613,19 @@ mod tests {
     fn disabled_items_carry_a_localized_surface_and_a_reason() {
         let (service, locale) = service();
         let model = present_menu_bar(&menus::menu_bar(&context()), &service, &locale);
+        // `offset_path` is wired through the numeric prompt, so with a
+        // selection it is enabled; `slice_path` stays disabled with a
+        // localized reason pointing at the Scissors gesture.
         let offset = model
             .item_for_token("ptnd.action.object.offset_path#null")
-            .expect("offset_path is present so the blocked capability is visible");
-        assert!(!offset.enabled);
-        assert!(!offset.disabled_reason.is_empty());
-        assert!(!offset.disabled_reason.starts_with("ptnd.text."));
+            .expect("offset_path is present and wired");
+        assert!(offset.enabled, "offset opens the numeric prompt");
+        let slice = model
+            .item_for_token("ptnd.action.object.slice_path#null")
+            .expect("slice_path is present so the blocked capability is visible");
+        assert!(!slice.enabled);
+        assert!(!slice.disabled_reason.is_empty());
+        assert!(!slice.disabled_reason.starts_with("ptnd.text."));
     }
 
     #[test]

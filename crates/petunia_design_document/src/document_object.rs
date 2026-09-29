@@ -27,16 +27,26 @@ impl fmt::Display for GeometryFrameError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::MissingBounds(id) => write!(formatter, "object `{id}` has no placement bounds"),
-            Self::InvalidBounds(id) => write!(formatter, "object `{id}` has invalid placement bounds"),
+            Self::InvalidBounds(id) => {
+                write!(formatter, "object `{id}` has invalid placement bounds")
+            }
             Self::NonFinite(id) => write!(formatter, "object `{id}` has non-finite geometry data"),
             Self::AmbiguousPath(id) => {
-                write!(formatter, "object `{id}` has an unversioned path frame; migrate it explicitly")
+                write!(
+                    formatter,
+                    "object `{id}` has an unversioned path frame; migrate it explicitly"
+                )
             }
             Self::AmbiguousModifier(id, kind) => {
-                write!(formatter, "object `{id}` has unversioned `{kind}` modifier coordinates")
+                write!(
+                    formatter,
+                    "object `{id}` has unversioned `{kind}` modifier coordinates"
+                )
             }
             Self::MissingObject(id) => write!(formatter, "object `{id}` does not exist"),
-            Self::HierarchyCycle(id) => write!(formatter, "object hierarchy contains a cycle at `{id}`"),
+            Self::HierarchyCycle(id) => {
+                write!(formatter, "object hierarchy contains a cycle at `{id}`")
+            }
         }
     }
 }
@@ -213,11 +223,15 @@ impl DocumentObject {
     /// `bounds` and `rotation` are placement data and are not embedded here.
     /// Explicit paths must already be local. Text and containers have no local
     /// vector outline and return an empty path.
-    pub fn base_path_local(&self) -> Result<petunia_design_geometry::GPath, crate::GeometryFrameError> {
+    pub fn base_path_local(
+        &self,
+    ) -> Result<petunia_design_geometry::GPath, crate::GeometryFrameError> {
         if self.shape.is_none() && self.modifiers.is_empty() && self.bounds.is_none() {
             return Ok(petunia_design_geometry::GPath::new());
         }
-        let b = self.bounds.ok_or(crate::GeometryFrameError::MissingBounds(self.id))?;
+        let b = self
+            .bounds
+            .ok_or(crate::GeometryFrameError::MissingBounds(self.id))?;
         if !b.iter().all(|value| value.is_finite()) {
             return Err(crate::GeometryFrameError::NonFinite(self.id));
         }
@@ -226,9 +240,9 @@ impl DocumentObject {
         }
         let rect = petunia_design_geometry::GRect::new(0.0, 0.0, b[2], b[3]);
         match &self.shape {
-            Some(ShapeKind::Rectangle { corner_radii }) => {
-                Ok(petunia_design_geometry::GPath::rect_corners(rect, *corner_radii))
-            }
+            Some(ShapeKind::Rectangle { corner_radii }) => Ok(
+                petunia_design_geometry::GPath::rect_corners(rect, *corner_radii),
+            ),
             Some(ShapeKind::Ellipse) => {
                 let rx = b[2] / 2.0;
                 let ry = b[3] / 2.0;
@@ -287,8 +301,7 @@ impl DocumentObject {
                 }
                 crate::modifiers::ModifierKind::CropRect { .. } => {
                     return Err(crate::GeometryFrameError::AmbiguousModifier(
-                        self.id,
-                        "CropRect",
+                        self.id, "CropRect",
                     ));
                 }
             }
@@ -311,9 +324,7 @@ impl DocumentObject {
     }
 
     /// Returns evaluated local bounds when the local outline has geometry.
-    pub fn evaluated_bounds_local(
-        &self,
-    ) -> Result<Option<[f64; 4]>, crate::GeometryFrameError> {
+    pub fn evaluated_bounds_local(&self) -> Result<Option<[f64; 4]>, crate::GeometryFrameError> {
         let path = self.evaluated_path_local()?;
         Ok(path
             .bounding_box()

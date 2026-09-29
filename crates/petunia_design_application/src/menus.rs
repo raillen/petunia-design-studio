@@ -260,6 +260,8 @@ pub const MENU_BAR: &[MenuFamily] = &[
             node(item("ptnd.action.file.export", "ptnd.text.file.export")),
             // Blocked, and shown as blocked rather than omitted silently.
             node(item("ptnd.action.file.place", "ptnd.text.file.place")),
+            node(item("ptnd.action.file.close", "ptnd.text.file.close")),
+            node(item("ptnd.action.file.quit", "ptnd.text.file.quit")),
         ],
     },
     MenuFamily {
@@ -287,6 +289,7 @@ pub const MENU_BAR: &[MenuFamily] = &[
         nodes: &[
             node(item("ptnd.action.edit.select_all", "ptnd.text.select.all")),
             node(item("ptnd.action.edit.deselect", "ptnd.text.select.none")),
+            node(item("ptnd.action.select.invert", "ptnd.text.select.invert")),
         ],
     },
     MenuFamily {
@@ -368,9 +371,13 @@ pub const MENU_BAR: &[MenuFamily] = &[
                 "ptnd.text.object.boolean",
                 BOOLEAN_ITEMS,
             ),
-            // `object.offset_path` and `object.slice_path` are deliberately
-            // disabled rather than absent: both need a distance/point the user
-            // must choose, and inventing a default here would be a fake command.
+            // `object.slice_path` stays disabled rather than absent: it needs a
+            // point the user picks on the path, and the Scissors tool already
+            // owns that gesture (click-to-split with auto-convert). Typing
+            // x/y here would be a fake command, and routing Scissors through
+            // the single-object seam-break would regress it.
+            // `object.offset_path` is wired: its distance arrives typed in the
+            // numeric prompt, so no default is invented here.
             group(
                 "ptnd.menu.vector.path",
                 "ptnd.text.panel.stroke",
@@ -717,6 +724,13 @@ pub fn availability(action_id: &str, ctx: &ActionContext) -> Availability {
     match action_id {
         // File: export and save need a document; save only when it is dirty.
         "ptnd.action.file.new" | "ptnd.action.file.open" => Availability::ENABLED,
+        "ptnd.action.file.close" | "ptnd.action.file.quit" => {
+            if ctx.has_document {
+                Availability::ENABLED
+            } else {
+                Availability::blocked("ptnd.text.blocked.no_document")
+            }
+        }
         "ptnd.action.file.save" => {
             if !ctx.has_document {
                 Availability::blocked("ptnd.text.blocked.no_document")
@@ -763,7 +777,7 @@ pub fn availability(action_id: &str, ctx: &ActionContext) -> Availability {
             }
         }
         "ptnd.action.edit.preferences" => Availability::ENABLED,
-        "ptnd.action.edit.select_all" => {
+        "ptnd.action.edit.select_all" | "ptnd.action.select.invert" => {
             if ctx.has_document {
                 Availability::ENABLED
             } else {
@@ -1187,15 +1201,25 @@ mod tests {
     #[test]
     fn blocked_registry_rows_are_disabled_with_their_reason() {
         let bar = menu_bar(&context());
+        // `offset_path` is wired through the numeric prompt: with a selection
+        // it is enabled, and its distance travels in the dialog payload.
         let offset = bar
             .iter()
             .flat_map(MenuFamilyModel::items)
             .find(|item| item.surface_id == "ptnd.action.object.offset_path")
             .expect("offset_path is declared in the Object family");
-        assert!(!offset.enabled);
+        assert!(offset.enabled, "offset_path enables with a selection");
+        assert_eq!(offset.disabled_reason_id.as_deref(), None);
+
+        let slice = bar
+            .iter()
+            .flat_map(MenuFamilyModel::items)
+            .find(|item| item.surface_id == "ptnd.action.object.slice_path")
+            .expect("slice_path is declared in the Object family");
+        assert!(!slice.enabled);
         assert_eq!(
-            offset.disabled_reason_id.as_deref(),
-            Some("ptnd.text.blocked.offset_path")
+            slice.disabled_reason_id.as_deref(),
+            Some("ptnd.text.blocked.slice_path")
         );
 
         let place = bar

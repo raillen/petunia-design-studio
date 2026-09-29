@@ -198,9 +198,7 @@ impl PetuniaShell {
 
     /// Finishes an in-flight open path in the Pen tool.
     pub fn finish_open_path(&mut self) -> Result<ChangeSet, PetuniaError> {
-        self.tools
-            .pen_tool_mut()
-            .finish_open_path(&mut self.bridge)
+        self.tools.pen_tool_mut().finish_open_path(&mut self.bridge)
     }
 
     /// Resolves data merge presentation model.

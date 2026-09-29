@@ -99,18 +99,20 @@ fn labels_are_localized_in_both_release_locales() {
 fn a_blocked_capability_is_shown_with_its_reason_but_never_offered() {
     let shell = shell_with_document();
     let model = shell.bridge.query_menu_bar();
-    let offset = model
-        .item_for_token("ptnd.action.object.offset_path#null")
+    // `slice_path` stays blocked: its point must be picked on the path with
+    // the Scissors tool, so the menu shows the reason and the palette hides it.
+    let slice = model
+        .item_for_token("ptnd.action.object.slice_path#null")
         .expect("the blocked capability stays visible so it is not silently missing");
-    assert!(!offset.enabled);
-    assert!(!offset.disabled_reason.is_empty());
+    assert!(!slice.enabled);
+    assert!(!slice.disabled_reason.is_empty());
 
     assert!(
         !shell
             .bridge
             .query_command_index()
             .iter()
-            .any(|item| item.action_id == "ptnd.action.object.offset_path"),
+            .any(|item| item.action_id == "ptnd.action.object.slice_path"),
         "a blocked action must not be offered by the palette"
     );
 
@@ -151,6 +153,23 @@ fn menu_availability_follows_the_selection() {
             .item_for_token("ptnd.action.edit.delete#null")
             .expect("delete is present")
             .enabled
+    );
+    // Offset is wired through the numeric prompt: one selected object enables
+    // the menu row and offers it in the palette.
+    assert!(
+        with_selection
+            .item_for_token("ptnd.action.object.offset_path#null")
+            .expect("offset is present")
+            .enabled,
+        "offset_path enables with a selection"
+    );
+    assert!(
+        shell
+            .bridge
+            .query_command_index()
+            .iter()
+            .any(|item| item.action_id == "ptnd.action.object.offset_path"),
+        "a wired action is offered by the palette"
     );
     // Grouping needs two objects and must say so.
     let group = with_selection

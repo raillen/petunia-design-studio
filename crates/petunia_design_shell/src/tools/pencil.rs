@@ -266,8 +266,10 @@ impl PencilTool {
     /// Resolves live preview overlays for active freehand drawing.
     #[must_use]
     pub fn overlays(&self) -> CanvasOverlays {
-        let mut overlays = CanvasOverlays::default();
-        overlays.cursor = CursorAffordance::Crosshair;
+        let mut overlays = CanvasOverlays {
+            cursor: CursorAffordance::Crosshair,
+            ..Default::default()
+        };
         if self.sampled_points.len() >= MIN_SAMPLES {
             if self.straight {
                 let first = self.sampled_points[0];

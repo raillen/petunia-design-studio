@@ -3,8 +3,10 @@
 //! Provides 8-bit and 16-bit RGBA pixel buffers and compositing algorithms
 //! that execute headlessly without a display server or GPU device.
 
+use std::collections::HashMap;
+
 use crate::blend::BlendMode;
-use petunia_design_document::Surface;
+use petunia_design_document::{Change, ChangeSet, Surface};
 use petunia_design_geometry::GRect;
 
 /// A contiguous 8-bit RGBA pixel buffer (4 bytes per pixel).
@@ -94,7 +96,28 @@ impl PixelBufferRgba8 {
         }
     }
 
+    /// Clears an axis-aligned rectangle with a solid color, directly setting pixel bytes.
+    pub fn clear_rect(&mut self, rect: GRect, color: [u8; 4]) {
+        let min_x = (rect.x0.max(0.0).floor() as u32).min(self.width);
+        let min_y = (rect.y0.max(0.0).floor() as u32).min(self.height);
+        let max_x = (rect.x1.max(0.0).ceil() as u32).min(self.width);
+        let max_y = (rect.y1.max(0.0).ceil() as u32).min(self.height);
+
+        if min_x >= max_x || min_y >= max_y {
+            return;
+        }
+
+        for y in min_y..max_y {
+            let start = ((y as usize * self.width as usize) + min_x as usize) * 4;
+            let end = ((y as usize * self.width as usize) + max_x as usize) * 4;
+            for chunk in self.data[start..end].chunks_exact_mut(4) {
+                chunk.copy_from_slice(&color);
+            }
+        }
+    }
+
     /// Fills an axis-aligned rectangle with a color, blend mode, and optional clipping.
+    /// Clamps bounds before the pixel loop, eliminating per-pixel branching overhead.
     pub fn fill_rect(
         &mut self,
         rect: GRect,
@@ -103,28 +126,51 @@ impl PixelBufferRgba8 {
         opacity: f32,
         clip: Option<GRect>,
     ) {
-        let min_x = rect.x0.max(0.0).floor() as u32;
-        let min_y = rect.y0.max(0.0).floor() as u32;
-        let max_x = (rect.x1.ceil() as u32).min(self.width);
-        let max_y = (rect.y1.ceil() as u32).min(self.height);
+        let mut min_x = (rect.x0.max(0.0).floor() as u32).min(self.width);
+        let mut min_y = (rect.y0.max(0.0).floor() as u32).min(self.height);
+        let mut max_x = (rect.x1.max(0.0).ceil() as u32).min(self.width);
+        let mut max_y = (rect.y1.max(0.0).ceil() as u32).min(self.height);
 
-        for y in min_y..max_y {
-            for x in min_x..max_x {
-                if let Some(ref c) = clip {
-                    if (x as f64) < c.x0
-                        || (x as f64) >= c.x1
-                        || (y as f64) < c.y0
-                        || (y as f64) >= c.y1
-                    {
-                        continue;
-                    }
+        if let Some(ref c) = clip {
+            if c.x0 >= c.x1 || c.y0 >= c.y1 {
+                return;
+            }
+            let clip_min_x = (c.x0.max(0.0).ceil() as u32).min(self.width);
+            let clip_min_y = (c.y0.max(0.0).ceil() as u32).min(self.height);
+            let clip_max_x = (c.x1.max(0.0).ceil() as u32).min(self.width);
+            let clip_max_y = (c.y1.max(0.0).ceil() as u32).min(self.height);
+
+            min_x = min_x.max(clip_min_x);
+            min_y = min_y.max(clip_min_y);
+            max_x = max_x.min(clip_max_x);
+            max_y = max_y.min(clip_max_y);
+        }
+
+        if min_x >= max_x || min_y >= max_y {
+            return;
+        }
+
+        let op = opacity.clamp(0.0, 1.0);
+        // Fast-path: fully opaque Normal blend directly overwrites row slices
+        if blend_mode == BlendMode::Normal && (op - 1.0).abs() < 1e-5 && color[3] == 255 {
+            for y in min_y..max_y {
+                let start = ((y as usize * self.width as usize) + min_x as usize) * 4;
+                let end = ((y as usize * self.width as usize) + max_x as usize) * 4;
+                for chunk in self.data[start..end].chunks_exact_mut(4) {
+                    chunk.copy_from_slice(&color);
                 }
-                self.composite_pixel(x, y, color, blend_mode, opacity);
+            }
+        } else {
+            for y in min_y..max_y {
+                for x in min_x..max_x {
+                    self.composite_pixel(x, y, color, blend_mode, opacity);
+                }
             }
         }
     }
 
     /// Blends another pixel buffer onto this buffer with offset and optional clipping.
+    /// Intersects source and destination spans ahead of the pixel loop.
     pub fn composite_buffer(
         &mut self,
         src: &PixelBufferRgba8,
@@ -134,27 +180,34 @@ impl PixelBufferRgba8 {
         opacity: f32,
         clip: Option<GRect>,
     ) {
-        for sy in 0..src.height {
-            let dy = offset_y + sy as i32;
-            if dy < 0 || dy >= self.height as i32 {
-                continue;
+        let mut min_dx = offset_x.max(0);
+        let mut min_dy = offset_y.max(0);
+        let mut max_dx = (offset_x + src.width as i32).min(self.width as i32);
+        let mut max_dy = (offset_y + src.height as i32).min(self.height as i32);
+
+        if let Some(ref c) = clip {
+            if c.x0 >= c.x1 || c.y0 >= c.y1 {
+                return;
             }
-            for sx in 0..src.width {
-                let dx = offset_x + sx as i32;
-                if dx < 0 || dx >= self.width as i32 {
-                    continue;
-                }
+            let clip_min_x = (c.x0.max(0.0).ceil() as i32).min(self.width as i32);
+            let clip_min_y = (c.y0.max(0.0).ceil() as i32).min(self.height as i32);
+            let clip_max_x = (c.x1.max(0.0).ceil() as i32).min(self.width as i32);
+            let clip_max_y = (c.y1.max(0.0).ceil() as i32).min(self.height as i32);
 
-                if let Some(ref c) = clip {
-                    if (dx as f64) < c.x0
-                        || (dx as f64) >= c.x1
-                        || (dy as f64) < c.y0
-                        || (dy as f64) >= c.y1
-                    {
-                        continue;
-                    }
-                }
+            min_dx = min_dx.max(clip_min_x);
+            min_dy = min_dy.max(clip_min_y);
+            max_dx = max_dx.min(clip_max_x);
+            max_dy = max_dy.min(clip_max_y);
+        }
 
+        if min_dx >= max_dx || min_dy >= max_dy {
+            return;
+        }
+
+        for dy in min_dy..max_dy {
+            let sy = (dy - offset_y) as u32;
+            for dx in min_dx..max_dx {
+                let sx = (dx - offset_x) as u32;
                 if let Some(px) = src.get_pixel(sx, sy) {
                     self.composite_pixel(dx as u32, dy as u32, px, blend_mode, opacity);
                 }
@@ -271,6 +324,54 @@ impl SoftwarePixelCompositor {
         background: [u8; 4],
     ) -> PixelBufferRgba8 {
         let mut buffer = PixelBufferRgba8::with_fill(width, height, background);
+        let viewport = GRect::new(0.0, 0.0, width as f64, height as f64);
+        Self::render_surface_dirty_rgba8(surface, &mut buffer, viewport, None);
+        buffer
+    }
+
+    /// Incrementally renders objects into an existing 8-bit RGBA pixel buffer,
+    /// constrained to `dirty_rect`.
+    ///
+    /// If `background` is provided, pixels inside `dirty_rect` are cleared
+    /// before redrawing.
+    ///
+    /// Visual elements outside `dirty_rect` are culled with zero pixel iterations.
+    /// Clip mask relationships are pre-indexed to O(1) per object.
+    pub fn render_surface_dirty_rgba8(
+        surface: &Surface,
+        buffer: &mut PixelBufferRgba8,
+        dirty_rect: GRect,
+        background: Option<[u8; 4]>,
+    ) {
+        if !dirty_rect.is_finite()
+            || dirty_rect.x0 >= dirty_rect.x1
+            || dirty_rect.y0 >= dirty_rect.y1
+        {
+            return;
+        }
+
+        let buffer_rect = GRect::new(0.0, 0.0, buffer.width as f64, buffer.height as f64);
+        let dirty_rect = match dirty_rect.intersection(buffer_rect) {
+            Some(r) => r,
+            None => return,
+        };
+
+        if let Some(bg) = background {
+            buffer.clear_rect(dirty_rect, bg);
+        }
+
+        // Pre-index clip masks for O(1) lookup across the render loop (eliminating O(N^2) scan).
+        let mut mask_map = HashMap::new();
+        for obj in surface.objects().iter() {
+            if obj.is_clip_mask {
+                if let Some(mb) = obj.bounds {
+                    mask_map.insert(
+                        obj.id,
+                        GRect::new(mb[0], mb[1], mb[0] + mb[2], mb[1] + mb[3]),
+                    );
+                }
+            }
+        }
 
         for obj in surface.objects().iter() {
             if !obj.visible {
@@ -287,13 +388,10 @@ impl SoftwarePixelCompositor {
             // Resolve clip from the referenced mask object, if any.
             let mut clip: Option<GRect> = None;
             if let Some(mask_id) = obj.clip_mask_id {
-                match surface.objects().iter().find(|o| o.id == mask_id) {
-                    Some(mask) => match mask.bounds {
-                        Some(mb) => {
-                            clip = Some(GRect::new(mb[0], mb[1], mb[0] + mb[2], mb[1] + mb[3]));
-                        }
-                        None => continue,
-                    },
+                match mask_map.get(&mask_id) {
+                    Some(&mask_rect) => {
+                        clip = Some(mask_rect);
+                    }
                     None => continue,
                 }
             }
@@ -343,6 +441,45 @@ impl SoftwarePixelCompositor {
                 bounds[1] + bounds[3] + inflation,
             );
 
+            // Compute total visual envelope including drop shadows for culling
+            let mut visual_envelope = rect;
+            for effect in eff.effects.iter().filter(|e| e.visible) {
+                if let petunia_design_document::EffectKind::DropShadow { offset, .. } = &effect.kind
+                {
+                    let shadow_rect = GRect::new(
+                        bounds[0] + offset[0] - inflation,
+                        bounds[1] + offset[1] - inflation,
+                        bounds[0] + bounds[2] + offset[0] + inflation,
+                        bounds[1] + bounds[3] + offset[1] + inflation,
+                    );
+                    if let Some(u) = visual_envelope.union(shadow_rect) {
+                        visual_envelope = u;
+                    }
+                }
+            }
+
+            // Viewport & dirty-rect culling: if clip is active, intersect with it
+            if let Some(c) = clip {
+                visual_envelope = match visual_envelope.intersection(c) {
+                    Some(inter) => inter,
+                    None => continue,
+                };
+            }
+
+            // Early-out if the object's visual footprint is disjoint from the dirty rectangle
+            if visual_envelope.intersection(dirty_rect).is_none() {
+                continue;
+            }
+
+            // Constrain painting within the dirty rectangle and any mask clip
+            let effective_clip = match clip {
+                Some(c) => match c.intersection(dirty_rect) {
+                    Some(inter) => inter,
+                    None => continue,
+                },
+                None => dirty_rect,
+            };
+
             // Drop shadows paint first (behind the object) as offset fills
             // (F-12). Blur radius is approximated by the inflated footprint:
             // the headless CPU compositor has no kernel-blur pass, so soft
@@ -367,14 +504,125 @@ impl SoftwarePixelCompositor {
                         color,
                         (*shadow_opacity as f32).clamp(0.0, 1.0) * eff.opacity as f32,
                     );
-                    buffer.fill_rect(shadow_rect, shadow_color, blend_mode, opacity, clip);
+                    buffer.fill_rect(
+                        shadow_rect,
+                        shadow_color,
+                        blend_mode,
+                        opacity,
+                        Some(effective_clip),
+                    );
                 }
             }
 
-            buffer.fill_rect(rect, fill_color, blend_mode, opacity, clip);
+            buffer.fill_rect(rect, fill_color, blend_mode, opacity, Some(effective_clip));
+        }
+    }
+
+    /// Calculates the tightest axis-aligned dirty rectangle affected by a [`ChangeSet`].
+    /// Returns `None` if the changeset is empty or had no visible impact on this surface.
+    #[must_use]
+    pub fn dirty_rect_for_changeset(surface: &Surface, changeset: &ChangeSet) -> Option<GRect> {
+        let mut dirty: Option<GRect> = None;
+
+        let mut union_rect = |rect: GRect| {
+            if let Some(d) = dirty {
+                dirty = d.union(rect);
+            } else {
+                dirty = Some(rect);
+            }
+        };
+
+        let mut union_bounds = |bounds: [f64; 4], inflation: f64| {
+            union_rect(GRect::new(
+                bounds[0] - inflation,
+                bounds[1] - inflation,
+                bounds[0] + bounds[2] + inflation,
+                bounds[1] + bounds[3] + inflation,
+            ));
+        };
+
+        for change in &changeset.changes {
+            match change {
+                Change::ObjectAdded {
+                    surface: s_id,
+                    object,
+                    ..
+                }
+                | Change::ObjectRemoved {
+                    surface: s_id,
+                    object,
+                    ..
+                } => {
+                    if *s_id == surface.id {
+                        if let Some(b) = object.bounds {
+                            let inf = object.effective_appearance().bounds_inflation();
+                            union_bounds(b, inf);
+                        }
+                    }
+                }
+                Change::BoundsChanged {
+                    id,
+                    previous_bounds,
+                    next_bounds,
+                    ..
+                } => {
+                    if let Some(pb) = previous_bounds {
+                        union_bounds(*pb, 0.0);
+                    }
+                    if let Some(nb) = next_bounds {
+                        let inf = surface
+                            .objects()
+                            .iter()
+                            .find(|o| o.id == *id)
+                            .map(|o| o.effective_appearance().bounds_inflation())
+                            .unwrap_or(0.0);
+                        union_bounds(*nb, inf);
+                    }
+                }
+                Change::FillChanged { id, .. }
+                | Change::StrokeChanged { id, .. }
+                | Change::ShapeChanged { id, .. }
+                | Change::AppearanceChanged { id, .. }
+                | Change::VisibilityChanged { id, .. }
+                | Change::OpacityChanged { id, .. }
+                | Change::ModifiersChanged { id, .. }
+                | Change::ChildrenChanged { id, .. }
+                | Change::ClipMaskChanged { id, .. }
+                | Change::Reparented { id, .. } => {
+                    if let Some(obj) = surface.objects().iter().find(|o| o.id == *id) {
+                        if let Some(b) = obj.bounds {
+                            let inf = obj.effective_appearance().bounds_inflation();
+                            union_bounds(b, inf);
+                        }
+                    }
+                }
+                Change::ObjectReordered {
+                    surface: s_id, id, ..
+                } => {
+                    if *s_id == surface.id {
+                        if let Some(obj) = surface.objects().iter().find(|o| o.id == *id) {
+                            if let Some(b) = obj.bounds {
+                                let inf = obj.effective_appearance().bounds_inflation();
+                                union_bounds(b, inf);
+                            }
+                        }
+                    }
+                }
+                Change::SurfaceAdded { id, .. }
+                | Change::SurfaceGeometryChanged { id, .. }
+                | Change::SurfaceBleedChanged { id, .. }
+                | Change::SurfaceMarginsChanged { id, .. }
+                | Change::SurfaceBackgroundChanged { id, .. }
+                    if *id == surface.id =>
+                {
+                    let sb = surface.bounds();
+                    union_bounds(sb, 0.0);
+                }
+                _ => {}
+            }
         }
 
-        buffer
+        dirty
     }
 }
 
@@ -522,5 +770,149 @@ mod tests {
         assert_eq!(buf.get_pixel(15, 15).unwrap(), expected_blue);
         // Outside mask bounds: background (content clipped, mask not painted).
         assert_eq!(buf.get_pixel(5, 5).unwrap(), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn compositor_dirty_rect_repaints_only_dirty_region() {
+        let mut gen = IdGenerator::new();
+        let surface_id = gen.next_surface();
+        let mut obj1 = DocumentObject::new(gen.next_object(), "Box1");
+        obj1.fill = Some("ptnd.red/500".to_string());
+        obj1.bounds = Some([10.0, 10.0, 20.0, 20.0]);
+
+        let mut obj2 = DocumentObject::new(gen.next_object(), "Box2");
+        obj2.fill = Some("ptnd.blue/500".to_string());
+        obj2.bounds = Some([60.0, 60.0, 20.0, 20.0]);
+
+        let surface = Surface::with_objects(surface_id, "DirtyTest", vec![obj1, obj2]);
+
+        // Start with a green buffer
+        let green = [0, 255, 0, 255];
+        let mut buf = PixelBufferRgba8::with_fill(100, 100, green);
+
+        // Repaint only dirty rect covering Box1 (0..40, 0..40), clearing to white
+        let dirty_rect = GRect::new(0.0, 0.0, 40.0, 40.0);
+        let white = [255, 255, 255, 255];
+        SoftwarePixelCompositor::render_surface_dirty_rgba8(
+            &surface,
+            &mut buf,
+            dirty_rect,
+            Some(white),
+        );
+
+        let red = token_to_rgba8("ptnd.red/500", 1.0);
+        // Inside dirty rect at Box1: red
+        assert_eq!(buf.get_pixel(15, 15).unwrap(), red);
+        // Inside dirty rect outside Box1: white (cleared background)
+        assert_eq!(buf.get_pixel(5, 5).unwrap(), white);
+        // Outside dirty rect at Box2: STILL GREEN! (Box2 was outside dirty rect, so not painted, and background was preserved)
+        assert_eq!(buf.get_pixel(65, 65).unwrap(), green);
+        assert_eq!(buf.get_pixel(80, 80).unwrap(), green);
+    }
+
+    #[test]
+    fn compositor_viewport_culling_skips_offscreen() {
+        let mut gen = IdGenerator::new();
+        let surface_id = gen.next_surface();
+
+        // 100 offscreen objects far away (1000..5000)
+        let mut objects = Vec::new();
+        for i in 0..100 {
+            let mut off = DocumentObject::new(gen.next_object(), format!("Offscreen_{i}"));
+            off.fill = Some("ptnd.red/500".to_string());
+            off.bounds = Some([1000.0 + (i as f64 * 50.0), 1000.0, 40.0, 40.0]);
+            objects.push(off);
+        }
+
+        // 1 visible object in viewport [0, 0, 100, 100]
+        let mut on = DocumentObject::new(gen.next_object(), "Visible");
+        on.fill = Some("ptnd.blue/500".to_string());
+        on.bounds = Some([10.0, 10.0, 30.0, 30.0]);
+        objects.push(on);
+
+        let surface = Surface::with_objects(surface_id, "CullTest", objects);
+
+        let buf =
+            SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255]);
+        let blue = token_to_rgba8("ptnd.blue/500", 1.0);
+        assert_eq!(buf.get_pixel(20, 20).unwrap(), blue);
+        assert_eq!(buf.get_pixel(0, 0).unwrap(), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn compositor_dirty_rect_for_changeset() {
+        let mut gen = IdGenerator::new();
+        let surface_id = gen.next_surface();
+        let obj_id = gen.next_object();
+        let mut obj = DocumentObject::new(obj_id, "Box");
+        obj.bounds = Some([20.0, 20.0, 30.0, 40.0]);
+        let surface = Surface::with_objects(surface_id, "ChangeSetTest", vec![obj]);
+
+        // Changeset with bounds change
+        let mut cs = ChangeSet::empty();
+        cs.push(Change::BoundsChanged {
+            id: obj_id,
+            previous_bounds: Some([10.0, 10.0, 20.0, 20.0]),
+            next_bounds: Some([30.0, 30.0, 50.0, 50.0]),
+            previous_rotation: 0.0,
+            next_rotation: 0.0,
+        });
+
+        let dirty = SoftwarePixelCompositor::dirty_rect_for_changeset(&surface, &cs).unwrap();
+        // Envelope must cover previous [10..30, 10..30] and next [30..80, 30..80] -> [10..80, 10..80]
+        assert_eq!(dirty.x0, 10.0);
+        assert_eq!(dirty.y0, 10.0);
+        assert_eq!(dirty.x1, 80.0);
+        assert_eq!(dirty.y1, 80.0);
+
+        // Empty changeset yields None
+        let empty_cs = ChangeSet::empty();
+        assert_eq!(
+            SoftwarePixelCompositor::dirty_rect_for_changeset(&surface, &empty_cs),
+            None
+        );
+    }
+
+    #[test]
+    fn compositor_performance_with_many_objects_and_masks() {
+        let mut gen = IdGenerator::new();
+        let surface_id = gen.next_surface();
+
+        let mask_id = gen.next_object();
+        let mut mask = DocumentObject::new(mask_id, "Mask");
+        mask.bounds = Some([10.0, 10.0, 50.0, 50.0]);
+        mask.is_clip_mask = true;
+
+        let mut objects = vec![mask];
+
+        // 1000 objects, 500 of which reference mask_id and 500 offscreen
+        for i in 0..1000 {
+            let mut obj = DocumentObject::new(gen.next_object(), format!("Obj_{i}"));
+            obj.fill = Some("ptnd.blue/500".to_string());
+            if i % 2 == 0 {
+                obj.bounds = Some([10.0, 10.0, 50.0, 50.0]);
+                obj.clip_mask_id = Some(mask_id);
+            } else {
+                // Offscreen
+                obj.bounds = Some([2000.0 + (i as f64 * 10.0), 2000.0, 20.0, 20.0]);
+            }
+            objects.push(obj);
+        }
+
+        let surface = Surface::with_objects(surface_id, "PerfTest", objects);
+
+        let start = std::time::Instant::now();
+        let buf =
+            SoftwarePixelCompositor::render_surface_rgba8(&surface, 200, 200, [255, 255, 255, 255]);
+        let elapsed = start.elapsed();
+
+        // 500 offscreen objects culled immediately; 500 mask lookups in O(1)
+        assert!(
+            elapsed.as_millis() < 50,
+            "Rendering 1000 objects took too long: {:?}",
+            elapsed
+        );
+        let blue = token_to_rgba8("ptnd.blue/500", 1.0);
+        assert_eq!(buf.get_pixel(25, 25).unwrap(), blue);
     }
 }

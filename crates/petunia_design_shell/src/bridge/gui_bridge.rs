@@ -36,8 +36,15 @@ use crate::menu::{self, MenuBarPresentationModel, MenuItemPresentation};
 /// Coarse-grained facade connecting external UI adapters to the Petunia engine.
 #[derive(Debug)]
 pub struct PetuniaDesignGuiBridge {
-    /// Active document session, if any.
-    active_session: Option<DocumentSession>,
+    /// Open document sessions in tab order.
+    sessions: Vec<DocumentSession>,
+    /// Active tab index, or `None` when there are no open sessions.
+    active_index: Option<usize>,
+    /// Full-scene snapshot cache keyed by `(doc_revision, selection_version,
+    /// surface)`. Cleared whenever the session itself is replaced or closed:
+    /// stable ids from a previous document must never resolve into the new
+    /// one through a stale key.
+    snapshot_cache: std::cell::RefCell<crate::canvas::SnapshotCache>,
     /// Global capability registry for tool/command authorization.
     capabilities: CapabilityRegistry,
     /// Localization service carrying the canonical shell/menu catalog (09.16).
@@ -83,7 +90,9 @@ impl PetuniaDesignGuiBridge {
         ));
 
         Self {
-            active_session: None,
+            sessions: Vec::new(),
+            active_index: None,
+            snapshot_cache: std::cell::RefCell::new(crate::canvas::SnapshotCache::new()),
             capabilities,
             localization: LocalizationService::with_shell_catalog(),
             locale: Locale::EnUs,
@@ -146,7 +155,7 @@ impl PetuniaDesignGuiBridge {
     /// Session facts that decide what the menu and palette can offer (15.G).
     #[must_use]
     pub fn action_context(&self) -> ActionContext {
-        match &self.active_session {
+        match self.active() {
             Some(session) => ActionContext {
                 has_document: true,
                 selection_count: session.selection.selected_ids.len(),
@@ -271,7 +280,7 @@ impl PetuniaDesignGuiBridge {
             name: "Canvas".to_string(),
         }))?;
         session.set_active_surface(surface_id);
-        self.active_session = Some(session);
+        self.push_session(session);
         Ok(())
     }
 
@@ -287,7 +296,8 @@ impl PetuniaDesignGuiBridge {
                 session.set_active_surface(first.id);
             }
         }
-        self.active_session = Some(session);
+        self.push_session(session);
+        self.snapshot_cache.borrow_mut().clear();
         Ok(())
     }
 
@@ -311,25 +321,147 @@ impl PetuniaDesignGuiBridge {
         if opened.format == petunia_design_io::PackageFormat::Ptnd {
             session.adopt_path(path.to_path_buf());
         }
-        self.active_session = Some(session);
+        self.push_session(session);
         Ok(())
     }
 
+    /// Reads the active session's index, if any.
+    fn active_idx(&self) -> Option<usize> {
+        self.active_index
+            .filter(|index| *index < self.sessions.len())
+    }
+
+    /// Borrows the active session or returns the closed-session error.
+    fn active(&self) -> Option<&DocumentSession> {
+        self.active_idx().and_then(|index| self.sessions.get(index))
+    }
+
+    /// Mutably borrows the active session or returns the closed-session error.
+    fn active_mut(&mut self) -> Option<&mut DocumentSession> {
+        self.active_idx()
+            .and_then(|index| self.sessions.get_mut(index))
+    }
+
     /// Closes the active session, checking unsaved dirty state.
+    ///
+    /// A closed tab activates the neighbour to its left; closing the last tab
+    /// leaves no session. Returns `false` when the document is dirty and the
+    /// caller did not confirm the discard.
     pub fn close_session(&mut self, force: bool) -> Result<bool, PetuniaError> {
-        if let Some(session) = &self.active_session {
+        if let Some(session) = self.active() {
             if session.is_dirty() && !force {
                 return Ok(false); // Unsaved changes require user decision
             }
         }
-        self.active_session = None;
+        if self.active_idx().is_none() {
+            return Ok(true);
+        }
+        let index = self.active_idx().expect("active tab exists");
+        let _ = self.close_session_at(index, force);
+        Ok(true)
+    }
+
+    /// Opens a session as a new tab and activates it.
+    ///
+    /// The opened document goes last; every existing tab stays in place:
+    /// `file.new`/`file.open` keep open documents, they do not replace them.
+    fn push_session(&mut self, session: DocumentSession) {
+        self.sessions.push(session);
+        self.active_index = Some(self.sessions.len() - 1);
+        self.snapshot_cache.borrow_mut().clear();
+    }
+
+    /// Closes every open session.
+    ///
+    /// Returns `false` without closing anything when any document is dirty and
+    /// the caller did not confirm: the decision is all-or-nothing so a quit
+    /// never leaves a half-closed window.
+    pub fn close_all_sessions(&mut self, force: bool) -> Result<bool, PetuniaError> {
+        if !force && self.any_session_dirty() {
+            return Ok(false);
+        }
+        self.sessions.clear();
+        self.active_index = None;
+        self.snapshot_cache.borrow_mut().clear();
+        Ok(true)
+    }
+
+    /// True when any open document has unsaved changes.
+    #[must_use]
+    pub fn any_session_dirty(&self) -> bool {
+        self.sessions.iter().any(DocumentSession::is_dirty)
+    }
+
+    /// Every open session in tab order.
+    ///
+    /// Read-only: sessions are opened and closed through the action lane, never
+    /// mutated from a presentation read.
+    #[must_use]
+    pub fn sessions(&self) -> Vec<&DocumentSession> {
+        self.sessions.iter().collect()
+    }
+
+    /// The active tab index in `sessions()` order, or `None` when closed.
+    #[must_use]
+    pub fn active_session_index(&self) -> Option<usize> {
+        self.active_idx()
+    }
+
+    /// Activates the tab at `index` in `sessions()` order.
+    ///
+    /// A miss is a no-op error: a stale tab click closes no document and opens
+    /// none, it simply does nothing.
+    pub fn switch_session(&mut self, index: usize) -> Result<bool, PetuniaError> {
+        if index >= self.sessions.len() {
+            return Ok(false);
+        }
+        self.active_index = Some(index);
+        self.snapshot_cache.borrow_mut().clear();
+        Ok(true)
+    }
+
+    /// Closes the tab at `index` in `sessions()` order.
+    ///
+    /// Returns `false` when the document is dirty and not confirmed, or when
+    /// `index` is out of range. Closing the active tab activates the tab to its
+    /// left; closing an inactive tab leaves the active one alone.
+    pub fn close_session_at(&mut self, index: usize, force: bool) -> Result<bool, PetuniaError> {
+        if index >= self.sessions.len() {
+            return Ok(false);
+        }
+        if self.sessions[index].is_dirty() && !force {
+            return Ok(false);
+        }
+        let active = self.active_idx();
+        self.sessions.remove(index);
+        self.active_index = match active {
+            Some(_) if self.sessions.is_empty() => None,
+            Some(current) if index == current => {
+                Some(current.saturating_sub(1).min(self.sessions.len() - 1))
+            }
+            Some(current) if index < current => Some(current - 1),
+            other => other,
+        };
+        self.snapshot_cache.borrow_mut().clear();
         Ok(true)
     }
 
     /// Accesses the active document session.
     #[must_use]
     pub fn session(&self) -> Option<&DocumentSession> {
-        self.active_session.as_ref()
+        self.active()
+    }
+
+    /// Reads the full-scene snapshot cache (interior-mutable, `GeoCache`
+    /// pattern: shared `&self` readers, keyed entry, no signature churn).
+    #[must_use]
+    pub(crate) fn snapshot_cache(&self) -> std::cell::Ref<'_, crate::canvas::SnapshotCache> {
+        self.snapshot_cache.borrow()
+    }
+
+    /// Stores a fresh full-scene evaluation in the snapshot cache.
+    pub(crate) fn snapshot_cache_mut(&self) -> std::cell::RefMut<'_, crate::canvas::SnapshotCache> {
+        self.snapshot_cache.borrow_mut()
     }
 
     /// Mutable access to the active session's **view** state only.
@@ -340,9 +472,7 @@ impl PetuniaDesignGuiBridge {
     pub fn view_state_mut(
         &mut self,
     ) -> Option<&mut petunia_design_application::view_camera::ViewState> {
-        self.active_session
-            .as_mut()
-            .map(|session| &mut session.view)
+        self.active_mut().map(|session| &mut session.view)
     }
 
     /// Returns a reference to the global capability registry.
@@ -354,15 +484,13 @@ impl PetuniaDesignGuiBridge {
     /// Helper to borrow active session or return error if closed.
     #[allow(dead_code)]
     fn session_req(&self) -> Result<&DocumentSession, PetuniaError> {
-        self.active_session
-            .as_ref()
+        self.active()
             .ok_or_else(|| PetuniaError::invalid_input("no active document session"))
     }
 
     /// Helper to mutably borrow active session or return error if closed.
     fn session_req_mut(&mut self) -> Result<&mut DocumentSession, PetuniaError> {
-        self.active_session
-            .as_mut()
+        self.active_mut()
             .ok_or_else(|| PetuniaError::invalid_input("no active document session"))
     }
 
@@ -537,20 +665,39 @@ impl PetuniaDesignGuiBridge {
         self.session().map_or(0, |s| s.geo_cache.borrow().len())
     }
 
+    /// Total flatten lookups served (F7.3 probe: shared-flatten spans).
+    #[must_use]
+    pub fn flatten_lookup_count(&self) -> u64 {
+        self.session().map_or(0, |s| s.flatten_lookup_count())
+    }
+
+    /// Actual flatten computations, i.e. cache misses (F7.3 probe).
+    #[must_use]
+    pub fn flatten_compute_count(&self) -> u64 {
+        self.session().map_or(0, |s| s.flatten_compute_count())
+    }
+
+    /// Resets the F7.3 flatten probes without dropping cached geometry.
+    pub fn reset_flatten_stats(&self) {
+        if let Some(session) = self.session() {
+            session.reset_flatten_stats();
+        }
+    }
+
     /// Combines one shape into the raster mask (session state, no undo).
     pub fn combine_raster_selection(
         &mut self,
         shape: petunia_design_application::SelectionShape,
         mode: petunia_design_application::SelectionMode,
     ) {
-        if let Some(session) = self.active_session.as_mut() {
+        if let Some(session) = self.active_mut() {
             session.raster_selection.combine(&shape, mode);
         }
     }
 
     /// Clears the raster mask (Ctrl+D equivalent).
     pub fn clear_raster_selection(&mut self) {
-        if let Some(session) = self.active_session.as_mut() {
+        if let Some(session) = self.active_mut() {
             session.raster_selection.clear();
         }
     }
@@ -558,7 +705,7 @@ impl PetuniaDesignGuiBridge {
     /// Inverts the raster mask inside the active surface bounds.
     /// Empty masks stay empty.
     pub fn invert_raster_selection(&mut self) {
-        let frame = self.active_session.as_ref().and_then(|s| {
+        let frame = self.active().and_then(|s| {
             let surface_id = s.active_surface()?;
             let surface = s.surface(surface_id).ok()?;
             let [x, y, w, h] = surface.bounds();
@@ -570,21 +717,21 @@ impl PetuniaDesignGuiBridge {
                 GPoint::new(x, y + h),
             ])
         });
-        if let (Some(session), Some(frame)) = (self.active_session.as_mut(), frame) {
+        if let (Some(session), Some(frame)) = (self.active_mut(), frame) {
             session.raster_selection.invert_in(&frame);
         }
     }
 
     /// Grows (positive) or shrinks (negative) the raster mask.
     pub fn grow_raster_selection(&mut self, delta: f64) {
-        if let Some(session) = self.active_session.as_mut() {
+        if let Some(session) = self.active_mut() {
             session.raster_selection.grow(delta);
         }
     }
 
     /// Sets the raster feather radius (render-time parameter).
     pub fn set_raster_feather(&mut self, radius: f64) {
-        if let Some(session) = self.active_session.as_mut() {
+        if let Some(session) = self.active_mut() {
             session.raster_selection.set_feather(radius);
         }
     }
@@ -997,8 +1144,7 @@ impl PetuniaDesignGuiBridge {
         color2: impl Into<String>,
     ) -> Result<ChangeSet, PetuniaError> {
         let stack = self
-            .active_session
-            .as_ref()
+            .active()
             .and_then(|s| s.find_object(id))
             .map(|o| o.effective_appearance())
             .unwrap_or_default();
@@ -1029,8 +1175,7 @@ impl PetuniaDesignGuiBridge {
         color2: impl Into<String>,
     ) -> Result<ChangeSet, PetuniaError> {
         let stack = self
-            .active_session
-            .as_ref()
+            .active()
             .and_then(|s| s.find_object(id))
             .map(|o| o.effective_appearance())
             .unwrap_or_default();
@@ -1269,7 +1414,7 @@ impl PetuniaDesignGuiBridge {
     /// Resolves presentation model for the history/undo stack.
     #[must_use]
     pub fn query_history(&self) -> HistoryPresentationModel {
-        if let Some(session) = &self.active_session {
+        if let Some(session) = self.active() {
             let mut undo_items = Vec::new();
             let mut redo_items = Vec::new();
 
@@ -1342,8 +1487,8 @@ impl ActionQueryPort for PetuniaDesignGuiBridge {
     }
 
     fn dispatch_action(&mut self, request: ActionRequest) -> Result<ChangeSet, PetuniaError> {
-        // Document-lifecycle actions replace the session, so they are handled
-        // by the host before the active session is even borrowed.
+        // Document-lifecycle actions replace or drop the tab set, so they are
+        // handled by the host before the active session is even borrowed.
         let normalized = petunia_design_foundation::normalized(request.action.as_str());
         let action = petunia_design_foundation::normalize_action_id(&normalized);
         match action.as_str() {
@@ -1363,6 +1508,44 @@ impl ActionQueryPort for PetuniaDesignGuiBridge {
                         )
                     })?;
                 self.open_path(std::path::Path::new(path))?;
+                return Ok(ChangeSet::empty());
+            }
+            "ptnd.action.file.close" => {
+                // `force` is the UI's confirmed-dirty answer, never a default.
+                let force = request
+                    .payload
+                    .get("force")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                let index = request
+                    .payload
+                    .get("index")
+                    .and_then(serde_json::Value::as_u64)
+                    .map_or_else(
+                        || self.active_session_index(),
+                        |index| usize::try_from(index).ok(),
+                    );
+                let Some(index) = index else {
+                    return Ok(ChangeSet::empty());
+                };
+                if !self.close_session_at(index, force)? {
+                    return Err(PetuniaError::invalid_input(
+                        "file.close refused: the document has unsaved changes",
+                    ));
+                }
+                return Ok(ChangeSet::empty());
+            }
+            "ptnd.action.file.quit" => {
+                let force = request
+                    .payload
+                    .get("force")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                if !self.close_all_sessions(force)? {
+                    return Err(PetuniaError::invalid_input(
+                        "file.quit refused: an open document has unsaved changes",
+                    ));
+                }
                 return Ok(ChangeSet::empty());
             }
             _ => {}
@@ -1389,22 +1572,17 @@ impl CommandPort for PetuniaDesignGuiBridge {
     }
 
     fn can_undo(&self) -> bool {
-        self.active_session
-            .as_ref()
-            .is_some_and(|s| s.history().can_undo())
+        self.active().is_some_and(|s| s.history().can_undo())
     }
 
     fn can_redo(&self) -> bool {
-        self.active_session
-            .as_ref()
-            .is_some_and(|s| s.history().can_redo())
+        self.active().is_some_and(|s| s.history().can_redo())
     }
 }
 
 impl PropertyPort for PetuniaDesignGuiBridge {
     fn query_properties(&self) -> PropertiesPresentationModel {
-        self.active_session
-            .as_ref()
+        self.active()
             .map_or_else(PropertiesPresentationModel::default, |s| {
                 s.properties_presentation_model()
             })
@@ -1466,7 +1644,7 @@ impl PropertyPort for PetuniaDesignGuiBridge {
 
 impl DocumentQueryPort for PetuniaDesignGuiBridge {
     fn snapshot(&self) -> SessionSnapshot {
-        self.active_session.as_ref().map_or_else(
+        self.active().map_or_else(
             || SessionSnapshot {
                 active_surface: None,
                 title: "No Document".to_string(),
@@ -1483,14 +1661,12 @@ impl DocumentQueryPort for PetuniaDesignGuiBridge {
     }
 
     fn summary(&self) -> DocumentSummary {
-        self.active_session
-            .as_ref()
+        self.active()
             .map_or_else(DocumentSummary::default, |s| s.summary())
     }
 
     fn query_layers(&self) -> LayersPresentationModel {
-        self.active_session
-            .as_ref()
+        self.active()
             .map_or_else(LayersPresentationModel::default, |s| {
                 s.layers_presentation_model()
             })
@@ -1499,33 +1675,32 @@ impl DocumentQueryPort for PetuniaDesignGuiBridge {
 
 impl SelectionPort for PetuniaDesignGuiBridge {
     fn selection(&self) -> SelectionViewModel {
-        self.active_session
-            .as_ref()
+        self.active()
             .map_or_else(SelectionViewModel::default, |s| s.selection_view_model())
     }
 
     fn set_selection(&mut self, ids: Vec<ObjectId>) {
-        if let Some(session) = &mut self.active_session {
+        if let Some(session) = self.active_mut() {
             session.selection.select_exact(ids);
             session.prune_selection();
         }
     }
 
     fn toggle_selection(&mut self, id: ObjectId) {
-        if let Some(session) = &mut self.active_session {
+        if let Some(session) = self.active_mut() {
             session.selection.toggle(id);
             session.prune_selection();
         }
     }
 
     fn clear_selection(&mut self) {
-        if let Some(session) = &mut self.active_session {
+        if let Some(session) = self.active_mut() {
             session.selection.clear();
         }
     }
 
     fn select_all(&mut self) {
-        if let Some(session) = &mut self.active_session {
+        if let Some(session) = self.active_mut() {
             session.select_all();
         }
     }
@@ -1533,9 +1708,7 @@ impl SelectionPort for PetuniaDesignGuiBridge {
 
 impl InspectionPort for PetuniaDesignGuiBridge {
     fn active_surface(&self) -> Option<SurfaceId> {
-        self.active_session
-            .as_ref()
-            .and_then(|s| s.active_surface())
+        self.active().and_then(|s| s.active_surface())
     }
 
     fn set_active_surface(&mut self, id: SurfaceId) -> Result<(), PetuniaError> {
@@ -1551,13 +1724,11 @@ impl InspectionPort for PetuniaDesignGuiBridge {
     }
 
     fn revision(&self) -> u64 {
-        self.active_session
-            .as_ref()
-            .map_or(0, |s| s.current_revision())
+        self.active().map_or(0, |s| s.current_revision())
     }
 
     fn is_dirty(&self) -> bool {
-        self.active_session.as_ref().is_some_and(|s| s.is_dirty())
+        self.active().is_some_and(|s| s.is_dirty())
     }
 }
 
@@ -1736,8 +1907,7 @@ impl VariableDataPort for PetuniaDesignGuiBridge {
     }
 
     fn query_variable_data(&self) -> DataMergePresentationModel {
-        self.active_session
-            .as_ref()
+        self.active()
             .map_or_else(DataMergePresentationModel::default, |s| {
                 s.data_merge_presentation_model()
             })

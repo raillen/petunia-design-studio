@@ -46,6 +46,12 @@ pub struct GeoCache {
     flats: HashMap<(ObjectId, u64), Vec<Vec<GPoint>>>,
     /// Flattened world outlines keyed by `(object, tolerance bits)`.
     world_flats: HashMap<(ObjectId, u64), Vec<Vec<GPoint>>>,
+    /// Total `cached_polygons` / `cached_world_polygons` lookups (F7.3 probe:
+    /// `span_points` must serve 25 samples with exactly one lookup).
+    flat_lookups: u64,
+    /// Actual `to_polygons` computations (cache misses). Hits reuse `flats`
+    /// without re-flattening.
+    flat_computes: u64,
 }
 
 impl GeoCache {
@@ -59,6 +65,24 @@ impl GeoCache {
     #[must_use]
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    /// Total flatten lookups served (hits + misses). F7.3 probe.
+    #[must_use]
+    pub fn flat_lookups(&self) -> u64 {
+        self.flat_lookups
+    }
+
+    /// Actual flatten computations (misses only). F7.3 probe.
+    #[must_use]
+    pub fn flat_computes(&self) -> u64 {
+        self.flat_computes
+    }
+
+    /// Resets the F7.3 flatten probes without dropping cached geometry.
+    pub fn reset_flat_stats(&mut self) {
+        self.flat_lookups = 0;
+        self.flat_computes = 0;
     }
 
     /// True when no entries are stored.
@@ -235,6 +259,7 @@ impl crate::session::DocumentSession {
         let tol = tol.max(0.001);
         let key = (id, tol.to_bits());
         let revision = self.current_revision();
+        self.geo_cache.borrow_mut().flat_lookups += 1;
         {
             let cache = self.geo_cache.borrow();
             if let Some(flats) = cache.flats.get(&key) {
@@ -250,7 +275,11 @@ impl crate::session::DocumentSession {
         }
         let path = self.cached_path(id)?;
         let polys = path.to_polygons(tol);
-        self.geo_cache.borrow_mut().flats.insert(key, polys.clone());
+        {
+            let mut cache = self.geo_cache.borrow_mut();
+            cache.flat_computes += 1;
+            cache.flats.insert(key, polys.clone());
+        }
         Some(polys)
     }
 
@@ -260,6 +289,7 @@ impl crate::session::DocumentSession {
         let tol = tol.max(0.001);
         let key = (id, tol.to_bits());
         let revision = self.current_revision();
+        self.geo_cache.borrow_mut().flat_lookups += 1;
         {
             let cache = self.geo_cache.borrow();
             if let Some(flats) = cache.world_flats.get(&key) {
@@ -274,10 +304,11 @@ impl crate::session::DocumentSession {
         }
         let path = self.cached_world_path(id)?;
         let polys = path.to_polygons(tol);
-        self.geo_cache
-            .borrow_mut()
-            .world_flats
-            .insert(key, polys.clone());
+        {
+            let mut cache = self.geo_cache.borrow_mut();
+            cache.flat_computes += 1;
+            cache.world_flats.insert(key, polys.clone());
+        }
         Some(polys)
     }
 
@@ -315,6 +346,23 @@ impl crate::session::DocumentSession {
     pub fn cached_nearest_t(&self, id: ObjectId, pt: GPoint, tol: f64) -> Option<f64> {
         let polys = self.cached_polygons(id, tol)?;
         nearest_walk(&polys, pt)
+    }
+
+    /// Total flatten lookups served (F7.3 probe for shared-flatten spans).
+    #[must_use]
+    pub fn flatten_lookup_count(&self) -> u64 {
+        self.geo_cache.borrow().flat_lookups()
+    }
+
+    /// Actual flatten computations, i.e. cache misses (F7.3 probe).
+    #[must_use]
+    pub fn flatten_compute_count(&self) -> u64 {
+        self.geo_cache.borrow().flat_computes()
+    }
+
+    /// Resets the F7.3 flatten probes without dropping cached geometry.
+    pub fn reset_flatten_stats(&self) {
+        self.geo_cache.borrow_mut().reset_flat_stats();
     }
 }
 

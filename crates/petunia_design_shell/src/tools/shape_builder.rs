@@ -171,7 +171,9 @@ impl ShapeBuilderTool {
                     return Ok(ChangeSet::empty());
                 };
                 let clicked = p0.distance_to(p1) * camera.zoom.max(0.1) <= CLICK_THRESHOLD_PX;
-                let subtract = event.modifiers.duplicate || self.subtract_mode || self.op == BuilderOp::Subtract;
+                let subtract = event.modifiers.duplicate
+                    || self.subtract_mode
+                    || self.op == BuilderOp::Subtract;
                 self.subtract_mode = false;
                 if clicked {
                     self.click_region(p0, subtract, bridge)
@@ -274,8 +276,10 @@ impl ShapeBuilderTool {
     /// Resolves overlays: hovered or in-flight merged region outline.
     #[must_use]
     pub fn overlays(&self, bridge: &PetuniaDesignGuiBridge) -> CanvasOverlays {
-        let mut overlays = CanvasOverlays::default();
-        overlays.region_subtractive = self.subtract_mode || self.op == BuilderOp::Subtract;
+        let mut overlays = CanvasOverlays {
+            region_subtractive: self.subtract_mode || self.op == BuilderOp::Subtract,
+            ..Default::default()
+        };
 
         let preview = if let (Some(p0), Some(p1)) = (self.start_doc, self.current_doc) {
             // In-flight drag: outline the merged crossed regions and render cutting path.

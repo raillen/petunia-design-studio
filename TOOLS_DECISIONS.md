@@ -131,6 +131,7 @@ Doutrina-mãe: ADR 09.31 (`petunia-design-studio/09 31 — Non-Destructive Editi
   Invert dentro dos bounds da surface; Grow/Shrink pelo offset real (Miter);
   feather é parâmetro de render, nunca geometria.
 - **Overlay:** `selection_mask` (doc-space) alimenta marching ants futuras.
+- **Select Invert (DÍVIDA 10.9 × `surfaces.rs:523` resolvida — V1):** `ptnd.action.select.invert` vira `V1Required/Wired` com dispatch em `session.rs` (complemento visível+destravado + `invert_in` nos bounds, transiente sem undo, como `select_all`).
 - **Fora (futuros documentados, exigem pixel-layers no documento):**
   FloodSelect/SelectionBrush (amostragem de pixels), Brush/Eraser (pintura),
   feather renderizado, Refine/QuickMask/Straighten.
@@ -272,3 +273,12 @@ Doutrina-mãe: ADR 09.31 (`petunia-design-studio/09 31 — Non-Destructive Editi
   Sem gatilho disparado, fork é custo sem retorno ( rever em cada Wave ).
 - **Estado dos gatilhos hoje:** nenhum disparado. A11y quebrada no Freya é débito
   registrado (fora de V1), não bloqueador.
+
+## Multi-documento, Close e Quit reais (2026-09-30, dossiê P1 item 4)
+
+- **`file.close` e `file.quit` Wired:** `PetuniaDesignGuiBridge` agora opera `sessions: Vec<DocumentSession>` + `active_index: Option<usize>` (flat order determinística, multi-doc de verdade); `dispatch_action` roteia ambos na lane de ação protegendo alterações não salvas (`force: false` rejeita com erro descritivo; `force: true` descarta); fechar aba ativa promove a vizinha à esquerda (satura em 0); fechar última aba deixa `active = None`; `quit` fecha todas ou nenhuma (atômico).
+- **Tab strip multi-doc Freya:** `chrome.rs::DocumentTabStrip` renderiza todas as abas abertas em linha com título, indicador de dirty dot âmbar, fundo ativo diferenciado, clique na aba alterna sessão ativa via `switch_session`, e botão `×` fecha aquela aba específica (com guarda dirty abrindo `ConfirmCloseDialog`). Botão `+` cria novo documento sem descartar anteriores (`push_session`).
+- **Registry:** `ptnd.surface.tabs.document_close`, `ptnd.action.file.close` e `ptnd.action.file.quit` promovidos a `V1Required`/`Wired` e adicionados a `LIVE_ACTIONS`. Menu Arquivo expõe Fechar e Sair com disponibilidade dinâmica (habilitados apenas quando há documento aberto).
+
+
+- **`object.offset_path` Wired:** `session.rs` despacha `distance`/`delta` do payload (alvos = seleção, 1 undo via `transact`, upsert `ContourOffset` vivo, base intacta, `0` limpa; sem distância finita recusa em vez de inventar default); prompt numérico genérico reutilizável em `dialogs.rs` (`OffsetPathDialog`: título + valor + `pt`, rejeita-ou-explica, nunca `0.0` silencioso, placeholder mostra a distância viva); menu/paleta abrem o prompt em vez de despachar token nu (`needs_typed_value` em `actions.rs`); registry `Wired` + `LIVE_ACTIONS`, saiu de `DECLARED_NOT_LIVE`. **`object.slice_path` fica `Disabled` (regra de ouro):** o ponto honesto só vem de gesto e a Tesoura já cobre (`split_path_at_point` com auto-convert, 2 peças em aberto, 1 undo) — o `slice_path` do mutador é quebra-de-costura de 1 objeto só-path sem auto-convert, digitá-lo x/y seria UI falsa e rotear a Tesoura por ele seria regressão; motivo atualizado aponta a Tesoura (EN+pt-BR).

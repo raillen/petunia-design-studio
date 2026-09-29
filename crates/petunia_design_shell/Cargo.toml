@@ -14,6 +14,7 @@ petunia_design_color = { path = "../petunia_design_color" }
 petunia_design_raster = { path = "../petunia_design_raster" }
 petunia_design_resources = { path = "../petunia_design_resources" }
 petunia_design_platform = { path = "../petunia_design_platform" }
+petunia_design_text = { path = "../petunia_design_text" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

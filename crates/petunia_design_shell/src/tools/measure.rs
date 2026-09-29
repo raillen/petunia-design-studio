@@ -169,8 +169,10 @@ impl MeasureTool {
     /// Distance draws the line with distance/angle badge; Area draws the rectangle with W/H/Area badge.
     #[must_use]
     pub fn overlays(&self, camera: &ViewportCamera) -> CanvasOverlays {
-        let mut overlays = CanvasOverlays::default();
-        overlays.cursor = CursorAffordance::Crosshair;
+        let mut overlays = CanvasOverlays {
+            cursor: CursorAffordance::Crosshair,
+            ..Default::default()
+        };
         if let (Some(p0), Some(p1)) = (self.start_doc, self.current_doc) {
             match self.mode {
                 MeasureMode::Distance => {
@@ -190,7 +192,10 @@ impl MeasureTool {
                     overlays.marquee_screen = Some(GRect::new(s_tl.x, s_tl.y, s_br.x, s_br.y));
                     let r = petunia_design_geometry::area_readout(p0, p1);
                     let center = GPoint::new((p0.x + p1.x) / 2.0, (p0.y + p1.y) / 2.0);
-                    let label = format!("W: {:.1}  H: {:.1}  |  Area: {:.1} px²", r.width, r.height, r.area);
+                    let label = format!(
+                        "W: {:.1}  H: {:.1}  |  Area: {:.1} px²",
+                        r.width, r.height, r.area
+                    );
                     overlays.measure_badge = Some((center, label));
                 }
             }

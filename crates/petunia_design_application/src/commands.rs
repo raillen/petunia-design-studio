@@ -43,10 +43,7 @@ pub enum Command {
         new_index: usize,
     },
     /// Renames an object by stable ID.
-    RenameObject {
-        id: ObjectId,
-        name: String,
-    },
+    RenameObject { id: ObjectId, name: String },
     /// Arrange an object one step or to a z-order edge (10.1, F-16).
     ArrangeObject {
         surface: SurfaceId,

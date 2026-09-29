@@ -169,17 +169,19 @@ impl PickerTool {
     /// Resolves overlays with hover highlighting and cursor affordances.
     #[must_use]
     pub fn overlays(&self, bridge: &PetuniaDesignGuiBridge) -> CanvasOverlays {
-        let mut overlays = CanvasOverlays::default();
-        overlays.cursor = CursorAffordance::Crosshair;
+        let mut overlays = CanvasOverlays {
+            cursor: CursorAffordance::Crosshair,
+            ..Default::default()
+        };
         if let Some(pt) = self.hover_doc {
             if let Some(session) = bridge.session() {
                 let hit = session
                     .spatial_candidates_point(pt, 0.0)
                     .into_iter()
                     .find(|id| {
-                        session.find_object(*id).is_some_and(|obj| {
-                            obj.visible && !obj.locked && obj.hit_test(pt)
-                        })
+                        session
+                            .find_object(*id)
+                            .is_some_and(|obj| obj.visible && !obj.locked && obj.hit_test(pt))
                     });
                 overlays.hovered_object = hit;
                 if hit.is_some() {

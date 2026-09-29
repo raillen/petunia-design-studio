@@ -298,21 +298,22 @@ impl GradientTool {
         bridge: &PetuniaDesignGuiBridge,
         camera: &ViewportCamera,
     ) -> CanvasOverlays {
-        let mut overlays = CanvasOverlays::default();
-
         // 1. Resolve cursor affordance
-        overlays.cursor = if self.drag_stop.is_some() {
-            CursorAffordance::Grabbing
-        } else if self.is_active() {
-            CursorAffordance::Crosshair
-        } else if let Some(hover) = self.hover_doc {
-            if hit_stop(hover, bridge, camera).is_some() {
-                CursorAffordance::Pointer
+        let mut overlays = CanvasOverlays {
+            cursor: if self.drag_stop.is_some() {
+                CursorAffordance::Grabbing
+            } else if self.is_active() {
+                CursorAffordance::Crosshair
+            } else if let Some(hover) = self.hover_doc {
+                if hit_stop(hover, bridge, camera).is_some() {
+                    CursorAffordance::Pointer
+                } else {
+                    CursorAffordance::Crosshair
+                }
             } else {
                 CursorAffordance::Crosshair
-            }
-        } else {
-            CursorAffordance::Crosshair
+            },
+            ..Default::default()
         };
 
         // 2. Resolve gradient overlay
@@ -337,7 +338,9 @@ impl GradientTool {
                                 (off, camera.doc_to_screen(lerp_point(start, end, off)))
                             })
                             .collect();
-                        stops.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                        stops.sort_by(|a, b| {
+                            a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
+                        });
                         let stop_colors = gradient_stops(stack)
                             .iter()
                             .map(|(_, c)| petunia_design_document::resolve_color_to_rgb(c))
@@ -365,7 +368,9 @@ impl GradientTool {
                 let stops = if let Some(stack) = &selected_stack {
                     gradient_stops(stack)
                         .iter()
-                        .map(|(offset, _)| (*offset, camera.doc_to_screen(lerp_point(p0, end, *offset))))
+                        .map(|(offset, _)| {
+                            (*offset, camera.doc_to_screen(lerp_point(p0, end, *offset)))
+                        })
                         .collect()
                 } else {
                     vec![
@@ -397,7 +402,12 @@ impl GradientTool {
             if let Some((start, end)) = gradient_line(stack) {
                 let stops = gradient_stops(stack)
                     .iter()
-                    .map(|(offset, _)| (*offset, camera.doc_to_screen(lerp_point(start, end, *offset))))
+                    .map(|(offset, _)| {
+                        (
+                            *offset,
+                            camera.doc_to_screen(lerp_point(start, end, *offset)),
+                        )
+                    })
                     .collect();
                 let stop_colors = gradient_stops(stack)
                     .iter()

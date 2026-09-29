@@ -76,38 +76,14 @@ pub fn compute_selection_handles_oriented(
     let [_, _, w, h] = frame_bounds;
 
     let points = [
-        (
-            SelectionHandleKind::TopLeft,
-            GPoint::new(0.0, 0.0),
-        ),
-        (
-            SelectionHandleKind::Top,
-            GPoint::new(w / 2.0, 0.0),
-        ),
-        (
-            SelectionHandleKind::TopRight,
-            GPoint::new(w, 0.0),
-        ),
-        (
-            SelectionHandleKind::Right,
-            GPoint::new(w, h / 2.0),
-        ),
-        (
-            SelectionHandleKind::BottomRight,
-            GPoint::new(w, h),
-        ),
-        (
-            SelectionHandleKind::Bottom,
-            GPoint::new(w / 2.0, h),
-        ),
-        (
-            SelectionHandleKind::BottomLeft,
-            GPoint::new(0.0, h),
-        ),
-        (
-            SelectionHandleKind::Left,
-            GPoint::new(0.0, h / 2.0),
-        ),
+        (SelectionHandleKind::TopLeft, GPoint::new(0.0, 0.0)),
+        (SelectionHandleKind::Top, GPoint::new(w / 2.0, 0.0)),
+        (SelectionHandleKind::TopRight, GPoint::new(w, 0.0)),
+        (SelectionHandleKind::Right, GPoint::new(w, h / 2.0)),
+        (SelectionHandleKind::BottomRight, GPoint::new(w, h)),
+        (SelectionHandleKind::Bottom, GPoint::new(w / 2.0, h)),
+        (SelectionHandleKind::BottomLeft, GPoint::new(0.0, h)),
+        (SelectionHandleKind::Left, GPoint::new(0.0, h / 2.0)),
         // Rotation handle 20px above top center in local orientation
         (
             SelectionHandleKind::Rotation,

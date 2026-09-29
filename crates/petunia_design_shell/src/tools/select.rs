@@ -236,10 +236,9 @@ impl SelectTool {
                     let center = if initial_objects.len() == 1
                         && initial_objects[0].2.abs() > f64::EPSILON
                     {
-                        let rot_trans = petunia_design_geometry::GAffine::translate(bx, by)
-                            .after(petunia_design_geometry::GAffine::rotate(
-                                initial_objects[0].2,
-                            ));
+                        let rot_trans = petunia_design_geometry::GAffine::translate(bx, by).after(
+                            petunia_design_geometry::GAffine::rotate(initial_objects[0].2),
+                        );
                         rot_trans.apply(GPoint::new(bw / 2.0, bh / 2.0))
                     } else {
                         GPoint::new(bx + bw / 2.0, by + bh / 2.0)
@@ -251,9 +250,7 @@ impl SelectTool {
                     )
                     .unwrap_or(0.0);
                     rotate_preview_objects(initial_objects, center, delta)
-                } else if initial_objects.len() == 1
-                    && initial_objects[0].2.abs() > f64::EPSILON
-                {
+                } else if initial_objects.len() == 1 && initial_objects[0].2.abs() > f64::EPSILON {
                     let theta = initial_objects[0].2;
                     let (id, [bx, by, bw, bh], _) = initial_objects[0];
                     let dx_doc = current_doc.x - start_doc.x;
@@ -354,12 +351,11 @@ impl SelectTool {
         let sel_vm = bridge.selection();
 
         // 1. Check if clicking on any transform handle or bounding box border of active selection
-        let handle_hit = if sel_vm.count == 1
-            && sel_vm.primary_bounds.is_some()
-            && sel_vm.primary_transform.is_some()
-        {
-            let bounds = sel_vm.primary_bounds.unwrap();
-            let transform = sel_vm.primary_transform.unwrap();
+        let handle_hit = if let (1, Some(bounds), Some(transform)) = (
+            sel_vm.count,
+            sel_vm.primary_bounds,
+            sel_vm.primary_transform,
+        ) {
             hit_test_handle_or_border_oriented(
                 bounds,
                 transform,
@@ -490,13 +486,14 @@ impl SelectTool {
             SelectToolState::Idle => {
                 // Hover feedback without touching the document.
                 let sel_vm = bridge.selection();
-                let handle_hit = if sel_vm.count == 1
-                    && sel_vm.primary_bounds.is_some()
-                    && sel_vm.primary_transform.is_some()
-                {
+                let handle_hit = if let (1, Some(bounds), Some(transform)) = (
+                    sel_vm.count,
+                    sel_vm.primary_bounds,
+                    sel_vm.primary_transform,
+                ) {
                     hit_test_handle_or_border_oriented(
-                        sel_vm.primary_bounds.unwrap(),
-                        sel_vm.primary_transform.unwrap(),
+                        bounds,
+                        transform,
                         event.screen_pos,
                         event.doc_pos,
                         camera,
@@ -765,10 +762,9 @@ impl SelectTool {
                     let center = if initial_objects.len() == 1
                         && initial_objects[0].2.abs() > f64::EPSILON
                     {
-                        let rot_trans = petunia_design_geometry::GAffine::translate(bx, by)
-                            .after(petunia_design_geometry::GAffine::rotate(
-                                initial_objects[0].2,
-                            ));
+                        let rot_trans = petunia_design_geometry::GAffine::translate(bx, by).after(
+                            petunia_design_geometry::GAffine::rotate(initial_objects[0].2),
+                        );
                         rot_trans.apply(petunia_design_geometry::GPoint::new(bw / 2.0, bh / 2.0))
                     } else {
                         petunia_design_geometry::GPoint::new(bx + bw / 2.0, by + bh / 2.0)
@@ -808,8 +804,8 @@ impl SelectTool {
                         calculate_resized_bounds(handle, [0.0, 0.0, bw, bh], dx_local, dy_local);
                     let rot_trans = petunia_design_geometry::GAffine::translate(bx, by)
                         .after(petunia_design_geometry::GAffine::rotate(theta));
-                    let new_origin = rot_trans
-                        .apply(petunia_design_geometry::GPoint::new(nx_local, ny_local));
+                    let new_origin =
+                        rot_trans.apply(petunia_design_geometry::GPoint::new(nx_local, ny_local));
                     let cmd = Command::SetBounds {
                         id,
                         bounds: Some([new_origin.x, new_origin.y, nw, nh]),
@@ -922,7 +918,7 @@ impl SelectTool {
                     if let Some([ox, oy, ow, oh]) = bridge
                         .cached_world_frame_bounds(id)
                         .or_else(|| bridge.cached_world_bounds(id))
-                        .or_else(|| obj.bounds)
+                        .or(obj.bounds)
                     {
                         let hit = if require_contained {
                             ox >= doc_marquee.x0
@@ -974,7 +970,7 @@ impl SelectTool {
                     if let Some([ox, oy, ow, oh]) = bridge
                         .cached_world_frame_bounds(id)
                         .or_else(|| bridge.cached_world_bounds(id))
-                        .or_else(|| obj.bounds)
+                        .or(obj.bounds)
                     {
                         if lasso_hits_rect(polygon_doc, [ox, oy, ow, oh], require_contained) {
                             matched.push(obj.id);
@@ -986,7 +982,16 @@ impl SelectTool {
         matched
     }
 
-    /// Spatial hit-testing for selecting objects.
+    /// Spatial hit-testing for selecting objects (stroke-aware, P1).
+    ///
+    /// Fill/interior uses the existing world-aware memoized test
+    /// (unchanged). Open paths have no interior, so a second pass checks
+    /// outline proximity within `8/zoom` (knife parity) over the memoized
+    /// `GeoCache` outline (F1+F2): world polygons when an explicit frame
+    /// exists, legacy otherwise. Segment math is shared with the knife
+    /// (`super::stroke_hit`). Objects without any vector contour
+    /// (Text/Image) keep the frame-bbox fallback; every other miss is a
+    /// miss even inside the bbox.
     fn hit_test_objects(
         &self,
         doc_pos: GPoint,
@@ -994,13 +999,13 @@ impl SelectTool {
         camera: &ViewportCamera,
     ) -> Option<ObjectId> {
         let session = bridge.session()?;
-        let tolerance = 4.0 / camera.zoom;
+        let prox_tol = 8.0 / camera.zoom.max(0.1);
         let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
 
         // Spatial prefilter (F3) over evaluated bounds, topmost-first, then
         // the exact test on the memoized outline (F1 + F2). Unlike the old
         // base-bounds pre-check, warped/inset outlines hit where drawn (09.31).
-        let candidates = session.spatial_candidates_point(doc_pos, tolerance);
+        let candidates = session.spatial_candidates_point(doc_pos, prox_tol);
         let ids: Vec<ObjectId> = if !candidates.is_empty() {
             candidates
         } else {
@@ -1016,46 +1021,80 @@ impl SelectTool {
             let Some(obj) = session.find_object(id) else {
                 continue;
             };
-            let hits_frame = session
-                .cached_world_frame_bounds(id)
-                .or_else(|| session.cached_bounds(id))
-                .or(obj.bounds)
-                .is_some_and(|[bx, by, bw, bh]| {
-                    if obj.rotation.abs() <= 1e-4 {
-                        let min_x = bx.min(bx + bw);
-                        let max_x = bx.max(bx + bw);
-                        let min_y = by.min(by + bh);
-                        let max_y = by.max(by + bh);
-                        doc_pos.x >= min_x - tolerance
-                            && doc_pos.x <= max_x + tolerance
-                            && doc_pos.y >= min_y - tolerance
-                            && doc_pos.y <= max_y + tolerance
-                    } else if let Ok(trans) = session.document().world_transform_checked(id) {
-                        if let Some(inv) = trans.inverse() {
-                            let local = inv.apply(doc_pos);
-                            let [_, _, ow, oh] = obj.bounds.unwrap_or([0.0, 0.0, bw, bh]);
-                            let min_x = 0.0f64.min(ow);
-                            let max_x = 0.0f64.max(ow);
-                            let min_y = 0.0f64.min(oh);
-                            let max_y = 0.0f64.max(oh);
-                            local.x >= min_x - tolerance
-                                && local.x <= max_x + tolerance
-                                && local.y >= min_y - tolerance
-                                && local.y <= max_y + tolerance
+            if !obj.visible || obj.locked {
+                continue;
+            }
+
+            // Fill / interior (existing world-aware behavior, unchanged).
+            if bridge.cached_world_hit(id, doc_pos, exact_tol) {
+                return Some(id);
+            }
+            if bridge.cached_world_bounds(id).is_none() && bridge.cached_hit(id, doc_pos, exact_tol)
+            {
+                return Some(id);
+            }
+
+            // Stroke proximity over the memoized outline. World-aware when
+            // an explicit frame exists, legacy otherwise.
+            let world_polys = session.cached_world_polygons(id, exact_tol);
+            let legacy_polys = if world_polys.is_none() {
+                session.cached_polygons(id, exact_tol)
+            } else {
+                None
+            };
+            let stroke_near = if let Some(ref polys) = world_polys {
+                super::stroke_hit::contours_near_point(polys, doc_pos, prox_tol)
+            } else if let Some(ref polys) = legacy_polys {
+                super::stroke_hit::contours_near_point(polys, doc_pos, prox_tol)
+            } else {
+                false
+            };
+            if stroke_near {
+                return Some(id);
+            }
+
+            // Empty-outline fallback (Text/Image without vector contour):
+            // keep bbox selection where there is no contour to be near.
+            let has_outline = world_polys
+                .as_ref()
+                .is_some_and(|polys| polys.iter().any(|contour| contour.len() >= 2))
+                || legacy_polys
+                    .as_ref()
+                    .is_some_and(|polys| polys.iter().any(|contour| contour.len() >= 2));
+            if !has_outline
+                && session
+                    .cached_world_frame_bounds(id)
+                    .or_else(|| session.cached_bounds(id))
+                    .or(obj.bounds)
+                    .is_some_and(|[bx, by, bw, bh]| {
+                        if obj.rotation.abs() <= 1e-4 {
+                            let min_x = bx.min(bx + bw);
+                            let max_x = bx.max(bx + bw);
+                            let min_y = by.min(by + bh);
+                            let max_y = by.max(by + bh);
+                            doc_pos.x >= min_x - prox_tol
+                                && doc_pos.x <= max_x + prox_tol
+                                && doc_pos.y >= min_y - prox_tol
+                                && doc_pos.y <= max_y + prox_tol
+                        } else if let Ok(trans) = session.document().world_transform_checked(id) {
+                            if let Some(inv) = trans.inverse() {
+                                let local = inv.apply(doc_pos);
+                                let [_, _, ow, oh] = obj.bounds.unwrap_or([0.0, 0.0, bw, bh]);
+                                let min_x = 0.0f64.min(ow);
+                                let max_x = 0.0f64.max(ow);
+                                let min_y = 0.0f64.min(oh);
+                                let max_y = 0.0f64.max(oh);
+                                local.x >= min_x - prox_tol
+                                    && local.x <= max_x + prox_tol
+                                    && local.y >= min_y - prox_tol
+                                    && local.y <= max_y + prox_tol
+                            } else {
+                                false
+                            }
                         } else {
                             false
                         }
-                    } else {
-                        false
-                    }
-                });
-
-            if obj.visible
-                && !obj.locked
-                && (bridge.cached_world_hit(id, doc_pos, exact_tol)
-                    || (bridge.cached_world_bounds(id).is_none()
-                        && bridge.cached_hit(id, doc_pos, exact_tol))
-                    || hits_frame)
+                    })
             {
                 return Some(id);
             }
@@ -1112,12 +1151,11 @@ impl SelectTool {
             }
             _ => {
                 let sel_vm = bridge.selection();
-                if sel_vm.count == 1
-                    && sel_vm.primary_bounds.is_some()
-                    && sel_vm.primary_transform.is_some()
-                {
-                    let bounds = sel_vm.primary_bounds.unwrap();
-                    let transform = sel_vm.primary_transform.unwrap();
+                if let (1, Some(bounds), Some(transform)) = (
+                    sel_vm.count,
+                    sel_vm.primary_bounds,
+                    sel_vm.primary_transform,
+                ) {
                     overlays.handles = compute_selection_handles_oriented(
                         bounds,
                         transform,
@@ -1362,7 +1400,8 @@ pub fn calculate_resized_bounds(
         SelectionHandleKind::Bottom => Some(petunia_design_geometry::ResizeHandle::Bottom),
         SelectionHandleKind::BottomLeft => Some(petunia_design_geometry::ResizeHandle::BottomLeft),
         SelectionHandleKind::Left => Some(petunia_design_geometry::ResizeHandle::Left),
-        SelectionHandleKind::Rotation | _ => None,
+        SelectionHandleKind::Rotation => None,
+        _ => None,
     };
     match mapped {
         Some(h) => petunia_design_geometry::resize_rect_from_handle(h, initial, dx, dy),

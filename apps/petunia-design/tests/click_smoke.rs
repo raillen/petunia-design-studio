@@ -4,22 +4,62 @@
 //! test mounts the chrome against a real shell and clicks: menus open and
 //! dispatch, the rail switches tools, the toolbar fires, personas switch.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use freya::prelude::*;
 use freya_testing::prelude::*;
 use petunia_design_shell::PetuniaShell;
 
+// The harness reuses the app sources as test modules. Items the real binary
+// keeps (menu dispatch, theme tokens, rail editing) look unused from this
+// harness alone, so dead code is allowed here — never in `src/`, where every
+// one of these items has a live consumer.
+#[allow(dead_code)]
 #[path = "../src/actions.rs"]
 mod actions;
+#[allow(dead_code)]
 #[path = "../src/chrome.rs"]
 mod chrome;
+#[allow(dead_code)]
 #[path = "../src/theme.rs"]
 mod theme;
+#[allow(dead_code)]
 #[path = "../src/ui_state.rs"]
 mod ui_state;
 
 use chrome::{ContextToolbar, DocumentTabStrip, MenuBarRow, ToolRail};
 use petunia_design_application::tools::ToolKind;
 use ui_state::UiShell;
+
+/// States the mounted chrome shares with the assertions: the document shell,
+/// the open menu family, and the customize-dialog flag.
+type ChromeStates = (State<PetuniaShell>, State<Option<String>>, State<bool>);
+/// Shared cell where the test component publishes its [`ChromeStates`].
+type SeenChrome = Rc<RefCell<Option<ChromeStates>>>;
+/// Hover payload asserted by the hover test: (id, title).
+type HoverState = Option<(String, String)>;
+/// Counter plus hover states shared with the hover-test component.
+type HoverTestStates = (State<i32>, State<HoverState>);
+/// Shared cell where the hover-test component publishes its states.
+type SeenHoverTest = Rc<RefCell<Option<HoverTestStates>>>;
+/// Full chrome mount: [`ChromeStates`] plus the active tool under test.
+type FullMount = (
+    TestingRunner,
+    State<PetuniaShell>,
+    State<Option<String>>,
+    State<bool>,
+    State<ToolKind>,
+);
+/// Full chrome states: [`ChromeStates`] plus the active tool under test.
+type FullChromeStates = (
+    State<PetuniaShell>,
+    State<Option<String>>,
+    State<bool>,
+    State<ToolKind>,
+);
+/// Shared cell where the full-chrome component publishes its states.
+type SeenFullChrome = Rc<RefCell<Option<FullChromeStates>>>;
 
 /// The chrome under test, holding the one shared [`UiShell`]: the states the
 /// test asserts on are the same states the buttons mutate.
@@ -47,8 +87,7 @@ fn mount() -> (
 ) {
     use std::cell::RefCell;
     use std::rc::Rc;
-    let seen: Rc<RefCell<Option<(State<PetuniaShell>, State<Option<String>>, State<bool>)>>> =
-        Rc::new(RefCell::new(None));
+    let seen: SeenChrome = Rc::new(RefCell::new(None));
     let seen_hook = seen.clone();
     let (mut runner, ()) = TestingRunner::new(
         move || {
@@ -79,6 +118,8 @@ fn mount() -> (
             let new_doc_open = use_state(|| false);
             let export_open = use_state(|| false);
             let confirm_close_open = use_state(|| false);
+            let pending_close = use_state(|| None);
+            let offset_prompt_open = use_state(|| false);
             let dock_width = use_state(|| 240.0f32);
             let soft_proof = use_state(|| false);
             let channel_view = use_state(|| 0usize);
@@ -102,6 +143,8 @@ fn mount() -> (
                 new_doc_open,
                 export_open,
                 confirm_close_open,
+                pending_close,
+                offset_prompt_open,
                 dock_width,
                 soft_proof,
                 channel_view,
@@ -115,7 +158,7 @@ fn mount() -> (
     );
     runner.sync_and_update();
     let (shell, open_family, customize_open) =
-        seen.borrow().clone().expect("chrome mounted with states");
+        (*seen.borrow()).expect("chrome mounted with states");
     (runner, shell, open_family, customize_open)
 }
 
@@ -176,7 +219,7 @@ fn trailing_group_after_split_stays_clickable() {
     // Trailing button should sit at x=1238..1272.
     runner.click_cursor((1255., 17.));
     runner.sync_and_update();
-    let count = seen.borrow().clone().expect("states");
+    let count = (*seen.borrow()).expect("states");
     assert_eq!(
         *count.peek(),
         1,
@@ -188,8 +231,7 @@ fn trailing_group_after_split_stays_clickable() {
 fn hover_tracking_keeps_press_working() {
     use std::cell::RefCell;
     use std::rc::Rc;
-    type HoverState = Option<(String, String)>;
-    let seen: Rc<RefCell<Option<(State<i32>, State<HoverState>)>>> = Rc::new(RefCell::new(None));
+    let seen: SeenHoverTest = Rc::new(RefCell::new(None));
     let seen_hook = seen.clone();
     let (mut runner, ()) = TestingRunner::new(
         move || {
@@ -231,7 +273,7 @@ fn hover_tracking_keeps_press_working() {
     runner.sync_and_update();
     runner.click_cursor((50., 50.));
     runner.sync_and_update();
-    let (count, hovered) = seen.borrow().clone().expect("states");
+    let (count, hovered) = (*seen.borrow()).expect("states");
     assert_eq!(*count.peek(), 1, "rect with hover handlers must fire press");
     assert!(
         hovered.peek().is_some(),
@@ -411,17 +453,10 @@ fn shell_cluster_zoom_control_changes_zoom() {
     panic!("clicking the cluster zoom control must change the camera zoom");
 }
 
-fn mount_full() -> (
-    TestingRunner,
-    State<PetuniaShell>,
-    State<Option<String>>,
-    State<bool>,
-    State<ToolKind>,
-) {
+fn mount_full() -> FullMount {
     use std::cell::RefCell;
     use std::rc::Rc;
-    let seen: Rc<RefCell<Option<(State<PetuniaShell>, State<Option<String>>, State<bool>, State<ToolKind>)>>> =
-        Rc::new(RefCell::new(None));
+    let seen: SeenFullChrome = Rc::new(RefCell::new(None));
     let seen_hook = seen.clone();
     let (mut runner, ()) = TestingRunner::new(
         move || {
@@ -452,6 +487,8 @@ fn mount_full() -> (
             let new_doc_open = use_state(|| false);
             let export_open = use_state(|| false);
             let confirm_close_open = use_state(|| false);
+            let pending_close = use_state(|| None);
+            let offset_prompt_open = use_state(|| false);
             let dock_width = use_state(|| 240.0f32);
             let soft_proof = use_state(|| false);
             let channel_view = use_state(|| 0usize);
@@ -475,6 +512,8 @@ fn mount_full() -> (
                 new_doc_open,
                 export_open,
                 confirm_close_open,
+                pending_close,
+                offset_prompt_open,
                 dock_width,
                 soft_proof,
                 channel_view,
@@ -488,7 +527,7 @@ fn mount_full() -> (
     );
     runner.sync_and_update();
     let (shell, open_family, customize_open, active_tool) =
-        seen.borrow().clone().expect("chrome mounted with states");
+        (*seen.borrow()).expect("chrome mounted with states");
     (runner, shell, open_family, customize_open, active_tool)
 }
 
@@ -554,7 +593,12 @@ fn context_toolbar_smart_fill_toggles_token() {
     active_tool.set(ToolKind::VectorFloodFill);
     runner.sync_and_update();
 
-    let initial_token = shell.peek().tools.smart_fill_tool().fill_token().to_string();
+    let initial_token = shell
+        .peek()
+        .tools
+        .smart_fill_tool()
+        .fill_token()
+        .to_string();
 
     // Sweep across context toolbar to click a different swatch button
     for y in [82.0, 87.0] {
@@ -570,4 +614,3 @@ fn context_toolbar_smart_fill_toggles_token() {
     }
     panic!("Clicking smart fill quick controls must switch fill token");
 }
-

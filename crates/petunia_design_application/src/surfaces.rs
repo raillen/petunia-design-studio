@@ -258,7 +258,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.surface.tabs.document_close",
         kind: SurfaceKind::Shell,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.tabs.close",
         action: Some("ptnd.action.file.close"),
         shortcut: None,
@@ -377,7 +377,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.file.close",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.file.close",
         action: None,
         shortcut: None,
@@ -422,7 +422,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.file.quit",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.file.quit",
         action: None,
         shortcut: None,
@@ -522,8 +522,8 @@ pub const SURFACES: &[SurfaceEntry] = &[
     SurfaceEntry {
         id: "ptnd.action.select.invert",
         kind: SurfaceKind::Action,
-        scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Absent,
+        scope: SurfaceScope::V1Required,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.select.invert",
         action: None,
         shortcut: None,
@@ -614,7 +614,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.object.offset_path",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Disabled("ptnd.text.blocked.offset_path"),
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.object.offset_path",
         action: None,
         shortcut: None,
@@ -1329,10 +1329,12 @@ pub const LIVE_ACTIONS: &[&str] = &[
     "ptnd.action.edit.redo",
     "ptnd.action.edit.select_all",
     "ptnd.action.edit.undo",
+    "ptnd.action.file.close",
     "ptnd.action.file.export",
     "ptnd.action.file.new",
     "ptnd.action.file.open",
     "ptnd.action.file.place",
+    "ptnd.action.file.quit",
     "ptnd.action.file.save",
     "ptnd.action.file.save_as",
     "ptnd.action.object.align",
@@ -1347,7 +1349,9 @@ pub const LIVE_ACTIONS: &[&str] = &[
     "ptnd.action.object.group",
     "ptnd.action.object.hide",
     "ptnd.action.object.lock",
+    "ptnd.action.object.offset_path",
     "ptnd.action.object.ungroup",
+    "ptnd.action.select.invert",
     "ptnd.action.view.command_palette",
     "ptnd.action.view.fit_surface",
     "ptnd.action.view.toggle_rulers",
@@ -1416,10 +1420,7 @@ pub fn personas() -> Vec<&'static SurfaceEntry> {
 /// Every id here must also exist in [`SURFACES`] with a non-`Wired` status
 /// and, when it is merely blocked rather than unimplemented, an explicit
 /// [`SurfaceStatus::Disabled`] reason (reconciliation test below).
-pub const DECLARED_NOT_LIVE: &[&str] = &[
-    "ptnd.action.object.offset_path",
-    "ptnd.action.object.slice_path",
-];
+pub const DECLARED_NOT_LIVE: &[&str] = &["ptnd.action.object.slice_path"];
 
 /// Looks up one surface by stable id.
 #[must_use]
