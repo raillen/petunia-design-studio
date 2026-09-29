@@ -410,3 +410,164 @@ fn shell_cluster_zoom_control_changes_zoom() {
     }
     panic!("clicking the cluster zoom control must change the camera zoom");
 }
+
+fn mount_full() -> (
+    TestingRunner,
+    State<PetuniaShell>,
+    State<Option<String>>,
+    State<bool>,
+    State<ToolKind>,
+) {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let seen: Rc<RefCell<Option<(State<PetuniaShell>, State<Option<String>>, State<bool>, State<ToolKind>)>>> =
+        Rc::new(RefCell::new(None));
+    let seen_hook = seen.clone();
+    let (mut runner, ()) = TestingRunner::new(
+        move || {
+            let shell = use_state(|| {
+                let mut shell = PetuniaShell::new(1280., 800.);
+                shell
+                    .new_document("Untitled")
+                    .expect("fresh document opens");
+                shell
+            });
+            let open_family = use_state(|| None);
+            let customize_open = use_state(|| false);
+            let palette_open = use_state(|| false);
+            let palette_query = use_state(String::new);
+            let accent = use_state(|| theme::BLOOM);
+            let icon_style = use_state(theme::IconStyle::default);
+            let hovered = use_state(|| None);
+            let modifiers =
+                use_state(petunia_design_application::interaction::SemanticModifiers::default);
+            let tool_rail = use_state(ui_state::default_tool_rail);
+            let active_tool = use_state(|| petunia_design_application::tools::ToolKind::Select);
+            let persona =
+                use_state(|| petunia_design_application::surfaces::PERSONA_VECTOR.to_string());
+            let temporary_tool = use_state(|| None);
+            let suspended_tool = use_state(|| None);
+            let dock_tab = use_state(|| 0usize);
+            let text_edit_content = use_state(String::new);
+            let new_doc_open = use_state(|| false);
+            let export_open = use_state(|| false);
+            let confirm_close_open = use_state(|| false);
+            let dock_width = use_state(|| 240.0f32);
+            let soft_proof = use_state(|| false);
+            let channel_view = use_state(|| 0usize);
+            let ui = UiShell::new(
+                shell,
+                open_family,
+                palette_open,
+                palette_query,
+                customize_open,
+                accent,
+                icon_style,
+                hovered,
+                modifiers,
+                tool_rail,
+                active_tool,
+                persona,
+                temporary_tool,
+                suspended_tool,
+                dock_tab,
+                text_edit_content,
+                new_doc_open,
+                export_open,
+                confirm_close_open,
+                dock_width,
+                soft_proof,
+                channel_view,
+            );
+            seen_hook.replace(Some((shell, open_family, customize_open, active_tool)));
+            AppChrome(ui)
+        },
+        (1280., 800.).into(),
+        |_| {},
+        1.,
+    );
+    runner.sync_and_update();
+    let (shell, open_family, customize_open, active_tool) =
+        seen.borrow().clone().expect("chrome mounted with states");
+    (runner, shell, open_family, customize_open, active_tool)
+}
+
+#[test]
+fn context_toolbar_style_picker_toggles_filter() {
+    let (mut runner, shell, _open, _customize, mut active_tool) = mount_full();
+    runner.sync_and_update();
+    active_tool.set(ToolKind::StylePicker);
+    runner.sync_and_update();
+
+    let initial_filter = shell.peek().tools.style_picker_tool().filter();
+    assert!(initial_filter.fill);
+
+    // Sweep across context toolbar to click the Preenchimento filter button
+    for y in [82.0, 87.0] {
+        for x in (50..1240).step_by(10).map(|x| x as f64) {
+            runner.move_cursor((x, y));
+            runner.sync_and_update();
+            runner.click_cursor((x, y));
+            runner.sync_and_update();
+            let current = shell.peek().tools.style_picker_tool().filter();
+            if current.fill != initial_filter.fill {
+                return;
+            }
+        }
+    }
+    panic!("Clicking style picker quick controls must toggle filter property");
+}
+
+#[test]
+fn context_toolbar_shape_builder_toggles_op() {
+    let (mut runner, shell, _open, _customize, mut active_tool) = mount_full();
+    runner.sync_and_update();
+    active_tool.set(ToolKind::ShapeBuilder);
+    runner.sync_and_update();
+
+    assert_eq!(
+        shell.peek().tools.shape_builder_tool().op(),
+        petunia_design_shell::tools::BuilderOp::Add
+    );
+
+    // Sweep across context toolbar to click Subtrair
+    for y in [82.0, 87.0] {
+        for x in (50..1240).step_by(10).map(|x| x as f64) {
+            runner.move_cursor((x, y));
+            runner.sync_and_update();
+            runner.click_cursor((x, y));
+            runner.sync_and_update();
+            if shell.peek().tools.shape_builder_tool().op()
+                == petunia_design_shell::tools::BuilderOp::Subtract
+            {
+                return;
+            }
+        }
+    }
+    panic!("Clicking shape builder quick controls must switch op to Subtract");
+}
+
+#[test]
+fn context_toolbar_smart_fill_toggles_token() {
+    let (mut runner, shell, _open, _customize, mut active_tool) = mount_full();
+    runner.sync_and_update();
+    active_tool.set(ToolKind::VectorFloodFill);
+    runner.sync_and_update();
+
+    let initial_token = shell.peek().tools.smart_fill_tool().fill_token().to_string();
+
+    // Sweep across context toolbar to click a different swatch button
+    for y in [82.0, 87.0] {
+        for x in (50..1240).step_by(10).map(|x| x as f64) {
+            runner.move_cursor((x, y));
+            runner.sync_and_update();
+            runner.click_cursor((x, y));
+            runner.sync_and_update();
+            if shell.peek().tools.smart_fill_tool().fill_token() != initial_token {
+                return;
+            }
+        }
+    }
+    panic!("Clicking smart fill quick controls must switch fill token");
+}
+

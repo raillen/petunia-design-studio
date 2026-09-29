@@ -78,6 +78,30 @@ pub fn with_primary_gradient(mut stack: AppearanceStack, paint: Paint) -> Appear
     stack
 }
 
+/// Granular property filter for style sampling (F-18, Table B).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StyleFilter {
+    /// Copy fill styling (appearance fills or legacy fill token).
+    pub fill: bool,
+    /// Copy stroke styling (appearance strokes or legacy stroke token + width).
+    pub stroke: bool,
+    /// Copy appearance stack effects (drop shadows, blurs, etc.).
+    pub effects: bool,
+    /// Copy typography properties (font family, font size, line height, letter spacing).
+    pub typography: bool,
+}
+
+impl Default for StyleFilter {
+    fn default() -> Self {
+        Self {
+            fill: true,
+            stroke: true,
+            effects: true,
+            typography: true,
+        }
+    }
+}
+
 /// Sampled style payload copied by the eyedropper (Table B).
 #[derive(Clone, Debug, PartialEq)]
 pub struct SampledStyle {
@@ -125,6 +149,71 @@ pub fn style_sample_commands(target_id: ObjectId, style: &SampledStyle) -> Vec<C
             width: *width,
         });
     }
+    cmds
+}
+
+/// Builds granular style-application commands for one target object using a filter.
+#[must_use]
+pub fn filtered_style_commands(
+    target: &DocumentObject,
+    source: &DocumentObject,
+    filter: &StyleFilter,
+) -> Vec<Command> {
+    let mut cmds = Vec::new();
+    let mut target_stack = target.effective_appearance();
+    let source_stack = source.effective_appearance();
+    let mut appearance_changed = false;
+
+    if filter.fill {
+        target_stack.fills = source_stack.fills.clone();
+        appearance_changed = true;
+    }
+    if filter.stroke {
+        target_stack.strokes = source_stack.strokes.clone();
+        appearance_changed = true;
+    }
+    if filter.effects {
+        target_stack.effects = source_stack.effects.clone();
+        appearance_changed = true;
+    }
+
+    if appearance_changed {
+        cmds.push(Command::SetAppearance {
+            id: target.id,
+            appearance: Some(target_stack),
+        });
+    }
+
+    if filter.typography {
+        if let (
+            Some(petunia_design_document::ShapeKind::Text {
+                font_family,
+                font_size,
+                line_height,
+                letter_spacing,
+                ..
+            }),
+            Some(petunia_design_document::ShapeKind::Text {
+                content,
+                on_path,
+                ..
+            }),
+        ) = (&source.shape, &target.shape)
+        {
+            cmds.push(Command::SetShape {
+                id: target.id,
+                shape: Some(petunia_design_document::ShapeKind::Text {
+                    content: content.clone(),
+                    font_family: font_family.clone(),
+                    font_size: *font_size,
+                    line_height: *line_height,
+                    letter_spacing: *letter_spacing,
+                    on_path: on_path.clone(),
+                }),
+            });
+        }
+    }
+
     cmds
 }
 

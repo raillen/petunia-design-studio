@@ -235,6 +235,50 @@ impl ToolManager {
         &mut self.photo_eraser_tool
     }
 
+    /// Borrows the Shape Builder tool.
+    #[must_use]
+    pub fn shape_builder_tool(&self) -> &super::shape_builder::ShapeBuilderTool {
+        &self.shape_builder_tool
+    }
+
+    /// Mutably borrows the Shape Builder tool.
+    pub fn shape_builder_tool_mut(&mut self) -> &mut super::shape_builder::ShapeBuilderTool {
+        &mut self.shape_builder_tool
+    }
+
+    /// Borrows the Smart Fill / Vector Flood Fill tool.
+    #[must_use]
+    pub fn smart_fill_tool(&self) -> &super::shape_builder::ShapeBuilderTool {
+        &self.smart_fill_tool
+    }
+
+    /// Mutably borrows the Smart Fill / Vector Flood Fill tool.
+    pub fn smart_fill_tool_mut(&mut self) -> &mut super::shape_builder::ShapeBuilderTool {
+        &mut self.smart_fill_tool
+    }
+
+    /// Borrows the Style Picker tool.
+    #[must_use]
+    pub fn style_picker_tool(&self) -> &super::picker::PickerTool {
+        &self.style_picker_tool
+    }
+
+    /// Mutably borrows the Style Picker tool.
+    pub fn style_picker_tool_mut(&mut self) -> &mut super::picker::PickerTool {
+        &mut self.style_picker_tool
+    }
+
+    /// Borrows the Color Picker tool.
+    #[must_use]
+    pub fn color_picker_tool(&self) -> &super::picker::PickerTool {
+        &self.color_picker_tool
+    }
+
+    /// Mutably borrows the Color Picker tool.
+    pub fn color_picker_tool_mut(&mut self) -> &mut super::picker::PickerTool {
+        &mut self.color_picker_tool
+    }
+
     /// Cancels any active gesture in the current tool.
     pub fn cancel_active(&mut self) {
         match self.active_kind {

@@ -31,14 +31,14 @@ A Persona Vetorial gerencia curvas Bézier, nós, formas paramétricas, tipograf
 | **Polygon (Polígono)** | `ptnd.tool.shape.polygon` | `V1 Required` | ✅ Implementado | ✅ Exposto | Controle numérico de lados (3 a 32) na Context Toolbar dinâmica. |
 | **Star (Estrela)** | `ptnd.tool.shape.star` | `V1 Required` | ✅ Implementado | ✅ Exposto | Controle de número de pontas e proporção do raio interno na Context Toolbar. |
 | **Line (Linha)** | `ptnd.tool.line` | `Post-V1 Candidate` | ❌ Não modelado | ❌ Ausente | Desenho de linha absorvido pela ferramenta Caneta em modo linha para a V1. |
-| **Shape Builder** | `ptnd.tool.shape_builder` | `V1 Required` | ⚠️ Core Parcial | 🟡 No Flyout | Pré-visualização de região destacada no hover e síntese booleana de partições planares. |
-| **Vector Flood Fill** | `ptnd.tool.vector_flood_fill` | `V1 Required` | ⚠️ Core Parcial | 🟡 No Flyout | Detecção de limites planares para preenchimento de regiões fechadas sem união destrutiva. |
+| **Shape Builder (Construtor)** | `ptnd.tool.shape_builder` | `V1 Required` | ✅ Implementado | ✅ Exposto | Pré-visualização de região no hover, mesclagem por arrasto, alternância de modos Adicionar/Subtrair na Context Toolbar e síntese booleana planar. |
+| **Vector Flood Fill (Preenchimento Interativo)** | `ptnd.tool.vector_flood_fill` | `V1 Required` | ✅ Implementado | ✅ Exposto | Detecção de limites planares para preenchimento de regiões fechadas ou espaço negativo com paleta de tokens na Context Toolbar. |
 | **Artistic Text** | `ptnd.tool.text.artistic` | `V1 Required` | ✅ Implementado | ✅ Exposto | Seleção e edição in-place de trechos de texto diretamente no canvas. |
 | **Frame Text (Texto de Caixa)** | `ptnd.tool.text.frame` | `V1 Required` | ✅ Implementado | 🟡 No Flyout | Diagramação de parágrafos com quebra de linha automática no retângulo delimitador. |
 | **Gradient (Gradiente)** | `ptnd.tool.gradient` | `V1 Required` | ✅ Implementado | ✅ Exposto | Linha de vetor interativa [início, fim] com alças de paradas de cor (stops) no canvas. |
 | **Transparency (Transparência)** | `ptnd.tool.transparency` | `V1 Required` | ✅ Implementado | 🟡 No Flyout | Linha de vetor de opacidade com alças de gradiente alfa no canvas. |
 | **Color Picker (Conta-gotas)** | `ptnd.tool.color_picker` | `V1 Required` | ✅ Implementado | ✅ Exposto | Lente de aumento (loupe 9x9 pixels) sob o cursor durante a amostragem no canvas. |
-| **Style Picker (Conta-estilos)** | `ptnd.tool.style_picker` | `V1 Required` | ⚠️ Core Parcial | 🟡 No Flyout | Filtro seletivo de propriedades a transferir (apenas traço, preenchimento, efeitos ou texto). |
+| **Style Picker (Conta-estilos)** | `ptnd.tool.style_picker` | `V1 Required` | ✅ Implementado | ✅ Exposto | Filtro granular de propriedades (apenas traço, preenchimento, efeitos ou tipografia) com botões de alternância na Context Toolbar. |
 | **Vector Brush (Pincel Vetorial)** | `ptnd.tool.vector_brush` | `Post-V1 Candidate` | ❌ Não modelado | ❌ Ausente | Aplicação de pontas texturizadas ao longo de caminhos vetoriais. |
 | **Artboard / Surface** | `ptnd.tool.artboard` | `V1 Required` | ✅ Implementado | ✅ Exposto | Alças de redimensionamento da prancheta e seletores de predefinição (A4, 1080p, Mobile). |
 | **Measure (Medição)** | `ptnd.tool.measure` | `V1 Required` | ✅ Implementado | ✅ Exposto | Linhas de cota temporárias na tela (distância Euclidiana, DX, DY e ângulo). |

@@ -3422,6 +3422,227 @@ fn picker_skips_locked_objects() {
 }
 
 #[test]
+fn picker_style_granular_filtering() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Picker Style Granular").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+
+    let source = picker_test_box(
+        &mut bridge,
+        &mut gen,
+        "Source",
+        [10.0, 10.0, 80.0, 80.0],
+        Some("ptnd.red/500"),
+        Some(("ptnd.blue/500", 4.0)),
+    );
+    let effect = petunia_design_document::EffectItem {
+        id: 1,
+        kind: petunia_design_document::EffectKind::DropShadow {
+            offset: [2.0, 4.0],
+            blur: 5.0,
+            color: "ptnd.black/500".to_string(),
+            opacity: 0.8,
+        },
+        visible: true,
+    };
+    bridge
+        .submit_command(CommandRequest::new(Command::AddEffect {
+            id: source,
+            effect,
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id: source,
+            shape: Some(petunia_design_document::ShapeKind::Text {
+                content: "Source Text".to_string(),
+                font_family: "Futura".to_string(),
+                font_size: 24.0,
+                line_height: 1.5,
+                letter_spacing: 1.0,
+                on_path: None,
+            }),
+        }))
+        .unwrap();
+
+    let target = picker_test_box(
+        &mut bridge,
+        &mut gen,
+        "Target",
+        [200.0, 200.0, 50.0, 50.0],
+        Some("ptnd.gray/500"),
+        Some(("ptnd.gray/700", 1.0)),
+    );
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id: target,
+            shape: Some(petunia_design_document::ShapeKind::Text {
+                content: "Keep Me".to_string(),
+                font_family: "Inter".to_string(),
+                font_size: 12.0,
+                line_height: 1.0,
+                letter_spacing: 0.0,
+                on_path: None,
+            }),
+        }))
+        .unwrap();
+
+    // 1. Fill-only filter
+    bridge.clear_selection();
+    bridge.set_selection(vec![target]);
+    let mut tool = PickerTool::new(PickerMode::Style);
+    tool.set_filter(StyleFilter {
+        fill: true,
+        stroke: false,
+        effects: false,
+        typography: false,
+    });
+    picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
+
+    let obj = bridge.session().unwrap().document().find_object(target).unwrap();
+    let stack = obj.effective_appearance();
+    assert_eq!(
+        stack.primary_fill().map(|f| f.paint.clone()),
+        Some(petunia_design_document::Paint::Solid("ptnd.red/500".to_string())),
+        "Fill must be copied when filter.fill is true"
+    );
+    assert_eq!(
+        stack.primary_stroke().map(|s| (s.paint.clone(), s.width)),
+        Some((petunia_design_document::Paint::Solid("ptnd.gray/700".to_string()), 1.0)),
+        "Stroke must NOT be copied when filter.stroke is false"
+    );
+    assert!(stack.effects.is_empty(), "Effects must NOT be copied when filter.effects is false");
+    if let Some(petunia_design_document::ShapeKind::Text { font_family, font_size, .. }) = &obj.shape {
+        assert_eq!(font_family, "Inter", "Typography must NOT be copied when filter.typography is false");
+        assert_eq!(*font_size, 12.0);
+    } else {
+        panic!("Target must remain text");
+    }
+
+    // 2. Stroke-only filter
+    tool.set_filter(StyleFilter {
+        fill: false,
+        stroke: true,
+        effects: false,
+        typography: false,
+    });
+    picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
+    let obj = bridge.session().unwrap().document().find_object(target).unwrap();
+    let stack = obj.effective_appearance();
+    assert_eq!(
+        stack.primary_stroke().map(|s| (s.paint.clone(), s.width)),
+        Some((petunia_design_document::Paint::Solid("ptnd.blue/500".to_string()), 4.0)),
+        "Stroke must be copied when filter.stroke is true"
+    );
+
+    // 3. Effects-only filter
+    tool.set_filter(StyleFilter {
+        fill: false,
+        stroke: false,
+        effects: true,
+        typography: false,
+    });
+    picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
+    let obj = bridge.session().unwrap().document().find_object(target).unwrap();
+    let stack = obj.effective_appearance();
+    assert_eq!(stack.effects.len(), 1, "Effects must be copied when filter.effects is true");
+
+    // 4. Typography-only filter
+    tool.set_filter(StyleFilter {
+        fill: false,
+        stroke: false,
+        effects: false,
+        typography: true,
+    });
+    picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
+    let obj = bridge.session().unwrap().document().find_object(target).unwrap();
+    if let Some(petunia_design_document::ShapeKind::Text { content, font_family, font_size, line_height, letter_spacing, .. }) = &obj.shape {
+        assert_eq!(content, "Keep Me", "Target text content must be preserved!");
+        assert_eq!(font_family, "Futura", "Target font family must be updated");
+        assert_eq!(*font_size, 24.0, "Target font size must be updated");
+        assert_eq!(*line_height, 1.5, "Target line height must be updated");
+        assert_eq!(*letter_spacing, 1.0, "Target letter spacing must be updated");
+    } else {
+        panic!("Target must remain text");
+    }
+}
+
+#[test]
+fn shape_builder_subtract_op_without_modifier() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Builder Subtract").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let objects = builder_two_rects(&mut bridge);
+    let mut tool = ShapeBuilderTool::new(BuilderMode::ShapeBuilder);
+    tool.set_op(BuilderOp::Subtract);
+
+    let p = GPoint::new(75.0, 75.0);
+    let event = NormalizedPointerEvent::new(
+        PointerPhase::Down,
+        PointerButton::Primary,
+        p,
+        p,
+        SemanticModifiers::default(),
+    );
+    tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap).unwrap();
+    let event = NormalizedPointerEvent::new(
+        PointerPhase::Up,
+        PointerButton::Primary,
+        p,
+        p,
+        SemanticModifiers::default(),
+    );
+    let cs = tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap).unwrap();
+    assert!(!cs.is_empty(), "Subtract operation must carve region and produce changes");
+
+    let session = bridge.session().unwrap();
+    let obj_a = session.find_object(objects[0]).unwrap();
+    let obj_b = session.find_object(objects[1]).unwrap();
+    assert!(obj_a.hit_test(GPoint::new(25.0, 25.0)));
+    assert!(!obj_a.hit_test(GPoint::new(75.0, 75.0)), "Overlap point must no longer be covered by object A");
+    assert!(!obj_b.hit_test(GPoint::new(75.0, 75.0)), "Overlap point must no longer be covered by object B");
+}
+
+#[test]
+fn smart_fill_uses_configured_token() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("SmartFill Custom Token").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let _objects = builder_two_rects(&mut bridge);
+    let mut tool = ShapeBuilderTool::new(BuilderMode::SmartFill);
+    tool.set_fill_token("ptnd.emerald/500");
+
+    let p = GPoint::new(75.0, 75.0);
+    let event = NormalizedPointerEvent::new(
+        PointerPhase::Down,
+        PointerButton::Primary,
+        p,
+        p,
+        SemanticModifiers::default(),
+    );
+    tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap).unwrap();
+    let event = NormalizedPointerEvent::new(
+        PointerPhase::Up,
+        PointerButton::Primary,
+        p,
+        p,
+        SemanticModifiers::default(),
+    );
+    let cs = tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap).unwrap();
+    assert!(!cs.is_empty(), "SmartFill must create region");
+
+    let selection = bridge.selection();
+    assert_eq!(selection.selected_ids.len(), 1);
+    let created_id = selection.selected_ids[0];
+    let created_obj = bridge.session().unwrap().find_object(created_id).unwrap();
+    assert_eq!(created_obj.fill.as_deref(), Some("ptnd.emerald/500"));
+}
+
+#[test]
 fn measure_area_drag_reports_rect() {
     let mut bridge = PetuniaDesignGuiBridge::new();
     bridge.new_document("Measure Area").expect("doc");

@@ -41,6 +41,7 @@ pub struct ColorSample {
 #[derive(Clone, Debug)]
 pub struct PickerTool {
     mode: PickerMode,
+    filter: petunia_design_application::appearance_service::StyleFilter,
     hover_doc: Option<GPoint>,
 }
 
@@ -50,6 +51,7 @@ impl PickerTool {
     pub fn new(mode: PickerMode) -> Self {
         Self {
             mode,
+            filter: petunia_design_application::appearance_service::StyleFilter::default(),
             hover_doc: None,
         }
     }
@@ -58,6 +60,27 @@ impl PickerTool {
     #[must_use]
     pub fn mode(&self) -> PickerMode {
         self.mode
+    }
+
+    /// Granular style property filter.
+    #[must_use]
+    pub fn filter(&self) -> petunia_design_application::appearance_service::StyleFilter {
+        self.filter
+    }
+
+    /// Mutably borrows the style property filter.
+    pub fn filter_mut(
+        &mut self,
+    ) -> &mut petunia_design_application::appearance_service::StyleFilter {
+        &mut self.filter
+    }
+
+    /// Sets the style property filter.
+    pub fn set_filter(
+        &mut self,
+        filter: petunia_design_application::appearance_service::StyleFilter,
+    ) {
+        self.filter = filter;
     }
 
     /// Resets tool state.
@@ -119,13 +142,16 @@ impl PickerTool {
                 }
             }
             PickerMode::Style => {
-                let style = petunia_design_application::appearance_service::sample_style(&hit);
                 for sel_id in selected_ids {
-                    all_cmds.extend(
-                        petunia_design_application::appearance_service::style_sample_commands(
-                            sel_id, &style,
-                        ),
-                    );
+                    if let Some(target) = session.find_object(sel_id) {
+                        all_cmds.extend(
+                            petunia_design_application::appearance_service::filtered_style_commands(
+                                target,
+                                &hit,
+                                &self.filter,
+                            ),
+                        );
+                    }
                 }
             }
         }

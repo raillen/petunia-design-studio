@@ -1451,6 +1451,134 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                     .into_element(),
             )
         }
+        ToolKind::StylePicker => {
+            let filter = shell.peek().tools.style_picker_tool().filter();
+            Some(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(theme::SPACE_1)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        label()
+                            .text("Copiar:")
+                            .color(theme::TEXT_SECONDARY)
+                            .font_size(theme::CAPTION_SIZE),
+                    )
+                    .child(quick_action_btn(
+                        if filter.fill { "Preenchimento (✓)" } else { "Preenchimento" },
+                        move |_| {
+                            let mut sh = shell.write();
+                            let cur = sh.tools.style_picker_tool().filter();
+                            sh.tools.style_picker_tool_mut().set_filter(petunia_design_shell::tools::StyleFilter {
+                                fill: !cur.fill,
+                                ..cur
+                            });
+                        },
+                    ))
+                    .child(quick_action_btn(
+                        if filter.stroke { "Traçado (✓)" } else { "Traçado" },
+                        move |_| {
+                            let mut sh = shell.write();
+                            let cur = sh.tools.style_picker_tool().filter();
+                            sh.tools.style_picker_tool_mut().set_filter(petunia_design_shell::tools::StyleFilter {
+                                stroke: !cur.stroke,
+                                ..cur
+                            });
+                        },
+                    ))
+                    .child(quick_action_btn(
+                        if filter.effects { "Efeitos (✓)" } else { "Efeitos" },
+                        move |_| {
+                            let mut sh = shell.write();
+                            let cur = sh.tools.style_picker_tool().filter();
+                            sh.tools.style_picker_tool_mut().set_filter(petunia_design_shell::tools::StyleFilter {
+                                effects: !cur.effects,
+                                ..cur
+                            });
+                        },
+                    ))
+                    .child(quick_action_btn(
+                        if filter.typography { "Tipografia (✓)" } else { "Tipografia" },
+                        move |_| {
+                            let mut sh = shell.write();
+                            let cur = sh.tools.style_picker_tool().filter();
+                            sh.tools.style_picker_tool_mut().set_filter(petunia_design_shell::tools::StyleFilter {
+                                typography: !cur.typography,
+                                ..cur
+                            });
+                        },
+                    ))
+                    .into_element(),
+            )
+        }
+        ToolKind::ShapeBuilder => {
+            let op = shell.peek().tools.shape_builder_tool().op();
+            Some(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(theme::SPACE_1)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        label()
+                            .text("Construtor:")
+                            .color(theme::TEXT_SECONDARY)
+                            .font_size(theme::CAPTION_SIZE),
+                    )
+                    .child(quick_action_btn(
+                        if op == petunia_design_shell::tools::BuilderOp::Add { "Adicionar (✓)" } else { "Adicionar" },
+                        move |_| {
+                            shell.write().tools.shape_builder_tool_mut().set_op(petunia_design_shell::tools::BuilderOp::Add);
+                        },
+                    ))
+                    .child(quick_action_btn(
+                        if op == petunia_design_shell::tools::BuilderOp::Subtract { "Subtrair (✓)" } else { "Subtrair" },
+                        move |_| {
+                            shell.write().tools.shape_builder_tool_mut().set_op(petunia_design_shell::tools::BuilderOp::Subtract);
+                        },
+                    ))
+                    .into_element(),
+            )
+        }
+        ToolKind::VectorFloodFill => {
+            let current_token = shell.peek().tools.smart_fill_tool().fill_token().to_string();
+            Some(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(theme::SPACE_1)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        label()
+                            .text("Preenchimento Interativo:")
+                            .color(theme::TEXT_SECONDARY)
+                            .font_size(theme::CAPTION_SIZE),
+                    )
+                    .child(quick_action_btn(
+                        if current_token == "ptnd.blue/500" { "Azul (✓)" } else { "Azul" },
+                        move |_| {
+                            shell.write().tools.smart_fill_tool_mut().set_fill_token("ptnd.blue/500");
+                        },
+                    ))
+                    .child(quick_action_btn(
+                        if current_token == "ptnd.red/500" { "Vermelho (✓)" } else { "Vermelho" },
+                        move |_| {
+                            shell.write().tools.smart_fill_tool_mut().set_fill_token("ptnd.red/500");
+                        },
+                    ))
+                    .child(quick_action_btn(
+                        if current_token == "ptnd.green/500" { "Verde (✓)" } else { "Verde" },
+                        move |_| {
+                            shell.write().tools.smart_fill_tool_mut().set_fill_token("ptnd.green/500");
+                        },
+                    ))
+                    .child(quick_action_btn(
+                        if current_token == "ptnd.yellow/500" { "Amarelo (✓)" } else { "Amarelo" },
+                        move |_| {
+                            shell.write().tools.smart_fill_tool_mut().set_fill_token("ptnd.yellow/500");
+                        },
+                    ))
+                    .into_element(),
+            )
+        }
         _ => None,
     }
 }

@@ -37,10 +37,21 @@ pub enum BuilderMode {
     SmartFill,
 }
 
+/// Operation mode for Shape Builder: Add (unify region) or Subtract (carve region out).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuilderOp {
+    /// Add candidate regions together.
+    Add,
+    /// Subtract candidate regions from covering shapes.
+    Subtract,
+}
+
 /// Interactive tool for constructive geometry region synthesis.
 #[derive(Clone, Debug)]
 pub struct ShapeBuilderTool {
     mode: BuilderMode,
+    op: BuilderOp,
+    fill_token: String,
     start_doc: Option<GPoint>,
     current_doc: Option<GPoint>,
     hover_doc: Option<GPoint>,
@@ -54,6 +65,8 @@ impl ShapeBuilderTool {
     pub fn new(mode: BuilderMode) -> Self {
         Self {
             mode,
+            op: BuilderOp::Add,
+            fill_token: SMART_FILL_TOKEN.to_string(),
             start_doc: None,
             current_doc: None,
             hover_doc: None,
@@ -66,6 +79,28 @@ impl ShapeBuilderTool {
     #[must_use]
     pub fn mode(&self) -> BuilderMode {
         self.mode
+    }
+
+    /// Returns the builder operation (Add vs Subtract).
+    #[must_use]
+    pub fn op(&self) -> BuilderOp {
+        self.op
+    }
+
+    /// Sets the builder operation (Add vs Subtract).
+    pub fn set_op(&mut self, op: BuilderOp) {
+        self.op = op;
+    }
+
+    /// Returns the fill token used for SmartFill.
+    #[must_use]
+    pub fn fill_token(&self) -> &str {
+        &self.fill_token
+    }
+
+    /// Sets the fill token used for SmartFill.
+    pub fn set_fill_token(&mut self, token: impl Into<String>) {
+        self.fill_token = token.into();
     }
 
     /// Resets active drag.
@@ -83,10 +118,10 @@ impl ShapeBuilderTool {
         self.start_doc.is_some()
     }
 
-    /// True while subtraction mode is active (Alt / Option held).
+    /// True while subtraction mode is active (Alt / Option held or Subtract op).
     #[must_use]
     pub fn is_subtract_mode(&self) -> bool {
-        self.subtract_mode
+        self.subtract_mode || self.op == BuilderOp::Subtract
     }
 
     /// Handles pointer events.
@@ -107,11 +142,11 @@ impl ShapeBuilderTool {
                 self.current_doc = Some(event.doc_pos);
                 self.drag_path = vec![event.doc_pos];
                 self.hover_doc = None;
-                self.subtract_mode = event.modifiers.duplicate;
+                self.subtract_mode = event.modifiers.duplicate || self.op == BuilderOp::Subtract;
                 Ok(ChangeSet::empty())
             }
             PointerPhase::Move => {
-                self.subtract_mode = event.modifiers.duplicate;
+                self.subtract_mode = event.modifiers.duplicate || self.op == BuilderOp::Subtract;
                 if self.start_doc.is_some() {
                     self.current_doc = Some(event.doc_pos);
                     if let Some(last) = self.drag_path.last() {
@@ -136,7 +171,7 @@ impl ShapeBuilderTool {
                     return Ok(ChangeSet::empty());
                 };
                 let clicked = p0.distance_to(p1) * camera.zoom.max(0.1) <= CLICK_THRESHOLD_PX;
-                let subtract = event.modifiers.duplicate || self.subtract_mode;
+                let subtract = event.modifiers.duplicate || self.subtract_mode || self.op == BuilderOp::Subtract;
                 self.subtract_mode = false;
                 if clicked {
                     self.click_region(p0, subtract, bridge)
@@ -164,7 +199,7 @@ impl ShapeBuilderTool {
         let covering = covering_set(bridge, pt);
         if covering.is_empty() {
             if self.mode == BuilderMode::SmartFill && !subtract {
-                return flood_empty_face(bridge, pt);
+                return flood_empty_face(bridge, pt, &self.fill_token);
             }
             return Ok(ChangeSet::empty());
         }
@@ -175,7 +210,7 @@ impl ShapeBuilderTool {
         if subtract {
             subtract_region(bridge, &covering, &region)
         } else {
-            create_region(bridge, &covering, &region, self.mode)
+            create_region(bridge, &covering, &region, self.mode, &self.fill_token)
         }
     }
 
@@ -214,7 +249,7 @@ impl ShapeBuilderTool {
         if signatures.is_empty() {
             // SmartFill drags flood at the release point (click semantics).
             if self.mode == BuilderMode::SmartFill && !subtract {
-                return flood_empty_face(bridge, p1);
+                return flood_empty_face(bridge, p1, &self.fill_token);
             }
             return Ok(ChangeSet::empty());
         }
@@ -232,7 +267,7 @@ impl ShapeBuilderTool {
         if subtract {
             subtract_region(bridge, &covering, &merged)
         } else {
-            create_region(bridge, &covering, &merged, self.mode)
+            create_region(bridge, &covering, &merged, self.mode, &self.fill_token)
         }
     }
 
@@ -240,7 +275,7 @@ impl ShapeBuilderTool {
     #[must_use]
     pub fn overlays(&self, bridge: &PetuniaDesignGuiBridge) -> CanvasOverlays {
         let mut overlays = CanvasOverlays::default();
-        overlays.region_subtractive = self.subtract_mode;
+        overlays.region_subtractive = self.subtract_mode || self.op == BuilderOp::Subtract;
 
         let preview = if let (Some(p0), Some(p1)) = (self.start_doc, self.current_doc) {
             // In-flight drag: outline the merged crossed regions and render cutting path.
@@ -408,12 +443,13 @@ fn drag_path_preview(
 }
 
 /// Creates one object from region polygons (merge path).
-/// Builder clones the first covering style; SmartFill uses the default token.
+/// Builder clones the first covering style; SmartFill uses the configured fill token.
 fn create_region(
     bridge: &mut PetuniaDesignGuiBridge,
     covering: &[ObjectId],
     region: &[Vec<GPoint>],
     mode: BuilderMode,
+    fill_token: &str,
 ) -> Result<ChangeSet, PetuniaError> {
     let path = GPath::from_polygons(region);
     if path.is_empty() {
@@ -447,7 +483,7 @@ fn create_region(
         ),
         _ => (
             "Smart Fill".to_string(),
-            Some(SMART_FILL_TOKEN.to_string()),
+            Some(fill_token.to_string()),
             None,
             1.0,
             1.0,
@@ -700,11 +736,12 @@ fn obstacle_polygons(bridge: &PetuniaDesignGuiBridge, ids: &[ObjectId]) -> Vec<V
 fn flood_empty_face(
     bridge: &mut PetuniaDesignGuiBridge,
     pt: GPoint,
+    fill_token: &str,
 ) -> Result<ChangeSet, PetuniaError> {
     let Some(face) = flood_face_polygons(bridge, pt) else {
         return Ok(ChangeSet::empty());
     };
-    create_region(bridge, &[], &face, BuilderMode::SmartFill)
+    create_region(bridge, &[], &face, BuilderMode::SmartFill, fill_token)
 }
 
 /// Computes the bounded face containing `pt`, if it is enclosed.

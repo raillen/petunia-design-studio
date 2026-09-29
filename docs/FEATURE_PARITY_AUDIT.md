@@ -31,14 +31,14 @@ The Vector Persona focuses on Bézier curves, parametric geometry, typography, b
 | **Polygon** | `ptnd.tool.shape.polygon` | `V1 Required` | ✅ Implemented | ✅ Exposed | Numeric sides control (3 to 32) in dynamic context toolbar. |
 | **Star** | `ptnd.tool.shape.star` | `V1 Required` | ✅ Implemented | ✅ Exposed | Numeric point count and inner-radius ratio in dynamic context toolbar. |
 | **Line** | `ptnd.tool.line` | `Post-V1 Candidate` | ❌ Not modeled | ❌ Absent | Simple line drawing handled by Pen in Line Mode for V1. |
-| **Shape Builder** | `ptnd.tool.shape_builder` | `V1 Required` | ⚠️ Core Partial | 🟡 In Flyout | Interactive hovered region preview and boolean planar partition synthesis. |
-| **Vector Flood Fill** | `ptnd.tool.vector_flood_fill` | `V1 Required` | ⚠️ Core Partial | 🟡 In Flyout | Planar-map boundary detection to fill closed intersecting regions without prior boolean baking. |
+| **Shape Builder** | `ptnd.tool.shape_builder` | `V1 Required` | ✅ Implemented | ✅ Exposed | Interactive hovered region preview, drag merge path, Add/Subtract mode switching in Context Toolbar, and boolean planar partition synthesis. |
+| **Vector Flood Fill** | `ptnd.tool.vector_flood_fill` | `V1 Required` | ✅ Implemented | ✅ Exposed | Planar-map boundary detection to fill closed intersecting regions or negative space with configurable swatch tokens in Context Toolbar. |
 | **Artistic Text** | `ptnd.tool.text.artistic` | `V1 Required` | ✅ Implemented | ✅ Exposed | In-place canvas text selection and editing. |
 | **Frame Text** | `ptnd.tool.text.frame` | `V1 Required` | ✅ Implemented | 🟡 In Flyout | Bounded paragraph layout with automatic word-wrapping. |
 | **Gradient** | `ptnd.tool.gradient` | `V1 Required` | ✅ Implemented | ✅ Exposed | On-canvas interactive gradient vector line [start, end] with color stop handles. |
 | **Transparency** | `ptnd.tool.transparency` | `V1 Required` | ✅ Implemented | 🟡 In Flyout | On-canvas opacity gradient vector line with opacity stop handles. |
 | **Color Picker** | `ptnd.tool.color_picker` | `V1 Required` | ✅ Implemented | ✅ Exposed | 9x9 pixel magnifying loupe under cursor during canvas sampling. |
-| **Style Picker** | `ptnd.tool.style_picker` | `V1 Required` | ⚠️ Core Partial | 🟡 In Flyout | Granular property filtering (stroke-only, fill-only, effects-only, typography-only). |
+| **Style Picker** | `ptnd.tool.style_picker` | `V1 Required` | ✅ Implemented | ✅ Exposed | Granular property filtering (stroke-only, fill-only, effects-only, typography-only) with Context Toolbar toggle buttons. |
 | **Vector Brush** | `ptnd.tool.vector_brush` | `Post-V1 Candidate` | ❌ Not modeled | ❌ Absent | Skeletal textured stroke application along vector paths. |
 | **Artboard / Surface** | `ptnd.tool.artboard` | `V1 Required` | ✅ Implemented | ✅ Exposed | Interactive border handles for resizing and preset selectors (A4, 1080p, Mobile). |
 | **Measure** | `ptnd.tool.measure` | `V1 Required` | ✅ Implemented | ✅ Exposed | Transient measurement HUD lines (Euclidean distance, DX, DY, angle). |
