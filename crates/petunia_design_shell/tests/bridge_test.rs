@@ -13,6 +13,18 @@ use petunia_design_shell::bridge::*;
 use petunia_design_shell::shell::PetuniaShell;
 
 #[test]
+fn bridge_tracks_background_jobs() {
+    let bridge = PetuniaDesignGuiBridge::new();
+    assert_eq!(bridge.jobs().list_jobs().len(), 0);
+    let (id, token) = bridge.jobs().spawn_job("Exporting PDF");
+    assert_eq!(bridge.jobs().list_jobs().len(), 1);
+    bridge.jobs().update_progress(id, 50);
+    assert_eq!(bridge.jobs().list_jobs()[0].percent, 50);
+    bridge.jobs().cancel_job(id);
+    assert!(token.is_cancelled());
+}
+
+#[test]
 fn canvas_snapshot_uses_world_frame_and_rotation() {
     let mut shell = PetuniaShell::new(1000.0, 800.0);
     shell.new_document("World Frame").expect("new document");

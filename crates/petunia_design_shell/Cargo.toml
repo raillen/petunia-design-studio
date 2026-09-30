@@ -12,6 +12,7 @@ petunia_design_application = { path = "../petunia_design_application" }
 petunia_design_geometry = { path = "../petunia_design_geometry" }
 petunia_design_color = { path = "../petunia_design_color" }
 petunia_design_raster = { path = "../petunia_design_raster" }
+petunia_design_jobs = { path = "../petunia_design_jobs" }
 petunia_design_resources = { path = "../petunia_design_resources" }
 petunia_design_platform = { path = "../petunia_design_platform" }
 petunia_design_text = { path = "../petunia_design_text" }

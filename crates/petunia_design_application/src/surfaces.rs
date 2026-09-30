@@ -1152,7 +1152,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.panel.color",
         kind: SurfaceKind::Panel,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.panel.color",
         action: None,
         shortcut: None,
@@ -1161,7 +1161,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.panel.swatches",
         kind: SurfaceKind::Panel,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.panel.swatches",
         action: None,
         shortcut: None,
@@ -1306,7 +1306,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.panel.background_tasks",
         kind: SurfaceKind::Panel,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.panel.jobs",
         action: None,
         shortcut: None,
@@ -1654,6 +1654,18 @@ mod tests {
         assert!(
             surface("ptnd.panel.layers").is_some_and(|e| e.status == SurfaceStatus::Wired),
             "layers panel must be wired"
+        );
+        assert!(
+            surface("ptnd.panel.color").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "color panel must be wired"
+        );
+        assert!(
+            surface("ptnd.panel.swatches").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "swatches panel must be wired"
+        );
+        assert!(
+            surface("ptnd.panel.background_tasks").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "background tasks panel must be wired"
         );
     }
 

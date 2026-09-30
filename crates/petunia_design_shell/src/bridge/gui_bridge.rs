@@ -58,6 +58,8 @@ pub struct PetuniaDesignGuiBridge {
     /// User order and visibility of the context toolbar. The catalog stays the
     /// source of which entries exist; this only arranges them.
     toolbar_layout: context_toolbar::ToolbarLayout,
+    /// Background jobs tracker (renders, bakes, exports, indexing).
+    jobs: petunia_design_jobs::JobManager,
 }
 
 impl Default for PetuniaDesignGuiBridge {
@@ -98,6 +100,7 @@ impl PetuniaDesignGuiBridge {
             locale: Locale::EnUs,
             active_persona: petunia_design_application::surfaces::PERSONA_VECTOR,
             toolbar_layout: context_toolbar::ToolbarLayout::canonical(),
+            jobs: petunia_design_jobs::JobManager::new(),
         }
     }
 
@@ -110,6 +113,12 @@ impl PetuniaDesignGuiBridge {
     #[must_use]
     pub fn locale(&self) -> &Locale {
         &self.locale
+    }
+
+    /// Background jobs tracker (renders, bakes, exports, indexing).
+    #[must_use]
+    pub fn jobs(&self) -> &petunia_design_jobs::JobManager {
+        &self.jobs
     }
 
     /// The persona the shell is currently in (15.G).
