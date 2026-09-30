@@ -1180,8 +1180,18 @@ impl Component for ColorsTab {
                     .main_align(Alignment::SpaceEvenly)
                     .cross_align(Alignment::Center)
                     .child(subtab_pill("🎨 Cor", 0, current_subtab == 0, &mut subtab))
-                    .child(subtab_pill("📑 Amostras", 1, current_subtab == 1, &mut subtab))
-                    .child(subtab_pill("⚡ Tarefas", 2, current_subtab == 2, &mut subtab)),
+                    .child(subtab_pill(
+                        "📑 Amostras",
+                        1,
+                        current_subtab == 1,
+                        &mut subtab,
+                    ))
+                    .child(subtab_pill(
+                        "⚡ Tarefas",
+                        2,
+                        current_subtab == 2,
+                        &mut subtab,
+                    )),
             )
             .child(match current_subtab {
                 0 => ColorPanel {
@@ -1223,16 +1233,11 @@ fn subtab_pill(
         .on_press(move |_| {
             st.set(idx);
         })
-        .child(
-            label()
-                .text(title)
-                .font_size(10.)
-                .color(if active {
-                    theme::TEXT_PRIMARY
-                } else {
-                    theme::TEXT_SECONDARY
-                }),
-        )
+        .child(label().text(title).font_size(10.).color(if active {
+            theme::TEXT_PRIMARY
+        } else {
+            theme::TEXT_SECONDARY
+        }))
 }
 
 fn channel_adjuster(
@@ -1248,14 +1253,20 @@ fn channel_adjuster(
         .cross_align(Alignment::Center)
         .main_align(Alignment::SpaceBetween)
         .child(
-            rect()
-                .width(Size::px(60.))
-                .child(label().text(label_text).font_size(11.).color(theme::TEXT_SECONDARY)),
+            rect().width(Size::px(60.)).child(
+                label()
+                    .text(label_text)
+                    .font_size(11.)
+                    .color(theme::TEXT_SECONDARY),
+            ),
         )
         .child(
-            rect()
-                .width(Size::px(70.))
-                .child(label().text(val_text).font_size(11.).color(theme::TEXT_PRIMARY)),
+            rect().width(Size::px(70.)).child(
+                label()
+                    .text(val_text)
+                    .font_size(11.)
+                    .color(theme::TEXT_PRIMARY),
+            ),
         )
         .child(
             rect()
@@ -1311,157 +1322,191 @@ impl Component for ColorPanel {
         // Spot state
         let spot_name = use_state(|| "PANTONE 185 C".to_string());
 
-    let (preview_color, token, color_val) = match active_mode {
-        0 => {
-            let (r, g, b) = (*r_val.read(), *g_val.read(), *b_val.read());
-            (
-                Color::from_rgb(r, g, b),
-                format!("#{r:02X}{g:02X}{b:02X}"),
-                ColorValue::Rgb(Srgb::clamped(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)),
-            )
-        }
-        1 => {
-            let (c, m, y, k) = (*c_val.read(), *m_val.read(), *y_val.read(), *k_val.read());
-            let c_f = c as f32 / 100.0;
-            let m_f = m as f32 / 100.0;
-            let y_f = y as f32 / 100.0;
-            let k_f = k as f32 / 100.0;
-            let r = ((1.0 - (c_f + k_f).min(1.0)) * 255.0).round() as u8;
-            let g = ((1.0 - (m_f + k_f).min(1.0)) * 255.0).round() as u8;
-            let b = ((1.0 - (y_f + k_f).min(1.0)) * 255.0).round() as u8;
-            (
-                Color::from_rgb(r, g, b),
-                format!("cmyk({c}%, {m}%, {y}%, {k}%)"),
-                ColorValue::Cmyk(Cmyk { c: c_f, m: m_f, y: y_f, k: k_f }),
-            )
-        }
-        2 => {
-            let (l, a, b) = (*lab_l.read(), *lab_a.read(), *lab_b.read());
-            let lab = Lab { l: l as f32, a: a as f32, b: b as f32 };
-            let srgb = ColorValue::Lab(lab).to_srgb();
-            let r = (srgb.r * 255.0).round() as u8;
-            let g = (srgb.g * 255.0).round() as u8;
-            let b_rgb = (srgb.b * 255.0).round() as u8;
-            (
-                Color::from_rgb(r, g, b_rgb),
-                format!("lab({l}, {a}, {b})"),
-                ColorValue::Lab(lab),
-            )
-        }
-        _ => {
-            let (r, g, b) = (*r_val.read(), *g_val.read(), *b_val.read());
-            let fallback_rgb = Srgb::clamped(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0);
-            (
-                Color::from_rgb(r, g, b),
-                format!("spot({}, #{r:02X}{g:02X}{b:02X})", *spot_name.read()),
-                ColorValue::Spot {
-                    name: (*spot_name.read()).clone(),
-                    fallback: Box::new(ColorValue::Rgb(fallback_rgb)),
-                },
-            )
-        }
-    };
-
-    // Gamut assessment with soft-proof provider
-    let provider = DefaultColorManagementProvider;
-    let proof_ctx = ProofContext::default();
-    let (_, gamut_status) = provider.soft_proof(&color_val, &proof_ctx);
-    let is_in_gamut = matches!(gamut_status, GamutStatus::InGamut);
-
-    let mut shell_for_apply = shell;
-    let token_for_apply = token.clone();
-
-    rect()
-        .direction(Direction::Vertical)
-        .width(Size::fill())
-        .height(Size::fill())
-        .spacing(theme::SPACE_2)
-        .child(
-            // Target Selector: Preenchimento vs Traço
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::fill())
-                .spacing(theme::SPACE_1)
-                .child(
-                    Button::new()
-                        .on_press(move |_| mut_target_fill.set(true))
-                        .child(label().text(if is_fill { "● Preenchimento" } else { "Preenchimento" }).font_size(10.)),
+        let (preview_color, token, color_val) = match active_mode {
+            0 => {
+                let (r, g, b) = (*r_val.read(), *g_val.read(), *b_val.read());
+                (
+                    Color::from_rgb(r, g, b),
+                    format!("#{r:02X}{g:02X}{b:02X}"),
+                    ColorValue::Rgb(Srgb::clamped(
+                        r as f32 / 255.0,
+                        g as f32 / 255.0,
+                        b as f32 / 255.0,
+                    )),
                 )
-                .child(
-                    Button::new()
-                        .on_press(move |_| mut_target_fill.set(false))
-                        .child(label().text(if !is_fill { "● Traço/Contorno" } else { "Traço/Contorno" }).font_size(10.)),
-                ),
-        )
-        .child(
-            // Color Mode Segmented Bar: sRGB | CMYK | Lab | Spot
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::fill())
-                .height(Size::px(26.))
-                .background(theme::SURFACE_CHROME_STRONG)
-                .padding(Gaps::new_all(2.))
-                .spacing(2.)
-                .main_align(Alignment::SpaceEvenly)
-                .cross_align(Alignment::Center)
-                .child(subtab_pill("sRGB", 0, active_mode == 0, &mut color_mode))
-                .child(subtab_pill("CMYK", 1, active_mode == 1, &mut color_mode))
-                .child(subtab_pill("Lab", 2, active_mode == 2, &mut color_mode))
-                .child(subtab_pill("Spot", 3, active_mode == 3, &mut color_mode)),
-        )
-        .child(
-            // Active Color Preview Card
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::fill())
-                .height(Size::px(42.))
-                .background(theme::SURFACE_CHROME)
-                .border(
-                    Border::new()
-                        .fill(theme::SURFACE_CHROME_STRONG)
-                        .width(1.)
-                        .alignment(BorderAlignment::Inner),
+            }
+            1 => {
+                let (c, m, y, k) = (*c_val.read(), *m_val.read(), *y_val.read(), *k_val.read());
+                let c_f = c as f32 / 100.0;
+                let m_f = m as f32 / 100.0;
+                let y_f = y as f32 / 100.0;
+                let k_f = k as f32 / 100.0;
+                let r = ((1.0 - (c_f + k_f).min(1.0)) * 255.0).round() as u8;
+                let g = ((1.0 - (m_f + k_f).min(1.0)) * 255.0).round() as u8;
+                let b = ((1.0 - (y_f + k_f).min(1.0)) * 255.0).round() as u8;
+                (
+                    Color::from_rgb(r, g, b),
+                    format!("cmyk({c}%, {m}%, {y}%, {k}%)"),
+                    ColorValue::Cmyk(Cmyk {
+                        c: c_f,
+                        m: m_f,
+                        y: y_f,
+                        k: k_f,
+                    }),
                 )
-                .padding(Gaps::new_all(theme::SPACE_1))
-                .spacing(theme::SPACE_2)
-                .cross_align(Alignment::Center)
-                .child(
-                    rect()
-                        .width(Size::px(34.))
-                        .height(Size::px(34.))
-                        .background(preview_color)
-                        .border(
-                            Border::new()
-                                .fill(theme::SURFACE_CHROME_STRONG)
-                                .width(1.)
-                                .alignment(BorderAlignment::Inner),
-                        ),
+            }
+            2 => {
+                let (l, a, b) = (*lab_l.read(), *lab_a.read(), *lab_b.read());
+                let lab = Lab {
+                    l: l as f32,
+                    a: a as f32,
+                    b: b as f32,
+                };
+                let srgb = ColorValue::Lab(lab).to_srgb();
+                let r = (srgb.r * 255.0).round() as u8;
+                let g = (srgb.g * 255.0).round() as u8;
+                let b_rgb = (srgb.b * 255.0).round() as u8;
+                (
+                    Color::from_rgb(r, g, b_rgb),
+                    format!("lab({l}, {a}, {b})"),
+                    ColorValue::Lab(lab),
                 )
-                .child(
-                    rect()
-                        .direction(Direction::Vertical)
-                        .child(label().text(token.clone()).font_size(11.).color(theme::TEXT_PRIMARY))
-                        .child(
-                            label()
-                                .text(if is_in_gamut {
-                                    "✓ Em Gama (SWOP)"
-                                } else {
-                                    "⚠️ Fora de Gama (SWOP)"
-                                })
-                                .font_size(9.)
-                                .color(if is_in_gamut {
-                                    Color::from_rgb(0x10, 0xB9, 0x81)
-                                } else {
-                                    Color::from_rgb(0xF5, 0x9E, 0x0B)
-                                }),
-                        ),
-                ),
-        )
-        .child(
-            // Channel Adjusters for Active Color Space
-            match active_mode {
-                0 => {
-                    rect()
+            }
+            _ => {
+                let (r, g, b) = (*r_val.read(), *g_val.read(), *b_val.read());
+                let fallback_rgb =
+                    Srgb::clamped(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0);
+                (
+                    Color::from_rgb(r, g, b),
+                    format!("spot({}, #{r:02X}{g:02X}{b:02X})", *spot_name.read()),
+                    ColorValue::Spot {
+                        name: (*spot_name.read()).clone(),
+                        fallback: Box::new(ColorValue::Rgb(fallback_rgb)),
+                    },
+                )
+            }
+        };
+
+        // Gamut assessment with soft-proof provider
+        let provider = DefaultColorManagementProvider;
+        let proof_ctx = ProofContext::default();
+        let (_, gamut_status) = provider.soft_proof(&color_val, &proof_ctx);
+        let is_in_gamut = matches!(gamut_status, GamutStatus::InGamut);
+
+        let mut shell_for_apply = shell;
+        let token_for_apply = token.clone();
+
+        rect()
+            .direction(Direction::Vertical)
+            .width(Size::fill())
+            .height(Size::fill())
+            .spacing(theme::SPACE_2)
+            .child(
+                // Target Selector: Preenchimento vs Traço
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .spacing(theme::SPACE_1)
+                    .child(
+                        Button::new()
+                            .on_press(move |_| mut_target_fill.set(true))
+                            .child(
+                                label()
+                                    .text(if is_fill {
+                                        "● Preenchimento"
+                                    } else {
+                                        "Preenchimento"
+                                    })
+                                    .font_size(10.),
+                            ),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press(move |_| mut_target_fill.set(false))
+                            .child(
+                                label()
+                                    .text(if !is_fill {
+                                        "● Traço/Contorno"
+                                    } else {
+                                        "Traço/Contorno"
+                                    })
+                                    .font_size(10.),
+                            ),
+                    ),
+            )
+            .child(
+                // Color Mode Segmented Bar: sRGB | CMYK | Lab | Spot
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .height(Size::px(26.))
+                    .background(theme::SURFACE_CHROME_STRONG)
+                    .padding(Gaps::new_all(2.))
+                    .spacing(2.)
+                    .main_align(Alignment::SpaceEvenly)
+                    .cross_align(Alignment::Center)
+                    .child(subtab_pill("sRGB", 0, active_mode == 0, &mut color_mode))
+                    .child(subtab_pill("CMYK", 1, active_mode == 1, &mut color_mode))
+                    .child(subtab_pill("Lab", 2, active_mode == 2, &mut color_mode))
+                    .child(subtab_pill("Spot", 3, active_mode == 3, &mut color_mode)),
+            )
+            .child(
+                // Active Color Preview Card
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .height(Size::px(42.))
+                    .background(theme::SURFACE_CHROME)
+                    .border(
+                        Border::new()
+                            .fill(theme::SURFACE_CHROME_STRONG)
+                            .width(1.)
+                            .alignment(BorderAlignment::Inner),
+                    )
+                    .padding(Gaps::new_all(theme::SPACE_1))
+                    .spacing(theme::SPACE_2)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        rect()
+                            .width(Size::px(34.))
+                            .height(Size::px(34.))
+                            .background(preview_color)
+                            .border(
+                                Border::new()
+                                    .fill(theme::SURFACE_CHROME_STRONG)
+                                    .width(1.)
+                                    .alignment(BorderAlignment::Inner),
+                            ),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Vertical)
+                            .child(
+                                label()
+                                    .text(token.clone())
+                                    .font_size(11.)
+                                    .color(theme::TEXT_PRIMARY),
+                            )
+                            .child(
+                                label()
+                                    .text(if is_in_gamut {
+                                        "✓ Em Gama (SWOP)"
+                                    } else {
+                                        "⚠️ Fora de Gama (SWOP)"
+                                    })
+                                    .font_size(9.)
+                                    .color(if is_in_gamut {
+                                        Color::from_rgb(0x10, 0xB9, 0x81)
+                                    } else {
+                                        Color::from_rgb(0xF5, 0x9E, 0x0B)
+                                    }),
+                            ),
+                    ),
+            )
+            .child(
+                // Channel Adjusters for Active Color Space
+                match active_mode {
+                    0 => rect()
                         .direction(Direction::Vertical)
                         .width(Size::fill())
                         .spacing(2.)
@@ -1506,10 +1551,8 @@ impl Component for ColorPanel {
                                 let mut s = b_val;
                                 s.set(curr.saturating_add(5));
                             },
-                        ))
-                }
-                1 => {
-                    rect()
+                        )),
+                    1 => rect()
                         .direction(Direction::Vertical)
                         .width(Size::fill())
                         .spacing(2.)
@@ -1568,10 +1611,8 @@ impl Component for ColorPanel {
                                 let mut s = k_val;
                                 s.set(curr.saturating_add(5).min(100));
                             },
-                        ))
-                }
-                2 => {
-                    rect()
+                        )),
+                    2 => rect()
                         .direction(Direction::Vertical)
                         .width(Size::fill())
                         .spacing(2.)
@@ -1616,68 +1657,81 @@ impl Component for ColorPanel {
                                 let mut s = lab_b;
                                 s.set((curr + 5).clamp(-128, 127));
                             },
-                        ))
-                }
-                _ => {
-                    let mut spot_change = spot_name;
-                    rect()
-                        .direction(Direction::Vertical)
-                        .width(Size::fill())
-                        .spacing(theme::SPACE_1)
-                        .child(label().text("Tinta Spot / Especial:").font_size(11.).color(theme::TEXT_SECONDARY))
-                        .child(
-                            rect()
-                                .direction(Direction::Horizontal)
-                                .spacing(4.)
-                                .child(
-                                    Button::new()
-                                        .on_press(move |_| spot_change.set("PANTONE 185 C".to_string()))
-                                        .child(label().text("185 C (Red)").font_size(9.)),
-                                )
-                                .child(
-                                    Button::new()
-                                        .on_press(move |_| spot_change.set("PANTONE Reflex Blue".to_string()))
-                                        .child(label().text("Reflex Blue").font_size(9.)),
-                                )
-                                .child(
-                                    Button::new()
-                                        .on_press(move |_| spot_change.set("PANTONE Metallic Gold".to_string()))
-                                        .child(label().text("Gold").font_size(9.)),
-                                ),
-                        )
-                }
-            },
-        )
-        .child(
-            // Apply Button
-            Button::new()
-                .on_press(move |_| {
-                    if let Some(id) = first_id {
-                        let cmd = if is_fill {
-                            Command::SetFill {
-                                id,
-                                fill: Some(token_for_apply.clone()),
-                            }
-                        } else {
-                            Command::SetStroke {
-                                id,
-                                stroke: Some(token_for_apply.clone()),
-                                width: 2.0,
-                            }
-                        };
-                        let _ = shell_for_apply.write().bridge.submit_all("Apply color", vec![cmd]);
+                        )),
+                    _ => {
+                        let mut spot_change = spot_name;
+                        rect()
+                            .direction(Direction::Vertical)
+                            .width(Size::fill())
+                            .spacing(theme::SPACE_1)
+                            .child(
+                                label()
+                                    .text("Tinta Spot / Especial:")
+                                    .font_size(11.)
+                                    .color(theme::TEXT_SECONDARY),
+                            )
+                            .child(
+                                rect()
+                                    .direction(Direction::Horizontal)
+                                    .spacing(4.)
+                                    .child(
+                                        Button::new()
+                                            .on_press(move |_| {
+                                                spot_change.set("PANTONE 185 C".to_string())
+                                            })
+                                            .child(label().text("185 C (Red)").font_size(9.)),
+                                    )
+                                    .child(
+                                        Button::new()
+                                            .on_press(move |_| {
+                                                spot_change.set("PANTONE Reflex Blue".to_string())
+                                            })
+                                            .child(label().text("Reflex Blue").font_size(9.)),
+                                    )
+                                    .child(
+                                        Button::new()
+                                            .on_press(move |_| {
+                                                spot_change.set("PANTONE Metallic Gold".to_string())
+                                            })
+                                            .child(label().text("Gold").font_size(9.)),
+                                    ),
+                            )
                     }
-                })
-                .child(
-                    label()
-                        .text(if is_fill {
-                            "Aplicar ao Preenchimento"
-                        } else {
-                            "Aplicar ao Contorno"
-                        })
-                        .font_size(11.),
-                ),
-        )
+                },
+            )
+            .child(
+                // Apply Button
+                Button::new()
+                    .on_press(move |_| {
+                        if let Some(id) = first_id {
+                            let cmd = if is_fill {
+                                Command::SetFill {
+                                    id,
+                                    fill: Some(token_for_apply.clone()),
+                                }
+                            } else {
+                                Command::SetStroke {
+                                    id,
+                                    stroke: Some(token_for_apply.clone()),
+                                    width: 2.0,
+                                }
+                            };
+                            let _ = shell_for_apply
+                                .write()
+                                .bridge
+                                .submit_all("Apply color", vec![cmd]);
+                        }
+                    })
+                    .child(
+                        label()
+                            .text(if is_fill {
+                                "Aplicar ao Preenchimento"
+                            } else {
+                                "Aplicar ao Contorno"
+                            })
+                            .font_size(11.),
+                    ),
+            )
     }
 }
 
@@ -1698,120 +1752,185 @@ impl Component for SwatchesPanel {
         let mut lib_mode = use_state(|| 0usize); // 0: Sistema, 1: Documento, 2: Favoritos
         let current_lib = *lib_mode.read();
 
-        let custom_swatches = use_state(|| vec![
-            ("Menta Neon".to_string(), "#10B981".to_string(), Color::from_rgb(0x10, 0xB9, 0x81)),
-            ("Ouro Solar".to_string(), "#F59E0B".to_string(), Color::from_rgb(0xF5, 0x9E, 0x0B)),
-            ("Índigo".to_string(), "#6366F1".to_string(), Color::from_rgb(0x63, 0x66, 0xF1)),
-            ("Coral Rosa".to_string(), "#F43F5E".to_string(), Color::from_rgb(0xF4, 0x3F, 0x5E)),
-        ]);
+        let custom_swatches = use_state(|| {
+            vec![
+                (
+                    "Menta Neon".to_string(),
+                    "#10B981".to_string(),
+                    Color::from_rgb(0x10, 0xB9, 0x81),
+                ),
+                (
+                    "Ouro Solar".to_string(),
+                    "#F59E0B".to_string(),
+                    Color::from_rgb(0xF5, 0x9E, 0x0B),
+                ),
+                (
+                    "Índigo".to_string(),
+                    "#6366F1".to_string(),
+                    Color::from_rgb(0x63, 0x66, 0xF1),
+                ),
+                (
+                    "Coral Rosa".to_string(),
+                    "#F43F5E".to_string(),
+                    Color::from_rgb(0xF4, 0x3F, 0x5E),
+                ),
+            ]
+        });
 
-    let system_palette = [
-        ("Cinza 900", "ptnd.gray/900", Color::from_rgb(0x11, 0x18, 0x27)),
-        ("Cinza 600", "ptnd.gray/600", Color::from_rgb(0x4B, 0x55, 0x63)),
-        ("Cinza 300", "ptnd.gray/300", Color::from_rgb(0xD1, 0xD5, 0xDB)),
-        ("Branco", "ptnd.white", Color::from_rgb(0xFF, 0xFF, 0xFF)),
-        ("Vermelho 500", "ptnd.red/500", Color::from_rgb(0xEF, 0x44, 0x44)),
-        ("Rosa 500", "ptnd.pink/500", Color::from_rgb(0xEC, 0x48, 0x99)),
-        ("Roxo 500", "ptnd.purple/500", Color::from_rgb(0x8B, 0x5C, 0xF6)),
-        ("Azul 500", "ptnd.blue/500", Color::from_rgb(0x3B, 0x82, 0xF6)),
-        ("Ciano 500", "ptnd.cyan/500", Color::from_rgb(0x06, 0xB6, 0xD4)),
-        ("Teal 500", "ptnd.teal/500", Color::from_rgb(0x14, 0xB8, 0xA6)),
-        ("Verde 500", "ptnd.green/500", Color::from_rgb(0x10, 0xB9, 0x81)),
-        ("Amarelo 500", "ptnd.amber/500", Color::from_rgb(0xF5, 0x9E, 0x0B)),
-    ];
+        let system_palette = [
+            (
+                "Cinza 900",
+                "ptnd.gray/900",
+                Color::from_rgb(0x11, 0x18, 0x27),
+            ),
+            (
+                "Cinza 600",
+                "ptnd.gray/600",
+                Color::from_rgb(0x4B, 0x55, 0x63),
+            ),
+            (
+                "Cinza 300",
+                "ptnd.gray/300",
+                Color::from_rgb(0xD1, 0xD5, 0xDB),
+            ),
+            ("Branco", "ptnd.white", Color::from_rgb(0xFF, 0xFF, 0xFF)),
+            (
+                "Vermelho 500",
+                "ptnd.red/500",
+                Color::from_rgb(0xEF, 0x44, 0x44),
+            ),
+            (
+                "Rosa 500",
+                "ptnd.pink/500",
+                Color::from_rgb(0xEC, 0x48, 0x99),
+            ),
+            (
+                "Roxo 500",
+                "ptnd.purple/500",
+                Color::from_rgb(0x8B, 0x5C, 0xF6),
+            ),
+            (
+                "Azul 500",
+                "ptnd.blue/500",
+                Color::from_rgb(0x3B, 0x82, 0xF6),
+            ),
+            (
+                "Ciano 500",
+                "ptnd.cyan/500",
+                Color::from_rgb(0x06, 0xB6, 0xD4),
+            ),
+            (
+                "Teal 500",
+                "ptnd.teal/500",
+                Color::from_rgb(0x14, 0xB8, 0xA6),
+            ),
+            (
+                "Verde 500",
+                "ptnd.green/500",
+                Color::from_rgb(0x10, 0xB9, 0x81),
+            ),
+            (
+                "Amarelo 500",
+                "ptnd.amber/500",
+                Color::from_rgb(0xF5, 0x9E, 0x0B),
+            ),
+        ];
 
-    let doc_swatches: Vec<(String, String, Color)> = {
-        let s = shell.peek();
-        let mut list = Vec::new();
-        if let Some(session) = s.bridge.session() {
-            if let Some(surface) = s.bridge.active_surface().and_then(|id| session.surface(id).ok()) {
-                for obj in surface.objects() {
-                    if let Some(fill) = obj.fill.as_deref() {
-                        let rgb = petunia_design_document::resolve_color_to_rgb(fill);
-                        let col = Color::from_rgb(
-                            (rgb[0] * 255.0).round() as u8,
-                            (rgb[1] * 255.0).round() as u8,
-                            (rgb[2] * 255.0).round() as u8,
-                        );
-                        let name = format!("Obj #{}", obj.id.raw());
-                        if !list.iter().any(|(_, tok, _)| tok == fill) {
-                            list.push((name, fill.to_string(), col));
+        let doc_swatches: Vec<(String, String, Color)> = {
+            let s = shell.peek();
+            let mut list = Vec::new();
+            if let Some(session) = s.bridge.session() {
+                if let Some(surface) = s
+                    .bridge
+                    .active_surface()
+                    .and_then(|id| session.surface(id).ok())
+                {
+                    for obj in surface.objects() {
+                        if let Some(fill) = obj.fill.as_deref() {
+                            let rgb = petunia_design_document::resolve_color_to_rgb(fill);
+                            let col = Color::from_rgb(
+                                (rgb[0] * 255.0).round() as u8,
+                                (rgb[1] * 255.0).round() as u8,
+                                (rgb[2] * 255.0).round() as u8,
+                            );
+                            let name = format!("Obj #{}", obj.id.raw());
+                            if !list.iter().any(|(_, tok, _)| tok == fill) {
+                                list.push((name, fill.to_string(), col));
+                            }
                         }
                     }
                 }
             }
-        }
-        list
-    };
+            list
+        };
 
-    let active_swatches: Vec<(String, String, Color)> = match current_lib {
-        0 => system_palette
-            .iter()
-            .map(|&(n, t, c)| (n.to_string(), t.to_string(), c))
-            .collect(),
-        1 => doc_swatches,
-        _ => (*custom_swatches.read()).clone(),
-    };
+        let active_swatches: Vec<(String, String, Color)> = match current_lib {
+            0 => system_palette
+                .iter()
+                .map(|&(n, t, c)| (n.to_string(), t.to_string(), c))
+                .collect(),
+            1 => doc_swatches,
+            _ => (*custom_swatches.read()).clone(),
+        };
 
-    let mut add_swatches = custom_swatches;
+        let mut add_swatches = custom_swatches;
 
-    rect()
-        .direction(Direction::Vertical)
-        .width(Size::fill())
-        .height(Size::fill())
-        .spacing(theme::SPACE_2)
-        .child(
-            // Library Switcher: Sistema | Documento | Favoritos
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::fill())
-                .height(Size::px(26.))
-                .background(theme::SURFACE_CHROME_STRONG)
-                .padding(Gaps::new_all(2.))
-                .spacing(2.)
-                .main_align(Alignment::SpaceEvenly)
-                .cross_align(Alignment::Center)
-                .child(subtab_pill("Sistema", 0, current_lib == 0, &mut lib_mode))
-                .child(subtab_pill("Documento", 1, current_lib == 1, &mut lib_mode))
-                .child(subtab_pill("Favoritos", 2, current_lib == 2, &mut lib_mode)),
-        )
-        .child(
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::fill())
-                .main_align(Alignment::SpaceBetween)
-                .cross_align(Alignment::Center)
-                .child(
-                    label()
-                        .text(match current_lib {
-                            0 => "PALETA DO SISTEMA",
-                            1 => "CORES DO DOCUMENTO",
-                            _ => "AMOSTRAS FAVORITAS",
-                        })
-                        .font_size(10.)
-                        .color(theme::TEXT_SECONDARY),
-                )
-                .maybe_child(if current_lib == 2 {
-                    Some(
-                        Button::new()
-                            .on_press(move |_| {
-                                let count = add_swatches.read().len() + 1;
-                                let mut list = (*add_swatches.read()).clone();
-                                list.push((
-                                    format!("Amostra {count}"),
-                                    "#EC4899".to_string(),
-                                    Color::from_rgb(0xEC, 0x48, 0x99),
-                                ));
-                                add_swatches.set(list);
+        rect()
+            .direction(Direction::Vertical)
+            .width(Size::fill())
+            .height(Size::fill())
+            .spacing(theme::SPACE_2)
+            .child(
+                // Library Switcher: Sistema | Documento | Favoritos
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .height(Size::px(26.))
+                    .background(theme::SURFACE_CHROME_STRONG)
+                    .padding(Gaps::new_all(2.))
+                    .spacing(2.)
+                    .main_align(Alignment::SpaceEvenly)
+                    .cross_align(Alignment::Center)
+                    .child(subtab_pill("Sistema", 0, current_lib == 0, &mut lib_mode))
+                    .child(subtab_pill("Documento", 1, current_lib == 1, &mut lib_mode))
+                    .child(subtab_pill("Favoritos", 2, current_lib == 2, &mut lib_mode)),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .main_align(Alignment::SpaceBetween)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        label()
+                            .text(match current_lib {
+                                0 => "PALETA DO SISTEMA",
+                                1 => "CORES DO DOCUMENTO",
+                                _ => "AMOSTRAS FAVORITAS",
                             })
-                            .child(label().text("+ Adicionar").font_size(9.)),
+                            .font_size(10.)
+                            .color(theme::TEXT_SECONDARY),
                     )
-                } else {
-                    None
-                }),
-        )
-        .child(
-            if active_swatches.is_empty() {
+                    .maybe_child(if current_lib == 2 {
+                        Some(
+                            Button::new()
+                                .on_press(move |_| {
+                                    let count = add_swatches.read().len() + 1;
+                                    let mut list = (*add_swatches.read()).clone();
+                                    list.push((
+                                        format!("Amostra {count}"),
+                                        "#EC4899".to_string(),
+                                        Color::from_rgb(0xEC, 0x48, 0x99),
+                                    ));
+                                    add_swatches.set(list);
+                                })
+                                .child(label().text("+ Adicionar").font_size(9.)),
+                        )
+                    } else {
+                        None
+                    }),
+            )
+            .child(if active_swatches.is_empty() {
                 rect()
                     .width(Size::fill())
                     .padding(Gaps::new_all(theme::SPACE_2))
@@ -1876,8 +1995,7 @@ impl Component for SwatchesPanel {
                                     ))
                             }))
                     }))
-            },
-        )
+            })
     }
 }
 
@@ -1892,42 +2010,42 @@ impl Component for BackgroundTasksPanel {
         let mut shell_for_sim = shell;
         let mut shell_for_clear = shell;
 
-    rect()
-        .direction(Direction::Vertical)
-        .width(Size::fill())
-        .height(Size::fill())
-        .spacing(theme::SPACE_2)
-        .child(
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::fill())
-                .main_align(Alignment::SpaceBetween)
-                .cross_align(Alignment::Center)
-                .child(section_header("TAREFAS EM SEGUNDO PLANO"))
-                .child(
-                    rect()
-                        .direction(Direction::Horizontal)
-                        .spacing(4.)
-                        .child(
-                            Button::new()
-                                .on_press(move |_| {
-                                    let s = shell_for_sim.write();
-                                    let (id, _) = s.bridge.jobs().spawn_job("Exportação PDF 300 DPI");
-                                    s.bridge.jobs().update_progress(id, 65);
-                                })
-                                .child(label().text("+ Simular").font_size(10.)),
-                        )
-                        .child(
-                            Button::new()
-                                .on_press(move |_| {
-                                    shell_for_clear.write().bridge.jobs().clear_completed();
-                                })
-                                .child(label().text("Limpar").font_size(10.)),
-                        ),
-                ),
-        )
-        .child(
-            if jobs.is_empty() {
+        rect()
+            .direction(Direction::Vertical)
+            .width(Size::fill())
+            .height(Size::fill())
+            .spacing(theme::SPACE_2)
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .main_align(Alignment::SpaceBetween)
+                    .cross_align(Alignment::Center)
+                    .child(section_header("TAREFAS EM SEGUNDO PLANO"))
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .spacing(4.)
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        let s = shell_for_sim.write();
+                                        let (id, _) =
+                                            s.bridge.jobs().spawn_job("Exportação PDF 300 DPI");
+                                        s.bridge.jobs().update_progress(id, 65);
+                                    })
+                                    .child(label().text("+ Simular").font_size(10.)),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        shell_for_clear.write().bridge.jobs().clear_completed();
+                                    })
+                                    .child(label().text("Limpar").font_size(10.)),
+                            ),
+                    ),
+            )
+            .child(if jobs.is_empty() {
                 rect()
                     .width(Size::fill())
                     .padding(Gaps::new_all(theme::SPACE_3))
@@ -1956,10 +2074,18 @@ impl Component for BackgroundTasksPanel {
                             petunia_design_jobs::JobState::Queued => "Pendente",
                         };
                         let state_color = match job.state {
-                            petunia_design_jobs::JobState::Running => Color::from_rgb(0x38, 0xBD, 0xF8),
-                            petunia_design_jobs::JobState::Completed => Color::from_rgb(0x34, 0xD3, 0x99),
-                            petunia_design_jobs::JobState::Cancelled => Color::from_rgb(0xFB, 0xBF, 0x24),
-                            petunia_design_jobs::JobState::Failed => Color::from_rgb(0xF8, 0x71, 0x71),
+                            petunia_design_jobs::JobState::Running => {
+                                Color::from_rgb(0x38, 0xBD, 0xF8)
+                            }
+                            petunia_design_jobs::JobState::Completed => {
+                                Color::from_rgb(0x34, 0xD3, 0x99)
+                            }
+                            petunia_design_jobs::JobState::Cancelled => {
+                                Color::from_rgb(0xFB, 0xBF, 0x24)
+                            }
+                            petunia_design_jobs::JobState::Failed => {
+                                Color::from_rgb(0xF8, 0x71, 0x71)
+                            }
                             petunia_design_jobs::JobState::Queued => theme::TEXT_SECONDARY,
                         };
 
@@ -1988,10 +2114,7 @@ impl Component for BackgroundTasksPanel {
                                             .color(theme::TEXT_PRIMARY),
                                     )
                                     .child(
-                                        label()
-                                            .text(state_label)
-                                            .font_size(10.)
-                                            .color(state_color),
+                                        label().text(state_label).font_size(10.).color(state_color),
                                     ),
                             )
                             .child(
@@ -2023,7 +2146,11 @@ impl Component for BackgroundTasksPanel {
                                         Some(
                                             Button::new()
                                                 .on_press(move |_| {
-                                                    shell_for_cancel.write().bridge.jobs().cancel_job(job_id);
+                                                    shell_for_cancel
+                                                        .write()
+                                                        .bridge
+                                                        .jobs()
+                                                        .cancel_job(job_id);
                                                 })
                                                 .child(label().text("Cancelar").font_size(9.)),
                                         )
@@ -2032,8 +2159,7 @@ impl Component for BackgroundTasksPanel {
                                     }),
                             )
                     }))
-            },
-        )
+            })
     }
 }
 
@@ -2283,15 +2409,28 @@ impl Component for NavigatorTab {
                             .children(snapshot.objects.iter().filter_map(|obj| {
                                 let min_x = (obj.world_bounds[0] * scale) as f32;
                                 let min_y = (obj.world_bounds[1] * scale) as f32;
-                                let w = ((obj.world_bounds[2] - obj.world_bounds[0]) * scale) as f32;
-                                let h = ((obj.world_bounds[3] - obj.world_bounds[1]) * scale) as f32;
+                                let w =
+                                    ((obj.world_bounds[2] - obj.world_bounds[0]) * scale) as f32;
+                                let h =
+                                    ((obj.world_bounds[3] - obj.world_bounds[1]) * scale) as f32;
                                 if w > 1.0 && h > 1.0 {
-                                    let fill_col = obj.fill.as_deref().and_then(parse_color_rgb).map(|(r, g, b)| {
-                                        Color::from_rgb(r.round() as u8, g.round() as u8, b.round() as u8)
-                                    }).unwrap_or(Color::from_rgb(0x94, 0xA3, 0xB8));
+                                    let fill_col = obj
+                                        .fill
+                                        .as_deref()
+                                        .and_then(parse_color_rgb)
+                                        .map(|(r, g, b)| {
+                                            Color::from_rgb(
+                                                r.round() as u8,
+                                                g.round() as u8,
+                                                b.round() as u8,
+                                            )
+                                        })
+                                        .unwrap_or(Color::from_rgb(0x94, 0xA3, 0xB8));
                                     Some(
                                         rect()
-                                            .position(Position::new_absolute().left(min_x).top(min_y))
+                                            .position(
+                                                Position::new_absolute().left(min_x).top(min_y),
+                                            )
                                             .width(Size::px(w))
                                             .height(Size::px(h))
                                             .background(fill_col)
@@ -2303,7 +2442,9 @@ impl Component for NavigatorTab {
                             }))
                             .child(
                                 rect()
-                                    .position(Position::new_absolute().left(vis_box_x).top(vis_box_y))
+                                    .position(
+                                        Position::new_absolute().left(vis_box_x).top(vis_box_y),
+                                    )
                                     .width(Size::px(vis_box_w))
                                     .height(Size::px(vis_box_h))
                                     .background(Color::from_argb(0x22, 0xEF, 0x44, 0x44))
@@ -4456,7 +4597,9 @@ pub fn compute_histogram_bins(
         if let Some(petunia_design_document::ShapeKind::Image { data, .. }) = &obj.shape {
             if let Some(bytes) = data.as_deref() {
                 if let Ok(raw_img) = petunia_design_io::import_raster(bytes, 32 * 1024 * 1024) {
-                    if raw_img.format == petunia_design_io::PixelFormat::Rgba8 && !raw_img.data.is_empty() {
+                    if raw_img.format == petunia_design_io::PixelFormat::Rgba8
+                        && !raw_img.data.is_empty()
+                    {
                         let total_pixels = (raw_img.width * raw_img.height) as usize;
                         let stride = (total_pixels / 500).max(1);
                         for i in (0..total_pixels).step_by(stride) {
@@ -4989,8 +5132,20 @@ impl Component for LeftDock {
                             .direction(Direction::Horizontal)
                             .spacing(theme::SPACE_1)
                             .cross_align(Alignment::Center)
-                            .child(tab_button(ui, "Ativos", 0, active_tab == 0, &mut left_dock_tab))
-                            .child(tab_button(ui, "Símbolos", 1, active_tab == 1, &mut left_dock_tab)),
+                            .child(tab_button(
+                                ui,
+                                "Ativos",
+                                0,
+                                active_tab == 0,
+                                &mut left_dock_tab,
+                            ))
+                            .child(tab_button(
+                                ui,
+                                "Símbolos",
+                                1,
+                                active_tab == 1,
+                                &mut left_dock_tab,
+                            )),
                     )
                     .child(
                         Button::new()
@@ -5004,7 +5159,12 @@ impl Component for LeftDock {
                     .content(Content::Flex)
                     .width(Size::fill())
                     .height(Size::flex(1.0))
-                    .padding(Gaps::new(theme::SPACE_2, theme::SPACE_2, theme::SPACE_2, theme::SPACE_2))
+                    .padding(Gaps::new(
+                        theme::SPACE_2,
+                        theme::SPACE_2,
+                        theme::SPACE_2,
+                        theme::SPACE_2,
+                    ))
                     .child(match active_tab {
                         0 => AssetsTab(ui.clone()).into_element(),
                         _ => SymbolsTab(ui.clone()).into_element(),
@@ -5028,63 +5188,65 @@ impl Component for AssetsTab {
             .collect();
         let mut shell_for_place = ui.shell;
 
-        ScrollView::new()
-            .child(
-                rect()
-                    .direction(Direction::Vertical)
-                    .width(Size::fill())
-                    .spacing(theme::SPACE_2)
-                    .child(section_header("ATIVOS DO DOCUMENTO"))
-                    .child(
-                        Button::new()
-                            .on_press(move |_| {
-                                run_action_token(&mut shell_for_place.write(), "ptnd.action.file.place");
-                            })
-                            .child(
-                                rect()
-                                    .direction(Direction::Horizontal)
-                                    .padding(Gaps::new(4., 8., 4., 8.))
-                                    .background(theme::SURFACE_CHROME_STRONG)
-                                    .corner_radius(4.0)
-                                    .cross_align(Alignment::Center)
-                                    .child(
-                                        label()
-                                            .text("+ Importar Imagem (file.place)")
-                                            .font_size(11.)
-                                            .color(theme::ACCENT_BLOOM),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        label()
-                            .text(format!("Imagens posicionadas: {}", image_assets.len()))
-                            .font_size(11.)
-                            .color(theme::TEXT_SECONDARY),
-                    )
-                    .children(image_assets.iter().map(|img| {
-                        let bounds = img.world_bounds;
-                        let w = bounds[2] - bounds[0];
-                        let h = bounds[3] - bounds[1];
-                        rect()
-                            .direction(Direction::Vertical)
-                            .padding(Gaps::new(4., 6., 4., 6.))
-                            .background(theme::SURFACE_CHROME)
-                            .corner_radius(4.0)
-                            .child(
-                                label()
-                                    .text(format!("Imagem #{}", img.id))
-                                    .font_size(11.)
-                                    .color(theme::TEXT_PRIMARY),
-                            )
-                            .child(
-                                label()
-                                    .text(format!("{:.0} x {:.0} pt", w, h))
-                                    .font_size(10.)
-                                    .color(theme::TEXT_TERTIARY),
-                            )
-                            .into_element()
-                    })),
-            )
+        ScrollView::new().child(
+            rect()
+                .direction(Direction::Vertical)
+                .width(Size::fill())
+                .spacing(theme::SPACE_2)
+                .child(section_header("ATIVOS DO DOCUMENTO"))
+                .child(
+                    Button::new()
+                        .on_press(move |_| {
+                            run_action_token(
+                                &mut shell_for_place.write(),
+                                "ptnd.action.file.place",
+                            );
+                        })
+                        .child(
+                            rect()
+                                .direction(Direction::Horizontal)
+                                .padding(Gaps::new(4., 8., 4., 8.))
+                                .background(theme::SURFACE_CHROME_STRONG)
+                                .corner_radius(4.0)
+                                .cross_align(Alignment::Center)
+                                .child(
+                                    label()
+                                        .text("+ Importar Imagem (file.place)")
+                                        .font_size(11.)
+                                        .color(theme::ACCENT_BLOOM),
+                                ),
+                        ),
+                )
+                .child(
+                    label()
+                        .text(format!("Imagens posicionadas: {}", image_assets.len()))
+                        .font_size(11.)
+                        .color(theme::TEXT_SECONDARY),
+                )
+                .children(image_assets.iter().map(|img| {
+                    let bounds = img.world_bounds;
+                    let w = bounds[2] - bounds[0];
+                    let h = bounds[3] - bounds[1];
+                    rect()
+                        .direction(Direction::Vertical)
+                        .padding(Gaps::new(4., 6., 4., 6.))
+                        .background(theme::SURFACE_CHROME)
+                        .corner_radius(4.0)
+                        .child(
+                            label()
+                                .text(format!("Imagem #{}", img.id))
+                                .font_size(11.)
+                                .color(theme::TEXT_PRIMARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("{:.0} x {:.0} pt", w, h))
+                                .font_size(10.)
+                                .color(theme::TEXT_TERTIARY),
+                        )
+                        .into_element()
+                })),
+        )
     }
 }
 
@@ -5097,46 +5259,52 @@ impl Component for SymbolsTab {
         let ui = &self.0;
         let shell = ui.shell;
 
-        ScrollView::new()
-            .child(
-                rect()
-                    .direction(Direction::Vertical)
-                    .width(Size::fill())
-                    .spacing(theme::SPACE_2)
-                    .child(section_header("BIBLIOTECA DE FORMAS"))
-                    .child(symbol_preset_item(
-                        shell,
-                        "Retângulo Básico",
-                        "200x150 pt",
-                        ShapeKind::Rectangle { corner_radii: [0.0; 4] },
-                        [50.0, 50.0, 250.0, 200.0],
-                        "ptnd.blue/500",
-                    ))
-                    .child(symbol_preset_item(
-                        shell,
-                        "Cartão UI",
-                        "240x140 pt · r=8",
-                        ShapeKind::Rectangle { corner_radii: [8.0; 4] },
-                        [50.0, 50.0, 290.0, 190.0],
-                        "ptnd.gray/900",
-                    ))
-                    .child(symbol_preset_item(
-                        shell,
-                        "Círculo / Avatar",
-                        "100x100 pt",
-                        ShapeKind::Ellipse,
-                        [50.0, 50.0, 150.0, 150.0],
-                        "ptnd.teal/500",
-                    ))
-                    .child(symbol_preset_item(
-                        shell,
-                        "Estrela 5 Pontas",
-                        "120x120 pt",
-                        ShapeKind::Star { points: 5, inner_ratio: 0.5 },
-                        [50.0, 50.0, 170.0, 170.0],
-                        "ptnd.purple/500",
-                    )),
-            )
+        ScrollView::new().child(
+            rect()
+                .direction(Direction::Vertical)
+                .width(Size::fill())
+                .spacing(theme::SPACE_2)
+                .child(section_header("BIBLIOTECA DE FORMAS"))
+                .child(symbol_preset_item(
+                    shell,
+                    "Retângulo Básico",
+                    "200x150 pt",
+                    ShapeKind::Rectangle {
+                        corner_radii: [0.0; 4],
+                    },
+                    [50.0, 50.0, 250.0, 200.0],
+                    "ptnd.blue/500",
+                ))
+                .child(symbol_preset_item(
+                    shell,
+                    "Cartão UI",
+                    "240x140 pt · r=8",
+                    ShapeKind::Rectangle {
+                        corner_radii: [8.0; 4],
+                    },
+                    [50.0, 50.0, 290.0, 190.0],
+                    "ptnd.gray/900",
+                ))
+                .child(symbol_preset_item(
+                    shell,
+                    "Círculo / Avatar",
+                    "100x100 pt",
+                    ShapeKind::Ellipse,
+                    [50.0, 50.0, 150.0, 150.0],
+                    "ptnd.teal/500",
+                ))
+                .child(symbol_preset_item(
+                    shell,
+                    "Estrela 5 Pontas",
+                    "120x120 pt",
+                    ShapeKind::Star {
+                        points: 5,
+                        inner_ratio: 0.5,
+                    },
+                    [50.0, 50.0, 170.0, 170.0],
+                    "ptnd.purple/500",
+                )),
+        )
     }
 }
 
@@ -5162,7 +5330,12 @@ fn symbol_preset_item(
             rect()
                 .direction(Direction::Vertical)
                 .child(label().text(name).font_size(11.).color(theme::TEXT_PRIMARY))
-                .child(label().text(subtitle).font_size(10.).color(theme::TEXT_TERTIARY)),
+                .child(
+                    label()
+                        .text(subtitle)
+                        .font_size(10.)
+                        .color(theme::TEXT_TERTIARY),
+                ),
         )
         .child(
             Button::new()
@@ -5202,7 +5375,12 @@ fn symbol_preset_item(
                         .padding(Gaps::new(2., 6., 2., 6.))
                         .background(theme::SURFACE_CHROME_STRONG)
                         .corner_radius(4.0)
-                        .child(label().text("Inserir").font_size(10.).color(theme::ACCENT_BLOOM)),
+                        .child(
+                            label()
+                                .text("Inserir")
+                                .font_size(10.)
+                                .color(theme::ACCENT_BLOOM),
+                        ),
                 ),
         )
 }
@@ -5250,8 +5428,20 @@ impl Component for BottomDock {
                             .direction(Direction::Horizontal)
                             .spacing(theme::SPACE_1)
                             .cross_align(Alignment::Center)
-                            .child(tab_button(ui, "Tarefas", 0, active_tab == 0, &mut bottom_dock_tab))
-                            .child(tab_button(ui, "Diagnóstico", 1, active_tab == 1, &mut bottom_dock_tab)),
+                            .child(tab_button(
+                                ui,
+                                "Tarefas",
+                                0,
+                                active_tab == 0,
+                                &mut bottom_dock_tab,
+                            ))
+                            .child(tab_button(
+                                ui,
+                                "Diagnóstico",
+                                1,
+                                active_tab == 1,
+                                &mut bottom_dock_tab,
+                            )),
                     )
                     .child(
                         Button::new()
@@ -5265,7 +5455,12 @@ impl Component for BottomDock {
                     .content(Content::Flex)
                     .width(Size::fill())
                     .height(Size::flex(1.0))
-                    .padding(Gaps::new(theme::SPACE_1, theme::SPACE_2, theme::SPACE_1, theme::SPACE_2))
+                    .padding(Gaps::new(
+                        theme::SPACE_1,
+                        theme::SPACE_2,
+                        theme::SPACE_1,
+                        theme::SPACE_2,
+                    ))
                     .child(match active_tab {
                         0 => BackgroundTasksPanel(ui.clone()).into_element(),
                         _ => DiagnosticsTab(ui.clone()).into_element(),
@@ -5288,49 +5483,124 @@ impl Component for DiagnosticsTab {
         let title = session.map_or("Sem Documento", |s| s.title());
         let rev = session.map_or(0, |s| s.saved_revision());
         let dirty = shell_ref.bridge.is_dirty();
-        let surf_id = shell_ref.bridge.active_surface().map_or("Nenhum".to_string(), |id| id.to_string());
+        let surf_id = shell_ref
+            .bridge
+            .active_surface()
+            .map_or("Nenhum".to_string(), |id| id.to_string());
         let obj_count = snapshot.objects.len();
 
-        ScrollView::new()
-            .child(
-                rect()
-                    .direction(Direction::Horizontal)
-                    .width(Size::fill())
-                    .spacing(theme::SPACE_3)
-                    .padding(Gaps::new(theme::SPACE_1, theme::SPACE_2, theme::SPACE_1, theme::SPACE_2))
-                    .child(
-                        rect()
-                            .direction(Direction::Vertical)
-                            .spacing(theme::SPACE_1)
-                            .child(label().text("DOCUMENTO").font_size(10.).color(theme::TEXT_TERTIARY))
-                            .child(label().text(format!("{title} (rev: {rev})")).font_size(11.).color(theme::TEXT_PRIMARY))
-                            .child(label().text(if dirty { "Modificado (não salvo)" } else { "Salvo / Sem alterações" }).font_size(10.).color(if dirty { theme::ACCENT_BLOOM } else { theme::TEXT_SECONDARY })),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Vertical)
-                            .spacing(theme::SPACE_1)
-                            .child(label().text("SUPERFÍCIE & OBJETOS").font_size(10.).color(theme::TEXT_TERTIARY))
-                            .child(label().text(format!("Ativa: {surf_id}")).font_size(11.).color(theme::TEXT_PRIMARY))
-                            .child(label().text(format!("Total de objetos: {obj_count}")).font_size(10.).color(theme::TEXT_SECONDARY)),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Vertical)
-                            .spacing(theme::SPACE_1)
-                            .child(label().text("VIEWPORT & CÂMERA").font_size(10.).color(theme::TEXT_TERTIARY))
-                            .child(label().text(format!("{:.0}% zoom", cam.zoom * 100.0)).font_size(11.).color(theme::TEXT_PRIMARY))
-                            .child(label().text(format!("Pan: ({:.1}, {:.1})", cam.pan_x, cam.pan_y)).font_size(10.).color(theme::TEXT_SECONDARY)),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Vertical)
-                            .spacing(theme::SPACE_1)
-                            .child(label().text("FERRAMENTA & PERSONA").font_size(10.).color(theme::TEXT_TERTIARY))
-                            .child(label().text(format!("{:?}", *ui.active_tool.read())).font_size(11.).color(theme::TEXT_PRIMARY))
-                            .child(label().text(ui.persona.read().clone()).font_size(10.).color(theme::TEXT_SECONDARY)),
-                    ),
-            )
+        ScrollView::new().child(
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::fill())
+                .spacing(theme::SPACE_3)
+                .padding(Gaps::new(
+                    theme::SPACE_1,
+                    theme::SPACE_2,
+                    theme::SPACE_1,
+                    theme::SPACE_2,
+                ))
+                .child(
+                    rect()
+                        .direction(Direction::Vertical)
+                        .spacing(theme::SPACE_1)
+                        .child(
+                            label()
+                                .text("DOCUMENTO")
+                                .font_size(10.)
+                                .color(theme::TEXT_TERTIARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("{title} (rev: {rev})"))
+                                .font_size(11.)
+                                .color(theme::TEXT_PRIMARY),
+                        )
+                        .child(
+                            label()
+                                .text(if dirty {
+                                    "Modificado (não salvo)"
+                                } else {
+                                    "Salvo / Sem alterações"
+                                })
+                                .font_size(10.)
+                                .color(if dirty {
+                                    theme::ACCENT_BLOOM
+                                } else {
+                                    theme::TEXT_SECONDARY
+                                }),
+                        ),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Vertical)
+                        .spacing(theme::SPACE_1)
+                        .child(
+                            label()
+                                .text("SUPERFÍCIE & OBJETOS")
+                                .font_size(10.)
+                                .color(theme::TEXT_TERTIARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("Ativa: {surf_id}"))
+                                .font_size(11.)
+                                .color(theme::TEXT_PRIMARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("Total de objetos: {obj_count}"))
+                                .font_size(10.)
+                                .color(theme::TEXT_SECONDARY),
+                        ),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Vertical)
+                        .spacing(theme::SPACE_1)
+                        .child(
+                            label()
+                                .text("VIEWPORT & CÂMERA")
+                                .font_size(10.)
+                                .color(theme::TEXT_TERTIARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("{:.0}% zoom", cam.zoom * 100.0))
+                                .font_size(11.)
+                                .color(theme::TEXT_PRIMARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("Pan: ({:.1}, {:.1})", cam.pan_x, cam.pan_y))
+                                .font_size(10.)
+                                .color(theme::TEXT_SECONDARY),
+                        ),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Vertical)
+                        .spacing(theme::SPACE_1)
+                        .child(
+                            label()
+                                .text("FERRAMENTA & PERSONA")
+                                .font_size(10.)
+                                .color(theme::TEXT_TERTIARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("{:?}", *ui.active_tool.read()))
+                                .font_size(11.)
+                                .color(theme::TEXT_PRIMARY),
+                        )
+                        .child(
+                            label()
+                                .text(ui.persona.read().clone())
+                                .font_size(10.)
+                                .color(theme::TEXT_SECONDARY),
+                        ),
+                ),
+        )
     }
 }
 
@@ -5406,12 +5676,20 @@ mod tests {
         let mut dock_tab = ui.dock_tab;
         dock_tab.set(4);
         runner.sync_and_update();
-        assert_eq!(*ui.dock_tab.read(), 4, "active tab should switch to Navegador (4)");
+        assert_eq!(
+            *ui.dock_tab.read(),
+            4,
+            "active tab should switch to Navegador (4)"
+        );
 
         // Switch to tab 5: Tarefas
         dock_tab.set(5);
         runner.sync_and_update();
-        assert_eq!(*ui.dock_tab.read(), 5, "active tab should switch to Tarefas (5)");
+        assert_eq!(
+            *ui.dock_tab.read(),
+            5,
+            "active tab should switch to Tarefas (5)"
+        );
     }
 
     #[test]
@@ -6245,7 +6523,9 @@ mod tests {
                 },
                 Command::SetShape {
                     id: obj_id,
-                    shape: Some(ShapeKind::Rectangle { corner_radii: [0.0; 4] }),
+                    shape: Some(ShapeKind::Rectangle {
+                        corner_radii: [0.0; 4],
+                    }),
                 },
                 Command::SetBounds {
                     id: obj_id,
@@ -6264,7 +6544,11 @@ mod tests {
             let shell_ref = ui.shell.read();
             let session = shell_ref.bridge.session().unwrap();
             let surf = session.surface(surf_id).unwrap();
-            let obj = surf.objects().iter().find(|o| o.id == obj_id).expect("symbol inserted");
+            let obj = surf
+                .objects()
+                .iter()
+                .find(|o| o.id == obj_id)
+                .expect("symbol inserted");
             assert_eq!(obj.name, "Retângulo Básico");
             assert_eq!(obj.fill.as_deref(), Some("ptnd.blue/500"));
         }
@@ -6311,7 +6595,11 @@ mod tests {
         let mut bot_tab = ui.bottom_dock_tab;
         bot_tab.set(1);
         runner.sync_and_update();
-        assert_eq!(*ui.bottom_dock_tab.read(), 1, "Tab switched to Diagnóstico (1)");
+        assert_eq!(
+            *ui.bottom_dock_tab.read(),
+            1,
+            "Tab switched to Diagnóstico (1)"
+        );
 
         // Bottom dock height clamping
         let mut dock_h = ui.bottom_dock_height;
@@ -6324,6 +6612,9 @@ mod tests {
         let mut open = ui.bottom_dock_open;
         open.set(false);
         runner.sync_and_update();
-        assert!(!*ui.bottom_dock_open.read(), "Bottom dock closed successfully");
+        assert!(
+            !*ui.bottom_dock_open.read(),
+            "Bottom dock closed successfully"
+        );
     }
 }

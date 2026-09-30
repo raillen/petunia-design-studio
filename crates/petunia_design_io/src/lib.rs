@@ -15,7 +15,6 @@ mod svg;
 pub use image_io::{
     export_raster, import_raster, RasterExportOptions, RasterFormat, RawRasterImage,
 };
-pub use petunia_design_raster::PixelFormat;
 pub use package::{
     has_native_extension, open_package, save_package, with_native_extension, OpenedPackage,
     PackageFormat, PackageManifest, MEDIA_TYPE, NATIVE_EXTENSION_DISPLAY, NATIVE_SUFFIX,
@@ -24,4 +23,5 @@ pub use package::{
 pub use pdf::{
     export_document_pdf, DegradationItem, FidelityGrade, PdfExportOptions, PreflightReport,
 };
+pub use petunia_design_raster::PixelFormat;
 pub use svg::{export_document_svg, export_path_d, parse_path_d};

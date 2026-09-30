@@ -468,6 +468,7 @@ mod tests {
             can_undo: true,
             can_redo: true,
             is_dirty: true,
+            clipboard_non_empty: true,
             command_palette_open: false,
             persona: PERSONA_VECTOR,
         }

@@ -183,6 +183,7 @@ impl PetuniaDesignGuiBridge {
                 can_undo: session.history().can_undo(),
                 can_redo: session.history().can_redo(),
                 is_dirty: session.is_dirty(),
+                clipboard_non_empty: !session.clipboard().is_empty(),
                 command_palette_open: session.view.command_palette_open,
                 persona: self.active_persona,
             },

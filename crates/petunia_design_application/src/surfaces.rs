@@ -450,7 +450,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.edit.cut",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.edit.cut",
         action: None,
         shortcut: Some("Ctrl+X"),
@@ -459,7 +459,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.edit.copy",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.edit.copy",
         action: None,
         shortcut: Some("Ctrl+C"),
@@ -468,7 +468,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.edit.paste",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.edit.paste",
         action: None,
         shortcut: Some("Ctrl+V"),
@@ -1322,9 +1322,12 @@ pub const SURFACES: &[SurfaceEntry] = &[
 /// behavior: an `ActionId` constant in `actions.rs` is a declaration, not an
 /// implementation. A surface claiming `Wired` MUST bind one of these (15.C/15.G).
 pub const LIVE_ACTIONS: &[&str] = &[
+    "ptnd.action.edit.copy",
+    "ptnd.action.edit.cut",
     "ptnd.action.edit.delete",
     "ptnd.action.edit.deselect",
     "ptnd.action.edit.duplicate",
+    "ptnd.action.edit.paste",
     "ptnd.action.edit.preferences",
     "ptnd.action.edit.redo",
     "ptnd.action.edit.select_all",
@@ -1664,15 +1667,19 @@ mod tests {
             "swatches panel must be wired"
         );
         assert!(
-            surface("ptnd.panel.background_tasks").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            surface("ptnd.panel.background_tasks")
+                .is_some_and(|e| e.status == SurfaceStatus::Wired),
             "background tasks panel must be wired"
         );
         assert!(
-            surface("ptnd.tool.vector.place_image").is_some_and(|e| e.status == SurfaceStatus::Wired && e.action == Some("ptnd.action.file.place")),
+            surface("ptnd.tool.vector.place_image")
+                .is_some_and(|e| e.status == SurfaceStatus::Wired
+                    && e.action == Some("ptnd.action.file.place")),
             "place image tool must be wired to file.place"
         );
         assert!(
-            surface("ptnd.dialog.overwrite_conflict").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            surface("ptnd.dialog.overwrite_conflict")
+                .is_some_and(|e| e.status == SurfaceStatus::Wired),
             "overwrite conflict dialog must be wired"
         );
         assert!(

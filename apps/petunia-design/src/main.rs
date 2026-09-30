@@ -1509,7 +1509,9 @@ mod workspace_tests {
         assert_eq!(shell.bridge.plural_items(4), "4 items");
 
         // Switch to pt-BR
-        shell.bridge.set_locale(petunia_design_shell::bridge::Locale::PtBr);
+        shell
+            .bridge
+            .set_locale(petunia_design_shell::bridge::Locale::PtBr);
         assert_eq!(
             shell.bridge.tool_hint(ToolKind::Select).as_deref(),
             Some("Selecione e transforme objetos")

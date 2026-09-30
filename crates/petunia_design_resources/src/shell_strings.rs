@@ -83,6 +83,11 @@ pub const SHELL_STRINGS: &[ShellString] = &[
         "Nada está selecionado",
     ),
     entry(
+        "ptnd.text.blocked.nothing_to_paste",
+        "Nothing to paste",
+        "Nada para colar",
+    ),
+    entry(
         "ptnd.text.blocked.nothing_to_redo",
         "Nothing to redo",
         "Nada para refazer",

@@ -138,6 +138,8 @@ pub struct DocumentSession {
     current_revision: u64,
     /// Revision at last explicit save.
     saved_revision: u64,
+    /// Internal clipboard buffer storing copied/cut objects for pasting (Dossier V1 §15).
+    clipboard: Vec<petunia_design_document::DocumentObject>,
 }
 
 impl DocumentSession {
@@ -172,6 +174,7 @@ impl DocumentSession {
             active_surface,
             current_revision: 0,
             saved_revision: 0,
+            clipboard: Vec::new(),
         }
     }
 
@@ -205,7 +208,19 @@ impl DocumentSession {
             active_surface,
             current_revision: 0,
             saved_revision: 0,
+            clipboard: Vec::new(),
         }
+    }
+
+    /// Returns the current clipboard objects buffer.
+    #[must_use]
+    pub fn clipboard(&self) -> &[petunia_design_document::DocumentObject] {
+        &self.clipboard
+    }
+
+    /// Sets the clipboard buffer.
+    pub fn set_clipboard(&mut self, objects: Vec<petunia_design_document::DocumentObject>) {
+        self.clipboard = objects;
     }
 
     /// Allocates a new monotonically increasing ObjectId that is guaranteed unique within the document.
@@ -611,6 +626,75 @@ impl DocumentSession {
                     self.selection.select_exact(released_children);
                     self.prune_selection();
                 }
+                Ok(changes)
+            }
+            // Copy stores clones of selected objects in the session clipboard.
+            "ptnd.action.edit.copy" => {
+                let ids = self.selection.selected_ids.clone();
+                if ids.is_empty() {
+                    return Ok(ChangeSet::empty());
+                }
+                let mut copied = Vec::new();
+                for id in ids {
+                    if let Some(obj) = self.document.find_object(id) {
+                        copied.push(obj.clone());
+                    }
+                }
+                self.clipboard = copied;
+                Ok(ChangeSet::empty())
+            }
+            // Cut copies selected objects then deletes them in a single undo transaction.
+            "ptnd.action.edit.cut" => {
+                let ids = self.selection.selected_ids.clone();
+                if ids.is_empty() {
+                    return Ok(ChangeSet::empty());
+                }
+                let mut copied = Vec::new();
+                let mut cmds = Vec::new();
+                for id in &ids {
+                    if let Some(obj) = self.document.find_object(*id) {
+                        copied.push(obj.clone());
+                    }
+                    cmds.push(Command::DeleteObject { id: *id });
+                }
+                self.clipboard = copied;
+                let changes = self.transact("Cut", cmds)?;
+                self.selection.clear();
+                Ok(changes)
+            }
+            // Paste creates copies of clipboard objects on the active surface with an offset.
+            "ptnd.action.edit.paste" => {
+                if self.clipboard.is_empty() {
+                    return Ok(ChangeSet::empty());
+                }
+                let target_surface = self
+                    .active_surface
+                    .or_else(|| self.document.surfaces().first().map(|s| s.id))
+                    .ok_or_else(|| {
+                        PetuniaError::invalid_input("no active surface to paste onto")
+                    })?;
+
+                let mut cmds = Vec::new();
+                let mut pasted_ids = Vec::new();
+                for obj in &self.clipboard {
+                    let next_id = self.id_generator.next_object();
+                    pasted_ids.push(next_id);
+                    cmds.push(Command::PasteObject {
+                        surface: target_surface,
+                        object: obj.clone(),
+                        id: next_id,
+                        offset: [12.0, 12.0],
+                    });
+                }
+                // Cascading offset for subsequent pastes (position only)
+                for obj in &mut self.clipboard {
+                    if let Some(b) = &mut obj.bounds {
+                        b[0] += 12.0;
+                        b[1] += 12.0;
+                    }
+                }
+                let changes = self.transact("Paste", cmds)?;
+                self.selection.select_exact(pasted_ids);
                 Ok(changes)
             }
             // Duplicate copies the selection with fresh identities and a small
@@ -1987,6 +2071,39 @@ mod arrange_action_tests {
         let changes = dispatch(&mut session, "ptnd.action.object.arrange.front");
         assert!(changes.is_empty());
         assert_eq!(session.current_revision(), revision);
+    }
+
+    #[test]
+    fn copy_cut_paste_lifecycle_and_undo_restores_objects() {
+        let mut session = session_with_three();
+        session.selection.selected_ids = vec![ObjectId::new(1), ObjectId::new(2)];
+
+        // 1. Copy
+        dispatch(&mut session, "ptnd.action.edit.copy");
+        assert_eq!(session.clipboard().len(), 2);
+        assert_eq!(order(&session), vec![1, 2, 3]);
+
+        // 2. Paste creates 2 new objects with fresh IDs
+        dispatch(&mut session, "ptnd.action.edit.paste");
+        assert_eq!(order(&session).len(), 5);
+        let pasted_ids = session.selection.selected_ids.clone();
+        assert_eq!(pasted_ids.len(), 2);
+        assert!(!pasted_ids.contains(&ObjectId::new(1)));
+        assert!(!pasted_ids.contains(&ObjectId::new(2)));
+
+        // 3. Undo undoes the Paste
+        session.undo().unwrap();
+        assert_eq!(order(&session), vec![1, 2, 3]);
+
+        // 4. Cut
+        session.selection.selected_ids = vec![ObjectId::new(3)];
+        dispatch(&mut session, "ptnd.action.edit.cut");
+        assert_eq!(session.clipboard().len(), 1);
+        assert_eq!(order(&session), vec![1, 2]);
+
+        // 5. Undo restores cut object 3
+        session.undo().unwrap();
+        assert_eq!(order(&session), vec![1, 2, 3]);
     }
 }
 

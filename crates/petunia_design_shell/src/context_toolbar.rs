@@ -691,6 +691,7 @@ mod tests {
             can_undo: false,
             can_redo: false,
             is_dirty: false,
+            clipboard_non_empty: false,
             command_palette_open: false,
             persona: petunia_design_application::surfaces::PERSONA_VECTOR,
         }

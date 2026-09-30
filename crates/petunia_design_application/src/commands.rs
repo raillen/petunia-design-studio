@@ -61,6 +61,13 @@ pub enum Command {
         id: ObjectId,
         offset: [f64; 2],
     },
+    /// Paste a detached object snapshot onto a surface under a new identity.
+    PasteObject {
+        surface: SurfaceId,
+        object: DocumentObject,
+        id: ObjectId,
+        offset: [f64; 2],
+    },
     /// Set an object's complete appearance stack (10.4).
     SetAppearance {
         id: ObjectId,
@@ -380,6 +387,24 @@ pub fn execute(
             copy.parent = None;
             copy.children = Vec::new();
             copy.role = None;
+            copy.clip_mask_id = None;
+            if let Some([x, y, w, h]) = copy.bounds {
+                copy.bounds = Some([x + offset[0], y + offset[1], w, h]);
+            }
+            mutator.add_object(*surface, copy)
+        }
+        Command::PasteObject {
+            surface,
+            object,
+            id,
+            offset,
+        } => {
+            let mut copy = object.clone();
+            copy.id = *id;
+            copy.parent = None;
+            copy.children.clear();
+            copy.role = None;
+            copy.is_clip_mask = false;
             copy.clip_mask_id = None;
             if let Some([x, y, w, h]) = copy.bounds {
                 copy.bounds = Some([x + offset[0], y + offset[1], w, h]);

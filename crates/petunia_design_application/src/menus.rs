@@ -271,6 +271,9 @@ pub const MENU_BAR: &[MenuFamily] = &[
         nodes: &[
             node(item("ptnd.action.edit.undo", "ptnd.text.edit.undo")),
             node(item("ptnd.action.edit.redo", "ptnd.text.edit.redo")),
+            node(item("ptnd.action.edit.cut", "ptnd.text.edit.cut")),
+            node(item("ptnd.action.edit.copy", "ptnd.text.edit.copy")),
+            node(item("ptnd.action.edit.paste", "ptnd.text.edit.paste")),
             node(item(
                 "ptnd.action.edit.duplicate",
                 "ptnd.text.edit.duplicate",
@@ -550,6 +553,8 @@ pub struct ActionContext {
     pub can_redo: bool,
     /// The document has unsaved modifications.
     pub is_dirty: bool,
+    /// The internal clipboard buffer contains at least one object.
+    pub clipboard_non_empty: bool,
     /// A command palette overlay is currently open.
     pub command_palette_open: bool,
     /// Persona the shell is in. Decides which families are reachable.
@@ -564,6 +569,7 @@ impl Default for ActionContext {
             can_undo: false,
             can_redo: false,
             is_dirty: false,
+            clipboard_non_empty: false,
             command_palette_open: false,
             persona: PERSONA_VECTOR,
         }
@@ -769,11 +775,23 @@ pub fn availability(action_id: &str, ctx: &ActionContext) -> Availability {
                 Availability::blocked("ptnd.text.blocked.nothing_to_redo")
             }
         }
-        "ptnd.action.edit.duplicate" | "ptnd.action.edit.delete" => {
+        "ptnd.action.edit.duplicate"
+        | "ptnd.action.edit.delete"
+        | "ptnd.action.edit.cut"
+        | "ptnd.action.edit.copy" => {
             if some_selection() {
                 Availability::ENABLED
             } else {
                 Availability::blocked("ptnd.text.blocked.select_object")
+            }
+        }
+        "ptnd.action.edit.paste" => {
+            if !ctx.has_document {
+                Availability::blocked("ptnd.text.blocked.no_document")
+            } else if !ctx.clipboard_non_empty {
+                Availability::blocked("ptnd.text.blocked.nothing_to_paste")
+            } else {
+                Availability::ENABLED
             }
         }
         "ptnd.action.edit.preferences" => Availability::ENABLED,
@@ -992,6 +1010,7 @@ mod tests {
             can_undo: true,
             can_redo: true,
             is_dirty: true,
+            clipboard_non_empty: true,
             command_palette_open: false,
             persona: PERSONA_VECTOR,
         }
@@ -1258,6 +1277,15 @@ mod tests {
         assert!(!save.enabled);
         assert_eq!(save.reason, Some("ptnd.text.blocked.no_unsaved_changes"));
         assert!(availability("ptnd.action.file.save", &context()).enabled);
+
+        let empty_clipboard = ActionContext {
+            has_document: true,
+            ..ActionContext::default()
+        };
+        let paste = availability("ptnd.action.edit.paste", &empty_clipboard);
+        assert!(!paste.enabled);
+        assert_eq!(paste.reason, Some("ptnd.text.blocked.nothing_to_paste"));
+        assert!(availability("ptnd.action.edit.paste", &context()).enabled);
     }
 
     #[test]
