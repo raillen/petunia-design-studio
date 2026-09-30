@@ -1,9 +1,28 @@
 //! Tests for PetuniaDesignGuiBridge, semantic application ports, and reactive presentation models.
 
-use petunia_design_application::{ActionId, ActionRequest, Command, CommandRequest};
+use std::sync::Arc;
+
+use petunia_design_application::{
+    create_shape_commands, ActionId, ActionRequest, Command, CommandRequest,
+};
+use petunia_design_document::{
+    AdjustmentItem, AdjustmentKind, AppearanceStack, EffectItem, EffectKind, ShapeKind,
+};
 use petunia_design_foundation::{IdGenerator, ObjectId};
 use petunia_design_shell::bridge::*;
 use petunia_design_shell::shell::PetuniaShell;
+
+#[test]
+fn bridge_tracks_background_jobs() {
+    let bridge = PetuniaDesignGuiBridge::new();
+    assert_eq!(bridge.jobs().list_jobs().len(), 0);
+    let (id, token) = bridge.jobs().spawn_job("Exporting PDF");
+    assert_eq!(bridge.jobs().list_jobs().len(), 1);
+    bridge.jobs().update_progress(id, 50);
+    assert_eq!(bridge.jobs().list_jobs()[0].percent, 50);
+    bridge.jobs().cancel_job(id);
+    assert!(token.is_cancelled());
+}
 
 #[test]
 fn canvas_snapshot_uses_world_frame_and_rotation() {
@@ -42,6 +61,162 @@ fn canvas_snapshot_uses_world_frame_and_rotation() {
     assert!((object.world_bounds[1] - 20.0).abs() < 1e-9);
     assert!((object.world_bounds[2] - 30.0).abs() < 1e-9);
     assert!((object.world_bounds[3] - 40.0).abs() < 1e-9);
+}
+
+/// Fixture for the snapshot-cache tests (DOSSIER §15 item 3): one shaped
+/// object with evaluable geometry plus a non-empty appearance stack, so the
+/// cached payload (`outline`/`shape`/`effects`/`adjustments`) is meaningful.
+fn snapshot_cache_fixture() -> (PetuniaShell, ObjectId) {
+    let mut shell = PetuniaShell::new(1000.0, 800.0);
+    shell.new_document("Snapshot Cache").expect("new document");
+    let surface = shell.bridge.active_surface().expect("surface");
+    let id = ObjectId::new(1);
+    let mut commands = create_shape_commands(
+        surface,
+        id,
+        "Cached".to_string(),
+        ShapeKind::Rectangle {
+            corner_radii: [0.0; 4],
+        },
+        Some([10.0, 20.0, 40.0, 30.0]),
+        Some("ptnd.blue/500".to_string()),
+        None,
+    );
+    commands.push(Command::SetAppearance {
+        id,
+        appearance: Some(AppearanceStack {
+            effects: vec![EffectItem {
+                id: 1,
+                kind: EffectKind::GaussianBlur { radius: 2.0 },
+                visible: true,
+            }],
+            adjustments: vec![AdjustmentItem::new(1, AdjustmentKind::default_levels())],
+            ..AppearanceStack::default()
+        }),
+    });
+    shell
+        .bridge
+        .submit_all("Build snapshot-cache fixture", commands)
+        .expect("fixture commands");
+    (shell, id)
+}
+
+#[test]
+fn snapshot_cache_shares_payload_allocations_without_mutation() {
+    let (shell, id) = snapshot_cache_fixture();
+    let first = shell.canvas_snapshot();
+    let second = shell.canvas_snapshot();
+    let a = first
+        .objects
+        .iter()
+        .find(|object| object.id == id)
+        .expect("object in first snapshot");
+    let b = second
+        .objects
+        .iter()
+        .find(|object| object.id == id)
+        .expect("object in second snapshot");
+    assert!(a.outline.is_some(), "fixture must have evaluable geometry");
+    assert!(a.shape.is_some(), "fixture must carry its shape");
+    assert!(!a.effects.is_empty(), "fixture must carry effects");
+    assert!(!a.adjustments.is_empty(), "fixture must carry adjustments");
+    assert!(
+        Arc::ptr_eq(a.outline.as_ref().unwrap(), b.outline.as_ref().unwrap()),
+        "outline allocation must be shared while (revision, selection) is unchanged"
+    );
+    assert!(
+        Arc::ptr_eq(a.shape.as_ref().unwrap(), b.shape.as_ref().unwrap()),
+        "shape allocation must be shared while (revision, selection) is unchanged"
+    );
+    assert!(
+        Arc::ptr_eq(&a.effects, &b.effects),
+        "effects allocation must be shared while (revision, selection) is unchanged"
+    );
+    assert!(
+        Arc::ptr_eq(&a.adjustments, &b.adjustments),
+        "adjustments allocation must be shared while (revision, selection) is unchanged"
+    );
+    assert_eq!(first, second, "cached snapshot must stay observable-equal");
+}
+
+#[test]
+fn snapshot_cache_tracks_selection_version_in_active_flags() {
+    let (mut shell, id) = snapshot_cache_fixture();
+    let before = shell.canvas_snapshot();
+    assert!(
+        !before
+            .objects
+            .iter()
+            .find(|object| object.id == id)
+            .expect("object before select")
+            .active,
+        "nothing is active before selection"
+    );
+    shell.bridge.set_selection(vec![id]);
+    let selected = shell.canvas_snapshot();
+    assert!(
+        selected
+            .objects
+            .iter()
+            .find(|object| object.id == id)
+            .expect("object after select")
+            .active,
+        "set_selection must flip the active flag through the selection version"
+    );
+    shell.bridge.toggle_selection(id);
+    let cleared = shell.canvas_snapshot();
+    assert!(
+        !cleared
+            .objects
+            .iter()
+            .find(|object| object.id == id)
+            .expect("object after toggle")
+            .active,
+        "toggle off must clear the active flag through the selection version"
+    );
+}
+
+#[test]
+fn snapshot_cache_rebuilds_payload_on_document_revision() {
+    let (mut shell, id) = snapshot_cache_fixture();
+    let before = shell.canvas_snapshot();
+    let before_projection = before
+        .objects
+        .iter()
+        .find(|object| object.id == id)
+        .expect("object before mutation");
+    shell
+        .bridge
+        .submit_all(
+            "Nudge",
+            vec![Command::SetBounds {
+                id,
+                bounds: Some([20.0, 30.0, 40.0, 30.0]),
+                rotation: 0.0,
+            }],
+        )
+        .expect("transact mutates through one undo entry");
+    let after = shell.canvas_snapshot();
+    let after_projection = after
+        .objects
+        .iter()
+        .find(|object| object.id == id)
+        .expect("object after mutation");
+    assert!(
+        !Arc::ptr_eq(
+            before_projection.outline.as_ref().unwrap(),
+            after_projection.outline.as_ref().unwrap()
+        ),
+        "a transact revision bump must rebuild the outline allocation"
+    );
+    assert!(
+        !Arc::ptr_eq(&before_projection.effects, &after_projection.effects),
+        "a transact revision bump must rebuild the effects allocation"
+    );
+    assert_eq!(
+        after_projection.world_bounds[0], 20.0,
+        "the rebuilt snapshot must carry the mutated frame"
+    );
 }
 
 #[test]
@@ -445,4 +620,132 @@ fn opening_a_legacy_package_forces_save_as_and_never_overwrites_it() {
         "the legacy file must not be overwritten"
     );
     assert!(dir.join("old-project.PTND").exists());
+}
+
+#[test]
+fn file_close_action_closes_active_session_and_guards_dirty() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Doc To Close").expect("doc");
+    assert!(bridge.is_dirty());
+
+    // Without force, dispatching file.close is rejected
+    let res = bridge.dispatch_action(ActionRequest::new(
+        ActionId::new("ptnd.action.file.close"),
+        serde_json::json!({ "force": false }),
+    ));
+    assert!(
+        res.is_err(),
+        "closing dirty session without force must fail"
+    );
+    assert!(bridge.session().is_some());
+
+    // With force, dispatching file.close closes the session
+    let res_force = bridge.dispatch_action(ActionRequest::new(
+        ActionId::new("ptnd.action.file.close"),
+        serde_json::json!({ "force": true }),
+    ));
+    assert!(res_force.is_ok(), "force close must succeed");
+    assert!(bridge.session().is_none(), "no session should remain");
+}
+
+#[test]
+fn file_quit_action_closes_all_sessions_and_guards_dirty() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Doc A").expect("doc a");
+    bridge.new_document("Doc B").expect("doc b");
+    assert_eq!(bridge.sessions().len(), 2);
+    assert!(bridge.any_session_dirty());
+
+    // Without force, quit is rejected and nothing closes
+    let res = bridge.dispatch_action(ActionRequest::new(
+        ActionId::new("ptnd.action.file.quit"),
+        serde_json::json!({ "force": false }),
+    ));
+    assert!(
+        res.is_err(),
+        "quitting with a dirty document without force must fail"
+    );
+    assert_eq!(
+        bridge.sessions().len(),
+        2,
+        "a refused quit must not close a single tab"
+    );
+
+    // With force, quit closes every tab
+    let res_force = bridge.dispatch_action(ActionRequest::new(
+        ActionId::new("ptnd.action.file.quit"),
+        serde_json::json!({ "force": true }),
+    ));
+    assert!(res_force.is_ok(), "force quit must succeed");
+    assert_eq!(bridge.sessions().len(), 0);
+    assert!(bridge.session().is_none());
+    assert_eq!(bridge.active_session_index(), None);
+}
+
+#[test]
+fn multi_doc_keeps_tabs_switches_and_closes_the_right_one() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("First Doc").expect("first");
+    let surface_1 = bridge.active_surface().expect("surface 1");
+
+    bridge.new_document("Second Doc").expect("second");
+    let surface_2 = bridge.active_surface().expect("surface 2");
+    assert_eq!(surface_1, surface_2, "surface IDs are scoped per document");
+
+    let titles: Vec<String> = bridge
+        .sessions()
+        .iter()
+        .map(|session| session.title().to_string())
+        .collect();
+    assert_eq!(
+        titles,
+        vec!["First Doc", "Second Doc"],
+        "file.new adds a tab"
+    );
+    assert_eq!(bridge.active_session_index(), Some(1));
+
+    // Switching activates that document's own surface.
+    assert!(bridge.switch_session(0).expect("switch to first tab"));
+    assert_eq!(bridge.active_session_index(), Some(0));
+    assert_eq!(bridge.session().expect("active").title(), "First Doc");
+    assert_eq!(bridge.active_surface(), Some(surface_1));
+
+    // A stale tab index is a no-op, not a panic and not a close.
+    assert!(!bridge.switch_session(9).expect("stale index is a miss"));
+    assert_eq!(bridge.sessions().len(), 2);
+
+    // Closing the active tab promotes the neighbour to its left.
+    assert!(bridge.close_session_at(0, true).expect("close first"));
+    assert_eq!(bridge.sessions().len(), 1);
+    assert_eq!(bridge.active_session_index(), Some(0));
+    assert_eq!(bridge.active_surface(), Some(surface_2));
+
+    // Closing the last tab leaves no session.
+    assert!(bridge.close_session_at(0, true).expect("close last"));
+    assert_eq!(bridge.sessions().len(), 0);
+    assert!(bridge.session().is_none());
+    assert_eq!(bridge.active_session_index(), None);
+}
+
+#[test]
+fn closing_a_dirty_background_tab_needs_confirmation() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Dirty First").expect("first");
+    bridge.new_document("Second").expect("second");
+
+    // Tab 0 is dirty (the initial canvas) and is not the active tab.
+    assert!(!bridge
+        .close_session_at(0, false)
+        .expect("unconfirmed close is reported, not fatal"));
+    assert_eq!(bridge.sessions().len(), 2, "a refused close keeps the tab");
+
+    assert!(bridge
+        .close_session_at(0, true)
+        .expect("confirmed close succeeds"));
+    assert_eq!(bridge.sessions().len(), 1);
+    assert_eq!(
+        bridge.active_session_index(),
+        Some(0),
+        "closing a background tab must not change the active one"
+    );
 }

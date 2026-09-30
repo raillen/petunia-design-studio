@@ -14,6 +14,7 @@
 use petunia_design_application::menus::{
     self, ActionContext, MenuFamilyModel, MenuItemModel, MenuNodeModel,
 };
+use petunia_design_application::tools::ToolKind;
 use petunia_design_resources::i18n::{Locale, LocalizationService};
 use serde::{Deserialize, Serialize};
 
@@ -205,6 +206,48 @@ pub fn persona_hint_text_id(persona: &str) -> Option<&'static str> {
         }
         petunia_design_application::surfaces::PERSONA_PHOTO => Some("ptnd.text.persona.photo.hint"),
         _ => None,
+    }
+}
+
+/// Localization TextId for the hint shown when a tool becomes active (Ledger M17).
+#[must_use]
+pub fn tool_hint_text_id(tool: ToolKind) -> Option<&'static str> {
+    match tool {
+        ToolKind::Select => Some("ptnd.text.tool.select.summary"),
+        ToolKind::Node => Some("ptnd.text.tool.node.summary"),
+        ToolKind::PointTransform => Some("ptnd.text.tool.point_transform.summary"),
+        ToolKind::Pen => Some("ptnd.text.tool.pen.summary"),
+        ToolKind::Pencil => Some("ptnd.text.tool.pencil.summary"),
+        ToolKind::Corner => Some("ptnd.text.tool.corner.summary"),
+        ToolKind::Contour => Some("ptnd.text.tool.contour.summary"),
+        ToolKind::Perspective => Some("ptnd.text.tool.perspective.summary"),
+        ToolKind::Knife => Some("ptnd.text.tool.knife.summary"),
+        ToolKind::Scissors => Some("ptnd.text.tool.scissors.summary"),
+        ToolKind::Rectangle => Some("ptnd.text.tool.rectangle.summary"),
+        ToolKind::Ellipse => Some("ptnd.text.tool.ellipse.summary"),
+        ToolKind::Polygon => Some("ptnd.text.tool.polygon.summary"),
+        ToolKind::Star => Some("ptnd.text.tool.star.summary"),
+        ToolKind::ShapeBuilder => Some("ptnd.text.tool.shape_builder.summary"),
+        ToolKind::VectorFloodFill => Some("ptnd.text.tool.vector_flood_fill.summary"),
+        ToolKind::ArtisticText => Some("ptnd.text.tool.artistic_text.summary"),
+        ToolKind::FrameText => Some("ptnd.text.tool.frame_text.summary"),
+        ToolKind::Gradient => Some("ptnd.text.tool.gradient.summary"),
+        ToolKind::Transparency => Some("ptnd.text.tool.transparency.summary"),
+        ToolKind::ColorPicker => Some("ptnd.text.tool.eyedropper.summary"),
+        ToolKind::StylePicker => Some("ptnd.text.tool.style_picker.summary"),
+        ToolKind::Artboard => Some("ptnd.text.tool.surface.summary"),
+        ToolKind::Measure => Some("ptnd.text.tool.measure.summary"),
+        ToolKind::Zoom => Some("ptnd.text.tool.zoom.summary"),
+        ToolKind::Hand => Some("ptnd.text.tool.hand.summary"),
+        ToolKind::MarqueeRect => Some("ptnd.text.tool.marquee_rect.summary"),
+        ToolKind::MarqueeEllipse => Some("ptnd.text.tool.marquee_ellipse.summary"),
+        ToolKind::Lasso => Some("ptnd.text.tool.lasso.summary"),
+        ToolKind::SelectionBrush => Some("ptnd.text.tool.selection_brush.summary"),
+        ToolKind::FloodSelect => Some("ptnd.text.tool.flood_select.summary"),
+        ToolKind::PixelPaintBrush => Some("ptnd.text.tool.brush.summary"),
+        ToolKind::PixelEraser => Some("ptnd.text.tool.eraser.summary"),
+        ToolKind::PhotoGradient => Some("ptnd.text.tool.gradient.summary"),
+        ToolKind::Crop => Some("ptnd.text.tool.crop.summary"),
     }
 }
 
@@ -425,6 +468,7 @@ mod tests {
             can_undo: true,
             can_redo: true,
             is_dirty: true,
+            clipboard_non_empty: true,
             command_palette_open: false,
             persona: PERSONA_VECTOR,
         }
@@ -613,12 +657,19 @@ mod tests {
     fn disabled_items_carry_a_localized_surface_and_a_reason() {
         let (service, locale) = service();
         let model = present_menu_bar(&menus::menu_bar(&context()), &service, &locale);
+        // `offset_path` is wired through the numeric prompt, so with a
+        // selection it is enabled; `slice_path` stays disabled with a
+        // localized reason pointing at the Scissors gesture.
         let offset = model
             .item_for_token("ptnd.action.object.offset_path#null")
-            .expect("offset_path is present so the blocked capability is visible");
-        assert!(!offset.enabled);
-        assert!(!offset.disabled_reason.is_empty());
-        assert!(!offset.disabled_reason.starts_with("ptnd.text."));
+            .expect("offset_path is present and wired");
+        assert!(offset.enabled, "offset opens the numeric prompt");
+        let slice = model
+            .item_for_token("ptnd.action.object.slice_path#null")
+            .expect("slice_path is present so the blocked capability is visible");
+        assert!(!slice.enabled);
+        assert!(!slice.disabled_reason.is_empty());
+        assert!(!slice.disabled_reason.starts_with("ptnd.text."));
     }
 
     #[test]

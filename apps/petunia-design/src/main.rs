@@ -50,6 +50,7 @@ use crate::chrome::{
 };
 use crate::dialogs::{
     CommandPalette, ConfirmCloseDialog, CustomizeDialog, ExportDialog, NewDocumentDialog,
+    OffsetPathDialog, OverwriteConflictDialog,
 };
 use crate::ui_state::{ToolRailState, UiShell};
 
@@ -178,8 +179,19 @@ fn app() -> impl IntoElement {
                 .width(Size::fill())
                 .height(Size::flex(1.0))
                 .child(ToolRail(ui.clone()))
-                .child(Workspace(ui.clone()))
-                .child(DockSplitter(ui.clone()))
+                .child(dock::LeftDock(ui.clone()))
+                .child(dock::LeftDockSplitter(ui.clone()))
+                .child(
+                    rect()
+                        .direction(Direction::Vertical)
+                        .content(Content::Flex)
+                        .width(Size::flex(1.0))
+                        .height(Size::fill())
+                        .child(Workspace(ui.clone()))
+                        .child(dock::BottomDockSplitter(ui.clone()))
+                        .child(dock::BottomDock(ui.clone())),
+                )
+                .child(dock::DockSplitter(ui.clone()))
                 .child(dock::RightDock(ui.clone())),
         )
         .child(StatusBar(ui.clone()))
@@ -188,6 +200,8 @@ fn app() -> impl IntoElement {
         .child(NewDocumentDialog(ui.clone()))
         .child(ExportDialog(ui.clone()))
         .child(ConfirmCloseDialog(ui.clone()))
+        .child(OffsetPathDialog(ui.clone()))
+        .child(OverwriteConflictDialog(ui.clone()))
         .child(TooltipOverlay(ui.clone()))
         .on_global_key_down({
             let shell = keyboard_shell;
@@ -225,81 +239,6 @@ fn app() -> impl IntoElement {
         })
 }
 
-/// Draggable splitter between Workspace and RightDock.
-#[derive(Clone, PartialEq)]
-struct DockSplitter(UiShell);
-
-impl Component for DockSplitter {
-    fn render(&self) -> impl IntoElement {
-        let is_dragging = use_state(|| false);
-        let drag_start_x = use_state(|| 0.0f64);
-        let drag_start_width = use_state(|| 240.0f32);
-        let dock_width = self.0.dock_width;
-        let dragging_val = *is_dragging.read();
-
-        let splitter_bar = rect()
-            .width(Size::px(4.))
-            .height(Size::fill())
-            .background(if dragging_val {
-                theme::ACCENT_BLOOM
-            } else {
-                theme::SURFACE_CHROME_STRONG
-            })
-            .cursor(CursorIcon::EwResize)
-            .on_mouse_down({
-                let mut is_dragging = is_dragging;
-                let mut drag_start_x = drag_start_x;
-                let mut drag_start_width = drag_start_width;
-                move |event: Event<MouseEventData>| {
-                    is_dragging.set(true);
-                    drag_start_x.set(event.global_location.x);
-                    drag_start_width.set(*dock_width.peek());
-                }
-            });
-
-        if dragging_val {
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::px(4.))
-                .height(Size::fill())
-                .child(splitter_bar)
-                .child(
-                    Portal::new("dock-splitter-drag")
-                        .width(Size::px(0.))
-                        .height(Size::px(0.))
-                        .child(
-                            rect()
-                                .position(Position::new_absolute().top(0.).left(0.))
-                                .width(Size::fill())
-                                .height(Size::fill())
-                                .cursor(CursorIcon::EwResize)
-                                .on_mouse_move({
-                                    let mut dock_width = dock_width;
-                                    let drag_start_x = drag_start_x;
-                                    let drag_start_width = drag_start_width;
-                                    move |event: Event<MouseEventData>| {
-                                        let delta = *drag_start_x.read() - event.global_location.x;
-                                        let new_w = (*drag_start_width.read() + delta as f32).clamp(180.0, 520.0);
-                                        dock_width.set(new_w);
-                                    }
-                                })
-                                .on_mouse_up({
-                                    let mut is_dragging = is_dragging;
-                                    move |_| {
-                                        is_dragging.set(false);
-                                    }
-                                }),
-                        ),
-                )
-        } else {
-            rect()
-                .width(Size::px(4.))
-                .height(Size::fill())
-                .child(splitter_bar)
-        }
-    }
-}
-
 /// The document workspace. The canvas slice (08.29) draws the artboard here.
 #[derive(Clone, PartialEq)]
 struct Workspace(UiShell);
@@ -318,12 +257,18 @@ impl Component for Workspace {
         let in_flight_guide = *ruler_drag.read();
 
         let active_text_object = snapshot.objects.iter().find(|o| {
-            o.active && matches!(o.shape, Some(petunia_design_document::ShapeKind::Text { .. }))
+            o.active
+                && matches!(
+                    o.shape.as_deref(),
+                    Some(petunia_design_document::ShapeKind::Text { .. })
+                )
         });
 
         let active_text_editor = if let Some(text_obj) = active_text_object {
-            let (content, font_size) = match &text_obj.shape {
-                Some(petunia_design_document::ShapeKind::Text { content, font_size, .. }) => (content.clone(), *font_size),
+            let (content, font_size) = match text_obj.shape.as_deref() {
+                Some(petunia_design_document::ShapeKind::Text {
+                    content, font_size, ..
+                }) => (content.clone(), *font_size),
                 _ => (String::new(), 16.0),
             };
             let screen_origin = snapshot.camera.doc_to_screen(GPoint::new(
@@ -437,115 +382,116 @@ impl Component for Workspace {
                     *self.0.soft_proof.read(),
                     *self.0.channel_view.read(),
                 )
-                    .on_pointer_down({
-                        move |event| {
-                            a11y_id.request_focus();
-                            is_pointer_down.set(true);
-                            dispatch_workspace_pointer(
+                .on_pointer_down({
+                    move |event| {
+                        a11y_id.request_focus();
+                        is_pointer_down.set(true);
+                        dispatch_workspace_pointer(
+                            shell,
+                            modifiers,
+                            gesture_tick,
+                            ruler_drag,
+                            middle_pan_last,
+                            PointerPhase::Down,
+                            &event,
+                        );
+                    }
+                })
+                .on_pointer_move({
+                    move |event| {
+                        dispatch_workspace_pointer(
+                            shell,
+                            modifiers,
+                            gesture_tick,
+                            ruler_drag,
+                            middle_pan_last,
+                            PointerPhase::Move,
+                            &event,
+                        );
+                    }
+                })
+                .on_mouse_up({
+                    move |event: Event<MouseEventData>| {
+                        event.prevent_default();
+                        if *is_pointer_down.peek() {
+                            is_pointer_down.set(false);
+                            let button =
+                                pointer_button(event.button).unwrap_or(PointerButton::Primary);
+                            let location = event.element_location;
+                            dispatch_workspace_at(
                                 shell,
                                 modifiers,
                                 gesture_tick,
                                 ruler_drag,
                                 middle_pan_last,
-                                PointerPhase::Down,
-                                &event,
+                                PointerPhase::Up,
+                                button,
+                                GPoint::new(location.x, location.y),
                             );
                         }
-                    })
-                    .on_pointer_move({
-                        move |event| {
-                            dispatch_workspace_pointer(
+                    }
+                })
+                .on_touch_end({
+                    move |event: Event<TouchEventData>| {
+                        if *is_pointer_down.peek() {
+                            is_pointer_down.set(false);
+                            let location = event.element_location;
+                            dispatch_workspace_at(
                                 shell,
                                 modifiers,
                                 gesture_tick,
                                 ruler_drag,
                                 middle_pan_last,
-                                PointerPhase::Move,
-                                &event,
+                                PointerPhase::Up,
+                                PointerButton::Primary,
+                                GPoint::new(location.x, location.y),
                             );
                         }
-                    })
-                    .on_mouse_up({
-                        move |event: Event<MouseEventData>| {
-                            event.prevent_default();
-                            if *is_pointer_down.peek() {
-                                is_pointer_down.set(false);
-                                let button = pointer_button(event.button).unwrap_or(PointerButton::Primary);
-                                let location = event.element_location;
-                                dispatch_workspace_at(
-                                    shell,
-                                    modifiers,
-                                    gesture_tick,
-                                    ruler_drag,
-                                    middle_pan_last,
-                                    PointerPhase::Up,
-                                    button,
-                                    GPoint::new(location.x, location.y),
-                                );
+                    }
+                })
+                .on_touch_cancel({
+                    move |event: Event<TouchEventData>| {
+                        if *is_pointer_down.peek() {
+                            is_pointer_down.set(false);
+                            let location = event.element_location;
+                            dispatch_workspace_at(
+                                shell,
+                                modifiers,
+                                gesture_tick,
+                                ruler_drag,
+                                middle_pan_last,
+                                PointerPhase::Cancel,
+                                PointerButton::Primary,
+                                GPoint::new(location.x, location.y),
+                            );
+                        }
+                    }
+                })
+                .on_wheel({
+                    move |event: Event<WheelEventData>| {
+                        let cursor = event.element_location;
+                        let screen_focus = GPoint::new(cursor.x, cursor.y);
+                        let control = modifiers.read().disable_snap;
+                        if control {
+                            // Zoom centered on cursor location
+                            if event.delta_y.abs() > 0.05 {
+                                let factor = if event.delta_y < 0. { 1.12 } else { 1.0 / 1.12 };
+                                shell.write().zoom_at(screen_focus, factor);
+                                let next = *gesture_tick.peek() + 1;
+                                gesture_tick.set(next);
+                            }
+                        } else {
+                            // Smooth pan
+                            if event.delta_y.abs() > 0.05 || event.delta_x.abs() > 0.05 {
+                                let dx = -event.delta_x;
+                                let dy = -event.delta_y;
+                                shell.write().pan(dx, dy);
+                                let next = *gesture_tick.peek() + 1;
+                                gesture_tick.set(next);
                             }
                         }
-                    })
-                    .on_touch_end({
-                        move |event: Event<TouchEventData>| {
-                            if *is_pointer_down.peek() {
-                                is_pointer_down.set(false);
-                                let location = event.element_location;
-                                dispatch_workspace_at(
-                                    shell,
-                                    modifiers,
-                                    gesture_tick,
-                                    ruler_drag,
-                                    middle_pan_last,
-                                    PointerPhase::Up,
-                                    PointerButton::Primary,
-                                    GPoint::new(location.x, location.y),
-                                );
-                            }
-                        }
-                    })
-                    .on_touch_cancel({
-                        move |event: Event<TouchEventData>| {
-                            if *is_pointer_down.peek() {
-                                is_pointer_down.set(false);
-                                let location = event.element_location;
-                                dispatch_workspace_at(
-                                    shell,
-                                    modifiers,
-                                    gesture_tick,
-                                    ruler_drag,
-                                    middle_pan_last,
-                                    PointerPhase::Cancel,
-                                    PointerButton::Primary,
-                                    GPoint::new(location.x, location.y),
-                                );
-                            }
-                        }
-                    })
-                    .on_wheel({
-                        move |event: Event<WheelEventData>| {
-                            let cursor = event.element_location;
-                            let screen_focus = GPoint::new(cursor.x, cursor.y);
-                            let control = modifiers.read().disable_snap;
-                            if control {
-                                // Zoom centered on cursor location
-                                if event.delta_y.abs() > 0.05 {
-                                    let factor = if event.delta_y < 0. { 1.12 } else { 1.0 / 1.12 };
-                                    shell.write().zoom_at(screen_focus, factor);
-                                    let next = *gesture_tick.peek() + 1;
-                                    gesture_tick.set(next);
-                                }
-                            } else {
-                                // Smooth pan
-                                if event.delta_y.abs() > 0.05 || event.delta_x.abs() > 0.05 {
-                                    let dx = -event.delta_x;
-                                    let dy = -event.delta_y;
-                                    shell.write().pan(dx, dy);
-                                    let next = *gesture_tick.peek() + 1;
-                                    gesture_tick.set(next);
-                                }
-                            }
-                        }
-                    }),
+                    }
+                }),
             );
 
         if let Some(editor) = active_text_editor {
@@ -588,6 +534,12 @@ fn dispatch_workspace_pointer(
     );
 }
 
+// The workspace pointer fan-out carries one `State` handle per gesture
+// concern straight from the component scope into Freya event closures.
+// Grouping them would only move the arity into a struct literal at each of
+// the five call sites, so the arity is allowed here.
+// (clippy::too_many_arguments: Freya event-plumbing boundary)
+#[allow(clippy::too_many_arguments)]
 fn dispatch_workspace_at(
     mut shell: State<PetuniaShell>,
     modifiers: State<SemanticModifiers>,
@@ -606,7 +558,7 @@ fn dispatch_workspace_at(
                 return;
             }
             PointerPhase::Move => {
-                let last = middle_pan_last.peek().clone();
+                let last = *middle_pan_last.peek();
                 if let Some(last) = last {
                     let dx = screen.x - last.x;
                     let dy = screen.y - last.y;
@@ -628,7 +580,7 @@ fn dispatch_workspace_at(
 
     // 2. Interactive Guide drag out of metric rulers
     let camera = shell.peek().view_camera();
-    let current_ruler_drag = ruler_drag.peek().clone();
+    let current_ruler_drag = *ruler_drag.peek();
     if let Some((orient, _)) = current_ruler_drag {
         match phase {
             PointerPhase::Move => {
@@ -728,6 +680,12 @@ fn semantic_modifiers(modifiers: Modifiers) -> SemanticModifiers {
     }
 }
 
+// The workspace key fan-out carries one `State` handle per overlay concern
+// straight from the component scope into the global key handler. The handles
+// mirror `UiShell` fields one-to-one; grouping them would only move the arity
+// into a struct literal at the call site, so the arity is allowed here.
+// (clippy::too_many_arguments: Freya event-plumbing boundary)
+#[allow(clippy::too_many_arguments)]
 fn dispatch_workspace_key(
     mut shell: State<PetuniaShell>,
     mut palette_open: State<bool>,
@@ -798,9 +756,7 @@ fn workspace_shortcut(event: &Event<KeyboardEventData>) -> Option<&'static str> 
     if control {
         return match &event.key {
             Key::Character(key) if key.eq_ignore_ascii_case("n") => Some("ptnd.action.file.new"),
-            Key::Character(key) if key.eq_ignore_ascii_case("e") => {
-                Some("ptnd.action.file.export")
-            }
+            Key::Character(key) if key.eq_ignore_ascii_case("e") => Some("ptnd.action.file.export"),
             Key::Character(key) if key.eq_ignore_ascii_case("z") => {
                 if event.modifiers.contains(Modifiers::SHIFT) {
                     Some("ptnd.action.edit.redo")
@@ -880,11 +836,13 @@ impl Component for StatusBar {
         // A hovered control explains itself here: tooltips live in the status
         // bar so buttons stay exactly where the registry put them.
         let hovered = self.0.hovered.read().clone();
+        let active_tool = *self.0.active_tool.read();
         let hint = hovered.map_or_else(
             || {
                 shell_ref
                     .bridge
-                    .persona_hint(shell_ref.bridge.persona())
+                    .tool_hint(active_tool)
+                    .or_else(|| shell_ref.bridge.persona_hint(shell_ref.bridge.persona()))
                     .unwrap_or_default()
             },
             |target| {
@@ -916,6 +874,59 @@ impl Component for StatusBar {
                     .text(hint)
                     .color(theme::TEXT_TERTIARY)
                     .font_size(theme::CAPTION_SIZE),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(theme::SPACE_1)
+                    .child(
+                        Button::new()
+                            .on_press({
+                                let mut open = self.0.left_dock_open;
+                                move |_| {
+                                    let cur = *open.peek();
+                                    open.set(!cur);
+                                }
+                            })
+                            .child(
+                                label()
+                                    .text(if *self.0.left_dock_open.read() {
+                                        "◧ Doca Esq (Ativa)"
+                                    } else {
+                                        "◧ Doca Esq"
+                                    })
+                                    .font_size(10.)
+                                    .color(if *self.0.left_dock_open.read() {
+                                        theme::ACCENT_BLOOM
+                                    } else {
+                                        theme::TEXT_SECONDARY
+                                    }),
+                            ),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press({
+                                let mut open = self.0.bottom_dock_open;
+                                move |_| {
+                                    let cur = *open.peek();
+                                    open.set(!cur);
+                                }
+                            })
+                            .child(
+                                label()
+                                    .text(if *self.0.bottom_dock_open.read() {
+                                        "⬒ Doca Inf (Ativa)"
+                                    } else {
+                                        "⬒ Doca Inf"
+                                    })
+                                    .font_size(10.)
+                                    .color(if *self.0.bottom_dock_open.read() {
+                                        theme::ACCENT_BLOOM
+                                    } else {
+                                        theme::TEXT_SECONDARY
+                                    }),
+                            ),
+                    ),
             )
             .child(AppearanceBar(self.0.clone()))
     }
@@ -954,7 +965,7 @@ mod workspace_tests {
         runner.move_cursor((320., 260.));
         runner.release_cursor((320., 260.));
 
-        let shell = seen.borrow().clone().expect("workspace mounted");
+        let shell = (*seen.borrow()).expect("workspace mounted");
         let shell = shell.peek();
         let session = shell.bridge.session().expect("active session");
         let surface_id = session.active_surface().expect("active surface");
@@ -986,7 +997,7 @@ mod workspace_tests {
 
         runner.sync_and_update();
         let initial_bounds = {
-            let shell = seen.borrow().clone().unwrap();
+            let shell = (*seen.borrow()).unwrap();
             let shell = shell.peek();
             let session = shell.bridge.session().unwrap();
             let surf = session.surface(session.active_surface().unwrap()).unwrap();
@@ -1000,7 +1011,7 @@ mod workspace_tests {
         runner.sync_and_update();
 
         let moved_bounds = {
-            let shell = seen.borrow().clone().unwrap();
+            let shell = (*seen.borrow()).unwrap();
             let shell = shell.peek();
             let session = shell.bridge.session().unwrap();
             let surf = session.surface(session.active_surface().unwrap()).unwrap();
@@ -1038,11 +1049,15 @@ mod workspace_tests {
         runner.sync_and_update();
 
         let text_id = {
-            let shell = seen.borrow().clone().unwrap();
+            let shell = (*seen.borrow()).unwrap();
             let shell = shell.peek();
             let session = shell.bridge.session().unwrap();
             let surf = session.surface(session.active_surface().unwrap()).unwrap();
-            assert_eq!(surf.objects().len(), 1, "text object must be created on surface");
+            assert_eq!(
+                surf.objects().len(),
+                1,
+                "text object must be created on surface"
+            );
             assert!(matches!(
                 surf.objects()[0].shape,
                 Some(petunia_design_document::ShapeKind::Text { .. })
@@ -1052,7 +1067,7 @@ mod workspace_tests {
 
         // Switch to Select tool, deselect, then click on the text object to select it
         {
-            let mut shell_state = seen.borrow().clone().unwrap();
+            let mut shell_state = (*seen.borrow()).unwrap();
             let mut shell = shell_state.write();
             shell.set_active_tool(ToolKind::Select);
             shell.bridge.clear_selection();
@@ -1065,7 +1080,7 @@ mod workspace_tests {
         runner.sync_and_update();
 
         {
-            let shell = seen.borrow().clone().unwrap();
+            let shell = (*seen.borrow()).unwrap();
             let shell = shell.peek();
             let sel = shell.bridge.selection();
             assert_eq!(sel.count, 1, "text object must be selected by clicking it");
@@ -1097,7 +1112,7 @@ mod workspace_tests {
         runner.sync_and_update();
 
         let (id1, id2) = {
-            let shell = seen.borrow().clone().unwrap();
+            let shell = (*seen.borrow()).unwrap();
             let shell = shell.peek();
             let session = shell.bridge.session().unwrap();
             let surf = session.surface(session.active_surface().unwrap()).unwrap();
@@ -1109,9 +1124,13 @@ mod workspace_tests {
         runner.release_cursor((300., 200.));
         runner.sync_and_update();
         {
-            let shell = seen.borrow().clone().unwrap();
+            let shell = (*seen.borrow()).unwrap();
             let sel = shell.peek().bridge.selection();
-            assert_eq!(sel.selected_ids, vec![id1], "Step 1: Object A should be selected");
+            assert_eq!(
+                sel.selected_ids,
+                vec![id1],
+                "Step 1: Object A should be selected"
+            );
         }
 
         // 2. Click Circle B (500, 300)
@@ -1119,9 +1138,13 @@ mod workspace_tests {
         runner.release_cursor((500., 300.));
         runner.sync_and_update();
         {
-            let shell = seen.borrow().clone().unwrap();
+            let shell = (*seen.borrow()).unwrap();
             let sel = shell.peek().bridge.selection();
-            assert_eq!(sel.selected_ids, vec![id2], "Step 2: Object B should be selected");
+            assert_eq!(
+                sel.selected_ids,
+                vec![id2],
+                "Step 2: Object B should be selected"
+            );
         }
 
         // 3. Click empty space (100, 100) to deselect
@@ -1129,7 +1152,7 @@ mod workspace_tests {
         runner.release_cursor((100., 100.));
         runner.sync_and_update();
         {
-            let shell = seen.borrow().clone().unwrap();
+            let shell = (*seen.borrow()).unwrap();
             let sel = shell.peek().bridge.selection();
             assert!(sel.is_empty, "Step 3: Selection should be empty");
         }
@@ -1139,9 +1162,13 @@ mod workspace_tests {
         runner.release_cursor((300., 200.));
         runner.sync_and_update();
         {
-            let shell = seen.borrow().clone().unwrap();
+            let shell = (*seen.borrow()).unwrap();
             let sel = shell.peek().bridge.selection();
-            assert_eq!(sel.selected_ids, vec![id1], "Step 4: Object A should be selected again");
+            assert_eq!(
+                sel.selected_ids,
+                vec![id1],
+                "Step 4: Object A should be selected again"
+            );
         }
 
         // 5. Click Circle B (500, 300) again!
@@ -1149,9 +1176,13 @@ mod workspace_tests {
         runner.release_cursor((500., 300.));
         runner.sync_and_update();
         {
-            let shell = seen.borrow().clone().unwrap();
+            let shell = (*seen.borrow()).unwrap();
             let sel = shell.peek().bridge.selection();
-            assert_eq!(sel.selected_ids, vec![id2], "Step 5: Object B should be selected again");
+            assert_eq!(
+                sel.selected_ids,
+                vec![id2],
+                "Step 5: Object B should be selected again"
+            );
         }
     }
 
@@ -1181,7 +1212,11 @@ mod workspace_tests {
     #[test]
     fn raster_tile_to_skia_image_converts_correctly() {
         use petunia_design_raster::{AlphaMode, PixelFormat, Tile, TileCoord, TILE_SIZE};
-        let mut tile = Tile::new_empty(TileCoord::new(0, 0), PixelFormat::Rgba8, AlphaMode::Straight);
+        let mut tile = Tile::new_empty(
+            TileCoord::new(0, 0),
+            PixelFormat::Rgba8,
+            AlphaMode::Straight,
+        );
         tile.set_pixel_normalized(10, 10, [1.0, 0.0, 0.0, 1.0]);
         let rgba8 = match tile.format {
             PixelFormat::Rgba8 => tile.data.clone(),
@@ -1223,7 +1258,7 @@ mod workspace_tests {
         runner.sync_and_update();
 
         {
-            let shell = seen.borrow().clone().unwrap();
+            let shell = (*seen.borrow()).unwrap();
             let shell = shell.peek();
             let session = shell.bridge.session().unwrap();
             let surf = session.surface(session.active_surface().unwrap()).unwrap();
@@ -1241,7 +1276,7 @@ mod workspace_tests {
         runner.sync_and_update();
 
         {
-            let shell = seen.borrow().clone().unwrap();
+            let shell = (*seen.borrow()).unwrap();
             let shell = shell.peek();
             let session = shell.bridge.session().unwrap();
             let surf = session.surface(session.active_surface().unwrap()).unwrap();
@@ -1263,7 +1298,10 @@ mod workspace_tests {
         let session = shell.bridge.session().unwrap();
         let surface_id = session.active_surface().unwrap();
         let surface = session.surface(surface_id).unwrap();
-        assert!(!surface.objects().is_empty(), "image object should be created");
+        assert!(
+            !surface.objects().is_empty(),
+            "image object should be created"
+        );
         let last_object = surface.objects().last().unwrap();
         match &last_object.shape {
             Some(petunia_design_document::ShapeKind::Image { path, .. }) => {
@@ -1281,26 +1319,29 @@ mod workspace_tests {
         let text_id = shell.bridge.next_object_id().unwrap();
 
         // 1. Create text object
-        shell.bridge.submit_all(
-            "Create text",
-            vec![petunia_design_application::Command::CreateShapeObject {
-                surface: surface_id,
-                id: text_id,
-                name: "Text1".to_string(),
-                shape: petunia_design_document::ShapeKind::Text {
-                    content: "Initial".to_string(),
-                    font_family: "Inter".to_string(),
-                    font_size: 18.0,
-                    line_height: 1.2,
-                    letter_spacing: 0.0,
-                    on_path: None,
-                },
-                bounds: Some([100.0, 100.0, 120.0, 30.0]),
-                fill: None,
-                stroke: None,
-                stroke_width: 0.0,
-            }],
-        ).expect("command succeeds");
+        shell
+            .bridge
+            .submit_all(
+                "Create text",
+                vec![petunia_design_application::Command::CreateShapeObject {
+                    surface: surface_id,
+                    id: text_id,
+                    name: "Text1".to_string(),
+                    shape: petunia_design_document::ShapeKind::Text {
+                        content: "Initial".to_string(),
+                        font_family: "Inter".to_string(),
+                        font_size: 18.0,
+                        line_height: 1.2,
+                        letter_spacing: 0.0,
+                        on_path: None,
+                    },
+                    bounds: Some([100.0, 100.0, 120.0, 30.0]),
+                    fill: None,
+                    stroke: None,
+                    stroke_width: 0.0,
+                }],
+            )
+            .expect("command succeeds");
 
         // 2. Select it
         shell.bridge.set_selection(vec![text_id]);
@@ -1308,25 +1349,35 @@ mod workspace_tests {
         // 3. Verify snapshot identifies it as active text object
         let snapshot = shell.canvas_snapshot();
         let active_text = snapshot.objects.iter().find(|o| {
-            o.active && matches!(o.shape, Some(petunia_design_document::ShapeKind::Text { .. }))
+            o.active
+                && matches!(
+                    o.shape.as_deref(),
+                    Some(petunia_design_document::ShapeKind::Text { .. })
+                )
         });
-        assert!(active_text.is_some(), "active text object found in snapshot");
+        assert!(
+            active_text.is_some(),
+            "active text object found in snapshot"
+        );
 
         // 4. Update its content directly via command as in-canvas editor does
-        shell.bridge.submit_all(
-            "Update text in-canvas",
-            vec![petunia_design_application::Command::SetShape {
-                id: text_id,
-                shape: Some(petunia_design_document::ShapeKind::Text {
-                    content: "Edited In-Canvas Content".to_string(),
-                    font_family: "Inter".to_string(),
-                    font_size: 18.0,
-                    line_height: 1.2,
-                    letter_spacing: 0.0,
-                    on_path: None,
-                }),
-            }],
-        ).expect("update succeeds");
+        shell
+            .bridge
+            .submit_all(
+                "Update text in-canvas",
+                vec![petunia_design_application::Command::SetShape {
+                    id: text_id,
+                    shape: Some(petunia_design_document::ShapeKind::Text {
+                        content: "Edited In-Canvas Content".to_string(),
+                        font_family: "Inter".to_string(),
+                        font_size: 18.0,
+                        line_height: 1.2,
+                        letter_spacing: 0.0,
+                        on_path: None,
+                    }),
+                }],
+            )
+            .expect("update succeeds");
 
         let session = shell.bridge.session().unwrap();
         let obj = session.find_object(text_id).unwrap();
@@ -1345,30 +1396,36 @@ mod workspace_tests {
         let surface_id = shell.bridge.active_surface().unwrap();
 
         // Preset: Full HD 1920x1080 with 3mm bleed and 20pt margin
-        shell.bridge.submit_all(
-            "Set Surface Geometry 1080p",
-            vec![
-                petunia_design_application::Command::SetSurfaceGeometry {
-                    surface: surface_id,
-                    origin: [0.0, 0.0],
-                    dimensions: [1920.0, 1080.0],
-                },
-                petunia_design_application::Command::SetSurfaceBleed {
-                    surface: surface_id,
-                    bleed: petunia_design_document::Bleed::uniform(8.5),
-                },
-                petunia_design_application::Command::SetSurfaceMargins {
-                    surface: surface_id,
-                    margins: petunia_design_document::Margins::uniform(20.0),
-                },
-            ],
-        ).expect("command succeeds");
+        shell
+            .bridge
+            .submit_all(
+                "Set Surface Geometry 1080p",
+                vec![
+                    petunia_design_application::Command::SetSurfaceGeometry {
+                        surface: surface_id,
+                        origin: [0.0, 0.0],
+                        dimensions: [1920.0, 1080.0],
+                    },
+                    petunia_design_application::Command::SetSurfaceBleed {
+                        surface: surface_id,
+                        bleed: petunia_design_document::Bleed::uniform(8.5),
+                    },
+                    petunia_design_application::Command::SetSurfaceMargins {
+                        surface: surface_id,
+                        margins: petunia_design_document::Margins::uniform(20.0),
+                    },
+                ],
+            )
+            .expect("command succeeds");
 
         let session = shell.bridge.session().unwrap();
         let surface = session.surface(surface_id).unwrap();
         assert_eq!(surface.dimensions, [1920.0, 1080.0]);
         assert_eq!(surface.bleed, petunia_design_document::Bleed::uniform(8.5));
-        assert_eq!(surface.margins, petunia_design_document::Margins::uniform(20.0));
+        assert_eq!(
+            surface.margins,
+            petunia_design_document::Margins::uniform(20.0)
+        );
     }
 
     #[test]
@@ -1381,13 +1438,16 @@ mod workspace_tests {
             "path": path.to_string_lossy(),
             "format": "png",
         });
-        let res = shell.bridge.dispatch_action(
-            petunia_design_application::ActionRequest::new(
+        let res = shell
+            .bridge
+            .dispatch_action(petunia_design_application::ActionRequest::new(
                 petunia_design_application::ActionId::new("ptnd.action.file.export"),
                 payload,
-            ),
+            ));
+        assert!(
+            res.is_ok(),
+            "export action should be dispatched successfully"
         );
-        assert!(res.is_ok(), "export action should be dispatched successfully");
         let _ = std::fs::remove_file(path);
     }
 
@@ -1410,21 +1470,84 @@ mod workspace_tests {
         assert_eq!((100.0f32).clamp(min_w, max_w), min_w);
         assert_eq!((600.0f32).clamp(min_w, max_w), max_w);
         assert_eq!((300.0f32).clamp(min_w, max_w), 300.0f32);
+
+        // Minimap scale and click-pan center target logic
+        let surf_w = 800.0f64;
+        let surf_h = 600.0f64;
+        let scale = (240.0f64 / surf_w).min(150.0f64 / surf_h);
+        let click_x = 120.0f64;
+        let click_y = 75.0f64;
+        let target_doc_x = (click_x / scale).clamp(0.0, surf_w);
+        let target_doc_y = (click_y / scale).clamp(0.0, surf_h);
+        assert_eq!(target_doc_x, 480.0);
+        assert_eq!(target_doc_y, 300.0);
+
+        let mut camera = shell.view_camera();
+        let expected_pan_x = camera.viewport_width / 2.0 - target_doc_x * camera.zoom;
+        camera.pan_x = expected_pan_x;
+        camera.pan_y = camera.viewport_height / 2.0 - target_doc_y * camera.zoom;
+        shell.set_view_camera(camera);
+        let updated_cam = shell.view_camera();
+        assert!((updated_cam.pan_x - expected_pan_x).abs() < 1e-4);
+    }
+
+    #[test]
+    fn status_bar_tool_hints_resolve_in_both_locales_and_pluralize() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("HintsDoc").expect("doc opens");
+
+        // Tool hint in default EnUs
+        assert_eq!(
+            shell.bridge.tool_hint(ToolKind::Select).as_deref(),
+            Some("Select and transform objects")
+        );
+        assert_eq!(
+            shell.bridge.tool_hint(ToolKind::Pen).as_deref(),
+            Some("Build precise Bézier paths")
+        );
+        assert_eq!(shell.bridge.plural_items(1), "1 item");
+        assert_eq!(shell.bridge.plural_items(4), "4 items");
+
+        // Switch to pt-BR
+        shell
+            .bridge
+            .set_locale(petunia_design_shell::bridge::Locale::PtBr);
+        assert_eq!(
+            shell.bridge.tool_hint(ToolKind::Select).as_deref(),
+            Some("Selecione e transforme objetos")
+        );
+        assert_eq!(
+            shell.bridge.tool_hint(ToolKind::Pen).as_deref(),
+            Some("Construa caminhos Bézier precisos")
+        );
+        assert_eq!(shell.bridge.plural_items(1), "1 item");
+        assert_eq!(shell.bridge.plural_items(4), "4 itens");
     }
 
     #[test]
     fn confirm_close_safeguards_unsaved_document() {
         let mut shell = PetuniaShell::new(800., 600.);
-        shell.new_document("UnsavedDocTest").expect("document opens");
-        assert!(shell.bridge.is_dirty(), "document with initial canvas starts with dirty revision");
+        shell
+            .new_document("UnsavedDocTest")
+            .expect("document opens");
+        assert!(
+            shell.bridge.is_dirty(),
+            "document with initial canvas starts with dirty revision"
+        );
 
         // Safe close without force is blocked by unsaved changes
         let safe_close = shell.bridge.close_session(false).expect("close check");
-        assert!(!safe_close, "safe close requires user confirmation when dirty");
+        assert!(
+            !safe_close,
+            "safe close requires user confirmation when dirty"
+        );
 
         // Force close (from confirm dialog) closes successfully
         let force_close = shell.bridge.close_session(true).expect("force close");
-        assert!(force_close, "confirming close discards changes and closes session");
+        assert!(
+            force_close,
+            "confirming close discards changes and closes session"
+        );
         assert!(shell.bridge.session().is_none(), "session is now closed");
     }
 
@@ -1447,7 +1570,9 @@ mod workspace_tests {
                     .child(NewDocumentDialog(ui.clone()))
                     .child(ExportDialog(ui.clone()))
                     .child(CustomizeDialog(ui.clone()))
-                    .child(ConfirmCloseDialog(ui))
+                    .child(ConfirmCloseDialog(ui.clone()))
+                    .child(OffsetPathDialog(ui.clone()))
+                    .child(OverwriteConflictDialog(ui))
             },
             (800., 600.).into(),
             |_| {},
@@ -1477,12 +1602,26 @@ mod workspace_tests {
         ui.export_open.set(false);
         runner.sync_and_update();
 
+        // Toggle OffsetPathDialog open and close
+        ui.offset_prompt_open.set(true);
+        runner.sync_and_update();
+        ui.offset_prompt_open.set(false);
+        runner.sync_and_update();
+
+        // Toggle OverwriteConflictDialog open and close
+        ui.overwrite_conflict_open.set(true);
+        runner.sync_and_update();
+        ui.overwrite_conflict_open.set(false);
+        runner.sync_and_update();
+
         // Toggle all open simultaneously and close all
         ui.palette_open.set(true);
         ui.new_doc_open.set(true);
         ui.export_open.set(true);
         ui.customize_open.set(true);
         ui.confirm_close_open.set(true);
+        ui.offset_prompt_open.set(true);
+        ui.overwrite_conflict_open.set(true);
         runner.sync_and_update();
 
         ui.palette_open.set(false);
@@ -1490,6 +1629,8 @@ mod workspace_tests {
         ui.export_open.set(false);
         ui.customize_open.set(false);
         ui.confirm_close_open.set(false);
+        ui.offset_prompt_open.set(false);
+        ui.overwrite_conflict_open.set(false);
         runner.sync_and_update();
     }
 
@@ -1522,8 +1663,19 @@ mod workspace_tests {
                             .width(Size::fill())
                             .height(Size::flex(1.0))
                             .child(ToolRail(ui.clone()))
-                            .child(Workspace(ui.clone()))
-                            .child(DockSplitter(ui.clone()))
+                            .child(dock::LeftDock(ui.clone()))
+                            .child(dock::LeftDockSplitter(ui.clone()))
+                            .child(
+                                rect()
+                                    .direction(Direction::Vertical)
+                                    .content(Content::Flex)
+                                    .width(Size::flex(1.0))
+                                    .height(Size::fill())
+                                    .child(Workspace(ui.clone()))
+                                    .child(dock::BottomDockSplitter(ui.clone()))
+                                    .child(dock::BottomDock(ui.clone())),
+                            )
+                            .child(dock::DockSplitter(ui.clone()))
                             .child(dock::RightDock(ui.clone())),
                     )
                     .child(StatusBar(ui.clone()))
@@ -1566,44 +1718,69 @@ mod workspace_tests {
 
         // Measure tool mode toggling
         shell.tools.set_active_tool(ToolKind::Measure);
-        assert_eq!(shell.tools.measure_tool().mode(), petunia_design_shell::tools::MeasureMode::Distance);
-        shell.tools.measure_tool_mut().set_mode(petunia_design_shell::tools::MeasureMode::Area);
-        assert_eq!(shell.tools.measure_tool().mode(), petunia_design_shell::tools::MeasureMode::Area);
+        assert_eq!(
+            shell.tools.measure_tool().mode(),
+            petunia_design_shell::tools::MeasureMode::Distance
+        );
+        shell
+            .tools
+            .measure_tool_mut()
+            .set_mode(petunia_design_shell::tools::MeasureMode::Area);
+        assert_eq!(
+            shell.tools.measure_tool().mode(),
+            petunia_design_shell::tools::MeasureMode::Area
+        );
         shell.tools.measure_tool_mut().cancel();
 
         // Gradient tool kind toggling
         shell.tools.set_active_tool(ToolKind::Gradient);
-        assert_eq!(shell.tools.gradient_tool().kind(), petunia_design_shell::tools::GradientKind::Linear);
-        shell.tools.gradient_tool_mut().set_kind(petunia_design_shell::tools::GradientKind::Radial);
-        assert_eq!(shell.tools.gradient_tool().kind(), petunia_design_shell::tools::GradientKind::Radial);
+        assert_eq!(
+            shell.tools.gradient_tool().kind(),
+            petunia_design_shell::tools::GradientKind::Linear
+        );
+        shell
+            .tools
+            .gradient_tool_mut()
+            .set_kind(petunia_design_shell::tools::GradientKind::Radial);
+        assert_eq!(
+            shell.tools.gradient_tool().kind(),
+            petunia_design_shell::tools::GradientKind::Radial
+        );
 
         // Perspective tool overlays cursor affordance on selected object
         let rect_id = petunia_design_foundation::ObjectId::new(101);
         let surface_id = shell.bridge.active_surface().unwrap();
-        shell.bridge.submit_all(
-            "Create rect for perspective",
-            vec![
-                petunia_design_application::Command::CreateObject {
-                    surface: surface_id,
-                    id: rect_id,
-                    name: "Rect".to_string(),
-                },
-                petunia_design_application::Command::SetBounds {
-                    id: rect_id,
-                    bounds: Some([10.0, 10.0, 100.0, 100.0]),
-                    rotation: 0.0,
-                },
-            ],
-        ).unwrap();
+        shell
+            .bridge
+            .submit_all(
+                "Create rect for perspective",
+                vec![
+                    petunia_design_application::Command::CreateObject {
+                        surface: surface_id,
+                        id: rect_id,
+                        name: "Rect".to_string(),
+                    },
+                    petunia_design_application::Command::SetBounds {
+                        id: rect_id,
+                        bounds: Some([10.0, 10.0, 100.0, 100.0]),
+                        rotation: 0.0,
+                    },
+                ],
+            )
+            .unwrap();
         shell.bridge.set_selection(vec![rect_id]);
 
         shell.tools.set_active_tool(ToolKind::Perspective);
         let cam = shell.view_camera();
         let overlays = shell.tools.overlays(&cam, &shell.bridge);
-        assert_eq!(overlays.handles.len(), 4, "Perspective quad provides 4 corner handles");
-        assert_eq!(overlays.cursor, petunia_design_shell::canvas::CursorAffordance::Crosshair);
+        assert_eq!(
+            overlays.handles.len(),
+            4,
+            "Perspective quad provides 4 corner handles"
+        );
+        assert_eq!(
+            overlays.cursor,
+            petunia_design_shell::canvas::CursorAffordance::Crosshair
+        );
     }
 }
-
-
-

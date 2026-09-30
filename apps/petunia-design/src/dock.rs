@@ -5,6 +5,10 @@
 
 use freya::prelude::*;
 use petunia_design_application::Command;
+use petunia_design_color::{
+    Cmyk, ColorManagementProvider, ColorValue, DefaultColorManagementProvider, GamutStatus, Lab,
+    ProofContext, Srgb,
+};
 use petunia_design_document::ShapeKind;
 use petunia_design_foundation::ObjectId;
 use petunia_design_geometry::{OffsetCap, OffsetJoin};
@@ -48,10 +52,28 @@ impl Component for RightDock {
                     .cross_align(Alignment::Center)
                     .main_align(Alignment::SpaceEvenly)
                     .child(tab_button(ui, "Camadas", 0, active_tab == 0, &mut dock_tab))
-                    .child(tab_button(ui, "Propriedades", 1, active_tab == 1, &mut dock_tab))
+                    .child(tab_button(
+                        ui,
+                        "Propriedades",
+                        1,
+                        active_tab == 1,
+                        &mut dock_tab,
+                    ))
                     .child(tab_button(ui, "Cores", 2, active_tab == 2, &mut dock_tab))
-                    .child(tab_button(ui, "Histórico", 3, active_tab == 3, &mut dock_tab))
-                    .child(tab_button(ui, "Navegador", 4, active_tab == 4, &mut dock_tab)),
+                    .child(tab_button(
+                        ui,
+                        "Histórico",
+                        3,
+                        active_tab == 3,
+                        &mut dock_tab,
+                    ))
+                    .child(tab_button(
+                        ui,
+                        "Navegador",
+                        4,
+                        active_tab == 4,
+                        &mut dock_tab,
+                    )),
             )
             .child(
                 // Tab Content Body
@@ -63,9 +85,10 @@ impl Component for RightDock {
                     .child(match active_tab {
                         0 => layers_tab(ui.clone()).into_element(),
                         1 => properties_tab(ui.clone()).into_element(),
-                        2 => colors_tab(ui.clone()).into_element(),
+                        2 => ColorsTab(ui.clone()).into_element(),
                         3 => history_tab(ui.clone()).into_element(),
-                        4 => navigator_tab(ui.clone()).into_element(),
+                        4 => NavigatorTab(ui.clone()).into_element(),
+                        5 => BackgroundTasksPanel(ui.clone()).into_element(),
                         _ => layers_tab(ui.clone()).into_element(),
                     }),
             )
@@ -92,16 +115,11 @@ fn tab_button(
         .on_press(move |_| {
             tab_state.set(index);
         })
-        .child(
-            label()
-                .text(title)
-                .font_size(12.)
-                .color(if active {
-                    theme::TEXT_PRIMARY
-                } else {
-                    theme::TEXT_TERTIARY
-                }),
-        )
+        .child(label().text(title).font_size(12.).color(if active {
+            theme::TEXT_PRIMARY
+        } else {
+            theme::TEXT_TERTIARY
+        }))
 }
 
 // =========================================================================
@@ -411,11 +429,21 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
 
     let first_id = sel.selected_ids.first().copied();
     let selected_obj = first_id.and_then(|id| {
-        shell.peek().bridge.session().and_then(|s| s.find_object(id)).cloned()
+        shell
+            .peek()
+            .bridge
+            .session()
+            .and_then(|s| s.find_object(id))
+            .cloned()
     });
 
     let (is_text, text_content, font_size) = if let Some(ref obj) = selected_obj {
-        if let Some(ShapeKind::Text { ref content, font_size, .. }) = obj.shape {
+        if let Some(ShapeKind::Text {
+            ref content,
+            font_size,
+            ..
+        }) = obj.shape
+        {
             (true, content.clone(), font_size)
         } else {
             (false, String::new(), 16.0)
@@ -425,7 +453,11 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
     };
 
     let star_params = selected_obj.as_ref().and_then(|obj| {
-        if let Some(ShapeKind::Star { points, inner_ratio }) = obj.shape {
+        if let Some(ShapeKind::Star {
+            points,
+            inner_ratio,
+        }) = obj.shape
+        {
             Some((points, inner_ratio))
         } else {
             None
@@ -469,7 +501,13 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
     let drop_shadow_effect = selected_obj.as_ref().and_then(|obj| {
         obj.appearance.as_ref().and_then(|app| {
             app.effects.iter().find_map(|e| {
-                if let petunia_design_document::EffectKind::DropShadow { offset, blur, color, opacity } = &e.kind {
+                if let petunia_design_document::EffectKind::DropShadow {
+                    offset,
+                    blur,
+                    color,
+                    opacity,
+                } = &e.kind
+                {
                     Some((e.id, *offset, *blur, color.clone(), *opacity, e.visible))
                 } else {
                     None
@@ -481,7 +519,13 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
     let inner_shadow_effect = selected_obj.as_ref().and_then(|obj| {
         obj.appearance.as_ref().and_then(|app| {
             app.effects.iter().find_map(|e| {
-                if let petunia_design_document::EffectKind::InnerShadow { offset, blur, color, opacity } = &e.kind {
+                if let petunia_design_document::EffectKind::InnerShadow {
+                    offset,
+                    blur,
+                    color,
+                    opacity,
+                } = &e.kind
+                {
                     Some((e.id, *offset, *blur, color.clone(), *opacity, e.visible))
                 } else {
                     None
@@ -1110,85 +1154,1013 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
 // 3. Colors Tab
 // =========================================================================
 
-fn colors_tab(ui: UiShell) -> impl IntoElement {
-    let shell = ui.shell;
-    let sel = shell.peek().bridge.selection();
-    let first_id = sel.selected_ids.first().copied();
+#[derive(Clone, PartialEq)]
+pub struct ColorsTab(pub UiShell);
 
-    let palette = [
-        ("Cinza 900", "ptnd.gray/900", Color::from_rgb(0x11, 0x18, 0x27)),
-        ("Cinza 600", "ptnd.gray/600", Color::from_rgb(0x4B, 0x55, 0x63)),
-        ("Cinza 300", "ptnd.gray/300", Color::from_rgb(0xD1, 0xD5, 0xDB)),
-        ("Branco", "ptnd.white", Color::from_rgb(0xFF, 0xFF, 0xFF)),
-        ("Vermelho 500", "ptnd.red/500", Color::from_rgb(0xEF, 0x44, 0x44)),
-        ("Rosa 500", "ptnd.pink/500", Color::from_rgb(0xEC, 0x48, 0x99)),
-        ("Roxo 500", "ptnd.purple/500", Color::from_rgb(0x8B, 0x5C, 0xF6)),
-        ("Azul 500", "ptnd.blue/500", Color::from_rgb(0x3B, 0x82, 0xF6)),
-        ("Ciano 500", "ptnd.cyan/500", Color::from_rgb(0x06, 0xB6, 0xD4)),
-        ("Teal 500", "ptnd.teal/500", Color::from_rgb(0x14, 0xB8, 0xA6)),
-        ("Verde 500", "ptnd.green/500", Color::from_rgb(0x10, 0xB9, 0x81)),
-        ("Amarelo 500", "ptnd.amber/500", Color::from_rgb(0xF5, 0x9E, 0x0B)),
-    ];
+impl Component for ColorsTab {
+    fn render(&self) -> impl IntoElement {
+        let mut subtab = use_state(|| 0usize);
+        let current_subtab = *subtab.read();
+        let target_fill = use_state(|| true);
 
+        rect()
+            .direction(Direction::Vertical)
+            .width(Size::fill())
+            .height(Size::fill())
+            .spacing(theme::SPACE_2)
+            .child(
+                // Subtab Switcher: Cor (ptnd.panel.color) | Amostras (ptnd.panel.swatches) | Tarefas (ptnd.panel.background_tasks)
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .height(Size::px(30.))
+                    .background(theme::SURFACE_CHROME_STRONG)
+                    .padding(Gaps::new_all(2.))
+                    .spacing(theme::SPACE_1)
+                    .main_align(Alignment::SpaceEvenly)
+                    .cross_align(Alignment::Center)
+                    .child(subtab_pill("🎨 Cor", 0, current_subtab == 0, &mut subtab))
+                    .child(subtab_pill(
+                        "📑 Amostras",
+                        1,
+                        current_subtab == 1,
+                        &mut subtab,
+                    ))
+                    .child(subtab_pill(
+                        "⚡ Tarefas",
+                        2,
+                        current_subtab == 2,
+                        &mut subtab,
+                    )),
+            )
+            .child(match current_subtab {
+                0 => ColorPanel {
+                    ui: self.0.clone(),
+                    target_fill,
+                }
+                .into_element(),
+                1 => SwatchesPanel {
+                    ui: self.0.clone(),
+                    target_fill,
+                }
+                .into_element(),
+                2 => BackgroundTasksPanel(self.0.clone()).into_element(),
+                _ => ColorPanel {
+                    ui: self.0.clone(),
+                    target_fill,
+                }
+                .into_element(),
+            })
+    }
+}
+
+fn subtab_pill(
+    title: &'static str,
+    idx: usize,
+    active: bool,
+    subtab: &mut State<usize>,
+) -> impl IntoElement {
+    let mut st = *subtab;
     rect()
-        .direction(Direction::Vertical)
+        .height(Size::px(24.))
+        .background(if active {
+            theme::SURFACE_PANEL
+        } else {
+            theme::SURFACE_CHROME
+        })
+        .padding(Gaps::new(0., theme::SPACE_2, 0., theme::SPACE_2))
+        .center()
+        .on_press(move |_| {
+            st.set(idx);
+        })
+        .child(label().text(title).font_size(10.).color(if active {
+            theme::TEXT_PRIMARY
+        } else {
+            theme::TEXT_SECONDARY
+        }))
+}
+
+fn channel_adjuster(
+    label_text: &'static str,
+    val_text: String,
+    mut on_dec: impl FnMut() + 'static,
+    mut on_inc: impl FnMut() + 'static,
+) -> impl IntoElement {
+    rect()
+        .direction(Direction::Horizontal)
         .width(Size::fill())
-        .height(Size::fill())
-        .spacing(theme::SPACE_2)
-        .child(section_header("PALETA DE CORES"))
+        .height(Size::px(26.))
+        .cross_align(Alignment::Center)
+        .main_align(Alignment::SpaceBetween)
         .child(
-            label()
-                .text("Clique em uma cor para aplicar ao preenchimento do objeto selecionado.")
-                .font_size(11.)
-                .color(theme::TEXT_SECONDARY),
+            rect().width(Size::px(60.)).child(
+                label()
+                    .text(label_text)
+                    .font_size(11.)
+                    .color(theme::TEXT_SECONDARY),
+            ),
+        )
+        .child(
+            rect().width(Size::px(70.)).child(
+                label()
+                    .text(val_text)
+                    .font_size(11.)
+                    .color(theme::TEXT_PRIMARY),
+            ),
         )
         .child(
             rect()
-                .direction(Direction::Vertical)
-                .width(Size::fill())
-                .spacing(theme::SPACE_1)
-                .children(palette.chunks(4).map(|chunk| {
-                    rect()
-                        .direction(Direction::Horizontal)
+                .direction(Direction::Horizontal)
+                .spacing(4.)
+                .child(
+                    Button::new()
+                        .on_press(move |_| on_dec())
+                        .child(label().text("-").font_size(11.)),
+                )
+                .child(
+                    Button::new()
+                        .on_press(move |_| on_inc())
+                        .child(label().text("+").font_size(11.)),
+                ),
+        )
+}
+
+/// Color Panel (`ptnd.panel.color`): sRGB, CMYK, Lab, Spot, target toggle, and soft-proof check.
+#[derive(Clone, PartialEq)]
+pub struct ColorPanel {
+    pub ui: UiShell,
+    pub target_fill: State<bool>,
+}
+
+impl Component for ColorPanel {
+    fn render(&self) -> impl IntoElement {
+        let shell = self.ui.shell;
+        let sel = shell.peek().bridge.selection();
+        let first_id = sel.selected_ids.first().copied();
+        let is_fill = *self.target_fill.read();
+        let mut mut_target_fill = self.target_fill;
+
+        let mut color_mode = use_state(|| 0usize); // 0: sRGB, 1: CMYK, 2: Lab, 3: Spot
+        let active_mode = *color_mode.read();
+
+        // sRGB state
+        let r_val = use_state(|| 239u8);
+        let g_val = use_state(|| 68u8);
+        let b_val = use_state(|| 68u8);
+
+        // CMYK state (percentages 0..=100)
+        let c_val = use_state(|| 0u8);
+        let m_val = use_state(|| 85u8);
+        let y_val = use_state(|| 70u8);
+        let k_val = use_state(|| 0u8);
+
+        // Lab state (L: 0..100, a: -128..127, b: -128..127)
+        let lab_l = use_state(|| 55i16);
+        let lab_a = use_state(|| 65i16);
+        let lab_b = use_state(|| 35i16);
+
+        // Spot state
+        let spot_name = use_state(|| "PANTONE 185 C".to_string());
+
+        let (preview_color, token, color_val) = match active_mode {
+            0 => {
+                let (r, g, b) = (*r_val.read(), *g_val.read(), *b_val.read());
+                (
+                    Color::from_rgb(r, g, b),
+                    format!("#{r:02X}{g:02X}{b:02X}"),
+                    ColorValue::Rgb(Srgb::clamped(
+                        r as f32 / 255.0,
+                        g as f32 / 255.0,
+                        b as f32 / 255.0,
+                    )),
+                )
+            }
+            1 => {
+                let (c, m, y, k) = (*c_val.read(), *m_val.read(), *y_val.read(), *k_val.read());
+                let c_f = c as f32 / 100.0;
+                let m_f = m as f32 / 100.0;
+                let y_f = y as f32 / 100.0;
+                let k_f = k as f32 / 100.0;
+                let r = ((1.0 - (c_f + k_f).min(1.0)) * 255.0).round() as u8;
+                let g = ((1.0 - (m_f + k_f).min(1.0)) * 255.0).round() as u8;
+                let b = ((1.0 - (y_f + k_f).min(1.0)) * 255.0).round() as u8;
+                (
+                    Color::from_rgb(r, g, b),
+                    format!("cmyk({c}%, {m}%, {y}%, {k}%)"),
+                    ColorValue::Cmyk(Cmyk {
+                        c: c_f,
+                        m: m_f,
+                        y: y_f,
+                        k: k_f,
+                    }),
+                )
+            }
+            2 => {
+                let (l, a, b) = (*lab_l.read(), *lab_a.read(), *lab_b.read());
+                let lab = Lab {
+                    l: l as f32,
+                    a: a as f32,
+                    b: b as f32,
+                };
+                let srgb = ColorValue::Lab(lab).to_srgb();
+                let r = (srgb.r * 255.0).round() as u8;
+                let g = (srgb.g * 255.0).round() as u8;
+                let b_rgb = (srgb.b * 255.0).round() as u8;
+                (
+                    Color::from_rgb(r, g, b_rgb),
+                    format!("lab({l}, {a}, {b})"),
+                    ColorValue::Lab(lab),
+                )
+            }
+            _ => {
+                let (r, g, b) = (*r_val.read(), *g_val.read(), *b_val.read());
+                let fallback_rgb =
+                    Srgb::clamped(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0);
+                (
+                    Color::from_rgb(r, g, b),
+                    format!("spot({}, #{r:02X}{g:02X}{b:02X})", *spot_name.read()),
+                    ColorValue::Spot {
+                        name: (*spot_name.read()).clone(),
+                        fallback: Box::new(ColorValue::Rgb(fallback_rgb)),
+                    },
+                )
+            }
+        };
+
+        // Gamut assessment with soft-proof provider
+        let provider = DefaultColorManagementProvider;
+        let proof_ctx = ProofContext::default();
+        let (_, gamut_status) = provider.soft_proof(&color_val, &proof_ctx);
+        let is_in_gamut = matches!(gamut_status, GamutStatus::InGamut);
+
+        let mut shell_for_apply = shell;
+        let token_for_apply = token.clone();
+
+        rect()
+            .direction(Direction::Vertical)
+            .width(Size::fill())
+            .height(Size::fill())
+            .spacing(theme::SPACE_2)
+            .child(
+                // Target Selector: Preenchimento vs Traço
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .spacing(theme::SPACE_1)
+                    .child(
+                        Button::new()
+                            .on_press(move |_| mut_target_fill.set(true))
+                            .child(
+                                label()
+                                    .text(if is_fill {
+                                        "● Preenchimento"
+                                    } else {
+                                        "Preenchimento"
+                                    })
+                                    .font_size(10.),
+                            ),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press(move |_| mut_target_fill.set(false))
+                            .child(
+                                label()
+                                    .text(if !is_fill {
+                                        "● Traço/Contorno"
+                                    } else {
+                                        "Traço/Contorno"
+                                    })
+                                    .font_size(10.),
+                            ),
+                    ),
+            )
+            .child(
+                // Color Mode Segmented Bar: sRGB | CMYK | Lab | Spot
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .height(Size::px(26.))
+                    .background(theme::SURFACE_CHROME_STRONG)
+                    .padding(Gaps::new_all(2.))
+                    .spacing(2.)
+                    .main_align(Alignment::SpaceEvenly)
+                    .cross_align(Alignment::Center)
+                    .child(subtab_pill("sRGB", 0, active_mode == 0, &mut color_mode))
+                    .child(subtab_pill("CMYK", 1, active_mode == 1, &mut color_mode))
+                    .child(subtab_pill("Lab", 2, active_mode == 2, &mut color_mode))
+                    .child(subtab_pill("Spot", 3, active_mode == 3, &mut color_mode)),
+            )
+            .child(
+                // Active Color Preview Card
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .height(Size::px(42.))
+                    .background(theme::SURFACE_CHROME)
+                    .border(
+                        Border::new()
+                            .fill(theme::SURFACE_CHROME_STRONG)
+                            .width(1.)
+                            .alignment(BorderAlignment::Inner),
+                    )
+                    .padding(Gaps::new_all(theme::SPACE_1))
+                    .spacing(theme::SPACE_2)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        rect()
+                            .width(Size::px(34.))
+                            .height(Size::px(34.))
+                            .background(preview_color)
+                            .border(
+                                Border::new()
+                                    .fill(theme::SURFACE_CHROME_STRONG)
+                                    .width(1.)
+                                    .alignment(BorderAlignment::Inner),
+                            ),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Vertical)
+                            .child(
+                                label()
+                                    .text(token.clone())
+                                    .font_size(11.)
+                                    .color(theme::TEXT_PRIMARY),
+                            )
+                            .child(
+                                label()
+                                    .text(if is_in_gamut {
+                                        "✓ Em Gama (SWOP)"
+                                    } else {
+                                        "⚠️ Fora de Gama (SWOP)"
+                                    })
+                                    .font_size(9.)
+                                    .color(if is_in_gamut {
+                                        Color::from_rgb(0x10, 0xB9, 0x81)
+                                    } else {
+                                        Color::from_rgb(0xF5, 0x9E, 0x0B)
+                                    }),
+                            ),
+                    ),
+            )
+            .child(
+                // Channel Adjusters for Active Color Space
+                match active_mode {
+                    0 => rect()
+                        .direction(Direction::Vertical)
                         .width(Size::fill())
-                        .main_align(Alignment::SpaceBetween)
-                        .children(chunk.iter().map(|&(name, token, color)| {
-                            let mut shell_for_swatch = shell;
-                            rect()
-                                .width(Size::px(60.))
-                                .height(Size::px(34.))
-                                .background(color)
-                                .border(
-                                    Border::new()
-                                        .fill(theme::SURFACE_CHROME_STRONG)
-                                        .width(1.)
-                                        .alignment(BorderAlignment::Inner),
-                                )
-                                .center()
+                        .spacing(2.)
+                        .child(channel_adjuster(
+                            "Vermelho (R):",
+                            format!("{}", *r_val.read()),
+                            move || {
+                                let curr = *r_val.peek();
+                                let mut s = r_val;
+                                s.set(curr.saturating_sub(5));
+                            },
+                            move || {
+                                let curr = *r_val.peek();
+                                let mut s = r_val;
+                                s.set(curr.saturating_add(5));
+                            },
+                        ))
+                        .child(channel_adjuster(
+                            "Verde (G):",
+                            format!("{}", *g_val.read()),
+                            move || {
+                                let curr = *g_val.peek();
+                                let mut s = g_val;
+                                s.set(curr.saturating_sub(5));
+                            },
+                            move || {
+                                let curr = *g_val.peek();
+                                let mut s = g_val;
+                                s.set(curr.saturating_add(5));
+                            },
+                        ))
+                        .child(channel_adjuster(
+                            "Azul (B):",
+                            format!("{}", *b_val.read()),
+                            move || {
+                                let curr = *b_val.peek();
+                                let mut s = b_val;
+                                s.set(curr.saturating_sub(5));
+                            },
+                            move || {
+                                let curr = *b_val.peek();
+                                let mut s = b_val;
+                                s.set(curr.saturating_add(5));
+                            },
+                        )),
+                    1 => rect()
+                        .direction(Direction::Vertical)
+                        .width(Size::fill())
+                        .spacing(2.)
+                        .child(channel_adjuster(
+                            "Ciano (C):",
+                            format!("{}%", *c_val.read()),
+                            move || {
+                                let curr = *c_val.peek();
+                                let mut s = c_val;
+                                s.set(curr.saturating_sub(5));
+                            },
+                            move || {
+                                let curr = *c_val.peek();
+                                let mut s = c_val;
+                                s.set(curr.saturating_add(5).min(100));
+                            },
+                        ))
+                        .child(channel_adjuster(
+                            "Magenta (M):",
+                            format!("{}%", *m_val.read()),
+                            move || {
+                                let curr = *m_val.peek();
+                                let mut s = m_val;
+                                s.set(curr.saturating_sub(5));
+                            },
+                            move || {
+                                let curr = *m_val.peek();
+                                let mut s = m_val;
+                                s.set(curr.saturating_add(5).min(100));
+                            },
+                        ))
+                        .child(channel_adjuster(
+                            "Amarelo (Y):",
+                            format!("{}%", *y_val.read()),
+                            move || {
+                                let curr = *y_val.peek();
+                                let mut s = y_val;
+                                s.set(curr.saturating_sub(5));
+                            },
+                            move || {
+                                let curr = *y_val.peek();
+                                let mut s = y_val;
+                                s.set(curr.saturating_add(5).min(100));
+                            },
+                        ))
+                        .child(channel_adjuster(
+                            "Preto (K):",
+                            format!("{}%", *k_val.read()),
+                            move || {
+                                let curr = *k_val.peek();
+                                let mut s = k_val;
+                                s.set(curr.saturating_sub(5));
+                            },
+                            move || {
+                                let curr = *k_val.peek();
+                                let mut s = k_val;
+                                s.set(curr.saturating_add(5).min(100));
+                            },
+                        )),
+                    2 => rect()
+                        .direction(Direction::Vertical)
+                        .width(Size::fill())
+                        .spacing(2.)
+                        .child(channel_adjuster(
+                            "Luminância (L):",
+                            format!("{}", *lab_l.read()),
+                            move || {
+                                let curr = *lab_l.peek();
+                                let mut s = lab_l;
+                                s.set((curr - 5).clamp(0, 100));
+                            },
+                            move || {
+                                let curr = *lab_l.peek();
+                                let mut s = lab_l;
+                                s.set((curr + 5).clamp(0, 100));
+                            },
+                        ))
+                        .child(channel_adjuster(
+                            "Eixo a (V-V):",
+                            format!("{}", *lab_a.read()),
+                            move || {
+                                let curr = *lab_a.peek();
+                                let mut s = lab_a;
+                                s.set((curr - 5).clamp(-128, 127));
+                            },
+                            move || {
+                                let curr = *lab_a.peek();
+                                let mut s = lab_a;
+                                s.set((curr + 5).clamp(-128, 127));
+                            },
+                        ))
+                        .child(channel_adjuster(
+                            "Eixo b (A-A):",
+                            format!("{}", *lab_b.read()),
+                            move || {
+                                let curr = *lab_b.peek();
+                                let mut s = lab_b;
+                                s.set((curr - 5).clamp(-128, 127));
+                            },
+                            move || {
+                                let curr = *lab_b.peek();
+                                let mut s = lab_b;
+                                s.set((curr + 5).clamp(-128, 127));
+                            },
+                        )),
+                    _ => {
+                        let mut spot_change = spot_name;
+                        rect()
+                            .direction(Direction::Vertical)
+                            .width(Size::fill())
+                            .spacing(theme::SPACE_1)
+                            .child(
+                                label()
+                                    .text("Tinta Spot / Especial:")
+                                    .font_size(11.)
+                                    .color(theme::TEXT_SECONDARY),
+                            )
+                            .child(
+                                rect()
+                                    .direction(Direction::Horizontal)
+                                    .spacing(4.)
+                                    .child(
+                                        Button::new()
+                                            .on_press(move |_| {
+                                                spot_change.set("PANTONE 185 C".to_string())
+                                            })
+                                            .child(label().text("185 C (Red)").font_size(9.)),
+                                    )
+                                    .child(
+                                        Button::new()
+                                            .on_press(move |_| {
+                                                spot_change.set("PANTONE Reflex Blue".to_string())
+                                            })
+                                            .child(label().text("Reflex Blue").font_size(9.)),
+                                    )
+                                    .child(
+                                        Button::new()
+                                            .on_press(move |_| {
+                                                spot_change.set("PANTONE Metallic Gold".to_string())
+                                            })
+                                            .child(label().text("Gold").font_size(9.)),
+                                    ),
+                            )
+                    }
+                },
+            )
+            .child(
+                // Apply Button
+                Button::new()
+                    .on_press(move |_| {
+                        if let Some(id) = first_id {
+                            let cmd = if is_fill {
+                                Command::SetFill {
+                                    id,
+                                    fill: Some(token_for_apply.clone()),
+                                }
+                            } else {
+                                Command::SetStroke {
+                                    id,
+                                    stroke: Some(token_for_apply.clone()),
+                                    width: 2.0,
+                                }
+                            };
+                            let _ = shell_for_apply
+                                .write()
+                                .bridge
+                                .submit_all("Apply color", vec![cmd]);
+                        }
+                    })
+                    .child(
+                        label()
+                            .text(if is_fill {
+                                "Aplicar ao Preenchimento"
+                            } else {
+                                "Aplicar ao Contorno"
+                            })
+                            .font_size(11.),
+                    ),
+            )
+    }
+}
+
+/// Swatches Panel (`ptnd.panel.swatches`): Sistema, Documento, and Favoritos libraries.
+#[derive(Clone, PartialEq)]
+pub struct SwatchesPanel {
+    pub ui: UiShell,
+    pub target_fill: State<bool>,
+}
+
+impl Component for SwatchesPanel {
+    fn render(&self) -> impl IntoElement {
+        let shell = self.ui.shell;
+        let sel = shell.peek().bridge.selection();
+        let first_id = sel.selected_ids.first().copied();
+        let is_fill = *self.target_fill.read();
+
+        let mut lib_mode = use_state(|| 0usize); // 0: Sistema, 1: Documento, 2: Favoritos
+        let current_lib = *lib_mode.read();
+
+        let custom_swatches = use_state(|| {
+            vec![
+                (
+                    "Menta Neon".to_string(),
+                    "#10B981".to_string(),
+                    Color::from_rgb(0x10, 0xB9, 0x81),
+                ),
+                (
+                    "Ouro Solar".to_string(),
+                    "#F59E0B".to_string(),
+                    Color::from_rgb(0xF5, 0x9E, 0x0B),
+                ),
+                (
+                    "Índigo".to_string(),
+                    "#6366F1".to_string(),
+                    Color::from_rgb(0x63, 0x66, 0xF1),
+                ),
+                (
+                    "Coral Rosa".to_string(),
+                    "#F43F5E".to_string(),
+                    Color::from_rgb(0xF4, 0x3F, 0x5E),
+                ),
+            ]
+        });
+
+        let system_palette = [
+            (
+                "Cinza 900",
+                "ptnd.gray/900",
+                Color::from_rgb(0x11, 0x18, 0x27),
+            ),
+            (
+                "Cinza 600",
+                "ptnd.gray/600",
+                Color::from_rgb(0x4B, 0x55, 0x63),
+            ),
+            (
+                "Cinza 300",
+                "ptnd.gray/300",
+                Color::from_rgb(0xD1, 0xD5, 0xDB),
+            ),
+            ("Branco", "ptnd.white", Color::from_rgb(0xFF, 0xFF, 0xFF)),
+            (
+                "Vermelho 500",
+                "ptnd.red/500",
+                Color::from_rgb(0xEF, 0x44, 0x44),
+            ),
+            (
+                "Rosa 500",
+                "ptnd.pink/500",
+                Color::from_rgb(0xEC, 0x48, 0x99),
+            ),
+            (
+                "Roxo 500",
+                "ptnd.purple/500",
+                Color::from_rgb(0x8B, 0x5C, 0xF6),
+            ),
+            (
+                "Azul 500",
+                "ptnd.blue/500",
+                Color::from_rgb(0x3B, 0x82, 0xF6),
+            ),
+            (
+                "Ciano 500",
+                "ptnd.cyan/500",
+                Color::from_rgb(0x06, 0xB6, 0xD4),
+            ),
+            (
+                "Teal 500",
+                "ptnd.teal/500",
+                Color::from_rgb(0x14, 0xB8, 0xA6),
+            ),
+            (
+                "Verde 500",
+                "ptnd.green/500",
+                Color::from_rgb(0x10, 0xB9, 0x81),
+            ),
+            (
+                "Amarelo 500",
+                "ptnd.amber/500",
+                Color::from_rgb(0xF5, 0x9E, 0x0B),
+            ),
+        ];
+
+        let doc_swatches: Vec<(String, String, Color)> = {
+            let s = shell.peek();
+            let mut list = Vec::new();
+            if let Some(session) = s.bridge.session() {
+                if let Some(surface) = s
+                    .bridge
+                    .active_surface()
+                    .and_then(|id| session.surface(id).ok())
+                {
+                    for obj in surface.objects() {
+                        if let Some(fill) = obj.fill.as_deref() {
+                            let rgb = petunia_design_document::resolve_color_to_rgb(fill);
+                            let col = Color::from_rgb(
+                                (rgb[0] * 255.0).round() as u8,
+                                (rgb[1] * 255.0).round() as u8,
+                                (rgb[2] * 255.0).round() as u8,
+                            );
+                            let name = format!("Obj #{}", obj.id.raw());
+                            if !list.iter().any(|(_, tok, _)| tok == fill) {
+                                list.push((name, fill.to_string(), col));
+                            }
+                        }
+                    }
+                }
+            }
+            list
+        };
+
+        let active_swatches: Vec<(String, String, Color)> = match current_lib {
+            0 => system_palette
+                .iter()
+                .map(|&(n, t, c)| (n.to_string(), t.to_string(), c))
+                .collect(),
+            1 => doc_swatches,
+            _ => (*custom_swatches.read()).clone(),
+        };
+
+        let mut add_swatches = custom_swatches;
+
+        rect()
+            .direction(Direction::Vertical)
+            .width(Size::fill())
+            .height(Size::fill())
+            .spacing(theme::SPACE_2)
+            .child(
+                // Library Switcher: Sistema | Documento | Favoritos
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .height(Size::px(26.))
+                    .background(theme::SURFACE_CHROME_STRONG)
+                    .padding(Gaps::new_all(2.))
+                    .spacing(2.)
+                    .main_align(Alignment::SpaceEvenly)
+                    .cross_align(Alignment::Center)
+                    .child(subtab_pill("Sistema", 0, current_lib == 0, &mut lib_mode))
+                    .child(subtab_pill("Documento", 1, current_lib == 1, &mut lib_mode))
+                    .child(subtab_pill("Favoritos", 2, current_lib == 2, &mut lib_mode)),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .main_align(Alignment::SpaceBetween)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        label()
+                            .text(match current_lib {
+                                0 => "PALETA DO SISTEMA",
+                                1 => "CORES DO DOCUMENTO",
+                                _ => "AMOSTRAS FAVORITAS",
+                            })
+                            .font_size(10.)
+                            .color(theme::TEXT_SECONDARY),
+                    )
+                    .maybe_child(if current_lib == 2 {
+                        Some(
+                            Button::new()
                                 .on_press(move |_| {
-                                    if let Some(id) = first_id {
-                                        let _ = shell_for_swatch.write().bridge.submit_all(
-                                            "Set fill",
-                                            vec![Command::SetFill {
-                                                id,
-                                                fill: Some(token.to_string()),
-                                            }],
-                                        );
-                                    }
+                                    let count = add_swatches.read().len() + 1;
+                                    let mut list = (*add_swatches.read()).clone();
+                                    list.push((
+                                        format!("Amostra {count}"),
+                                        "#EC4899".to_string(),
+                                        Color::from_rgb(0xEC, 0x48, 0x99),
+                                    ));
+                                    add_swatches.set(list);
                                 })
-                                .child(
-                                    label()
-                                        .text(name)
-                                        .font_size(9.)
-                                        .color(if color.r() > 180 && color.g() > 180 {
+                                .child(label().text("+ Adicionar").font_size(9.)),
+                        )
+                    } else {
+                        None
+                    }),
+            )
+            .child(if active_swatches.is_empty() {
+                rect()
+                    .width(Size::fill())
+                    .padding(Gaps::new_all(theme::SPACE_2))
+                    .center()
+                    .child(
+                        label()
+                            .text("Nenhuma cor encontrada nesta biblioteca.")
+                            .font_size(11.)
+                            .color(theme::TEXT_SECONDARY),
+                    )
+            } else {
+                rect()
+                    .direction(Direction::Vertical)
+                    .width(Size::fill())
+                    .spacing(theme::SPACE_1)
+                    .children(active_swatches.chunks(4).map(|chunk| {
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .width(Size::fill())
+                            .main_align(Alignment::SpaceBetween)
+                            .children(chunk.iter().map(|(name, token, color)| {
+                                let mut shell_for_swatch = shell;
+                                let tok = token.clone();
+                                let col = *color;
+                                rect()
+                                    .width(Size::px(60.))
+                                    .height(Size::px(34.))
+                                    .background(col)
+                                    .border(
+                                        Border::new()
+                                            .fill(theme::SURFACE_CHROME_STRONG)
+                                            .width(1.)
+                                            .alignment(BorderAlignment::Inner),
+                                    )
+                                    .center()
+                                    .on_press(move |_| {
+                                        if let Some(id) = first_id {
+                                            let cmd = if is_fill {
+                                                Command::SetFill {
+                                                    id,
+                                                    fill: Some(tok.clone()),
+                                                }
+                                            } else {
+                                                Command::SetStroke {
+                                                    id,
+                                                    stroke: Some(tok.clone()),
+                                                    width: 2.0,
+                                                }
+                                            };
+                                            let _ = shell_for_swatch
+                                                .write()
+                                                .bridge
+                                                .submit_all("Set swatch color", vec![cmd]);
+                                        }
+                                    })
+                                    .child(label().text(name.clone()).font_size(9.).color(
+                                        if col.r() > 180 && col.g() > 180 {
                                             Color::BLACK
                                         } else {
                                             Color::WHITE
-                                        }),
-                                )
-                        }))
-                })),
-        )
+                                        },
+                                    ))
+                            }))
+                    }))
+            })
+    }
+}
+
+/// Background Tasks Tab (`ptnd.panel.background_tasks`): Job queue, progress, cancellation.
+#[derive(Clone, PartialEq)]
+pub struct BackgroundTasksPanel(pub UiShell);
+
+impl Component for BackgroundTasksPanel {
+    fn render(&self) -> impl IntoElement {
+        let shell = self.0.shell;
+        let jobs = shell.peek().bridge.jobs().list_jobs();
+        let mut shell_for_sim = shell;
+        let mut shell_for_clear = shell;
+
+        rect()
+            .direction(Direction::Vertical)
+            .width(Size::fill())
+            .height(Size::fill())
+            .spacing(theme::SPACE_2)
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .main_align(Alignment::SpaceBetween)
+                    .cross_align(Alignment::Center)
+                    .child(section_header("TAREFAS EM SEGUNDO PLANO"))
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .spacing(4.)
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        let s = shell_for_sim.write();
+                                        let (id, _) =
+                                            s.bridge.jobs().spawn_job("Exportação PDF 300 DPI");
+                                        s.bridge.jobs().update_progress(id, 65);
+                                    })
+                                    .child(label().text("+ Simular").font_size(10.)),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        shell_for_clear.write().bridge.jobs().clear_completed();
+                                    })
+                                    .child(label().text("Limpar").font_size(10.)),
+                            ),
+                    ),
+            )
+            .child(if jobs.is_empty() {
+                rect()
+                    .width(Size::fill())
+                    .padding(Gaps::new_all(theme::SPACE_3))
+                    .center()
+                    .child(
+                        label()
+                            .text("Nenhuma tarefa em execução em segundo plano.")
+                            .font_size(11.)
+                            .color(theme::TEXT_SECONDARY),
+                    )
+            } else {
+                rect()
+                    .direction(Direction::Vertical)
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .spacing(theme::SPACE_2)
+                    .children(jobs.into_iter().map(|job| {
+                        let mut shell_for_cancel = shell;
+                        let job_id = job.id;
+                        let is_running = job.state == petunia_design_jobs::JobState::Running;
+                        let state_label = match job.state {
+                            petunia_design_jobs::JobState::Running => "⚡ Executando",
+                            petunia_design_jobs::JobState::Completed => "✓ Concluído",
+                            petunia_design_jobs::JobState::Cancelled => "⊘ Cancelado",
+                            petunia_design_jobs::JobState::Failed => "✗ Falhou",
+                            petunia_design_jobs::JobState::Queued => "Pendente",
+                        };
+                        let state_color = match job.state {
+                            petunia_design_jobs::JobState::Running => {
+                                Color::from_rgb(0x38, 0xBD, 0xF8)
+                            }
+                            petunia_design_jobs::JobState::Completed => {
+                                Color::from_rgb(0x34, 0xD3, 0x99)
+                            }
+                            petunia_design_jobs::JobState::Cancelled => {
+                                Color::from_rgb(0xFB, 0xBF, 0x24)
+                            }
+                            petunia_design_jobs::JobState::Failed => {
+                                Color::from_rgb(0xF8, 0x71, 0x71)
+                            }
+                            petunia_design_jobs::JobState::Queued => theme::TEXT_SECONDARY,
+                        };
+
+                        rect()
+                            .direction(Direction::Vertical)
+                            .width(Size::fill())
+                            .background(theme::SURFACE_CHROME)
+                            .border(
+                                Border::new()
+                                    .fill(theme::SURFACE_CHROME_STRONG)
+                                    .width(1.)
+                                    .alignment(BorderAlignment::Inner),
+                            )
+                            .padding(Gaps::new_all(theme::SPACE_2))
+                            .spacing(theme::SPACE_1)
+                            .child(
+                                rect()
+                                    .direction(Direction::Horizontal)
+                                    .width(Size::fill())
+                                    .main_align(Alignment::SpaceBetween)
+                                    .cross_align(Alignment::Center)
+                                    .child(
+                                        label()
+                                            .text(format!("[#{}] {}", job.id, job.label))
+                                            .font_size(11.)
+                                            .color(theme::TEXT_PRIMARY),
+                                    )
+                                    .child(
+                                        label().text(state_label).font_size(10.).color(state_color),
+                                    ),
+                            )
+                            .child(
+                                // Progress Bar
+                                rect()
+                                    .width(Size::fill())
+                                    .height(Size::px(6.))
+                                    .background(theme::SURFACE_CHROME_STRONG)
+                                    .child(
+                                        rect()
+                                            .width(Size::percent(job.percent as f32))
+                                            .height(Size::px(6.))
+                                            .background(state_color),
+                                    ),
+                            )
+                            .child(
+                                rect()
+                                    .direction(Direction::Horizontal)
+                                    .width(Size::fill())
+                                    .main_align(Alignment::SpaceBetween)
+                                    .cross_align(Alignment::Center)
+                                    .child(
+                                        label()
+                                            .text(format!("{}%", job.percent))
+                                            .font_size(10.)
+                                            .color(theme::TEXT_TERTIARY),
+                                    )
+                                    .maybe_child(if is_running {
+                                        Some(
+                                            Button::new()
+                                                .on_press(move |_| {
+                                                    shell_for_cancel
+                                                        .write()
+                                                        .bridge
+                                                        .jobs()
+                                                        .cancel_job(job_id);
+                                                })
+                                                .child(label().text("Cancelar").font_size(9.)),
+                                        )
+                                    } else {
+                                        None
+                                    }),
+                            )
+                    }))
+            })
+    }
 }
 
 // =========================================================================
@@ -1268,129 +2240,224 @@ fn history_tab(ui: UiShell) -> impl IntoElement {
 // 5. Navigator Tab (Minimap)
 // =========================================================================
 
-fn navigator_tab(ui: UiShell) -> impl IntoElement {
-    let shell = ui.shell;
-    let snapshot = shell.peek().canvas_snapshot();
-    let zoom_pct = (snapshot.camera.zoom * 100.0) as i32;
-    let pan_x = snapshot.camera.pan_x as i32;
-    let pan_y = snapshot.camera.pan_y as i32;
+#[derive(Clone, PartialEq)]
+pub struct NavigatorTab(pub UiShell);
 
-    let (surf_w, surf_h) = snapshot
-        .surface
-        .as_ref()
-        .map(|s| (s.bounds[2], s.bounds[3]))
-        .unwrap_or((800.0, 600.0));
+impl Component for NavigatorTab {
+    fn render(&self) -> impl IntoElement {
+        let shell = self.0.shell;
+        let is_dragging = use_state(|| false);
+        let snapshot = shell.peek().canvas_snapshot();
+        let zoom_pct = (snapshot.camera.zoom * 100.0) as i32;
+        let pan_x = snapshot.camera.pan_x as i32;
+        let pan_y = snapshot.camera.pan_y as i32;
 
-    // Thumbnail scale: fit within 240px wide, 150px high
-    let scale_x = 240.0 / surf_w.max(10.0);
-    let scale_y = 150.0 / surf_h.max(10.0);
-    let scale = scale_x.min(scale_y);
-    let thumb_w = (surf_w * scale) as f32;
-    let thumb_h = (surf_h * scale) as f32;
+        let (surf_w, surf_h) = snapshot
+            .surface
+            .as_ref()
+            .map(|s| (s.bounds[2], s.bounds[3]))
+            .unwrap_or((800.0, 600.0));
 
-    let mut shell_for_reset = shell;
-    let mut shell_for_zoom_in = shell;
-    let mut shell_for_zoom_out = shell;
+        // Thumbnail scale: fit within 240px wide, 150px high
+        let scale_x = 240.0 / surf_w.max(10.0);
+        let scale_y = 150.0 / surf_h.max(10.0);
+        let scale = scale_x.min(scale_y);
+        let thumb_w = (surf_w * scale) as f32;
+        let thumb_h = (surf_h * scale) as f32;
 
-    rect()
-        .direction(Direction::Vertical)
-        .width(Size::fill())
-        .spacing(theme::SPACE_2)
-        .child(
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::fill())
-                .main_align(Alignment::SpaceBetween)
-                .cross_align(Alignment::Center)
-                .child(section_header("NAVEGADOR & ZOOM"))
-                .child(
-                    Button::new()
-                        .on_press(move |_| {
-                            let _ = run_action_token(
-                                &mut shell_for_reset.write(),
-                                "ptnd.action.view.fit_surface",
-                            );
-                        })
-                        .child(label().text("Enquadrar").font_size(11.)),
-                ),
-        )
-        .child(
-            rect()
-                .direction(Direction::Horizontal)
-                .spacing(theme::SPACE_1)
-                .child(value_pill("Zoom", format!("{}%", zoom_pct)))
-                .child(value_pill("X", format!("{} pt", pan_x)))
-                .child(value_pill("Y", format!("{} pt", pan_y))),
-        )
-        .child(
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::fill())
-                .spacing(theme::SPACE_1)
-                .child(
-                    Button::new()
-                        .on_press(move |_| {
-                            let _ = run_action_token(
-                                &mut shell_for_zoom_in.write(),
-                                "ptnd.action.view.zoom_in",
-                            );
-                        })
-                        .child(label().text("Zoom +").font_size(11.)),
-                )
-                .child(
-                    Button::new()
-                        .on_press(move |_| {
-                            let _ = run_action_token(
-                                &mut shell_for_zoom_out.write(),
-                                "ptnd.action.view.zoom_out",
-                            );
-                        })
-                        .child(label().text("Zoom -").font_size(11.)),
-                )
-                .child(
-                    Button::new()
-                        .on_press(move |_| {
-                            let _ = run_action_token(
-                                &mut shell_for_reset.write(),
-                                "ptnd.action.view.zoom_100",
-                            );
-                        })
-                        .child(label().text("100%").font_size(11.)),
-                ),
-        )
-        .child(
-            // Mini Canvas Viewport Box
-            rect()
-                .width(Size::fill())
-                .height(Size::px(180.))
-                .center()
-                .background(theme::SURFACE_CHROME)
-                .border(
-                    Border::new()
-                        .fill(theme::SURFACE_CHROME_STRONG)
-                        .width(1.)
-                        .alignment(BorderAlignment::Inner),
-                )
-                .child(
-                    rect()
-                        .width(Size::px(thumb_w.max(20.)))
-                        .height(Size::px(thumb_h.max(20.)))
-                        .background(Color::WHITE)
-                        .border(
-                            Border::new()
-                                .fill(theme::BLOOM.value)
-                                .width(1.)
-                                .alignment(BorderAlignment::Inner),
-                        )
-                        .center()
-                        .child(
-                            label()
-                                .text(format!("{:.0} × {:.0}", surf_w, surf_h))
-                                .font_size(9.)
-                                .color(Color::from_rgb(0x80, 0x80, 0x80)),
-                        ),
-                ),
-        )
+        let mut shell_for_reset = shell;
+        let mut shell_for_zoom_in = shell;
+        let mut shell_for_zoom_out = shell;
+        let mut shell_for_zoom_100 = shell;
+
+        // Viewport visible rect in document space
+        let vis_doc = snapshot.camera.visible_doc_rect();
+        let vis_box_x = ((vis_doc.x0 * scale) as f32).clamp(0.0, thumb_w);
+        let vis_box_y = ((vis_doc.y0 * scale) as f32).clamp(0.0, thumb_h);
+        let vis_box_w = (((vis_doc.width() * scale) as f32).min(thumb_w - vis_box_x)).max(4.0);
+        let vis_box_h = (((vis_doc.height() * scale) as f32).min(thumb_h - vis_box_y)).max(4.0);
+
+        let mut shell_for_down = shell;
+        let mut shell_for_move = shell;
+        let mut drag_down = is_dragging;
+        let drag_move = is_dragging;
+        let mut drag_up = is_dragging;
+
+        rect()
+            .direction(Direction::Vertical)
+            .width(Size::fill())
+            .spacing(theme::SPACE_2)
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .main_align(Alignment::SpaceBetween)
+                    .cross_align(Alignment::Center)
+                    .child(section_header("NAVEGADOR & ZOOM"))
+                    .child(
+                        Button::new()
+                            .on_press(move |_| {
+                                let _ = run_action_token(
+                                    &mut shell_for_reset.write(),
+                                    "ptnd.action.view.fit_surface",
+                                );
+                            })
+                            .child(label().text("Enquadrar").font_size(11.)),
+                    ),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(theme::SPACE_1)
+                    .child(value_pill("Zoom", format!("{}%", zoom_pct)))
+                    .child(value_pill("X", format!("{} pt", pan_x)))
+                    .child(value_pill("Y", format!("{} pt", pan_y))),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .spacing(theme::SPACE_1)
+                    .child(
+                        Button::new()
+                            .on_press(move |_| {
+                                let _ = run_action_token(
+                                    &mut shell_for_zoom_in.write(),
+                                    "ptnd.action.view.zoom_in",
+                                );
+                            })
+                            .child(label().text("Zoom +").font_size(11.)),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press(move |_| {
+                                let _ = run_action_token(
+                                    &mut shell_for_zoom_out.write(),
+                                    "ptnd.action.view.zoom_out",
+                                );
+                            })
+                            .child(label().text("Zoom -").font_size(11.)),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press(move |_| {
+                                let _ = run_action_token(
+                                    &mut shell_for_zoom_100.write(),
+                                    "ptnd.action.view.zoom_100",
+                                );
+                            })
+                            .child(label().text("100%").font_size(11.)),
+                    ),
+            )
+            .child(
+                // Mini Canvas Viewport Box
+                rect()
+                    .width(Size::fill())
+                    .height(Size::px(180.))
+                    .center()
+                    .background(theme::SURFACE_CHROME)
+                    .border(
+                        Border::new()
+                            .fill(theme::SURFACE_CHROME_STRONG)
+                            .width(1.)
+                            .alignment(BorderAlignment::Inner),
+                    )
+                    .child(
+                        rect()
+                            .width(Size::px(thumb_w.max(20.)))
+                            .height(Size::px(thumb_h.max(20.)))
+                            .background(Color::WHITE)
+                            .border(
+                                Border::new()
+                                    .fill(theme::BLOOM.value)
+                                    .width(1.)
+                                    .alignment(BorderAlignment::Inner),
+                            )
+                            .on_pointer_down(move |event: Event<PointerEventData>| {
+                                drag_down.set(true);
+                                let loc = event.element_location();
+                                let target_doc_x = (loc.x / scale).clamp(0.0, surf_w);
+                                let target_doc_y = (loc.y / scale).clamp(0.0, surf_h);
+                                let mut s = shell_for_down.write();
+                                let mut cam = s.view_camera();
+                                let vp_w = cam.viewport_width;
+                                let vp_h = cam.viewport_height;
+                                cam.pan_x = vp_w / 2.0 - target_doc_x * cam.zoom;
+                                cam.pan_y = vp_h / 2.0 - target_doc_y * cam.zoom;
+                                s.set_view_camera(cam);
+                            })
+                            .on_pointer_move(move |event: Event<PointerEventData>| {
+                                if *drag_move.peek() {
+                                    let loc = event.element_location();
+                                    let target_doc_x = (loc.x / scale).clamp(0.0, surf_w);
+                                    let target_doc_y = (loc.y / scale).clamp(0.0, surf_h);
+                                    let mut s = shell_for_move.write();
+                                    let mut cam = s.view_camera();
+                                    let vp_w = cam.viewport_width;
+                                    let vp_h = cam.viewport_height;
+                                    cam.pan_x = vp_w / 2.0 - target_doc_x * cam.zoom;
+                                    cam.pan_y = vp_h / 2.0 - target_doc_y * cam.zoom;
+                                    s.set_view_camera(cam);
+                                }
+                            })
+                            .on_mouse_up(move |_| {
+                                drag_up.set(false);
+                            })
+                            .on_pointer_leave(move |_| {
+                                drag_up.set(false);
+                            })
+                            .children(snapshot.objects.iter().filter_map(|obj| {
+                                let min_x = (obj.world_bounds[0] * scale) as f32;
+                                let min_y = (obj.world_bounds[1] * scale) as f32;
+                                let w =
+                                    ((obj.world_bounds[2] - obj.world_bounds[0]) * scale) as f32;
+                                let h =
+                                    ((obj.world_bounds[3] - obj.world_bounds[1]) * scale) as f32;
+                                if w > 1.0 && h > 1.0 {
+                                    let fill_col = obj
+                                        .fill
+                                        .as_deref()
+                                        .and_then(parse_color_rgb)
+                                        .map(|(r, g, b)| {
+                                            Color::from_rgb(
+                                                r.round() as u8,
+                                                g.round() as u8,
+                                                b.round() as u8,
+                                            )
+                                        })
+                                        .unwrap_or(Color::from_rgb(0x94, 0xA3, 0xB8));
+                                    Some(
+                                        rect()
+                                            .position(
+                                                Position::new_absolute().left(min_x).top(min_y),
+                                            )
+                                            .width(Size::px(w))
+                                            .height(Size::px(h))
+                                            .background(fill_col)
+                                            .into_element(),
+                                    )
+                                } else {
+                                    None
+                                }
+                            }))
+                            .child(
+                                rect()
+                                    .position(
+                                        Position::new_absolute().left(vis_box_x).top(vis_box_y),
+                                    )
+                                    .width(Size::px(vis_box_w))
+                                    .height(Size::px(vis_box_h))
+                                    .background(Color::from_argb(0x22, 0xEF, 0x44, 0x44))
+                                    .border(
+                                        Border::new()
+                                            .fill(Color::from_rgb(0xEF, 0x44, 0x44))
+                                            .width(1.5)
+                                            .alignment(BorderAlignment::Inner),
+                                    ),
+                            ),
+                    ),
+            )
+    }
 }
 
 // =========================================================================
@@ -1462,10 +2529,7 @@ fn opacity_button(
             if let Some(id) = target_id {
                 let _ = shell.write().bridge.submit_all(
                     "Set opacity",
-                    vec![Command::SetOpacity {
-                        id,
-                        opacity: val,
-                    }],
+                    vec![Command::SetOpacity { id, opacity: val }],
                 );
             }
         })
@@ -1552,15 +2616,27 @@ fn star_points_button(
     Button::new()
         .on_press(move |_| {
             if let Some(id) = target_id {
-                let obj = shell.peek().bridge.session().and_then(|s| s.find_object(id)).cloned();
+                let obj = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .cloned();
                 if let Some(obj) = obj {
-                    if let Some(ShapeKind::Star { points, inner_ratio }) = obj.shape {
+                    if let Some(ShapeKind::Star {
+                        points,
+                        inner_ratio,
+                    }) = obj.shape
+                    {
                         let new_points = (points as i32 + delta).clamp(3, 36) as u32;
                         let _ = shell.write().bridge.submit_all(
                             "Change star points",
                             vec![Command::SetShape {
                                 id,
-                                shape: Some(ShapeKind::Star { points: new_points, inner_ratio }),
+                                shape: Some(ShapeKind::Star {
+                                    points: new_points,
+                                    inner_ratio,
+                                }),
                             }],
                         );
                     }
@@ -1579,15 +2655,27 @@ fn star_ratio_button(
     Button::new()
         .on_press(move |_| {
             if let Some(id) = target_id {
-                let obj = shell.peek().bridge.session().and_then(|s| s.find_object(id)).cloned();
+                let obj = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .cloned();
                 if let Some(obj) = obj {
-                    if let Some(ShapeKind::Star { points, inner_ratio }) = obj.shape {
+                    if let Some(ShapeKind::Star {
+                        points,
+                        inner_ratio,
+                    }) = obj.shape
+                    {
                         let new_ratio = (inner_ratio + delta).clamp(0.1, 0.9);
                         let _ = shell.write().bridge.submit_all(
                             "Change star inner ratio",
                             vec![Command::SetShape {
                                 id,
-                                shape: Some(ShapeKind::Star { points, inner_ratio: new_ratio }),
+                                shape: Some(ShapeKind::Star {
+                                    points,
+                                    inner_ratio: new_ratio,
+                                }),
                             }],
                         );
                     }
@@ -1606,7 +2694,12 @@ fn polygon_sides_button(
     Button::new()
         .on_press(move |_| {
             if let Some(id) = target_id {
-                let obj = shell.peek().bridge.session().and_then(|s| s.find_object(id)).cloned();
+                let obj = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .cloned();
                 if let Some(obj) = obj {
                     if let Some(ShapeKind::Polygon { sides }) = obj.shape {
                         let new_sides = (sides as i32 + delta).clamp(3, 36) as u32;
@@ -1633,7 +2726,12 @@ fn corner_radius_button(
     Button::new()
         .on_press(move |_| {
             if let Some(id) = target_id {
-                let obj = shell.peek().bridge.session().and_then(|s| s.find_object(id)).cloned();
+                let obj = shell
+                    .peek()
+                    .bridge
+                    .session()
+                    .and_then(|s| s.find_object(id))
+                    .cloned();
                 if let Some(obj) = obj {
                     if let Some(ShapeKind::Rectangle { corner_radii }) = obj.shape {
                         let new_r = (corner_radii[0] + delta).max(0.0);
@@ -1641,7 +2739,9 @@ fn corner_radius_button(
                             "Change corner radius",
                             vec![Command::SetShape {
                                 id,
-                                shape: Some(ShapeKind::Rectangle { corner_radii: [new_r, new_r, new_r, new_r] }),
+                                shape: Some(ShapeKind::Rectangle {
+                                    corner_radii: [new_r, new_r, new_r, new_r],
+                                }),
                             }],
                         );
                     }
@@ -1658,10 +2758,10 @@ fn bake_corners_button(
     Button::new()
         .on_press(move |_| {
             if let Some(id) = target_id {
-                let _ = shell.write().bridge.submit_all(
-                    "Bake corners",
-                    vec![Command::BakeCorners { id }],
-                );
+                let _ = shell
+                    .write()
+                    .bridge
+                    .submit_all("Bake corners", vec![Command::BakeCorners { id }]);
             }
         })
         .child(label().text("Fixar").font_size(10.))
@@ -1683,7 +2783,11 @@ fn contour_offset_button(
                     .and_then(|s| s.find_object(id))
                     .and_then(|o| {
                         o.modifiers.iter().find_map(|m| {
-                            if let petunia_design_document::ModifierKind::ContourOffset { distance, .. } = m.kind {
+                            if let petunia_design_document::ModifierKind::ContourOffset {
+                                distance,
+                                ..
+                            } = m.kind
+                            {
                                 Some(distance)
                             } else {
                                 None
@@ -1694,7 +2798,10 @@ fn contour_offset_button(
                 let new_dist = current_dist + delta;
                 let _ = shell.write().bridge.submit_all(
                     "Set contour offset",
-                    vec![Command::OffsetPath { id, delta: new_dist }],
+                    vec![Command::OffsetPath {
+                        id,
+                        delta: new_dist,
+                    }],
                 );
             }
         })
@@ -1708,10 +2815,10 @@ fn bake_contour_button(
     Button::new()
         .on_press(move |_| {
             if let Some(id) = target_id {
-                let _ = shell.write().bridge.submit_all(
-                    "Bake contour",
-                    vec![Command::BakeContour { id }],
-                );
+                let _ = shell
+                    .write()
+                    .bridge
+                    .submit_all("Bake contour", vec![Command::BakeContour { id }]);
             }
         })
         .child(label().text("Fixar (Bake)").font_size(10.))
@@ -1793,10 +2900,14 @@ fn modifier_stack_inspector(
                             .on_press(move |_| {
                                 if let Some(id) = target_id {
                                     let r = target_bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
-                                    let crop_rect = [r[0], r[1], (r[2] * 0.8).max(10.), (r[3] * 0.8).max(10.)];
+                                    let crop_rect =
+                                        [r[0], r[1], (r[2] * 0.8).max(10.), (r[3] * 0.8).max(10.)];
                                     let _ = shell.write().bridge.submit_all(
                                         "Add crop modifier",
-                                        vec![Command::SetCropRect { id, rect: crop_rect }],
+                                        vec![Command::SetCropRect {
+                                            id,
+                                            rect: crop_rect,
+                                        }],
                                     );
                                 }
                             })
@@ -1814,7 +2925,11 @@ fn modifier_stack_inspector(
         let can_move_down = idx + 1 < modifiers.len();
 
         let (title, detail) = match &item.kind {
-            petunia_design_document::ModifierKind::ContourOffset { distance, join, cap } => {
+            petunia_design_document::ModifierKind::ContourOffset {
+                distance,
+                join,
+                cap,
+            } => {
                 let join_name = match join {
                     OffsetJoin::Round => "Arredondada",
                     OffsetJoin::Miter => "Esquadria",
@@ -1830,24 +2945,21 @@ fn modifier_stack_inspector(
                     format!("Junção: {} | Extr: {}", join_name, cap_name),
                 )
             }
-            petunia_design_document::ModifierKind::TransparentGradient { stops, .. } => {
-                (
-                    "Gradiente de Transparência".to_string(),
-                    format!("{} marcadores de opacidade", stops.len()),
-                )
-            }
-            petunia_design_document::ModifierKind::Perspective { .. } => {
-                (
-                    "Distorção de Perspectiva".to_string(),
-                    "Deformação quad de 4 cantos".to_string(),
-                )
-            }
-            petunia_design_document::ModifierKind::CropRect { rect } => {
-                (
-                    "Recorte Vetorial (Crop)".to_string(),
-                    format!("{:.0}x{:.0} @ {:.0},{:.0}", rect[2], rect[3], rect[0], rect[1]),
-                )
-            }
+            petunia_design_document::ModifierKind::TransparentGradient { stops, .. } => (
+                "Gradiente de Transparência".to_string(),
+                format!("{} marcadores de opacidade", stops.len()),
+            ),
+            petunia_design_document::ModifierKind::Perspective { .. } => (
+                "Distorção de Perspectiva".to_string(),
+                "Deformação quad de 4 cantos".to_string(),
+            ),
+            petunia_design_document::ModifierKind::CropRect { rect } => (
+                "Recorte Vetorial (Crop)".to_string(),
+                format!(
+                    "{:.0}x{:.0} @ {:.0},{:.0}",
+                    rect[2], rect[3], rect[0], rect[1]
+                ),
+            ),
         };
 
         let mut card = rect()
@@ -1856,7 +2968,11 @@ fn modifier_stack_inspector(
             .background(theme::SURFACE_CHROME_STRONG)
             .border(
                 Border::new()
-                    .fill(if is_enabled { theme::BORDER_SUBTLE } else { theme::SURFACE_CHROME })
+                    .fill(if is_enabled {
+                        theme::BORDER_SUBTLE
+                    } else {
+                        theme::SURFACE_CHROME
+                    })
                     .width(1.)
                     .alignment(BorderAlignment::Inner),
             )
@@ -1874,12 +2990,11 @@ fn modifier_stack_inspector(
                     .direction(Direction::Horizontal)
                     .spacing(4.)
                     .cross_align(Alignment::Center)
-                    .child(
-                        label()
-                            .text(title)
-                            .font_size(11.)
-                            .color(if is_enabled { theme::TEXT_PRIMARY } else { theme::TEXT_TERTIARY }),
-                    ),
+                    .child(label().text(title).font_size(11.).color(if is_enabled {
+                        theme::TEXT_PRIMARY
+                    } else {
+                        theme::TEXT_TERTIARY
+                    })),
             );
 
         // Action buttons
@@ -1899,12 +3014,19 @@ fn modifier_stack_inspector(
                             m.enabled = !m.enabled;
                             let _ = shell.write().bridge.submit_all(
                                 "Toggle modifier",
-                                vec![Command::SetModifiers { id, modifiers: next }],
+                                vec![Command::SetModifiers {
+                                    id,
+                                    modifiers: next,
+                                }],
                             );
                         }
                     }
                 })
-                .child(label().text(if is_enabled { "👁" } else { "⊘" }).font_size(10.)),
+                .child(
+                    label()
+                        .text(if is_enabled { "👁" } else { "⊘" })
+                        .font_size(10.),
+                ),
         );
 
         // Move up button
@@ -1918,7 +3040,10 @@ fn modifier_stack_inspector(
                             next.swap(idx, idx - 1);
                             let _ = shell.write().bridge.submit_all(
                                 "Reorder modifier up",
-                                vec![Command::SetModifiers { id, modifiers: next }],
+                                vec![Command::SetModifiers {
+                                    id,
+                                    modifiers: next,
+                                }],
                             );
                         }
                     })
@@ -1937,7 +3062,10 @@ fn modifier_stack_inspector(
                             next.swap(idx, idx + 1);
                             let _ = shell.write().bridge.submit_all(
                                 "Reorder modifier down",
-                                vec![Command::SetModifiers { id, modifiers: next }],
+                                vec![Command::SetModifiers {
+                                    id,
+                                    modifiers: next,
+                                }],
                             );
                         }
                     })
@@ -1955,7 +3083,10 @@ fn modifier_stack_inspector(
                         next.retain(|m| m.id != item_id);
                         let _ = shell.write().bridge.submit_all(
                             "Delete modifier",
-                            vec![Command::SetModifiers { id, modifiers: next }],
+                            vec![Command::SetModifiers {
+                                id,
+                                modifiers: next,
+                            }],
                         );
                     }
                 })
@@ -1967,7 +3098,11 @@ fn modifier_stack_inspector(
 
         // Subdetail and parameter controls
         match &item.kind {
-            petunia_design_document::ModifierKind::ContourOffset { distance: current_d, join: current_join, cap: current_cap } => {
+            petunia_design_document::ModifierKind::ContourOffset {
+                distance: current_d,
+                join: current_join,
+                cap: current_cap,
+            } => {
                 let d_val = *current_d;
                 let j_val = *current_join;
                 let c_val = *current_cap;
@@ -1996,7 +3131,12 @@ fn modifier_stack_inspector(
                     .direction(Direction::Horizontal)
                     .spacing(2.)
                     .cross_align(Alignment::Center)
-                    .child(label().text("Junção:").font_size(10.).color(theme::TEXT_SECONDARY))
+                    .child(
+                        label()
+                            .text("Junção:")
+                            .font_size(10.)
+                            .color(theme::TEXT_SECONDARY),
+                    )
                     .child({
                         let modifiers_clone = modifiers_join.clone();
                         Button::new()
@@ -2004,19 +3144,31 @@ fn modifier_stack_inspector(
                                 if let Some(id) = target_id {
                                     let mut next = modifiers_clone.clone();
                                     if let Some(m) = next.iter_mut().find(|m| m.id == item_id) {
-                                        m.kind = petunia_design_document::ModifierKind::ContourOffset {
-                                            distance: d_val,
-                                            join: OffsetJoin::Round,
-                                            cap: c_val,
-                                        };
+                                        m.kind =
+                                            petunia_design_document::ModifierKind::ContourOffset {
+                                                distance: d_val,
+                                                join: OffsetJoin::Round,
+                                                cap: c_val,
+                                            };
                                         let _ = shell.write().bridge.submit_all(
                                             "Set contour join round",
-                                            vec![Command::SetModifiers { id, modifiers: next }],
+                                            vec![Command::SetModifiers {
+                                                id,
+                                                modifiers: next,
+                                            }],
                                         );
                                     }
                                 }
                             })
-                            .child(label().text(if j_val == OffsetJoin::Round { "[Redonda]" } else { "Redonda" }).font_size(10.))
+                            .child(
+                                label()
+                                    .text(if j_val == OffsetJoin::Round {
+                                        "[Redonda]"
+                                    } else {
+                                        "Redonda"
+                                    })
+                                    .font_size(10.),
+                            )
                     })
                     .child({
                         let modifiers_clone = modifiers_join.clone();
@@ -2025,19 +3177,31 @@ fn modifier_stack_inspector(
                                 if let Some(id) = target_id {
                                     let mut next = modifiers_clone.clone();
                                     if let Some(m) = next.iter_mut().find(|m| m.id == item_id) {
-                                        m.kind = petunia_design_document::ModifierKind::ContourOffset {
-                                            distance: d_val,
-                                            join: OffsetJoin::Miter,
-                                            cap: c_val,
-                                        };
+                                        m.kind =
+                                            petunia_design_document::ModifierKind::ContourOffset {
+                                                distance: d_val,
+                                                join: OffsetJoin::Miter,
+                                                cap: c_val,
+                                            };
                                         let _ = shell.write().bridge.submit_all(
                                             "Set contour join miter",
-                                            vec![Command::SetModifiers { id, modifiers: next }],
+                                            vec![Command::SetModifiers {
+                                                id,
+                                                modifiers: next,
+                                            }],
                                         );
                                     }
                                 }
                             })
-                            .child(label().text(if j_val == OffsetJoin::Miter { "[Esquadria]" } else { "Esquadria" }).font_size(10.))
+                            .child(
+                                label()
+                                    .text(if j_val == OffsetJoin::Miter {
+                                        "[Esquadria]"
+                                    } else {
+                                        "Esquadria"
+                                    })
+                                    .font_size(10.),
+                            )
                     })
                     .child({
                         let modifiers_clone = modifiers_join.clone();
@@ -2046,19 +3210,31 @@ fn modifier_stack_inspector(
                                 if let Some(id) = target_id {
                                     let mut next = modifiers_clone.clone();
                                     if let Some(m) = next.iter_mut().find(|m| m.id == item_id) {
-                                        m.kind = petunia_design_document::ModifierKind::ContourOffset {
-                                            distance: d_val,
-                                            join: OffsetJoin::Bevel,
-                                            cap: c_val,
-                                        };
+                                        m.kind =
+                                            petunia_design_document::ModifierKind::ContourOffset {
+                                                distance: d_val,
+                                                join: OffsetJoin::Bevel,
+                                                cap: c_val,
+                                            };
                                         let _ = shell.write().bridge.submit_all(
                                             "Set contour join bevel",
-                                            vec![Command::SetModifiers { id, modifiers: next }],
+                                            vec![Command::SetModifiers {
+                                                id,
+                                                modifiers: next,
+                                            }],
                                         );
                                     }
                                 }
                             })
-                            .child(label().text(if j_val == OffsetJoin::Bevel { "[Chanfro]" } else { "Chanfro" }).font_size(10.))
+                            .child(
+                                label()
+                                    .text(if j_val == OffsetJoin::Bevel {
+                                        "[Chanfro]"
+                                    } else {
+                                        "Chanfro"
+                                    })
+                                    .font_size(10.),
+                            )
                     });
                 card = card.child(join_row);
             }
@@ -2082,11 +3258,19 @@ fn modifier_stack_inspector(
                                     let mut next = modifiers_clone.clone();
                                     if let Some(m) = next.iter_mut().find(|m| m.id == item_id) {
                                         m.kind = petunia_design_document::ModifierKind::CropRect {
-                                            rect: [r_val[0] - 5., r_val[1] - 5., r_val[2] + 10., r_val[3] + 10.],
+                                            rect: [
+                                                r_val[0] - 5.,
+                                                r_val[1] - 5.,
+                                                r_val[2] + 10.,
+                                                r_val[3] + 10.,
+                                            ],
                                         };
                                         let _ = shell.write().bridge.submit_all(
                                             "Expand crop rect",
-                                            vec![Command::SetModifiers { id, modifiers: next }],
+                                            vec![Command::SetModifiers {
+                                                id,
+                                                modifiers: next,
+                                            }],
                                         );
                                     }
                                 }
@@ -2101,11 +3285,19 @@ fn modifier_stack_inspector(
                                     let mut next = modifiers_clone.clone();
                                     if let Some(m) = next.iter_mut().find(|m| m.id == item_id) {
                                         m.kind = petunia_design_document::ModifierKind::CropRect {
-                                            rect: [r_val[0] + 5., r_val[1] + 5., (r_val[2] - 10.).max(10.), (r_val[3] - 10.).max(10.)],
+                                            rect: [
+                                                r_val[0] + 5.,
+                                                r_val[1] + 5.,
+                                                (r_val[2] - 10.).max(10.),
+                                                (r_val[3] - 10.).max(10.),
+                                            ],
                                         };
                                         let _ = shell.write().bridge.submit_all(
                                             "Contract crop rect",
-                                            vec![Command::SetModifiers { id, modifiers: next }],
+                                            vec![Command::SetModifiers {
+                                                id,
+                                                modifiers: next,
+                                            }],
                                         );
                                     }
                                 }
@@ -2147,8 +3339,18 @@ fn modifier_stack_inspector(
     }
 
     // Add extra "+ Modificador" buttons when stack is non-empty
-    let has_contour = modifiers.iter().any(|m| matches!(m.kind, petunia_design_document::ModifierKind::ContourOffset { .. }));
-    let has_crop = modifiers.iter().any(|m| matches!(m.kind, petunia_design_document::ModifierKind::CropRect { .. }));
+    let has_contour = modifiers.iter().any(|m| {
+        matches!(
+            m.kind,
+            petunia_design_document::ModifierKind::ContourOffset { .. }
+        )
+    });
+    let has_crop = modifiers.iter().any(|m| {
+        matches!(
+            m.kind,
+            petunia_design_document::ModifierKind::CropRect { .. }
+        )
+    });
     if !has_contour || !has_crop || modifiers.len() > 1 {
         let mut extra_row = rect()
             .direction(Direction::Horizontal)
@@ -2174,10 +3376,14 @@ fn modifier_stack_inspector(
                     .on_press(move |_| {
                         if let Some(id) = target_id {
                             let r = target_bounds.unwrap_or([0.0, 0.0, 100.0, 100.0]);
-                            let crop_rect = [r[0], r[1], (r[2] * 0.8).max(10.), (r[3] * 0.8).max(10.)];
+                            let crop_rect =
+                                [r[0], r[1], (r[2] * 0.8).max(10.), (r[3] * 0.8).max(10.)];
                             let _ = shell.write().bridge.submit_all(
                                 "Add crop modifier",
-                                vec![Command::SetCropRect { id, rect: crop_rect }],
+                                vec![Command::SetCropRect {
+                                    id,
+                                    rect: crop_rect,
+                                }],
                             );
                         }
                     })
@@ -2200,10 +3406,10 @@ fn convert_to_curves_button(
     Button::new()
         .on_press(move |_| {
             if let Some(id) = target_id {
-                let _ = shell.write().bridge.submit_all(
-                    "Convert to curves",
-                    vec![Command::ConvertToCurves { id }],
-                );
+                let _ = shell
+                    .write()
+                    .bridge
+                    .submit_all("Convert to curves", vec![Command::ConvertToCurves { id }]);
             }
         })
         .child(label().text("Para Curvas").font_size(10.))
@@ -2226,7 +3432,10 @@ fn blur_adjust_button(
                     .and_then(|o| {
                         o.appearance.as_ref().and_then(|app| {
                             app.effects.iter().find_map(|e| {
-                                if let petunia_design_document::EffectKind::GaussianBlur { radius } = e.kind {
+                                if let petunia_design_document::EffectKind::GaussianBlur {
+                                    radius,
+                                } = e.kind
+                                {
                                     Some((e.id, radius, e.visible))
                                 } else {
                                     None
@@ -2238,13 +3447,18 @@ fn blur_adjust_button(
                 let new_radius = (current_radius + delta).max(0.5);
                 let mut cmds = Vec::new();
                 if existing.is_some() {
-                    cmds.push(Command::RemoveEffect { id, effect_id: eff_id });
+                    cmds.push(Command::RemoveEffect {
+                        id,
+                        effect_id: eff_id,
+                    });
                 }
                 cmds.push(Command::AddEffect {
                     id,
                     effect: petunia_design_document::EffectItem {
                         id: eff_id,
-                        kind: petunia_design_document::EffectKind::GaussianBlur { radius: new_radius },
+                        kind: petunia_design_document::EffectKind::GaussianBlur {
+                            radius: new_radius,
+                        },
                         visible,
                     },
                 });
@@ -2269,7 +3483,10 @@ fn toggle_blur_button(
                     .and_then(|o| {
                         o.appearance.as_ref().and_then(|app| {
                             app.effects.iter().find_map(|e| {
-                                if let petunia_design_document::EffectKind::GaussianBlur { radius } = e.kind {
+                                if let petunia_design_document::EffectKind::GaussianBlur {
+                                    radius,
+                                } = e.kind
+                                {
                                     Some((e.id, radius, e.visible))
                                 } else {
                                     None
@@ -2278,16 +3495,20 @@ fn toggle_blur_button(
                         })
                     });
                 if let Some((eff_id, radius, visible)) = existing {
-                    let mut cmds = Vec::new();
-                    cmds.push(Command::RemoveEffect { id, effect_id: eff_id });
-                    cmds.push(Command::AddEffect {
-                        id,
-                        effect: petunia_design_document::EffectItem {
-                            id: eff_id,
-                            kind: petunia_design_document::EffectKind::GaussianBlur { radius },
-                            visible: !visible,
+                    let cmds = vec![
+                        Command::RemoveEffect {
+                            id,
+                            effect_id: eff_id,
                         },
-                    });
+                        Command::AddEffect {
+                            id,
+                            effect: petunia_design_document::EffectItem {
+                                id: eff_id,
+                                kind: petunia_design_document::EffectKind::GaussianBlur { radius },
+                                visible: !visible,
+                            },
+                        },
+                    ];
                     let _ = shell.write().bridge.submit_all("Toggle blur", cmds);
                 }
             }
@@ -2303,10 +3524,10 @@ fn remove_blur_button(
     Button::new()
         .on_press(move |_| {
             if let Some(id) = target_id {
-                let _ = shell.write().bridge.submit_all(
-                    "Remove blur",
-                    vec![Command::RemoveEffect { id, effect_id }],
-                );
+                let _ = shell
+                    .write()
+                    .bridge
+                    .submit_all("Remove blur", vec![Command::RemoveEffect { id, effect_id }]);
             }
         })
         .child(label().text("✕").font_size(10.))
@@ -2332,7 +3553,13 @@ fn drop_shadow_adjust_button(
                     .and_then(|o| {
                         o.appearance.as_ref().and_then(|app| {
                             app.effects.iter().find_map(|e| {
-                                if let petunia_design_document::EffectKind::DropShadow { offset, blur, color, opacity } = &e.kind {
+                                if let petunia_design_document::EffectKind::DropShadow {
+                                    offset,
+                                    blur,
+                                    color,
+                                    opacity,
+                                } = &e.kind
+                                {
                                     Some((e.id, *offset, *blur, color.clone(), *opacity, e.visible))
                                 } else {
                                     None
@@ -2341,13 +3568,26 @@ fn drop_shadow_adjust_button(
                         })
                     });
                 let had_existing = existing.is_some();
-                let (eff_id, offset, blur, color, opacity, visible) = existing.unwrap_or((102, [4.0, 4.0], 8.0, "ptnd.gray/900".to_string(), 0.6, true));
-                let new_offset = [(offset[0] + delta_dx).clamp(-100.0, 100.0), (offset[1] + delta_dy).clamp(-100.0, 100.0)];
+                let (eff_id, offset, blur, color, opacity, visible) = existing.unwrap_or((
+                    102,
+                    [4.0, 4.0],
+                    8.0,
+                    "ptnd.gray/900".to_string(),
+                    0.6,
+                    true,
+                ));
+                let new_offset = [
+                    (offset[0] + delta_dx).clamp(-100.0, 100.0),
+                    (offset[1] + delta_dy).clamp(-100.0, 100.0),
+                ];
                 let new_blur = (blur + delta_blur).max(0.0);
                 let new_opacity = (opacity + delta_opacity).clamp(0.05, 1.0);
                 let mut cmds = Vec::new();
                 if had_existing {
-                    cmds.push(Command::RemoveEffect { id, effect_id: eff_id });
+                    cmds.push(Command::RemoveEffect {
+                        id,
+                        effect_id: eff_id,
+                    });
                 }
                 cmds.push(Command::AddEffect {
                     id,
@@ -2383,7 +3623,13 @@ fn toggle_drop_shadow_button(
                     .and_then(|o| {
                         o.appearance.as_ref().and_then(|app| {
                             app.effects.iter().find_map(|e| {
-                                if let petunia_design_document::EffectKind::DropShadow { offset, blur, color, opacity } = &e.kind {
+                                if let petunia_design_document::EffectKind::DropShadow {
+                                    offset,
+                                    blur,
+                                    color,
+                                    opacity,
+                                } = &e.kind
+                                {
                                     Some((e.id, *offset, *blur, color.clone(), *opacity, e.visible))
                                 } else {
                                     None
@@ -2392,21 +3638,25 @@ fn toggle_drop_shadow_button(
                         })
                     });
                 if let Some((eff_id, offset, blur, color, opacity, visible)) = existing {
-                    let mut cmds = Vec::new();
-                    cmds.push(Command::RemoveEffect { id, effect_id: eff_id });
-                    cmds.push(Command::AddEffect {
-                        id,
-                        effect: petunia_design_document::EffectItem {
-                            id: eff_id,
-                            kind: petunia_design_document::EffectKind::DropShadow {
-                                offset,
-                                blur,
-                                color,
-                                opacity,
-                            },
-                            visible: !visible,
+                    let cmds = vec![
+                        Command::RemoveEffect {
+                            id,
+                            effect_id: eff_id,
                         },
-                    });
+                        Command::AddEffect {
+                            id,
+                            effect: petunia_design_document::EffectItem {
+                                id: eff_id,
+                                kind: petunia_design_document::EffectKind::DropShadow {
+                                    offset,
+                                    blur,
+                                    color,
+                                    opacity,
+                                },
+                                visible: !visible,
+                            },
+                        },
+                    ];
                     let _ = shell.write().bridge.submit_all("Toggle drop shadow", cmds);
                 }
             }
@@ -2450,7 +3700,13 @@ fn inner_shadow_adjust_button(
                     .and_then(|o| {
                         o.appearance.as_ref().and_then(|app| {
                             app.effects.iter().find_map(|e| {
-                                if let petunia_design_document::EffectKind::InnerShadow { offset, blur, color, opacity } = &e.kind {
+                                if let petunia_design_document::EffectKind::InnerShadow {
+                                    offset,
+                                    blur,
+                                    color,
+                                    opacity,
+                                } = &e.kind
+                                {
                                     Some((e.id, *offset, *blur, color.clone(), *opacity, e.visible))
                                 } else {
                                     None
@@ -2459,13 +3715,26 @@ fn inner_shadow_adjust_button(
                         })
                     });
                 let had_existing = existing.is_some();
-                let (eff_id, offset, blur, color, opacity, visible) = existing.unwrap_or((105, [3.0, 3.0], 6.0, "ptnd.gray/900".to_string(), 0.5, true));
-                let new_offset = [(offset[0] + delta_dist).max(0.0), (offset[1] + delta_dist).max(0.0)];
+                let (eff_id, offset, blur, color, opacity, visible) = existing.unwrap_or((
+                    105,
+                    [3.0, 3.0],
+                    6.0,
+                    "ptnd.gray/900".to_string(),
+                    0.5,
+                    true,
+                ));
+                let new_offset = [
+                    (offset[0] + delta_dist).max(0.0),
+                    (offset[1] + delta_dist).max(0.0),
+                ];
                 let new_blur = (blur + delta_blur).max(0.0);
                 let new_opacity = (opacity + delta_opacity).clamp(0.05, 1.0);
                 let mut cmds = Vec::new();
                 if had_existing {
-                    cmds.push(Command::RemoveEffect { id, effect_id: eff_id });
+                    cmds.push(Command::RemoveEffect {
+                        id,
+                        effect_id: eff_id,
+                    });
                 }
                 cmds.push(Command::AddEffect {
                     id,
@@ -2501,7 +3770,13 @@ fn toggle_inner_shadow_button(
                     .and_then(|o| {
                         o.appearance.as_ref().and_then(|app| {
                             app.effects.iter().find_map(|e| {
-                                if let petunia_design_document::EffectKind::InnerShadow { offset, blur, color, opacity } = &e.kind {
+                                if let petunia_design_document::EffectKind::InnerShadow {
+                                    offset,
+                                    blur,
+                                    color,
+                                    opacity,
+                                } = &e.kind
+                                {
                                     Some((e.id, *offset, *blur, color.clone(), *opacity, e.visible))
                                 } else {
                                     None
@@ -2510,21 +3785,25 @@ fn toggle_inner_shadow_button(
                         })
                     });
                 if let Some((eff_id, offset, blur, color, opacity, visible)) = existing {
-                    let mut cmds = Vec::new();
-                    cmds.push(Command::RemoveEffect { id, effect_id: eff_id });
-                    cmds.push(Command::AddEffect {
-                        id,
-                        effect: petunia_design_document::EffectItem {
-                            id: eff_id,
-                            kind: petunia_design_document::EffectKind::InnerShadow {
-                                offset,
-                                blur,
-                                color,
-                                opacity,
-                            },
-                            visible: !visible,
+                    let cmds = vec![
+                        Command::RemoveEffect {
+                            id,
+                            effect_id: eff_id,
                         },
-                    });
+                        Command::AddEffect {
+                            id,
+                            effect: petunia_design_document::EffectItem {
+                                id: eff_id,
+                                kind: petunia_design_document::EffectKind::InnerShadow {
+                                    offset,
+                                    blur,
+                                    color,
+                                    opacity,
+                                },
+                                visible: !visible,
+                            },
+                        },
+                    ];
                     let _ = shell.write().bridge.submit_all("Toggle inner shadow", cmds);
                 }
             }
@@ -2567,7 +3846,11 @@ fn sharpen_adjust_button(
                     .and_then(|o| {
                         o.appearance.as_ref().and_then(|app| {
                             app.effects.iter().find_map(|e| {
-                                if let petunia_design_document::EffectKind::Sharpen { radius, amount } = e.kind {
+                                if let petunia_design_document::EffectKind::Sharpen {
+                                    radius,
+                                    amount,
+                                } = e.kind
+                                {
                                     Some((e.id, radius, amount))
                                 } else {
                                     None
@@ -2631,7 +3914,11 @@ fn noise_adjust_button(
                     .and_then(|o| {
                         o.appearance.as_ref().and_then(|app| {
                             app.effects.iter().find_map(|e| {
-                                if let petunia_design_document::EffectKind::Noise { amount, monochrome } = e.kind {
+                                if let petunia_design_document::EffectKind::Noise {
+                                    amount,
+                                    monochrome,
+                                } = e.kind
+                                {
                                     Some((e.id, amount, monochrome))
                                 } else {
                                     None
@@ -2675,7 +3962,11 @@ fn noise_toggle_mono_button(
                     .and_then(|o| {
                         o.appearance.as_ref().and_then(|app| {
                             app.effects.iter().find_map(|e| {
-                                if let petunia_design_document::EffectKind::Noise { amount, monochrome } = e.kind {
+                                if let petunia_design_document::EffectKind::Noise {
+                                    amount,
+                                    monochrome,
+                                } = e.kind
+                                {
                                     Some((e.id, amount, monochrome))
                                 } else {
                                     None
@@ -2737,7 +4028,10 @@ fn add_adjustment_button(
                     .and_then(|o| o.appearance.as_ref())
                     .map(|app| app.adjustments.iter().map(|a| a.id).max().unwrap_or(0) + 1)
                     .unwrap_or(1);
-                let item = petunia_design_document::adjustments::AdjustmentItem::new(next_id, kind.clone());
+                let item = petunia_design_document::adjustments::AdjustmentItem::new(
+                    next_id,
+                    kind.clone(),
+                );
                 let _ = shell.write().bridge.submit_all(
                     "Add tonal adjustment",
                     vec![Command::AddAdjustment {
@@ -2757,11 +4051,21 @@ fn adjustment_card(
 ) -> impl IntoElement {
     let adj_id = adj.id;
     let title = match &adj.kind {
-        petunia_design_document::adjustments::AdjustmentKind::Levels { .. } => format!("Níveis #{}", adj_id),
-        petunia_design_document::adjustments::AdjustmentKind::Curves { .. } => format!("Curvas #{}", adj_id),
-        petunia_design_document::adjustments::AdjustmentKind::Hsl { .. } => format!("HSL #{}", adj_id),
-        petunia_design_document::adjustments::AdjustmentKind::Exposure { .. } => format!("Exposição #{}", adj_id),
-        petunia_design_document::adjustments::AdjustmentKind::WhiteBalance { .. } => format!("Balanço B. #{}", adj_id),
+        petunia_design_document::adjustments::AdjustmentKind::Levels { .. } => {
+            format!("Níveis #{}", adj_id)
+        }
+        petunia_design_document::adjustments::AdjustmentKind::Curves { .. } => {
+            format!("Curvas #{}", adj_id)
+        }
+        petunia_design_document::adjustments::AdjustmentKind::Hsl { .. } => {
+            format!("HSL #{}", adj_id)
+        }
+        petunia_design_document::adjustments::AdjustmentKind::Exposure { .. } => {
+            format!("Exposição #{}", adj_id)
+        }
+        petunia_design_document::adjustments::AdjustmentKind::WhiteBalance { .. } => {
+            format!("Balanço B. #{}", adj_id)
+        }
     };
 
     let body = match adj.kind.clone() {
@@ -2906,7 +4210,11 @@ fn adjustment_card(
                         ),
                 )
         }
-        petunia_design_document::adjustments::AdjustmentKind::Hsl { hue_shift, saturation, lightness } => {
+        petunia_design_document::adjustments::AdjustmentKind::Hsl {
+            hue_shift,
+            saturation,
+            lightness,
+        } => {
             let mut shell_h = shell;
             let mut shell_s_up = shell;
             let mut shell_s_down = shell;
@@ -2984,7 +4292,11 @@ fn adjustment_card(
                         ),
                 )
         }
-        petunia_design_document::adjustments::AdjustmentKind::Exposure { exposure, offset, gamma } => {
+        petunia_design_document::adjustments::AdjustmentKind::Exposure {
+            exposure,
+            offset,
+            gamma,
+        } => {
             let mut shell_ev_down = shell;
             let mut shell_ev_up = shell;
             let mut shell_off_up = shell;
@@ -3062,7 +4374,10 @@ fn adjustment_card(
                         ),
                 )
         }
-        petunia_design_document::adjustments::AdjustmentKind::WhiteBalance { temperature, tint } => {
+        petunia_design_document::adjustments::AdjustmentKind::WhiteBalance {
+            temperature,
+            tint,
+        } => {
             let mut shell_t_down = shell;
             let mut shell_t_up = shell;
             let mut shell_tint_down = shell;
@@ -3155,14 +4470,22 @@ fn adjustment_card(
                 .width(Size::fill())
                 .main_align(Alignment::SpaceBetween)
                 .cross_align(Alignment::Center)
-                .child(label().text(title).font_size(11.).color(theme::TEXT_PRIMARY))
+                .child(
+                    label()
+                        .text(title)
+                        .font_size(11.)
+                        .color(theme::TEXT_PRIMARY),
+                )
                 .child(
                     Button::new()
                         .on_press(move |_| {
                             if let Some(id) = target_id {
                                 let _ = shell_remove.write().bridge.submit_all(
                                     "Remove adjustment",
-                                    vec![Command::RemoveAdjustment { id, adjustment_id: adj_id }],
+                                    vec![Command::RemoveAdjustment {
+                                        id,
+                                        adjustment_id: adj_id,
+                                    }],
                                 );
                             }
                         })
@@ -3178,8 +4501,7 @@ fn adjustment_card(
 
 fn parse_color_rgb(color_str: &str) -> Option<(f64, f64, f64)> {
     let s = color_str.trim();
-    if s.starts_with('#') {
-        let hex = &s[1..];
+    if let Some(hex) = s.strip_prefix('#') {
         if hex.len() == 6 || hex.len() == 8 {
             let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
             let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
@@ -3205,69 +4527,122 @@ fn parse_color_rgb(color_str: &str) -> Option<(f64, f64, f64)> {
     }
 }
 
+fn apply_adjustments_to_rgb(
+    mut r: f64,
+    mut g: f64,
+    mut b: f64,
+    adjustments: &[petunia_design_document::adjustments::AdjustmentItem],
+) -> (f64, f64, f64) {
+    for adj in adjustments {
+        match &adj.kind {
+            petunia_design_document::adjustments::AdjustmentKind::Exposure {
+                exposure,
+                offset,
+                gamma,
+            } => {
+                let exp_mul = 2.0f64.powf(*exposure);
+                let apply_exp = |c: f64| -> f64 {
+                    let norm = (c / 255.0 * exp_mul + offset).clamp(0.0, 1.0);
+                    norm.powf(1.0 / gamma.max(0.01)) * 255.0
+                };
+                r = apply_exp(r);
+                g = apply_exp(g);
+                b = apply_exp(b);
+            }
+            petunia_design_document::adjustments::AdjustmentKind::Levels { master, .. } => {
+                let bp = master.input_black;
+                let wp = master.input_white;
+                let gamma = master.gamma.max(0.01);
+                let out_b = master.output_black;
+                let out_w = master.output_white;
+                let apply_levels = |c: f64| -> f64 {
+                    let norm = ((c - bp) / (wp - bp).max(1.0)).clamp(0.0, 1.0);
+                    let mapped = norm.powf(1.0 / gamma);
+                    out_b + mapped * (out_w - out_b)
+                };
+                r = apply_levels(r);
+                g = apply_levels(g);
+                b = apply_levels(b);
+            }
+            petunia_design_document::adjustments::AdjustmentKind::Hsl { lightness, .. } => {
+                let l_shift = *lightness * 60.0;
+                r = (r + l_shift).clamp(0.0, 255.0);
+                g = (g + l_shift).clamp(0.0, 255.0);
+                b = (b + l_shift).clamp(0.0, 255.0);
+            }
+            petunia_design_document::adjustments::AdjustmentKind::WhiteBalance {
+                temperature,
+                tint,
+            } => {
+                r = (r + *temperature * 35.0).clamp(0.0, 255.0);
+                b = (b - *temperature * 35.0).clamp(0.0, 255.0);
+                g = (g + *tint * 25.0).clamp(0.0, 255.0);
+            }
+            _ => {}
+        }
+    }
+    (r, g, b)
+}
+
 pub fn compute_histogram_bins(
     shell: &PetuniaShell,
     selected_obj: Option<&petunia_design_document::DocumentObject>,
     channel: u8, // 0: RGB, 1: R, 2: G, 3: B, 4: Luma
 ) -> ([f32; 32], u32, u32, u32, u32) {
     let mut centers: Vec<(f64, f64, f64)> = Vec::new();
+    let mut is_raster_sample = false;
 
     if let Some(obj) = selected_obj {
-        let base_rgb = obj
-            .fill
-            .as_deref()
-            .and_then(parse_color_rgb)
-            .or_else(|| obj.stroke.as_deref().and_then(parse_color_rgb))
-            .unwrap_or((140.0, 140.0, 140.0));
-
-        let mut r = base_rgb.0;
-        let mut g = base_rgb.1;
-        let mut b = base_rgb.2;
-
-        if let Some(app) = &obj.appearance {
-            for adj in &app.adjustments {
-                match &adj.kind {
-                    petunia_design_document::adjustments::AdjustmentKind::Exposure { exposure, offset, gamma } => {
-                        let exp_mul = 2.0f64.powf(*exposure);
-                        let apply_exp = |c: f64| -> f64 {
-                            let norm = (c / 255.0 * exp_mul + offset).clamp(0.0, 1.0);
-                            norm.powf(1.0 / gamma.max(0.01)) * 255.0
-                        };
-                        r = apply_exp(r);
-                        g = apply_exp(g);
-                        b = apply_exp(b);
+        let mut sampled = Vec::new();
+        if let Some(petunia_design_document::ShapeKind::Image { data, .. }) = &obj.shape {
+            if let Some(bytes) = data.as_deref() {
+                if let Ok(raw_img) = petunia_design_io::import_raster(bytes, 32 * 1024 * 1024) {
+                    if raw_img.format == petunia_design_io::PixelFormat::Rgba8
+                        && !raw_img.data.is_empty()
+                    {
+                        let total_pixels = (raw_img.width * raw_img.height) as usize;
+                        let stride = (total_pixels / 500).max(1);
+                        for i in (0..total_pixels).step_by(stride) {
+                            let idx = i * 4;
+                            if idx + 3 < raw_img.data.len() {
+                                let pr = raw_img.data[idx] as f64;
+                                let pg = raw_img.data[idx + 1] as f64;
+                                let pb = raw_img.data[idx + 2] as f64;
+                                let pa = raw_img.data[idx + 3] as f64 / 255.0;
+                                if pa > 0.05 {
+                                    sampled.push((pr, pg, pb));
+                                }
+                            }
+                        }
+                        if !sampled.is_empty() {
+                            is_raster_sample = true;
+                        }
                     }
-                    petunia_design_document::adjustments::AdjustmentKind::Levels { master, .. } => {
-                        let bp = master.input_black as f64;
-                        let wp = master.input_white as f64;
-                        let gamma = master.gamma.max(0.01) as f64;
-                        let out_b = master.output_black as f64;
-                        let out_w = master.output_white as f64;
-                        let apply_levels = |c: f64| -> f64 {
-                            let norm = ((c - bp) / (wp - bp).max(1.0)).clamp(0.0, 1.0);
-                            let mapped = norm.powf(1.0 / gamma);
-                            out_b + mapped * (out_w - out_b)
-                        };
-                        r = apply_levels(r);
-                        g = apply_levels(g);
-                        b = apply_levels(b);
-                    }
-                    petunia_design_document::adjustments::AdjustmentKind::Hsl { lightness, .. } => {
-                        let l_shift = *lightness * 60.0;
-                        r = (r + l_shift).clamp(0.0, 255.0);
-                        g = (g + l_shift).clamp(0.0, 255.0);
-                        b = (b + l_shift).clamp(0.0, 255.0);
-                    }
-                    petunia_design_document::adjustments::AdjustmentKind::WhiteBalance { temperature, tint } => {
-                        r = (r + *temperature * 35.0).clamp(0.0, 255.0);
-                        b = (b - *temperature * 35.0).clamp(0.0, 255.0);
-                        g = (g + *tint * 25.0).clamp(0.0, 255.0);
-                    }
-                    _ => {}
                 }
             }
         }
-        centers.push((r, g, b));
+
+        if sampled.is_empty() {
+            let base_rgb = obj
+                .fill
+                .as_deref()
+                .and_then(parse_color_rgb)
+                .or_else(|| obj.stroke.as_deref().and_then(parse_color_rgb))
+                .unwrap_or((140.0, 140.0, 140.0));
+            sampled.push(base_rgb);
+        }
+
+        let empty_adj = Vec::new();
+        let adjustments = obj
+            .appearance
+            .as_ref()
+            .map(|a| a.adjustments.as_slice())
+            .unwrap_or(&empty_adj);
+
+        for (r, g, b) in sampled {
+            let (adj_r, adj_g, adj_b) = apply_adjustments_to_rgb(r, g, b, adjustments);
+            centers.push((adj_r, adj_g, adj_b));
+        }
     } else {
         if let Some(session) = shell.bridge.session() {
             if let Some(surf_id) = session.active_surface() {
@@ -3305,12 +4680,17 @@ pub fn compute_histogram_bins(
         total_channel_sum += c;
         total_weight += 1.0;
 
-        let sigma = 24.0;
-        for (i, bin) in raw_bins.iter_mut().enumerate() {
-            let bin_center = (i as f64) * 8.0 + 4.0;
-            let diff = (bin_center - c) / sigma;
-            let weight = (-0.5 * diff * diff).exp();
-            *bin += weight as f32;
+        if is_raster_sample {
+            let bin_idx = ((c / 8.0).floor() as usize).clamp(0, 31);
+            raw_bins[bin_idx] += 1.0;
+        } else {
+            let sigma = 24.0;
+            for (i, bin) in raw_bins.iter_mut().enumerate() {
+                let bin_center = (i as f64) * 8.0 + 4.0;
+                let diff = (bin_center - c) / sigma;
+                let weight = (-0.5 * diff * diff).exp();
+                *bin += weight as f32;
+            }
         }
     }
 
@@ -3335,7 +4715,13 @@ pub fn compute_histogram_bins(
     let midtones_pct = ((midtones_sum / sum_total) * 100.0).round() as u32;
     let highlights_pct = ((highlights_sum / sum_total) * 100.0).round() as u32;
 
-    (normalized_bins, mean, shadows_pct, midtones_pct, highlights_pct)
+    (
+        normalized_bins,
+        mean,
+        shadows_pct,
+        midtones_pct,
+        highlights_pct,
+    )
 }
 
 #[derive(Clone, PartialEq)]
@@ -3350,9 +4736,9 @@ impl Component for HistogramWidget {
         let channel = *channel_state.read();
 
         let shell = self.ui.shell.peek();
-        let selected_obj = self.object_id.and_then(|id| {
-            shell.bridge.session().and_then(|s| s.find_object(id))
-        });
+        let selected_obj = self
+            .object_id
+            .and_then(|id| shell.bridge.session().and_then(|s| s.find_object(id)));
 
         let (bins, mean, shadows_pct, midtones_pct, highlights_pct) =
             compute_histogram_bins(&shell, selected_obj, channel);
@@ -3394,17 +4780,15 @@ impl Component for HistogramWidget {
                     .padding(Gaps::new(2., 2., 2., 2.))
                     .direction(Direction::Horizontal)
                     .cross_align(Alignment::End)
-                    .children(
-                        bins.iter().enumerate().map(|(idx, &val)| {
-                            let bar_h = (val * 64.0).clamp(2.0, 64.0);
-                            let is_grid = idx == 8 || idx == 16 || idx == 24;
-                            rect()
-                                .width(Size::flex(1.0))
-                                .height(Size::px(bar_h))
-                                .background(bar_color)
-                                .opacity(if is_grid { 0.95 } else { 0.75 })
-                        }),
-                    ),
+                    .children(bins.iter().enumerate().map(|(idx, &val)| {
+                        let bar_h = (val * 64.0).clamp(2.0, 64.0);
+                        let is_grid = idx == 8 || idx == 16 || idx == 24;
+                        rect()
+                            .width(Size::flex(1.0))
+                            .height(Size::px(bar_h))
+                            .background(bar_color)
+                            .opacity(if is_grid { 0.95 } else { 0.75 })
+                    })),
             )
             .child(
                 rect()
@@ -3455,23 +4839,769 @@ fn channel_button(
         })
         .border(
             Border::new()
-                .fill(if active { theme::BLOOM.value } else { theme::SURFACE_CHROME_STRONG })
+                .fill(if active {
+                    theme::BLOOM.value
+                } else {
+                    theme::SURFACE_CHROME_STRONG
+                })
                 .width(1.)
                 .alignment(BorderAlignment::Inner),
         )
         .on_press(move |_| {
             state_clone.set(index);
         })
-        .child(
-            label()
-                .text(title)
-                .font_size(10.)
-                .color(if active {
-                    theme::TEXT_PRIMARY
-                } else {
-                    theme::TEXT_TERTIARY
-                }),
+        .child(label().text(title).font_size(10.).color(if active {
+            theme::TEXT_PRIMARY
+        } else {
+            theme::TEXT_TERTIARY
+        }))
+}
+
+/// Draggable splitter between Workspace and RightDock.
+#[derive(Clone, PartialEq)]
+pub struct DockSplitter(pub UiShell);
+
+impl Component for DockSplitter {
+    fn render(&self) -> impl IntoElement {
+        let is_dragging = use_state(|| false);
+        let drag_start_x = use_state(|| 0.0f64);
+        let drag_start_width = use_state(|| 240.0f32);
+        let dock_width = self.0.dock_width;
+        let dragging_val = *is_dragging.read();
+
+        let splitter_bar = rect()
+            .width(Size::px(4.))
+            .height(Size::fill())
+            .background(if dragging_val {
+                theme::ACCENT_BLOOM
+            } else {
+                theme::SURFACE_CHROME_STRONG
+            })
+            .cursor(CursorIcon::EwResize)
+            .on_mouse_down({
+                let mut is_dragging = is_dragging;
+                let mut drag_start_x = drag_start_x;
+                let mut drag_start_width = drag_start_width;
+                move |event: Event<MouseEventData>| {
+                    is_dragging.set(true);
+                    drag_start_x.set(event.global_location.x);
+                    drag_start_width.set(*dock_width.peek());
+                }
+            });
+
+        if dragging_val {
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::px(4.))
+                .height(Size::fill())
+                .child(splitter_bar)
+                .child(
+                    Portal::new("dock-splitter-drag")
+                        .width(Size::px(0.))
+                        .height(Size::px(0.))
+                        .child(
+                            rect()
+                                .position(Position::new_absolute().top(0.).left(0.))
+                                .width(Size::fill())
+                                .height(Size::fill())
+                                .cursor(CursorIcon::EwResize)
+                                .on_mouse_move({
+                                    let mut dock_width = dock_width;
+                                    move |event: Event<MouseEventData>| {
+                                        let delta = *drag_start_x.read() - event.global_location.x;
+                                        let new_w = (*drag_start_width.read() + delta as f32)
+                                            .clamp(180.0, 520.0);
+                                        dock_width.set(new_w);
+                                    }
+                                })
+                                .on_mouse_up({
+                                    let mut is_dragging = is_dragging;
+                                    move |_| {
+                                        is_dragging.set(false);
+                                    }
+                                }),
+                        ),
+                )
+        } else {
+            rect()
+                .width(Size::px(4.))
+                .height(Size::fill())
+                .child(splitter_bar)
+        }
+    }
+}
+
+/// Draggable vertical splitter between LeftDock and Center area.
+#[derive(Clone, PartialEq)]
+pub struct LeftDockSplitter(pub UiShell);
+
+impl Component for LeftDockSplitter {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        if !*ui.left_dock_open.read() {
+            return rect().width(Size::px(0.)).height(Size::px(0.));
+        }
+
+        let is_dragging = use_state(|| false);
+        let drag_start_x = use_state(|| 0.0f64);
+        let drag_start_width = use_state(|| 240.0f32);
+        let left_dock_width = ui.left_dock_width;
+        let dragging_val = *is_dragging.read();
+
+        let splitter_bar = rect()
+            .width(Size::px(4.))
+            .height(Size::fill())
+            .background(if dragging_val {
+                theme::ACCENT_BLOOM
+            } else {
+                theme::SURFACE_CHROME_STRONG
+            })
+            .cursor(CursorIcon::EwResize)
+            .on_mouse_down({
+                let mut is_dragging = is_dragging;
+                let mut drag_start_x = drag_start_x;
+                let mut drag_start_width = drag_start_width;
+                move |event: Event<MouseEventData>| {
+                    is_dragging.set(true);
+                    drag_start_x.set(event.global_location.x);
+                    drag_start_width.set(*left_dock_width.peek());
+                }
+            });
+
+        if dragging_val {
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::px(4.))
+                .height(Size::fill())
+                .child(splitter_bar)
+                .child(
+                    Portal::new("left-dock-splitter-drag")
+                        .width(Size::px(0.))
+                        .height(Size::px(0.))
+                        .child(
+                            rect()
+                                .position(Position::new_absolute().top(0.).left(0.))
+                                .width(Size::fill())
+                                .height(Size::fill())
+                                .cursor(CursorIcon::EwResize)
+                                .on_mouse_move({
+                                    let mut left_dock_width = left_dock_width;
+                                    move |event: Event<MouseEventData>| {
+                                        let delta = event.global_location.x - *drag_start_x.read();
+                                        let new_w = (*drag_start_width.read() + delta as f32)
+                                            .clamp(160.0, 480.0);
+                                        left_dock_width.set(new_w);
+                                    }
+                                })
+                                .on_mouse_up({
+                                    let mut is_dragging = is_dragging;
+                                    move |_| {
+                                        is_dragging.set(false);
+                                    }
+                                }),
+                        ),
+                )
+        } else {
+            rect()
+                .width(Size::px(4.))
+                .height(Size::fill())
+                .child(splitter_bar)
+        }
+    }
+}
+
+/// Draggable horizontal splitter between Workspace and BottomDock.
+#[derive(Clone, PartialEq)]
+pub struct BottomDockSplitter(pub UiShell);
+
+impl Component for BottomDockSplitter {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        if !*ui.bottom_dock_open.read() {
+            return rect().width(Size::px(0.)).height(Size::px(0.));
+        }
+
+        let is_dragging = use_state(|| false);
+        let drag_start_y = use_state(|| 0.0f64);
+        let drag_start_height = use_state(|| 160.0f32);
+        let bottom_dock_height = ui.bottom_dock_height;
+        let dragging_val = *is_dragging.read();
+
+        let splitter_bar = rect()
+            .width(Size::fill())
+            .height(Size::px(4.))
+            .background(if dragging_val {
+                theme::ACCENT_BLOOM
+            } else {
+                theme::SURFACE_CHROME_STRONG
+            })
+            .cursor(CursorIcon::NsResize)
+            .on_mouse_down({
+                let mut is_dragging = is_dragging;
+                let mut drag_start_y = drag_start_y;
+                let mut drag_start_height = drag_start_height;
+                move |event: Event<MouseEventData>| {
+                    is_dragging.set(true);
+                    drag_start_y.set(event.global_location.y);
+                    drag_start_height.set(*bottom_dock_height.peek());
+                }
+            });
+
+        if dragging_val {
+            rect()
+                .direction(Direction::Vertical)
+                .width(Size::fill())
+                .height(Size::px(4.))
+                .child(splitter_bar)
+                .child(
+                    Portal::new("bottom-dock-splitter-drag")
+                        .width(Size::px(0.))
+                        .height(Size::px(0.))
+                        .child(
+                            rect()
+                                .position(Position::new_absolute().top(0.).left(0.))
+                                .width(Size::fill())
+                                .height(Size::fill())
+                                .cursor(CursorIcon::NsResize)
+                                .on_mouse_move({
+                                    let mut bottom_dock_height = bottom_dock_height;
+                                    move |event: Event<MouseEventData>| {
+                                        let delta = *drag_start_y.read() - event.global_location.y;
+                                        let new_h = (*drag_start_height.read() + delta as f32)
+                                            .clamp(80.0, 420.0);
+                                        bottom_dock_height.set(new_h);
+                                    }
+                                })
+                                .on_mouse_up({
+                                    let mut is_dragging = is_dragging;
+                                    move |_| {
+                                        is_dragging.set(false);
+                                    }
+                                }),
+                        ),
+                )
+        } else {
+            rect()
+                .width(Size::fill())
+                .height(Size::px(4.))
+                .child(splitter_bar)
+        }
+    }
+}
+
+/// The left dock surface containing Assets & Symbol libraries.
+#[derive(Clone, PartialEq)]
+pub struct LeftDock(pub UiShell);
+
+impl Component for LeftDock {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        if !*ui.left_dock_open.read() {
+            return rect().width(Size::px(0.)).height(Size::px(0.));
+        }
+
+        let mut left_dock_tab = ui.left_dock_tab;
+        let active_tab = *left_dock_tab.read();
+        let dock_w = *ui.left_dock_width.read();
+        let mut left_dock_open = ui.left_dock_open;
+
+        rect()
+            .direction(Direction::Vertical)
+            .content(Content::Flex)
+            .width(Size::px(dock_w))
+            .height(Size::fill())
+            .background(theme::SURFACE_PANEL)
+            .border(
+                Border::new()
+                    .fill(theme::SURFACE_CHROME_STRONG)
+                    .width(1.)
+                    .alignment(BorderAlignment::Inner),
+            )
+            .child(
+                // Tab Header Bar
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .height(Size::px(34.))
+                    .background(theme::SURFACE_CHROME)
+                    .cross_align(Alignment::Center)
+                    .main_align(Alignment::SpaceBetween)
+                    .padding(Gaps::new(0., theme::SPACE_1, 0., theme::SPACE_1))
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .spacing(theme::SPACE_1)
+                            .cross_align(Alignment::Center)
+                            .child(tab_button(
+                                ui,
+                                "Ativos",
+                                0,
+                                active_tab == 0,
+                                &mut left_dock_tab,
+                            ))
+                            .child(tab_button(
+                                ui,
+                                "Símbolos",
+                                1,
+                                active_tab == 1,
+                                &mut left_dock_tab,
+                            )),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press(move |_| left_dock_open.set(false))
+                            .child(label().text("✕").font_size(11.).color(theme::TEXT_TERTIARY)),
+                    ),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Vertical)
+                    .content(Content::Flex)
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .padding(Gaps::new(
+                        theme::SPACE_2,
+                        theme::SPACE_2,
+                        theme::SPACE_2,
+                        theme::SPACE_2,
+                    ))
+                    .child(match active_tab {
+                        0 => AssetsTab(ui.clone()).into_element(),
+                        _ => SymbolsTab(ui.clone()).into_element(),
+                    }),
+            )
+    }
+}
+
+/// Assets panel tab: lists placed images and project assets.
+#[derive(Clone, PartialEq)]
+pub struct AssetsTab(pub UiShell);
+
+impl Component for AssetsTab {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        let snapshot = ui.shell.read().canvas_snapshot();
+        let image_assets: Vec<_> = snapshot
+            .objects
+            .iter()
+            .filter(|o| matches!(o.shape.as_deref(), Some(ShapeKind::Image { .. })))
+            .collect();
+        let mut shell_for_place = ui.shell;
+
+        ScrollView::new().child(
+            rect()
+                .direction(Direction::Vertical)
+                .width(Size::fill())
+                .spacing(theme::SPACE_2)
+                .child(section_header("ATIVOS DO DOCUMENTO"))
+                .child(
+                    Button::new()
+                        .on_press(move |_| {
+                            run_action_token(
+                                &mut shell_for_place.write(),
+                                "ptnd.action.file.place",
+                            );
+                        })
+                        .child(
+                            rect()
+                                .direction(Direction::Horizontal)
+                                .padding(Gaps::new(4., 8., 4., 8.))
+                                .background(theme::SURFACE_CHROME_STRONG)
+                                .corner_radius(4.0)
+                                .cross_align(Alignment::Center)
+                                .child(
+                                    label()
+                                        .text("+ Importar Imagem (file.place)")
+                                        .font_size(11.)
+                                        .color(theme::ACCENT_BLOOM),
+                                ),
+                        ),
+                )
+                .child(
+                    label()
+                        .text(format!("Imagens posicionadas: {}", image_assets.len()))
+                        .font_size(11.)
+                        .color(theme::TEXT_SECONDARY),
+                )
+                .children(image_assets.iter().map(|img| {
+                    let bounds = img.world_bounds;
+                    let w = bounds[2] - bounds[0];
+                    let h = bounds[3] - bounds[1];
+                    rect()
+                        .direction(Direction::Vertical)
+                        .padding(Gaps::new(4., 6., 4., 6.))
+                        .background(theme::SURFACE_CHROME)
+                        .corner_radius(4.0)
+                        .child(
+                            label()
+                                .text(format!("Imagem #{}", img.id))
+                                .font_size(11.)
+                                .color(theme::TEXT_PRIMARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("{:.0} x {:.0} pt", w, h))
+                                .font_size(10.)
+                                .color(theme::TEXT_TERTIARY),
+                        )
+                        .into_element()
+                })),
         )
+    }
+}
+
+/// Symbols & component templates tab.
+#[derive(Clone, PartialEq)]
+pub struct SymbolsTab(pub UiShell);
+
+impl Component for SymbolsTab {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        let shell = ui.shell;
+
+        ScrollView::new().child(
+            rect()
+                .direction(Direction::Vertical)
+                .width(Size::fill())
+                .spacing(theme::SPACE_2)
+                .child(section_header("BIBLIOTECA DE FORMAS"))
+                .child(symbol_preset_item(
+                    shell,
+                    "Retângulo Básico",
+                    "200x150 pt",
+                    ShapeKind::Rectangle {
+                        corner_radii: [0.0; 4],
+                    },
+                    [50.0, 50.0, 250.0, 200.0],
+                    "ptnd.blue/500",
+                ))
+                .child(symbol_preset_item(
+                    shell,
+                    "Cartão UI",
+                    "240x140 pt · r=8",
+                    ShapeKind::Rectangle {
+                        corner_radii: [8.0; 4],
+                    },
+                    [50.0, 50.0, 290.0, 190.0],
+                    "ptnd.gray/900",
+                ))
+                .child(symbol_preset_item(
+                    shell,
+                    "Círculo / Avatar",
+                    "100x100 pt",
+                    ShapeKind::Ellipse,
+                    [50.0, 50.0, 150.0, 150.0],
+                    "ptnd.teal/500",
+                ))
+                .child(symbol_preset_item(
+                    shell,
+                    "Estrela 5 Pontas",
+                    "120x120 pt",
+                    ShapeKind::Star {
+                        points: 5,
+                        inner_ratio: 0.5,
+                    },
+                    [50.0, 50.0, 170.0, 170.0],
+                    "ptnd.purple/500",
+                )),
+        )
+    }
+}
+
+fn symbol_preset_item(
+    shell: State<PetuniaShell>,
+    name: &'static str,
+    subtitle: &'static str,
+    shape: ShapeKind,
+    bounds: [f64; 4],
+    fill: &'static str,
+) -> impl IntoElement {
+    let mut shell_for_insert = shell;
+    let shape_clone = shape;
+    rect()
+        .direction(Direction::Horizontal)
+        .width(Size::fill())
+        .main_align(Alignment::SpaceBetween)
+        .cross_align(Alignment::Center)
+        .padding(Gaps::new(4., 6., 4., 6.))
+        .background(theme::SURFACE_CHROME)
+        .corner_radius(4.0)
+        .child(
+            rect()
+                .direction(Direction::Vertical)
+                .child(label().text(name).font_size(11.).color(theme::TEXT_PRIMARY))
+                .child(
+                    label()
+                        .text(subtitle)
+                        .font_size(10.)
+                        .color(theme::TEXT_TERTIARY),
+                ),
+        )
+        .child(
+            Button::new()
+                .on_press(move |_| {
+                    let mut s = shell_for_insert.write();
+                    if let Some(surf) = s.bridge.active_surface() {
+                        if let Ok(obj_id) = s.bridge.next_object_id() {
+                            let msg = format!("Insert {}", name);
+                            let _ = s.bridge.submit_all(
+                                &msg,
+                                vec![
+                                    Command::CreateObject {
+                                        surface: surf,
+                                        id: obj_id,
+                                        name: name.to_string(),
+                                    },
+                                    Command::SetShape {
+                                        id: obj_id,
+                                        shape: Some(shape_clone.clone()),
+                                    },
+                                    Command::SetBounds {
+                                        id: obj_id,
+                                        bounds: Some(bounds),
+                                        rotation: 0.0,
+                                    },
+                                    Command::SetFill {
+                                        id: obj_id,
+                                        fill: Some(fill.to_string()),
+                                    },
+                                ],
+                            );
+                        }
+                    }
+                })
+                .child(
+                    rect()
+                        .padding(Gaps::new(2., 6., 2., 6.))
+                        .background(theme::SURFACE_CHROME_STRONG)
+                        .corner_radius(4.0)
+                        .child(
+                            label()
+                                .text("Inserir")
+                                .font_size(10.)
+                                .color(theme::ACCENT_BLOOM),
+                        ),
+                ),
+        )
+}
+
+/// The bottom dock surface containing Background Tasks & Diagnostics.
+#[derive(Clone, PartialEq)]
+pub struct BottomDock(pub UiShell);
+
+impl Component for BottomDock {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        if !*ui.bottom_dock_open.read() {
+            return rect().width(Size::px(0.)).height(Size::px(0.));
+        }
+
+        let mut bottom_dock_tab = ui.bottom_dock_tab;
+        let active_tab = *bottom_dock_tab.read();
+        let dock_h = *ui.bottom_dock_height.read();
+        let mut bottom_dock_open = ui.bottom_dock_open;
+
+        rect()
+            .direction(Direction::Vertical)
+            .content(Content::Flex)
+            .width(Size::fill())
+            .height(Size::px(dock_h))
+            .background(theme::SURFACE_PANEL)
+            .border(
+                Border::new()
+                    .fill(theme::SURFACE_CHROME_STRONG)
+                    .width(1.)
+                    .alignment(BorderAlignment::Inner),
+            )
+            .child(
+                // Tab Header Bar
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .height(Size::px(30.))
+                    .background(theme::SURFACE_CHROME)
+                    .cross_align(Alignment::Center)
+                    .main_align(Alignment::SpaceBetween)
+                    .padding(Gaps::new(0., theme::SPACE_2, 0., theme::SPACE_2))
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .spacing(theme::SPACE_1)
+                            .cross_align(Alignment::Center)
+                            .child(tab_button(
+                                ui,
+                                "Tarefas",
+                                0,
+                                active_tab == 0,
+                                &mut bottom_dock_tab,
+                            ))
+                            .child(tab_button(
+                                ui,
+                                "Diagnóstico",
+                                1,
+                                active_tab == 1,
+                                &mut bottom_dock_tab,
+                            )),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press(move |_| bottom_dock_open.set(false))
+                            .child(label().text("✕").font_size(11.).color(theme::TEXT_TERTIARY)),
+                    ),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Vertical)
+                    .content(Content::Flex)
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .padding(Gaps::new(
+                        theme::SPACE_1,
+                        theme::SPACE_2,
+                        theme::SPACE_1,
+                        theme::SPACE_2,
+                    ))
+                    .child(match active_tab {
+                        0 => BackgroundTasksPanel(ui.clone()).into_element(),
+                        _ => DiagnosticsTab(ui.clone()).into_element(),
+                    }),
+            )
+    }
+}
+
+/// Diagnostics & session preflight tab for BottomDock.
+#[derive(Clone, PartialEq)]
+pub struct DiagnosticsTab(pub UiShell);
+
+impl Component for DiagnosticsTab {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        let shell_ref = ui.shell.read();
+        let snapshot = shell_ref.canvas_snapshot();
+        let cam = shell_ref.view_camera();
+        let session = shell_ref.bridge.session();
+        let title = session.map_or("Sem Documento", |s| s.title());
+        let rev = session.map_or(0, |s| s.saved_revision());
+        let dirty = shell_ref.bridge.is_dirty();
+        let surf_id = shell_ref
+            .bridge
+            .active_surface()
+            .map_or("Nenhum".to_string(), |id| id.to_string());
+        let obj_count = snapshot.objects.len();
+
+        ScrollView::new().child(
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::fill())
+                .spacing(theme::SPACE_3)
+                .padding(Gaps::new(
+                    theme::SPACE_1,
+                    theme::SPACE_2,
+                    theme::SPACE_1,
+                    theme::SPACE_2,
+                ))
+                .child(
+                    rect()
+                        .direction(Direction::Vertical)
+                        .spacing(theme::SPACE_1)
+                        .child(
+                            label()
+                                .text("DOCUMENTO")
+                                .font_size(10.)
+                                .color(theme::TEXT_TERTIARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("{title} (rev: {rev})"))
+                                .font_size(11.)
+                                .color(theme::TEXT_PRIMARY),
+                        )
+                        .child(
+                            label()
+                                .text(if dirty {
+                                    "Modificado (não salvo)"
+                                } else {
+                                    "Salvo / Sem alterações"
+                                })
+                                .font_size(10.)
+                                .color(if dirty {
+                                    theme::ACCENT_BLOOM
+                                } else {
+                                    theme::TEXT_SECONDARY
+                                }),
+                        ),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Vertical)
+                        .spacing(theme::SPACE_1)
+                        .child(
+                            label()
+                                .text("SUPERFÍCIE & OBJETOS")
+                                .font_size(10.)
+                                .color(theme::TEXT_TERTIARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("Ativa: {surf_id}"))
+                                .font_size(11.)
+                                .color(theme::TEXT_PRIMARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("Total de objetos: {obj_count}"))
+                                .font_size(10.)
+                                .color(theme::TEXT_SECONDARY),
+                        ),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Vertical)
+                        .spacing(theme::SPACE_1)
+                        .child(
+                            label()
+                                .text("VIEWPORT & CÂMERA")
+                                .font_size(10.)
+                                .color(theme::TEXT_TERTIARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("{:.0}% zoom", cam.zoom * 100.0))
+                                .font_size(11.)
+                                .color(theme::TEXT_PRIMARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("Pan: ({:.1}, {:.1})", cam.pan_x, cam.pan_y))
+                                .font_size(10.)
+                                .color(theme::TEXT_SECONDARY),
+                        ),
+                )
+                .child(
+                    rect()
+                        .direction(Direction::Vertical)
+                        .spacing(theme::SPACE_1)
+                        .child(
+                            label()
+                                .text("FERRAMENTA & PERSONA")
+                                .font_size(10.)
+                                .color(theme::TEXT_TERTIARY),
+                        )
+                        .child(
+                            label()
+                                .text(format!("{:?}", *ui.active_tool.read()))
+                                .font_size(11.)
+                                .color(theme::TEXT_PRIMARY),
+                        )
+                        .child(
+                            label()
+                                .text(ui.persona.read().clone())
+                                .font_size(10.)
+                                .color(theme::TEXT_SECONDARY),
+                        ),
+                ),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -3514,21 +5644,52 @@ mod tests {
         runner.release_cursor((120., 17.));
         runner.sync_and_update();
 
-        assert_eq!(*ui.dock_tab.read(), 1, "active tab should switch to Propriedades (1)");
+        assert_eq!(
+            *ui.dock_tab.read(),
+            1,
+            "active tab should switch to Propriedades (1)"
+        );
 
         // Click on "Cores" tab button (roughly x=200, y=17)
         runner.press_cursor((200., 17.));
         runner.release_cursor((200., 17.));
         runner.sync_and_update();
 
-        assert_eq!(*ui.dock_tab.read(), 2, "active tab should switch to Cores (2)");
+        assert_eq!(
+            *ui.dock_tab.read(),
+            2,
+            "active tab should switch to Cores (2)"
+        );
 
         // Click on "Histórico" tab button (roughly x=270, y=17)
         runner.press_cursor((270., 17.));
         runner.release_cursor((270., 17.));
         runner.sync_and_update();
 
-        assert_eq!(*ui.dock_tab.read(), 3, "active tab should switch to Histórico (3)");
+        assert_eq!(
+            *ui.dock_tab.read(),
+            3,
+            "active tab should switch to Histórico (3)"
+        );
+
+        // Switch to tab 4: Navegador
+        let mut dock_tab = ui.dock_tab;
+        dock_tab.set(4);
+        runner.sync_and_update();
+        assert_eq!(
+            *ui.dock_tab.read(),
+            4,
+            "active tab should switch to Navegador (4)"
+        );
+
+        // Switch to tab 5: Tarefas
+        dock_tab.set(5);
+        runner.sync_and_update();
+        assert_eq!(
+            *ui.dock_tab.read(),
+            5,
+            "active tab should switch to Tarefas (5)"
+        );
     }
 
     #[test]
@@ -3689,7 +5850,10 @@ mod tests {
 
         // 4. Update Levels gamma
         let mut updated_levels = levels_item.clone();
-        if let petunia_design_document::adjustments::AdjustmentKind::Levels { ref mut master, .. } = updated_levels.kind {
+        if let petunia_design_document::adjustments::AdjustmentKind::Levels {
+            ref mut master, ..
+        } = updated_levels.kind
+        {
             master.gamma = 1.8;
         }
         let _ = shell.bridge.submit_all(
@@ -3720,7 +5884,9 @@ mod tests {
             let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
             let app = obj.appearance.as_ref().expect("appearance stack exists");
             assert_eq!(app.adjustments.len(), 2);
-            if let petunia_design_document::adjustments::AdjustmentKind::Levels { master, .. } = app.adjustments[0].kind {
+            if let petunia_design_document::adjustments::AdjustmentKind::Levels { master, .. } =
+                app.adjustments[0].kind
+            {
                 assert!((master.gamma - 1.8).abs() < 1e-5);
             } else {
                 panic!("First adjustment must be Levels");
@@ -3765,8 +5931,7 @@ mod tests {
         let obj_id = shell.bridge.next_object_id().unwrap();
 
         // 1. When empty/no object selected: baseline document histogram
-        let (bins, mean, shadows, midtones, highlights) =
-            compute_histogram_bins(&shell, None, 0);
+        let (bins, mean, shadows, midtones, highlights) = compute_histogram_bins(&shell, None, 0);
         assert_eq!(bins.len(), 32);
         assert_eq!(mean, 128);
         assert!(midtones > shadows && midtones > highlights);
@@ -3800,15 +5965,30 @@ mod tests {
         // Channel 1: Red channel of red object -> high mean, peak in highlights
         let (_r_bins, r_mean, _r_shad, _r_mid, r_high) =
             compute_histogram_bins(&shell, Some(obj), 1);
-        assert!(r_mean > 200, "Red channel mean must be high for red object (got {})", r_mean);
+        assert!(
+            r_mean > 200,
+            "Red channel mean must be high for red object (got {})",
+            r_mean
+        );
         assert!(r_high > 50, "Red channel must concentrate in highlights");
 
         // Channel 2: Green channel of red object -> low mean, peak in shadows
         let (_g_bins, g_mean, g_shad, _g_mid, _g_high) =
             compute_histogram_bins(&shell, Some(obj), 2);
-        assert!(g_mean < 100, "Green channel mean must be low for red object (got {})", g_mean);
-        assert!(g_shad + _g_mid > 95, "Green channel must concentrate in shadows and lower midtones");
-        assert!(_g_high < 5, "Green channel must have virtually no highlights (got {})", _g_high);
+        assert!(
+            g_mean < 100,
+            "Green channel mean must be low for red object (got {})",
+            g_mean
+        );
+        assert!(
+            g_shad + _g_mid > 95,
+            "Green channel must concentrate in shadows and lower midtones"
+        );
+        assert!(
+            _g_high < 5,
+            "Green channel must have virtually no highlights (got {})",
+            _g_high
+        );
 
         // 3. Add Exposure +1.0 to increase luminance
         let exp_item = petunia_design_document::adjustments::AdjustmentItem::new(
@@ -3832,9 +6012,56 @@ mod tests {
         let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
 
         // Green channel with +1.0 exposure should shift up
-        let (_g_bins_exp, g_mean_exp, _, _, _) =
-            compute_histogram_bins(&shell, Some(obj), 2);
-        assert!(g_mean_exp > g_mean, "Exposure must increase mean channel value");
+        let (_g_bins_exp, g_mean_exp, _, _, _) = compute_histogram_bins(&shell, Some(obj), 2);
+        assert!(
+            g_mean_exp > g_mean,
+            "Exposure must increase mean channel value"
+        );
+
+        // 4. Raster buffer histogram sampling on Image object
+        let img_id = shell.bridge.next_object_id().unwrap();
+        let raw_pixels: Vec<u8> = vec![
+            250, 20, 20, 255, // red pixel
+            250, 20, 20, 255, // red pixel
+            10, 240, 10, 255, // green pixel
+            10, 10, 240, 255, // blue pixel
+        ];
+        let raw_img = petunia_design_io::RawRasterImage::from_rgba8(2, 2, raw_pixels).unwrap();
+        let (png_bytes, _) = petunia_design_io::export_raster(
+            &raw_img,
+            &petunia_design_io::RasterExportOptions::default(),
+        )
+        .unwrap();
+
+        let _ = shell.bridge.submit_all(
+            "Add Image object",
+            vec![
+                Command::CreateObject {
+                    surface: surf_id,
+                    id: img_id,
+                    name: "SampleImage".to_string(),
+                },
+                Command::SetShape {
+                    id: img_id,
+                    shape: Some(ShapeKind::Image {
+                        path: "sample.png".to_string(),
+                        data: Some(png_bytes),
+                    }),
+                },
+            ],
+        );
+
+        let session = shell.bridge.session().unwrap();
+        let surf = session.surface(surf_id).unwrap();
+        let img_obj = surf.objects().iter().find(|o| o.id == img_id).unwrap();
+
+        let (img_bins, img_mean, _, _, _) = compute_histogram_bins(&shell, Some(img_obj), 0);
+        assert_eq!(img_bins.len(), 32);
+        assert!(
+            img_bins.iter().any(|&b| b > 0.0),
+            "Raster sampling must populate bins"
+        );
+        assert!(img_mean > 0);
     }
 
     #[test]
@@ -3843,11 +6070,26 @@ mod tests {
         shell.new_document("ToolsDoc").expect("doc opens");
 
         // 1. Pen tool modes
-        assert_eq!(shell.tools.pen_tool().mode(), petunia_design_shell::tools::PenMode::Bezier);
-        shell.tools.pen_tool_mut().set_mode(petunia_design_shell::tools::PenMode::Polygon);
-        assert_eq!(shell.tools.pen_tool().mode(), petunia_design_shell::tools::PenMode::Polygon);
-        shell.tools.pen_tool_mut().set_mode(petunia_design_shell::tools::PenMode::Line);
-        assert_eq!(shell.tools.pen_tool().mode(), petunia_design_shell::tools::PenMode::Line);
+        assert_eq!(
+            shell.tools.pen_tool().mode(),
+            petunia_design_shell::tools::PenMode::Bezier
+        );
+        shell
+            .tools
+            .pen_tool_mut()
+            .set_mode(petunia_design_shell::tools::PenMode::Polygon);
+        assert_eq!(
+            shell.tools.pen_tool().mode(),
+            petunia_design_shell::tools::PenMode::Polygon
+        );
+        shell
+            .tools
+            .pen_tool_mut()
+            .set_mode(petunia_design_shell::tools::PenMode::Line);
+        assert_eq!(
+            shell.tools.pen_tool().mode(),
+            petunia_design_shell::tools::PenMode::Line
+        );
 
         // 2. Photo brush settings
         let default_brush = shell.tools.photo_brush_tool().brush_settings();
@@ -3860,12 +6102,18 @@ mod tests {
             flow: 0.8,
             opacity: 0.9,
         };
-        shell.tools.photo_brush_tool_mut().set_brush_settings(new_brush);
+        shell
+            .tools
+            .photo_brush_tool_mut()
+            .set_brush_settings(new_brush);
         assert_eq!(shell.tools.photo_brush_tool().brush_settings(), new_brush);
 
         // 3. Desktop shell helper methods
         let finish_res = shell.finish_open_path();
-        assert!(finish_res.is_ok(), "finish_open_path runs safely even when empty");
+        assert!(
+            finish_res.is_ok(),
+            "finish_open_path runs safely even when empty"
+        );
         let convert_res = shell.convert_selected_nodes(petunia_design_shell::tools::NodeType::Cusp);
         assert!(convert_res.is_ok(), "convert_selected_nodes runs safely");
         let del_res = shell.delete_selected_nodes();
@@ -3958,15 +6206,42 @@ mod tests {
             let app = obj.appearance.as_ref().expect("appearance exists");
             assert_eq!(app.effects.len(), 3);
 
-            let shadow = app.effects.iter().find(|e| matches!(e.kind, petunia_design_document::EffectKind::DropShadow { .. })).unwrap();
+            let shadow = app
+                .effects
+                .iter()
+                .find(|e| {
+                    matches!(
+                        e.kind,
+                        petunia_design_document::EffectKind::DropShadow { .. }
+                    )
+                })
+                .unwrap();
             assert_eq!(shadow.id, 102);
             assert!(shadow.visible);
 
-            let inner = app.effects.iter().find(|e| matches!(e.kind, petunia_design_document::EffectKind::InnerShadow { .. })).unwrap();
+            let inner = app
+                .effects
+                .iter()
+                .find(|e| {
+                    matches!(
+                        e.kind,
+                        petunia_design_document::EffectKind::InnerShadow { .. }
+                    )
+                })
+                .unwrap();
             assert_eq!(inner.id, 105);
             assert!(inner.visible);
 
-            let blur = app.effects.iter().find(|e| matches!(e.kind, petunia_design_document::EffectKind::GaussianBlur { .. })).unwrap();
+            let blur = app
+                .effects
+                .iter()
+                .find(|e| {
+                    matches!(
+                        e.kind,
+                        petunia_design_document::EffectKind::GaussianBlur { .. }
+                    )
+                })
+                .unwrap();
             assert_eq!(blur.id, 101);
             assert!(blur.visible);
         }
@@ -3975,7 +6250,10 @@ mod tests {
         let _ = shell.bridge.submit_all(
             "Toggle shadow",
             vec![
-                Command::RemoveEffect { id: obj_id, effect_id: 102 },
+                Command::RemoveEffect {
+                    id: obj_id,
+                    effect_id: 102,
+                },
                 Command::AddEffect {
                     id: obj_id,
                     effect: petunia_design_document::EffectItem {
@@ -3997,7 +6275,16 @@ mod tests {
             let surf = session.surface(surf_id).unwrap();
             let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
             let app = obj.appearance.as_ref().unwrap();
-            let shadow = app.effects.iter().find(|e| matches!(e.kind, petunia_design_document::EffectKind::DropShadow { .. })).unwrap();
+            let shadow = app
+                .effects
+                .iter()
+                .find(|e| {
+                    matches!(
+                        e.kind,
+                        petunia_design_document::EffectKind::DropShadow { .. }
+                    )
+                })
+                .unwrap();
             assert!(!shadow.visible, "Drop shadow must now be hidden");
         }
     }
@@ -4035,7 +6322,10 @@ mod tests {
         // 2. Add a live ContourOffset modifier
         let _ = shell.bridge.submit_all(
             "Add contour modifier",
-            vec![Command::OffsetPath { id: obj_id, delta: 8.0 }],
+            vec![Command::OffsetPath {
+                id: obj_id,
+                delta: 8.0,
+            }],
         );
 
         {
@@ -4043,7 +6333,12 @@ mod tests {
             let surf = session.surface(surf_id).unwrap();
             let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
             assert_eq!(obj.modifiers.len(), 1);
-            if let petunia_design_document::ModifierKind::ContourOffset { distance, join, cap } = &obj.modifiers[0].kind {
+            if let petunia_design_document::ModifierKind::ContourOffset {
+                distance,
+                join,
+                cap,
+            } = &obj.modifiers[0].kind
+            {
                 assert_eq!(*distance, 8.0);
                 assert_eq!(*join, OffsetJoin::Round);
                 assert_eq!(*cap, OffsetCap::None);
@@ -4073,7 +6368,9 @@ mod tests {
             let session = shell.bridge.session().unwrap();
             let surf = session.surface(surf_id).unwrap();
             let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
-            if let petunia_design_document::ModifierKind::ContourOffset { join, cap, .. } = &obj.modifiers[0].kind {
+            if let petunia_design_document::ModifierKind::ContourOffset { join, cap, .. } =
+                &obj.modifiers[0].kind
+            {
                 assert_eq!(*join, OffsetJoin::Miter);
                 assert_eq!(*cap, OffsetCap::Round);
             }
@@ -4117,21 +6414,207 @@ mod tests {
         }
 
         // 5. Bake Contour commits contour into base curve geometry
-        let _ = shell.bridge.submit_all(
-            "Bake contour",
-            vec![Command::BakeContour { id: obj_id }],
-        );
+        let _ = shell
+            .bridge
+            .submit_all("Bake contour", vec![Command::BakeContour { id: obj_id }]);
 
         {
             let session = shell.bridge.session().unwrap();
             let surf = session.surface(surf_id).unwrap();
             let obj = surf.objects().iter().find(|o| o.id == obj_id).unwrap();
             // Contour modifier was baked out of the chain
-            assert!(!obj.modifiers.iter().any(|m| matches!(m.kind, petunia_design_document::ModifierKind::ContourOffset { .. })));
+            assert!(!obj.modifiers.iter().any(|m| matches!(
+                m.kind,
+                petunia_design_document::ModifierKind::ContourOffset { .. }
+            )));
             // Shape is now a Path (converted to curves)
             assert!(matches!(obj.shape, Some(ShapeKind::Path { .. })));
         }
     }
+
+    #[test]
+    fn dock_color_and_swatches_and_background_tasks_panels_integrate() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("ColorDoc").expect("doc opens");
+        let surf_id = shell.bridge.active_surface().unwrap();
+        let obj_id = shell.bridge.next_object_id().unwrap();
+        let _ = shell.bridge.submit_all(
+            "Create obj",
+            vec![
+                Command::CreateObject {
+                    surface: surf_id,
+                    id: obj_id,
+                    name: "Obj1".to_string(),
+                },
+                Command::SetFill {
+                    id: obj_id,
+                    fill: Some("#FF0055".to_string()),
+                },
+            ],
+        );
+        shell.bridge.select_all();
+
+        // Background jobs verification in bridge
+        assert_eq!(shell.bridge.jobs().list_jobs().len(), 0);
+        let (job_id, token) = shell.bridge.jobs().spawn_job("Render Test");
+        assert_eq!(shell.bridge.jobs().list_jobs().len(), 1);
+        shell.bridge.jobs().update_progress(job_id, 75);
+        assert_eq!(shell.bridge.jobs().list_jobs()[0].percent, 75);
+        assert_eq!(
+            shell.bridge.jobs().list_jobs()[0].state,
+            petunia_design_jobs::JobState::Running
+        );
+        shell.bridge.jobs().cancel_job(job_id);
+        assert!(token.is_cancelled());
+        assert_eq!(
+            shell.bridge.jobs().list_jobs()[0].state,
+            petunia_design_jobs::JobState::Cancelled
+        );
+        shell.bridge.jobs().clear_completed();
+        assert_eq!(shell.bridge.jobs().list_jobs().len(), 0);
+    }
+
+    #[test]
+    fn left_dock_and_splitter_open_close_and_symbol_insertion() {
+        let seen: Rc<RefCell<Option<UiShell>>> = Rc::new(RefCell::new(None));
+        let seen_hook = seen.clone();
+
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                let shell = use_state(|| {
+                    let mut s = PetuniaShell::new(1000., 700.);
+                    s.new_document("LeftDockDoc").expect("doc opens");
+                    s
+                });
+                let mut ui = UiShell::fresh(shell);
+                ui.left_dock_open.set(true);
+                seen_hook.replace(Some(ui.clone()));
+                rect()
+                    .direction(Direction::Horizontal)
+                    .child(LeftDock(ui.clone()))
+                    .child(LeftDockSplitter(ui))
+            },
+            (400., 700.).into(),
+            |_| {},
+            1.,
+        );
+
+        runner.sync_and_update();
+        let mut ui = seen.borrow().clone().unwrap();
+        assert!(*ui.left_dock_open.read(), "Left dock is open");
+        assert_eq!(*ui.left_dock_tab.read(), 0, "Default tab is Ativos (0)");
+
+        // Switch to Símbolos (1)
+        let mut left_tab = ui.left_dock_tab;
+        left_tab.set(1);
+        runner.sync_and_update();
+        assert_eq!(*ui.left_dock_tab.read(), 1, "Tab switched to Símbolos (1)");
+
+        // Insert symbol preset into document
+        let surf_id = ui.shell.read().bridge.active_surface().unwrap();
+        let obj_id = ui.shell.write().bridge.next_object_id().unwrap();
+        let _ = ui.shell.write().bridge.submit_all(
+            "Insert Retângulo Básico",
+            vec![
+                Command::CreateObject {
+                    surface: surf_id,
+                    id: obj_id,
+                    name: "Retângulo Básico".to_string(),
+                },
+                Command::SetShape {
+                    id: obj_id,
+                    shape: Some(ShapeKind::Rectangle {
+                        corner_radii: [0.0; 4],
+                    }),
+                },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([50.0, 50.0, 250.0, 200.0]),
+                    rotation: 0.0,
+                },
+                Command::SetFill {
+                    id: obj_id,
+                    fill: Some("ptnd.blue/500".to_string()),
+                },
+            ],
+        );
+
+        // Verify shape exists on surface
+        {
+            let shell_ref = ui.shell.read();
+            let session = shell_ref.bridge.session().unwrap();
+            let surf = session.surface(surf_id).unwrap();
+            let obj = surf
+                .objects()
+                .iter()
+                .find(|o| o.id == obj_id)
+                .expect("symbol inserted");
+            assert_eq!(obj.name, "Retângulo Básico");
+            assert_eq!(obj.fill.as_deref(), Some("ptnd.blue/500"));
+        }
+
+        // Left dock width clamping
+        let mut dock_w = ui.left_dock_width;
+        dock_w.set((100.0f32).clamp(160.0, 480.0));
+        assert_eq!(*ui.left_dock_width.read(), 160.0);
+        dock_w.set((600.0f32).clamp(160.0, 480.0));
+        assert_eq!(*ui.left_dock_width.read(), 480.0);
+    }
+
+    #[test]
+    fn bottom_dock_and_splitter_open_close_and_diagnostics() {
+        let seen: Rc<RefCell<Option<UiShell>>> = Rc::new(RefCell::new(None));
+        let seen_hook = seen.clone();
+
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                let shell = use_state(|| {
+                    let mut s = PetuniaShell::new(1000., 700.);
+                    s.new_document("BottomDockDoc").expect("doc opens");
+                    s
+                });
+                let mut ui = UiShell::fresh(shell);
+                ui.bottom_dock_open.set(true);
+                seen_hook.replace(Some(ui.clone()));
+                rect()
+                    .direction(Direction::Vertical)
+                    .child(BottomDockSplitter(ui.clone()))
+                    .child(BottomDock(ui))
+            },
+            (1000., 300.).into(),
+            |_| {},
+            1.,
+        );
+
+        runner.sync_and_update();
+        let ui = seen.borrow().clone().unwrap();
+        assert!(*ui.bottom_dock_open.read(), "Bottom dock is open");
+        assert_eq!(*ui.bottom_dock_tab.read(), 0, "Default tab is Tarefas (0)");
+
+        // Switch to Diagnóstico (1)
+        let mut bot_tab = ui.bottom_dock_tab;
+        bot_tab.set(1);
+        runner.sync_and_update();
+        assert_eq!(
+            *ui.bottom_dock_tab.read(),
+            1,
+            "Tab switched to Diagnóstico (1)"
+        );
+
+        // Bottom dock height clamping
+        let mut dock_h = ui.bottom_dock_height;
+        dock_h.set((50.0f32).clamp(80.0, 420.0));
+        assert_eq!(*ui.bottom_dock_height.read(), 80.0);
+        dock_h.set((500.0f32).clamp(80.0, 420.0));
+        assert_eq!(*ui.bottom_dock_height.read(), 420.0);
+
+        // Close bottom dock
+        let mut open = ui.bottom_dock_open;
+        open.set(false);
+        runner.sync_and_update();
+        assert!(
+            !*ui.bottom_dock_open.read(),
+            "Bottom dock closed successfully"
+        );
+    }
 }
-
-

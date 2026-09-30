@@ -83,6 +83,11 @@ pub const SHELL_STRINGS: &[ShellString] = &[
         "Nada está selecionado",
     ),
     entry(
+        "ptnd.text.blocked.nothing_to_paste",
+        "Nothing to paste",
+        "Nada para colar",
+    ),
+    entry(
         "ptnd.text.blocked.nothing_to_redo",
         "Nothing to redo",
         "Nada para refazer",
@@ -129,8 +134,8 @@ pub const SHELL_STRINGS: &[ShellString] = &[
     ),
     entry(
         "ptnd.text.blocked.slice_path",
-        "Slice Path needs a point the user picks on the path, and no tool supplies one yet",
-        "Dividir caminho precisa de um ponto escolhido no caminho e nenhuma ferramenta fornece isso ainda",
+        "Slice Path needs a point picked on the path: click it with the Scissors tool",
+        "Dividir caminho precisa de um ponto escolhido no caminho: clique nele com a ferramenta Tesoura",
     ),
     entry(
         "ptnd.text.canvas.viewport",
@@ -706,6 +711,11 @@ pub const SHELL_STRINGS: &[ShellString] = &[
         "ptnd.text.tool.place_image",
         "Place Image",
         "Inserir imagem",
+    ),
+    entry(
+        "ptnd.text.tool.place_image.summary",
+        "Place an image file onto the active artboard",
+        "Insira um arquivo de imagem na prancheta ativa",
     ),
     entry(
         "ptnd.text.tool.point_transform",

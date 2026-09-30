@@ -169,7 +169,9 @@ fn run() -> Result<(), String> {
         .insert_str(TextOffset::new(8), " Professional")
         .map_err(|e| format!("text insert: {e}"))?;
     let text_layout = TextLayout::layout(&story, Some(250.0));
-    assert_eq!(text_layout.line_count, 3);
+    // F7.2: real shaped advances (Inter 14px) fit the first line in 250px,
+    // so this wraps to 2 lines; the old 0.55 estimate wrapped to 3.
+    assert_eq!(text_layout.line_count, 2);
     let hit_offset = text_layout.hit_test(GPoint::new(10.0, 10.0));
     assert!(hit_offset.0 <= story.content.len());
 

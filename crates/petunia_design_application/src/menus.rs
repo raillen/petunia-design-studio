@@ -260,6 +260,8 @@ pub const MENU_BAR: &[MenuFamily] = &[
             node(item("ptnd.action.file.export", "ptnd.text.file.export")),
             // Blocked, and shown as blocked rather than omitted silently.
             node(item("ptnd.action.file.place", "ptnd.text.file.place")),
+            node(item("ptnd.action.file.close", "ptnd.text.file.close")),
+            node(item("ptnd.action.file.quit", "ptnd.text.file.quit")),
         ],
     },
     MenuFamily {
@@ -269,6 +271,9 @@ pub const MENU_BAR: &[MenuFamily] = &[
         nodes: &[
             node(item("ptnd.action.edit.undo", "ptnd.text.edit.undo")),
             node(item("ptnd.action.edit.redo", "ptnd.text.edit.redo")),
+            node(item("ptnd.action.edit.cut", "ptnd.text.edit.cut")),
+            node(item("ptnd.action.edit.copy", "ptnd.text.edit.copy")),
+            node(item("ptnd.action.edit.paste", "ptnd.text.edit.paste")),
             node(item(
                 "ptnd.action.edit.duplicate",
                 "ptnd.text.edit.duplicate",
@@ -287,6 +292,7 @@ pub const MENU_BAR: &[MenuFamily] = &[
         nodes: &[
             node(item("ptnd.action.edit.select_all", "ptnd.text.select.all")),
             node(item("ptnd.action.edit.deselect", "ptnd.text.select.none")),
+            node(item("ptnd.action.select.invert", "ptnd.text.select.invert")),
         ],
     },
     MenuFamily {
@@ -368,9 +374,13 @@ pub const MENU_BAR: &[MenuFamily] = &[
                 "ptnd.text.object.boolean",
                 BOOLEAN_ITEMS,
             ),
-            // `object.offset_path` and `object.slice_path` are deliberately
-            // disabled rather than absent: both need a distance/point the user
-            // must choose, and inventing a default here would be a fake command.
+            // `object.slice_path` stays disabled rather than absent: it needs a
+            // point the user picks on the path, and the Scissors tool already
+            // owns that gesture (click-to-split with auto-convert). Typing
+            // x/y here would be a fake command, and routing Scissors through
+            // the single-object seam-break would regress it.
+            // `object.offset_path` is wired: its distance arrives typed in the
+            // numeric prompt, so no default is invented here.
             group(
                 "ptnd.menu.vector.path",
                 "ptnd.text.panel.stroke",
@@ -543,6 +553,8 @@ pub struct ActionContext {
     pub can_redo: bool,
     /// The document has unsaved modifications.
     pub is_dirty: bool,
+    /// The internal clipboard buffer contains at least one object.
+    pub clipboard_non_empty: bool,
     /// A command palette overlay is currently open.
     pub command_palette_open: bool,
     /// Persona the shell is in. Decides which families are reachable.
@@ -557,6 +569,7 @@ impl Default for ActionContext {
             can_undo: false,
             can_redo: false,
             is_dirty: false,
+            clipboard_non_empty: false,
             command_palette_open: false,
             persona: PERSONA_VECTOR,
         }
@@ -717,6 +730,13 @@ pub fn availability(action_id: &str, ctx: &ActionContext) -> Availability {
     match action_id {
         // File: export and save need a document; save only when it is dirty.
         "ptnd.action.file.new" | "ptnd.action.file.open" => Availability::ENABLED,
+        "ptnd.action.file.close" | "ptnd.action.file.quit" => {
+            if ctx.has_document {
+                Availability::ENABLED
+            } else {
+                Availability::blocked("ptnd.text.blocked.no_document")
+            }
+        }
         "ptnd.action.file.save" => {
             if !ctx.has_document {
                 Availability::blocked("ptnd.text.blocked.no_document")
@@ -755,15 +775,27 @@ pub fn availability(action_id: &str, ctx: &ActionContext) -> Availability {
                 Availability::blocked("ptnd.text.blocked.nothing_to_redo")
             }
         }
-        "ptnd.action.edit.duplicate" | "ptnd.action.edit.delete" => {
+        "ptnd.action.edit.duplicate"
+        | "ptnd.action.edit.delete"
+        | "ptnd.action.edit.cut"
+        | "ptnd.action.edit.copy" => {
             if some_selection() {
                 Availability::ENABLED
             } else {
                 Availability::blocked("ptnd.text.blocked.select_object")
             }
         }
+        "ptnd.action.edit.paste" => {
+            if !ctx.has_document {
+                Availability::blocked("ptnd.text.blocked.no_document")
+            } else if !ctx.clipboard_non_empty {
+                Availability::blocked("ptnd.text.blocked.nothing_to_paste")
+            } else {
+                Availability::ENABLED
+            }
+        }
         "ptnd.action.edit.preferences" => Availability::ENABLED,
-        "ptnd.action.edit.select_all" => {
+        "ptnd.action.edit.select_all" | "ptnd.action.select.invert" => {
             if ctx.has_document {
                 Availability::ENABLED
             } else {
@@ -978,6 +1010,7 @@ mod tests {
             can_undo: true,
             can_redo: true,
             is_dirty: true,
+            clipboard_non_empty: true,
             command_palette_open: false,
             persona: PERSONA_VECTOR,
         }
@@ -1187,15 +1220,25 @@ mod tests {
     #[test]
     fn blocked_registry_rows_are_disabled_with_their_reason() {
         let bar = menu_bar(&context());
+        // `offset_path` is wired through the numeric prompt: with a selection
+        // it is enabled, and its distance travels in the dialog payload.
         let offset = bar
             .iter()
             .flat_map(MenuFamilyModel::items)
             .find(|item| item.surface_id == "ptnd.action.object.offset_path")
             .expect("offset_path is declared in the Object family");
-        assert!(!offset.enabled);
+        assert!(offset.enabled, "offset_path enables with a selection");
+        assert_eq!(offset.disabled_reason_id.as_deref(), None);
+
+        let slice = bar
+            .iter()
+            .flat_map(MenuFamilyModel::items)
+            .find(|item| item.surface_id == "ptnd.action.object.slice_path")
+            .expect("slice_path is declared in the Object family");
+        assert!(!slice.enabled);
         assert_eq!(
-            offset.disabled_reason_id.as_deref(),
-            Some("ptnd.text.blocked.offset_path")
+            slice.disabled_reason_id.as_deref(),
+            Some("ptnd.text.blocked.slice_path")
         );
 
         let place = bar
@@ -1234,6 +1277,15 @@ mod tests {
         assert!(!save.enabled);
         assert_eq!(save.reason, Some("ptnd.text.blocked.no_unsaved_changes"));
         assert!(availability("ptnd.action.file.save", &context()).enabled);
+
+        let empty_clipboard = ActionContext {
+            has_document: true,
+            ..ActionContext::default()
+        };
+        let paste = availability("ptnd.action.edit.paste", &empty_clipboard);
+        assert!(!paste.enabled);
+        assert_eq!(paste.reason, Some("ptnd.text.blocked.nothing_to_paste"));
+        assert!(availability("ptnd.action.edit.paste", &context()).enabled);
     }
 
     #[test]

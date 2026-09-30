@@ -105,7 +105,8 @@ impl crate::session::DocumentSession {
                     .cached_world_frame_bounds(obj.id)
                     .or_else(|| self.cached_world_bounds(obj.id))
                     .or_else(|| self.cached_bounds(obj.id))
-                    .or(obj.bounds) else {
+                    .or(obj.bounds)
+                else {
                     continue;
                 };
                 items.push(IndexedObj {

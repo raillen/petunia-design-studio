@@ -315,8 +315,9 @@ impl ContourTool {
 
         match self.mode {
             ContourMode::Corner => {
-                let hovered_corner =
-                    self.current_hover.and_then(|h| hit_corner(h, bridge, camera));
+                let hovered_corner = self
+                    .current_hover
+                    .and_then(|h| hit_corner(h, bridge, camera));
                 if self.corner_drag.is_some() {
                     overlays.cursor = CursorAffordance::ResizeNwse;
                 } else if hovered_corner.is_some() {

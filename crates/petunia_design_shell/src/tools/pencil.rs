@@ -20,6 +20,69 @@ const SCULPT_HIT_PX: f64 = 12.0;
 /// Minimum samples for a committable stroke.
 const MIN_SAMPLES: usize = 2;
 
+/// Freehand stroke stabilization settings (StreamLine + velocity compensation, Dossier V1 §3).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PencilStabilizer {
+    /// Smoothing strength from 0.0 (raw input) to 1.0 (heavy stabilization).
+    pub weight: f64,
+    /// Whether velocity-weighted compensation is enabled.
+    pub velocity_compensation: bool,
+}
+
+impl Default for PencilStabilizer {
+    fn default() -> Self {
+        Self {
+            weight: 0.35,
+            velocity_compensation: true,
+        }
+    }
+}
+
+impl PencilStabilizer {
+    /// Disables live stabilization (raw pointer tracking).
+    #[must_use]
+    pub const fn off() -> Self {
+        Self {
+            weight: 0.0,
+            velocity_compensation: false,
+        }
+    }
+
+    /// Creates an active stabilizer with a given weight (`0.0..=1.0`).
+    #[must_use]
+    pub fn new(weight: f64, velocity_compensation: bool) -> Self {
+        Self {
+            weight: weight.clamp(0.0, 1.0),
+            velocity_compensation,
+        }
+    }
+
+    /// Filters an in-flight pointer move sample against the previous stabilized anchor.
+    #[must_use]
+    pub fn filter_point(&self, raw: GPoint, previous: GPoint) -> GPoint {
+        if self.weight <= 0.0 {
+            return raw;
+        }
+
+        let dx = raw.x - previous.x;
+        let dy = raw.y - previous.y;
+        let dist = (dx * dx + dy * dy).sqrt();
+
+        // Baseline alpha from weight (0.0 weight -> alpha 1.0; 1.0 weight -> alpha 0.15)
+        let base_alpha = 1.0 - (self.weight * 0.85);
+
+        // Velocity compensation: fast strokes have higher alpha so they track crisply
+        let alpha = if self.velocity_compensation {
+            let speed_boost = (dist / 80.0).clamp(0.0, 0.4);
+            (base_alpha + speed_boost).min(1.0)
+        } else {
+            base_alpha
+        };
+
+        GPoint::new(previous.x + dx * alpha, previous.y + dy * alpha)
+    }
+}
+
 /// Freehand fidelity: how closely the fit follows the hand.
 /// Illustrator-style slider compressed to three deterministic levels.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -49,6 +112,7 @@ impl PencilFidelity {
 pub struct PencilTool {
     sampled_points: Vec<GPoint>,
     fidelity: PencilFidelity,
+    stabilizer: PencilStabilizer,
     close_threshold_px: f64,
     straight: bool,
     sculpt_target: Option<ObjectId>,
@@ -62,6 +126,7 @@ impl PencilTool {
         Self {
             sampled_points: Vec::new(),
             fidelity: PencilFidelity::Balanced,
+            stabilizer: PencilStabilizer::default(),
             close_threshold_px: SCULPT_HIT_PX,
             straight: false,
             sculpt_target: None,
@@ -77,7 +142,7 @@ impl PencilTool {
         self.straight = false;
     }
 
-    /// Current fidelity level (bind to a toolbar slider in the future).
+    /// Current fidelity level.
     #[must_use]
     pub fn fidelity(&self) -> PencilFidelity {
         self.fidelity
@@ -89,6 +154,17 @@ impl PencilTool {
             self.cancel();
             self.fidelity = fidelity;
         }
+    }
+
+    /// Current stroke stabilizer settings.
+    #[must_use]
+    pub fn stabilizer(&self) -> PencilStabilizer {
+        self.stabilizer
+    }
+
+    /// Updates stroke stabilizer settings.
+    pub fn set_stabilizer(&mut self, stabilizer: PencilStabilizer) {
+        self.stabilizer = stabilizer;
     }
 
     /// Raw in-flight samples (read-only, for tests and HUD).
@@ -139,10 +215,11 @@ impl PencilTool {
                         pt = snap.snap_point(pt, camera, &[]).point;
                     }
                     if let Some(last) = self.sampled_points.last() {
-                        let dx = pt.x - last.x;
-                        let dy = pt.y - last.y;
+                        let stabilized = self.stabilizer.filter_point(pt, *last);
+                        let dx = stabilized.x - last.x;
+                        let dy = stabilized.y - last.y;
                         if (dx * dx + dy * dy).sqrt() >= 2.0 {
-                            self.sampled_points.push(pt);
+                            self.sampled_points.push(stabilized);
                         }
                     }
                 }
@@ -152,6 +229,17 @@ impl PencilTool {
                 if self.sampled_points.len() < MIN_SAMPLES {
                     self.cancel();
                     return Ok(ChangeSet::empty());
+                }
+                if let Some(last) = self.sampled_points.last() {
+                    let mut final_pt = event.doc_pos;
+                    if !event.modifiers.disable_snap {
+                        final_pt = snap.snap_point(final_pt, camera, &[]).point;
+                    }
+                    let dx = final_pt.x - last.x;
+                    let dy = final_pt.y - last.y;
+                    if (dx * dx + dy * dy).sqrt() >= 2.0 {
+                        self.sampled_points.push(final_pt);
+                    }
                 }
                 let pts = std::mem::take(&mut self.sampled_points);
                 let straight = self.straight;
@@ -266,8 +354,10 @@ impl PencilTool {
     /// Resolves live preview overlays for active freehand drawing.
     #[must_use]
     pub fn overlays(&self) -> CanvasOverlays {
-        let mut overlays = CanvasOverlays::default();
-        overlays.cursor = CursorAffordance::Crosshair;
+        let mut overlays = CanvasOverlays {
+            cursor: CursorAffordance::Crosshair,
+            ..Default::default()
+        };
         if self.sampled_points.len() >= MIN_SAMPLES {
             if self.straight {
                 let first = self.sampled_points[0];
@@ -483,5 +573,37 @@ mod pencil_tool_tests {
         assert_eq!(merged.first(), Some(&GPoint::new(0.0, 0.0)));
         assert_eq!(merged.last(), Some(&GPoint::new(50.0, 5.0)));
         assert!(merged.len() > baseline.len());
+    }
+
+    #[test]
+    fn stabilizer_filters_jitter_via_moving_average() {
+        let raw_off = PencilStabilizer::off();
+        let prev = GPoint::new(0.0, 0.0);
+        let raw_pt = GPoint::new(10.0, 10.0);
+        assert_eq!(raw_off.filter_point(raw_pt, prev), raw_pt);
+
+        let active = PencilStabilizer::new(0.5, false);
+        let smoothed = active.filter_point(raw_pt, prev);
+        // Alpha is 1.0 - 0.5 * 0.85 = 0.575
+        // Smoothed x and y should be 5.75, which is between prev (0.0) and raw (10.0)
+        assert!((smoothed.x - 5.75).abs() < 1e-5);
+        assert!((smoothed.y - 5.75).abs() < 1e-5);
+    }
+
+    #[test]
+    fn stabilizer_velocity_compensation_increases_responsiveness() {
+        let prev = GPoint::new(0.0, 0.0);
+        let slow_pt = GPoint::new(5.0, 0.0);
+        let fast_pt = GPoint::new(80.0, 0.0);
+
+        let stab_with_comp = PencilStabilizer::new(0.6, true);
+        let slow_filtered = stab_with_comp.filter_point(slow_pt, prev);
+        let fast_filtered = stab_with_comp.filter_point(fast_pt, prev);
+
+        let slow_ratio = slow_filtered.x / slow_pt.x;
+        let fast_ratio = fast_filtered.x / fast_pt.x;
+
+        // Fast gesture has higher tracking alpha/ratio than slow gesture
+        assert!(fast_ratio > slow_ratio);
     }
 }

@@ -4,7 +4,7 @@ pub mod overlay;
 pub mod snapping;
 pub mod snapshot;
 
-pub use snapshot::{CanvasObjectProjection, CanvasSnapshot, SurfaceView};
+pub use snapshot::{CanvasObjectProjection, CanvasSnapshot, SnapshotCache, SurfaceView};
 
 // The camera is GUI-agnostic view state, so it lives in the application layer
 // (15.B) and the shell only renders it.

@@ -132,7 +132,8 @@ fn select_tool_click_cycle_select_deselect_reselect() {
             GPoint::new(x, y),
             SemanticModifiers::default(),
         );
-        tool.on_pointer_event(&down, bridge, &camera, &mut snap).unwrap();
+        tool.on_pointer_event(&down, bridge, &camera, &mut snap)
+            .unwrap();
         let up = NormalizedPointerEvent::new(
             PointerPhase::Up,
             PointerButton::Primary,
@@ -140,7 +141,8 @@ fn select_tool_click_cycle_select_deselect_reselect() {
             GPoint::new(x, y),
             SemanticModifiers::default(),
         );
-        tool.on_pointer_event(&up, bridge, &camera, &mut snap).unwrap();
+        tool.on_pointer_event(&up, bridge, &camera, &mut snap)
+            .unwrap();
     };
 
     // 1. Click Box A
@@ -3067,13 +3069,29 @@ fn gradient_overlays_preview_in_flight_stop_drag() {
     let plain = SemanticModifiers::default();
 
     // Create linear gradient from (10, 50) to (110, 50)
-    gradient_drag(&mut tool, &mut bridge, &camera, &mut snap, 10.0, 50.0, 110.0, 50.0, plain);
+    gradient_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        10.0,
+        50.0,
+        110.0,
+        50.0,
+        plain,
+    );
 
     // Double-click to add a stop at the midpoint (60, 50)
     let mid = GPoint::new(60.0, 50.0);
     for _ in 0..2 {
         tool.on_pointer_event(
-            &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, mid, mid, plain),
+            &NormalizedPointerEvent::new(
+                PointerPhase::Down,
+                PointerButton::Primary,
+                mid,
+                mid,
+                plain,
+            ),
             &mut bridge,
             &camera,
             &mut snap,
@@ -3095,7 +3113,13 @@ fn gradient_overlays_preview_in_flight_stop_drag() {
     // In-flight drag of the stop to x=85 (t = 0.75)
     let moved = GPoint::new(85.0, 50.0);
     tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, moved, moved, plain),
+        &NormalizedPointerEvent::new(
+            PointerPhase::Move,
+            PointerButton::Primary,
+            moved,
+            moved,
+            plain,
+        ),
         &mut bridge,
         &camera,
         &mut snap,
@@ -3104,11 +3128,21 @@ fn gradient_overlays_preview_in_flight_stop_drag() {
 
     let overlays = tool.overlays(&bridge, &camera);
     assert_eq!(overlays.cursor, CursorAffordance::Grabbing);
-    assert!(overlays.pen_preview.is_none(), "dragging a stop must not draw an extraneous line");
+    assert!(
+        overlays.pen_preview.is_none(),
+        "dragging a stop must not draw an extraneous line"
+    );
     let gradient = overlays.gradient.expect("gradient overlay must be present");
     // Middle stop offset in the preview must be in-flight at 0.75
-    let middle_stop = gradient.stops.iter().find(|(off, _)| (*off - 0.75).abs() < 0.05);
-    assert!(middle_stop.is_some(), "in-flight stop overlay must reflect moved offset 0.75: {:?}", gradient.stops);
+    let middle_stop = gradient
+        .stops
+        .iter()
+        .find(|(off, _)| (*off - 0.75).abs() < 0.05);
+    assert!(
+        middle_stop.is_some(),
+        "in-flight stop overlay must reflect moved offset 0.75: {:?}",
+        gradient.stops
+    );
 }
 
 #[test]
@@ -3149,12 +3183,18 @@ fn gradient_overlays_preview_in_flight_vector_with_45_deg_snap() {
     let pen_line = overlays.pen_preview.as_ref().unwrap();
     let dx = pen_line[1].x - pen_line[0].x;
     let dy = pen_line[1].y - pen_line[0].y;
-    assert!((dx - dy).abs() < 1e-4, "in-flight snapped line must be at 45 degrees: dx={dx}, dy={dy}");
+    assert!(
+        (dx - dy).abs() < 1e-4,
+        "in-flight snapped line must be at 45 degrees: dx={dx}, dy={dy}"
+    );
 
     let gradient = overlays.gradient.expect("gradient preview");
     let g_dx = gradient.end.x - gradient.start.x;
     let g_dy = gradient.end.y - gradient.start.y;
-    assert!((g_dx - g_dy).abs() < 1e-4, "in-flight gradient overlay must be at 45 degrees");
+    assert!(
+        (g_dx - g_dy).abs() < 1e-4,
+        "in-flight gradient overlay must be at 45 degrees"
+    );
 }
 
 #[test]
@@ -3168,40 +3208,77 @@ fn gradient_cursor_affordances_hover_and_drag() {
     let plain = SemanticModifiers::default();
 
     // Create linear gradient
-    gradient_drag(&mut tool, &mut bridge, &camera, &mut snap, 10.0, 50.0, 110.0, 50.0, plain);
+    gradient_drag(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        10.0,
+        50.0,
+        110.0,
+        50.0,
+        plain,
+    );
 
     // Hover empty area
     let p_empty = GPoint::new(800.0, 800.0);
     tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p_empty, p_empty, plain),
+        &NormalizedPointerEvent::new(
+            PointerPhase::Move,
+            PointerButton::Primary,
+            p_empty,
+            p_empty,
+            plain,
+        ),
         &mut bridge,
         &camera,
         &mut snap,
     )
     .unwrap();
-    assert_eq!(tool.overlays(&bridge, &camera).cursor, CursorAffordance::Crosshair);
+    assert_eq!(
+        tool.overlays(&bridge, &camera).cursor,
+        CursorAffordance::Crosshair
+    );
 
     // Hover over start stop handle (10, 50)
     let p_stop = GPoint::new(10.0, 50.0);
     tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p_stop, p_stop, plain),
+        &NormalizedPointerEvent::new(
+            PointerPhase::Move,
+            PointerButton::Primary,
+            p_stop,
+            p_stop,
+            plain,
+        ),
         &mut bridge,
         &camera,
         &mut snap,
     )
     .unwrap();
-    assert_eq!(tool.overlays(&bridge, &camera).cursor, CursorAffordance::Pointer);
+    assert_eq!(
+        tool.overlays(&bridge, &camera).cursor,
+        CursorAffordance::Pointer
+    );
 
     // Drag the stop (after double-click window)
     std::thread::sleep(std::time::Duration::from_millis(450));
     tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p_stop, p_stop, plain),
+        &NormalizedPointerEvent::new(
+            PointerPhase::Down,
+            PointerButton::Primary,
+            p_stop,
+            p_stop,
+            plain,
+        ),
         &mut bridge,
         &camera,
         &mut snap,
     )
     .unwrap();
-    assert_eq!(tool.overlays(&bridge, &camera).cursor, CursorAffordance::Grabbing);
+    assert_eq!(
+        tool.overlays(&bridge, &camera).cursor,
+        CursorAffordance::Grabbing
+    );
 }
 
 fn picker_test_box(
@@ -3501,21 +3578,42 @@ fn picker_style_granular_filtering() {
     });
     picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
 
-    let obj = bridge.session().unwrap().document().find_object(target).unwrap();
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(target)
+        .unwrap();
     let stack = obj.effective_appearance();
     assert_eq!(
         stack.primary_fill().map(|f| f.paint.clone()),
-        Some(petunia_design_document::Paint::Solid("ptnd.red/500".to_string())),
+        Some(petunia_design_document::Paint::Solid(
+            "ptnd.red/500".to_string()
+        )),
         "Fill must be copied when filter.fill is true"
     );
     assert_eq!(
         stack.primary_stroke().map(|s| (s.paint.clone(), s.width)),
-        Some((petunia_design_document::Paint::Solid("ptnd.gray/700".to_string()), 1.0)),
+        Some((
+            petunia_design_document::Paint::Solid("ptnd.gray/700".to_string()),
+            1.0
+        )),
         "Stroke must NOT be copied when filter.stroke is false"
     );
-    assert!(stack.effects.is_empty(), "Effects must NOT be copied when filter.effects is false");
-    if let Some(petunia_design_document::ShapeKind::Text { font_family, font_size, .. }) = &obj.shape {
-        assert_eq!(font_family, "Inter", "Typography must NOT be copied when filter.typography is false");
+    assert!(
+        stack.effects.is_empty(),
+        "Effects must NOT be copied when filter.effects is false"
+    );
+    if let Some(petunia_design_document::ShapeKind::Text {
+        font_family,
+        font_size,
+        ..
+    }) = &obj.shape
+    {
+        assert_eq!(
+            font_family, "Inter",
+            "Typography must NOT be copied when filter.typography is false"
+        );
         assert_eq!(*font_size, 12.0);
     } else {
         panic!("Target must remain text");
@@ -3529,11 +3627,19 @@ fn picker_style_granular_filtering() {
         typography: false,
     });
     picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
-    let obj = bridge.session().unwrap().document().find_object(target).unwrap();
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(target)
+        .unwrap();
     let stack = obj.effective_appearance();
     assert_eq!(
         stack.primary_stroke().map(|s| (s.paint.clone(), s.width)),
-        Some((petunia_design_document::Paint::Solid("ptnd.blue/500".to_string()), 4.0)),
+        Some((
+            petunia_design_document::Paint::Solid("ptnd.blue/500".to_string()),
+            4.0
+        )),
         "Stroke must be copied when filter.stroke is true"
     );
 
@@ -3545,9 +3651,18 @@ fn picker_style_granular_filtering() {
         typography: false,
     });
     picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
-    let obj = bridge.session().unwrap().document().find_object(target).unwrap();
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(target)
+        .unwrap();
     let stack = obj.effective_appearance();
-    assert_eq!(stack.effects.len(), 1, "Effects must be copied when filter.effects is true");
+    assert_eq!(
+        stack.effects.len(),
+        1,
+        "Effects must be copied when filter.effects is true"
+    );
 
     // 4. Typography-only filter
     tool.set_filter(StyleFilter {
@@ -3557,13 +3672,29 @@ fn picker_style_granular_filtering() {
         typography: true,
     });
     picker_click(&mut tool, &mut bridge, &camera, &mut snap, 20.0, 20.0);
-    let obj = bridge.session().unwrap().document().find_object(target).unwrap();
-    if let Some(petunia_design_document::ShapeKind::Text { content, font_family, font_size, line_height, letter_spacing, .. }) = &obj.shape {
+    let obj = bridge
+        .session()
+        .unwrap()
+        .document()
+        .find_object(target)
+        .unwrap();
+    if let Some(petunia_design_document::ShapeKind::Text {
+        content,
+        font_family,
+        font_size,
+        line_height,
+        letter_spacing,
+        ..
+    }) = &obj.shape
+    {
         assert_eq!(content, "Keep Me", "Target text content must be preserved!");
         assert_eq!(font_family, "Futura", "Target font family must be updated");
         assert_eq!(*font_size, 24.0, "Target font size must be updated");
         assert_eq!(*line_height, 1.5, "Target line height must be updated");
-        assert_eq!(*letter_spacing, 1.0, "Target letter spacing must be updated");
+        assert_eq!(
+            *letter_spacing, 1.0,
+            "Target letter spacing must be updated"
+        );
     } else {
         panic!("Target must remain text");
     }
@@ -3587,7 +3718,8 @@ fn shape_builder_subtract_op_without_modifier() {
         p,
         SemanticModifiers::default(),
     );
-    tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap).unwrap();
+    tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap)
+        .unwrap();
     let event = NormalizedPointerEvent::new(
         PointerPhase::Up,
         PointerButton::Primary,
@@ -3595,15 +3727,26 @@ fn shape_builder_subtract_op_without_modifier() {
         p,
         SemanticModifiers::default(),
     );
-    let cs = tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap).unwrap();
-    assert!(!cs.is_empty(), "Subtract operation must carve region and produce changes");
+    let cs = tool
+        .on_pointer_event(&event, &mut bridge, &camera, &mut snap)
+        .unwrap();
+    assert!(
+        !cs.is_empty(),
+        "Subtract operation must carve region and produce changes"
+    );
 
     let session = bridge.session().unwrap();
     let obj_a = session.find_object(objects[0]).unwrap();
     let obj_b = session.find_object(objects[1]).unwrap();
     assert!(obj_a.hit_test(GPoint::new(25.0, 25.0)));
-    assert!(!obj_a.hit_test(GPoint::new(75.0, 75.0)), "Overlap point must no longer be covered by object A");
-    assert!(!obj_b.hit_test(GPoint::new(75.0, 75.0)), "Overlap point must no longer be covered by object B");
+    assert!(
+        !obj_a.hit_test(GPoint::new(75.0, 75.0)),
+        "Overlap point must no longer be covered by object A"
+    );
+    assert!(
+        !obj_b.hit_test(GPoint::new(75.0, 75.0)),
+        "Overlap point must no longer be covered by object B"
+    );
 }
 
 #[test]
@@ -3624,7 +3767,8 @@ fn smart_fill_uses_configured_token() {
         p,
         SemanticModifiers::default(),
     );
-    tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap).unwrap();
+    tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap)
+        .unwrap();
     let event = NormalizedPointerEvent::new(
         PointerPhase::Up,
         PointerButton::Primary,
@@ -3632,7 +3776,9 @@ fn smart_fill_uses_configured_token() {
         p,
         SemanticModifiers::default(),
     );
-    let cs = tool.on_pointer_event(&event, &mut bridge, &camera, &mut snap).unwrap();
+    let cs = tool
+        .on_pointer_event(&event, &mut bridge, &camera, &mut snap)
+        .unwrap();
     assert!(!cs.is_empty(), "SmartFill must create region");
 
     let selection = bridge.selection();
@@ -3897,7 +4043,9 @@ fn builder_drag_merges_crossed_regions_keeping_sources() {
 #[test]
 fn builder_overlays_indicate_subtraction_when_alt_held() {
     let mut bridge = PetuniaDesignGuiBridge::new();
-    bridge.new_document("Builder Subtraction Overlay").expect("doc");
+    bridge
+        .new_document("Builder Subtraction Overlay")
+        .expect("doc");
     let camera = ViewportCamera::new(1000.0, 1000.0);
     let mut snap = SnapEngine::new();
     builder_two_rects(&mut bridge);
@@ -3918,8 +4066,14 @@ fn builder_overlays_indicate_subtraction_when_alt_held() {
     .unwrap();
 
     let overlays = tool.overlays(&bridge);
-    assert!(overlays.region_subtractive, "subtractive flag must be true when Alt held");
-    assert!(overlays.region_preview.is_some(), "overlap must have region preview");
+    assert!(
+        overlays.region_subtractive,
+        "subtractive flag must be true when Alt held"
+    );
+    assert!(
+        overlays.region_preview.is_some(),
+        "overlap must have region preview"
+    );
     assert_eq!(overlays.cursor, CursorAffordance::Pointer);
 }
 
@@ -3948,7 +4102,13 @@ fn builder_freehand_drag_path_merges_along_curve() {
 
     // In-flight move to p_mid
     tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p_mid, p_mid, plain),
+        &NormalizedPointerEvent::new(
+            PointerPhase::Move,
+            PointerButton::Primary,
+            p_mid,
+            p_mid,
+            plain,
+        ),
         &mut bridge,
         &camera,
         &mut snap,
@@ -3957,8 +4117,14 @@ fn builder_freehand_drag_path_merges_along_curve() {
 
     let in_flight = tool.overlays(&bridge);
     assert_eq!(in_flight.cursor, CursorAffordance::Grabbing);
-    assert!(in_flight.pen_preview.is_some(), "freehand cutting path must be previewed");
-    assert!(in_flight.region_preview.is_some(), "crossed regions must be previewed");
+    assert!(
+        in_flight.pen_preview.is_some(),
+        "freehand cutting path must be previewed"
+    );
+    assert!(
+        in_flight.region_preview.is_some(),
+        "crossed regions must be previewed"
+    );
 
     // Move to p1 and release
     tool.on_pointer_event(
@@ -3979,8 +4145,14 @@ fn builder_freehand_drag_path_merges_along_curve() {
     assert_eq!(bridge.snapshot().total_objects, 3);
     let region = bridge.selection().selected_ids[0];
     let bounds = object_bounds(&bridge, region);
-    assert!((bounds[2] - 150.0).abs() < 2.0, "merged bounds width {bounds:?}");
-    assert!((bounds[3] - 150.0).abs() < 2.0, "merged bounds height {bounds:?}");
+    assert!(
+        (bounds[2] - 150.0).abs() < 2.0,
+        "merged bounds width {bounds:?}"
+    );
+    assert!(
+        (bounds[3] - 150.0).abs() < 2.0,
+        "merged bounds height {bounds:?}"
+    );
 }
 
 #[test]
@@ -3996,7 +4168,13 @@ fn builder_cursor_affordances_switch_between_hover_and_drag() {
     // Hover empty canvas
     let p_empty = GPoint::new(800.0, 800.0);
     tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p_empty, p_empty, plain),
+        &NormalizedPointerEvent::new(
+            PointerPhase::Move,
+            PointerButton::Primary,
+            p_empty,
+            p_empty,
+            plain,
+        ),
         &mut bridge,
         &camera,
         &mut snap,
@@ -4007,7 +4185,13 @@ fn builder_cursor_affordances_switch_between_hover_and_drag() {
     // Hover shape region
     let p_shape = GPoint::new(20.0, 20.0);
     tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p_shape, p_shape, plain),
+        &NormalizedPointerEvent::new(
+            PointerPhase::Move,
+            PointerButton::Primary,
+            p_shape,
+            p_shape,
+            plain,
+        ),
         &mut bridge,
         &camera,
         &mut snap,
@@ -4017,7 +4201,13 @@ fn builder_cursor_affordances_switch_between_hover_and_drag() {
 
     // Drag
     tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p_shape, p_shape, plain),
+        &NormalizedPointerEvent::new(
+            PointerPhase::Down,
+            PointerButton::Primary,
+            p_shape,
+            p_shape,
+            plain,
+        ),
         &mut bridge,
         &camera,
         &mut snap,
@@ -4692,6 +4882,223 @@ fn text_on_path_svg_uses_textpath_href() {
     assert!(
         svg.contains(&format!("href=\"#{target}\"")),
         "missing href:\n{svg}"
+    );
+}
+
+#[test]
+fn text_span_uses_single_shared_flatten() {
+    // F7.3(a): the 25-sample span preview must serve every sample from ONE
+    // memoized flatten (F2 `cached_*`), never 25 re-flattens. Probe:
+    // `flatten_lookup_count` counts `cached_polygons` lookups, so the old
+    // 25× `cached_sample_at` loop reads 25 while the shared walk reads 1.
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Text Flatten").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    text_path_line(&mut bridge, &mut gen);
+    let mut tool = TextTool::new(TextToolMode::Artistic);
+    let plain = SemanticModifiers::default();
+
+    // Arm a pending attach drag: Down on the path, then preview the span.
+    let p0 = GPoint::new(20.0, 0.0);
+    tool.on_pointer_event(
+        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p0, p0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    bridge.reset_flatten_stats();
+    let overlays = tool.overlays(&camera, &bridge);
+    assert!(
+        overlays.text_path_handles.is_some(),
+        "pending attach drag must preview the span"
+    );
+    assert_eq!(
+        bridge.flatten_lookup_count(),
+        1,
+        "span preview must fetch the flatten exactly once, got {}",
+        bridge.flatten_lookup_count()
+    );
+    assert!(
+        bridge.flatten_compute_count() <= 1,
+        "at most one real flatten per tolerance, got {}",
+        bridge.flatten_compute_count()
+    );
+    // A second identical preview hits the memo without new work.
+    let lookups = bridge.flatten_lookup_count();
+    let computes = bridge.flatten_compute_count();
+    let _ = tool.overlays(&camera, &bridge);
+    assert!(
+        bridge.flatten_compute_count() == computes,
+        "second preview must not re-flatten ({} -> {})",
+        computes,
+        bridge.flatten_compute_count()
+    );
+    assert!(
+        bridge.flatten_lookup_count() == lookups + 1,
+        "second preview is one more shared lookup, got {} -> {}",
+        lookups,
+        bridge.flatten_lookup_count()
+    );
+}
+
+#[test]
+fn text_layout_span_matches_cached_span_endpoints() {
+    // F7.3(b): span/handles derived from the cached layout runs are
+    // geometrically equivalent to the uniform span: same start/end within 1e-6.
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Text Layout Span").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    text_path_line(&mut bridge, &mut gen);
+    let mut tool = TextTool::new(TextToolMode::Artistic);
+    text_click(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        50.0,
+        0.0,
+        SemanticModifiers::default(),
+    );
+    let text_id = bridge.selection().selected_ids[0];
+    let (target, attachment, content, family, size, spacing) = {
+        let session = bridge.session().unwrap();
+        let obj = session.find_object(text_id).unwrap();
+        match &obj.shape {
+            Some(petunia_design_document::ShapeKind::Text {
+                content,
+                font_family,
+                font_size,
+                letter_spacing,
+                on_path: Some(att),
+                ..
+            }) => (
+                att.target,
+                *att,
+                content.clone(),
+                font_family.clone(),
+                *font_size,
+                *letter_spacing,
+            ),
+            _ => panic!("expected attached text"),
+        }
+    };
+    let tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
+    // Committed handles from the tool (layout-run edges over one flatten).
+    let handles = tool
+        .overlays(&camera, &bridge)
+        .text_path_handles
+        .expect("selected attached text must expose handles");
+    assert_eq!(handles.len(), 2);
+    // Layout-run edges sampled over the same single flatten.
+    let advances =
+        petunia_design_text::on_path::advances_for_span(&content, &family, size, spacing);
+    assert!(!advances.is_empty());
+    let slices =
+        petunia_design_text::on_path::glyph_ts(attachment.start, attachment.end, &advances);
+    assert!(!slices.is_empty());
+    let polys = bridge.cached_polygons(target, tol).expect("polys");
+    let (layout_start, _) =
+        petunia_design_text::on_path::sample_walk(&polys, slices[0].0).expect("start");
+    let (layout_end, _) =
+        petunia_design_text::on_path::sample_walk(&polys, slices.last().unwrap().1).expect("end");
+    for (got, want, label) in [
+        (&handles[0], &layout_start, "start"),
+        (&handles[1], &layout_end, "end"),
+    ] {
+        assert!(
+            (got.x - want.x).abs() < 1e-6 && (got.y - want.y).abs() < 1e-6,
+            "{label} handle drifted: tool=({},{}) layout=({},{})",
+            got.x,
+            got.y,
+            want.x,
+            want.y
+        );
+    }
+}
+
+#[test]
+fn text_on_path_hit_resolves_layout_offset() {
+    // F7.3(c): hit-testing through the layout runs resolves a click on the
+    // span to the correct text byte offset (round-trip: glyph center -> offset).
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Text Hit").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    text_path_line(&mut bridge, &mut gen);
+    let mut tool = TextTool::new(TextToolMode::Artistic);
+    text_click(
+        &mut tool,
+        &mut bridge,
+        &camera,
+        &mut snap,
+        50.0,
+        0.0,
+        SemanticModifiers::default(),
+    );
+    let text_id = bridge.selection().selected_ids[0];
+    let (target, attachment, content, family, size, spacing) = {
+        let session = bridge.session().unwrap();
+        let obj = session.find_object(text_id).unwrap();
+        match &obj.shape {
+            Some(petunia_design_document::ShapeKind::Text {
+                content,
+                font_family,
+                font_size,
+                letter_spacing,
+                on_path: Some(att),
+                ..
+            }) => (
+                att.target,
+                *att,
+                content.clone(),
+                font_family.clone(),
+                *font_size,
+                *letter_spacing,
+            ),
+            _ => panic!("expected attached text"),
+        }
+    };
+    let tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
+    let advances =
+        petunia_design_text::on_path::advances_for_span(&content, &family, size, spacing);
+    let slices =
+        petunia_design_text::on_path::glyph_ts(attachment.start, attachment.end, &advances);
+    let polys = bridge.cached_polygons(target, tol).expect("polys");
+    let bytes: Vec<usize> = content.char_indices().map(|(b, _)| b).collect();
+    // Middle glyph center must resolve to its own byte offset.
+    let mid = slices.len() / 2;
+    let (t0, t1) = slices[mid];
+    let center = (t0 + t1) / 2.0;
+    let (pt, _) = petunia_design_text::on_path::sample_walk(&polys, center).expect("center");
+    let got = petunia_design_shell::tools::text::text_on_path_offset_at(&bridge, text_id, pt, tol)
+        .expect("offset");
+    assert_eq!(
+        got.0, bytes[mid],
+        "middle glyph center must resolve to byte {}, got {}",
+        bytes[mid], got.0
+    );
+    // Span start resolves to 0, span end to content length.
+    let (p_start, _) =
+        petunia_design_text::on_path::sample_walk(&polys, attachment.start).expect("start");
+    let (p_end, _) =
+        petunia_design_text::on_path::sample_walk(&polys, attachment.end).expect("end");
+    assert_eq!(
+        petunia_design_shell::tools::text::text_on_path_offset_at(&bridge, text_id, p_start, tol)
+            .expect("start offset")
+            .0,
+        0
+    );
+    assert_eq!(
+        petunia_design_shell::tools::text::text_on_path_offset_at(&bridge, text_id, p_end, tol)
+            .expect("end offset")
+            .0,
+        content.len()
     );
 }
 
@@ -5887,7 +6294,10 @@ fn corner_cursor_and_handles_on_rectangles() {
     let ov_init = tool.overlays(&bridge, &camera);
     assert_eq!(ov_init.cursor, CursorAffordance::Crosshair);
     assert_eq!(ov_init.handles.len(), 4);
-    assert!(ov_init.handles.iter().all(|h| h.kind == SelectionHandleKind::NodeSmooth));
+    assert!(ov_init
+        .handles
+        .iter()
+        .all(|h| h.kind == SelectionHandleKind::NodeSmooth));
 
     // 2. Hover over top-left corner (0, 0): cursor Pointer, handle kind NodeSmoothSelected
     tool.on_pointer_event(
@@ -5899,7 +6309,10 @@ fn corner_cursor_and_handles_on_rectangles() {
     .unwrap();
     let ov_hover = tool.overlays(&bridge, &camera);
     assert_eq!(ov_hover.cursor, CursorAffordance::Pointer);
-    assert_eq!(ov_hover.handles[0].kind, SelectionHandleKind::NodeSmoothSelected);
+    assert_eq!(
+        ov_hover.handles[0].kind,
+        SelectionHandleKind::NodeSmoothSelected
+    );
 
     // 3. Dragging corner: cursor ResizeNwse, path_preview populated with live rounded geometry
     tool.on_pointer_event(
@@ -5918,7 +6331,10 @@ fn corner_cursor_and_handles_on_rectangles() {
     .unwrap();
     let ov_drag = tool.overlays(&bridge, &camera);
     assert_eq!(ov_drag.cursor, CursorAffordance::ResizeNwse);
-    assert!(ov_drag.path_preview.is_some(), "path_preview must be populated during corner drag");
+    assert!(
+        ov_drag.path_preview.is_some(),
+        "path_preview must be populated during corner drag"
+    );
 
     // 4. Release commits the corner
     tool.on_pointer_event(
@@ -5964,11 +6380,23 @@ fn contour_overlays_publish_path_preview_and_grabbing_cursor() {
 
     let ov_drag = tool.overlays(&bridge, &camera);
     assert_eq!(ov_drag.cursor, CursorAffordance::Grabbing);
-    assert!(ov_drag.path_preview.is_some(), "Contour drag must emit path_preview");
+    assert!(
+        ov_drag.path_preview.is_some(),
+        "Contour drag must emit path_preview"
+    );
     assert!(ov_drag.marquee_screen.is_some());
-    assert!(ov_drag.pen_preview.is_some(), "Contour drag must emit radial drag vector");
-    assert!(ov_drag.measure_badge.is_some(), "Contour drag must emit measurement badge");
-    assert!(!ov_drag.handles.is_empty(), "Contour drag must emit on-canvas handle knob");
+    assert!(
+        ov_drag.pen_preview.is_some(),
+        "Contour drag must emit radial drag vector"
+    );
+    assert!(
+        ov_drag.measure_badge.is_some(),
+        "Contour drag must emit measurement badge"
+    );
+    assert!(
+        !ov_drag.handles.is_empty(),
+        "Contour drag must emit on-canvas handle knob"
+    );
 }
 
 #[test]
@@ -6003,11 +6431,17 @@ fn knife_shift_snaps_cut_line_to_45_degrees() {
 
     let ov = tool.overlays(&camera, &bridge);
     assert_eq!(ov.cursor, CursorAffordance::Crosshair);
-    assert!(ov.region_subtractive, "Knife must show subtractive cut styling");
+    assert!(
+        ov.region_subtractive,
+        "Knife must show subtractive cut styling"
+    );
     let pen = ov.pen_preview.expect("cut line must be previewed");
     assert_eq!(pen.len(), 2);
     // (100, 70) from (0, 50) has dy=20, dx=100 (angle ~11.3 deg), which snaps to 0 deg (horizontal)
-    assert!((pen[1].y - 50.0).abs() < 1e-4, "Line must snap to horizontal 0 deg");
+    assert!(
+        (pen[1].y - 50.0).abs() < 1e-4,
+        "Line must snap to horizontal 0 deg"
+    );
     assert!(pen[1].x > 0.0);
 }
 
@@ -6030,7 +6464,10 @@ fn scissors_cursor_affordance_over_cuttable_shape() {
         &mut snap,
     )
     .unwrap();
-    assert_eq!(tool.overlays(&camera, &bridge).cursor, CursorAffordance::Crosshair);
+    assert_eq!(
+        tool.overlays(&camera, &bridge).cursor,
+        CursorAffordance::Crosshair
+    );
 
     // Hover directly on boundary of sliceable shape (0, 50)
     tool.on_pointer_event(
@@ -6042,7 +6479,10 @@ fn scissors_cursor_affordance_over_cuttable_shape() {
     .unwrap();
     let ov_hover = tool.overlays(&camera, &bridge);
     assert_eq!(ov_hover.cursor, CursorAffordance::Pointer);
-    assert!(!ov_hover.handles.is_empty(), "Scissors hover must emit target snap handle");
+    assert!(
+        !ov_hover.handles.is_empty(),
+        "Scissors hover must emit target snap handle"
+    );
 }
 
 #[test]
@@ -6087,6 +6527,116 @@ fn pencil_overlays_publish_live_fitted_curve() {
 
     let ov = tool.overlays();
     assert_eq!(ov.cursor, CursorAffordance::Crosshair);
-    assert!(ov.path_preview.is_some(), "Pencil must emit live fitted path_preview during freehand drawing");
+    assert!(
+        ov.path_preview.is_some(),
+        "Pencil must emit live fitted path_preview during freehand drawing"
+    );
 }
 
+#[test]
+fn select_click_and_hover_open_stroke() {
+    use petunia_design_geometry::PathVerb as V;
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Select Open Stroke").expect("doc");
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    // Open diagonal, no fill: fill-only hit-testing misses it, stroke
+    // proximity (8/zoom, like the knife) must catch it.
+    let id = node_test_path(
+        &mut bridge,
+        vec![
+            V::MoveTo(GPoint::new(10.0, 10.0)),
+            V::LineTo(GPoint::new(110.0, 110.0)),
+        ],
+    );
+    bridge.clear_selection();
+    let plain = SemanticModifiers::default();
+
+    // Hover exactly on the stroke midpoint tracks the object.
+    let mut tool = SelectTool::new();
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Move, 60.0, 60.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(tool.hovered_object(), Some(id));
+
+    // Click on the stroke selects it.
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Down, 60.0, 60.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(bridge.selection().selected_ids, vec![id]);
+    tool.on_pointer_event(
+        &pointer_event(PointerPhase::Up, 60.0, 60.0, plain),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    )
+    .unwrap();
+    assert_eq!(bridge.selection().selected_ids, vec![id]);
+
+    // Hover far from the stroke but inside its bbox must track nothing.
+    // (40,90) sits inside [10,10,100,100] yet ~35pt from the diagonal,
+    // clear of the bbox border/handles (all edges >8pt away).
+    let mut hover_far = SelectTool::new();
+    hover_far
+        .on_pointer_event(
+            &pointer_event(PointerPhase::Move, 40.0, 90.0, plain),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    assert_eq!(hover_far.hovered_object(), None);
+
+    // Click far inside the bbox but far from the stroke must not select.
+    bridge.clear_selection();
+    let mut tool_far = SelectTool::new();
+    tool_far
+        .on_pointer_event(
+            &pointer_event(PointerPhase::Down, 40.0, 90.0, plain),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    tool_far
+        .on_pointer_event(
+            &pointer_event(PointerPhase::Up, 40.0, 90.0, plain),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    assert!(
+        bridge.selection().is_empty,
+        "far-from-stroke click inside bbox must not select"
+    );
+
+    // Click far outside everything must not select.
+    bridge.clear_selection();
+    let mut tool_out = SelectTool::new();
+    tool_out
+        .on_pointer_event(
+            &pointer_event(PointerPhase::Down, 500.0, 500.0, plain),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    tool_out
+        .on_pointer_event(
+            &pointer_event(PointerPhase::Up, 500.0, 500.0, plain),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    assert!(bridge.selection().is_empty);
+}

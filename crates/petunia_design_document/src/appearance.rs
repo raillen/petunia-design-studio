@@ -214,6 +214,40 @@ pub fn resolve_color_to_rgb(token: &str) -> [f32; 3] {
             }
         }
     }
+    if let Some(inner) = lower.strip_prefix("lab(").and_then(|s| s.strip_suffix(')')) {
+        let parts: Vec<&str> = inner.split(',').collect();
+        if parts.len() == 3 {
+            let parse = |s: &str| s.trim().parse::<f32>().ok();
+            if let (Some(l), Some(a), Some(b)) = (parse(parts[0]), parse(parts[1]), parse(parts[2]))
+            {
+                let y = (l + 16.0) / 116.0;
+                let x = a / 500.0 + y;
+                let z = y - b / 200.0;
+                let f = |t: f32| {
+                    if t > 0.206_896_6 {
+                        t * t * t
+                    } else {
+                        (t - 16.0 / 116.0) / 7.787
+                    }
+                };
+                let xr = f(x) * 0.95047;
+                let yr = f(y);
+                let zr = f(z) * 1.08883;
+                let r = xr * 3.2406 - yr * 1.5372 - zr * 0.4986;
+                let g = -xr * 0.9689 + yr * 1.8758 + zr * 0.0415;
+                let b = xr * 0.0557 - yr * 0.2040 + zr * 1.0570;
+                return [r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0)];
+            }
+        }
+    }
+    if let Some(inner) = lower
+        .strip_prefix("spot(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
+        if let Some((_name, fallback)) = inner.split_once(',') {
+            return resolve_color_to_rgb(fallback.trim());
+        }
+    }
     match t {
         "ptnd.red/500" => [0.937, 0.267, 0.267],
         "ptnd.blue/500" => [0.231, 0.510, 0.965],

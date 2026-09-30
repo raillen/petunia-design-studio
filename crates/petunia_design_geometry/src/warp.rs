@@ -212,7 +212,11 @@ pub fn warp_path(path: &GPath, homography: &Homography, tolerance: f64) -> Optio
             let _ = out.push(PathVerb::Close);
         }
     }
-    if out.is_empty() { None } else { Some(out) }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 /// Clips `path` to an axis-aligned rectangle (CropRect evaluation).
@@ -279,7 +283,11 @@ pub fn clip_path_to_rect(path: &GPath, rect: GRect, tolerance: f64) -> Option<GP
             }
         }
     }
-    if out.is_empty() { None } else { Some(out) }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 /// Clips open runs against the rect, keeping inside pieces.
@@ -393,8 +401,8 @@ mod tests {
 
     #[test]
     fn translation_quad_shifts_bounds_exactly() {
-        let out = warp_path_to_quad(&unit_rect(), quad(50.0, 25.0, 150.0, 125.0), 0.25)
-            .expect("warp");
+        let out =
+            warp_path_to_quad(&unit_rect(), quad(50.0, 25.0, 150.0, 125.0), 0.25).expect("warp");
         let bounds = out.bounding_box().expect("bounds");
         assert!((bounds.x0 - 50.0).abs() < 1e-6, "got {bounds:?}");
         assert!((bounds.y0 - 25.0).abs() < 1e-6, "got {bounds:?}");

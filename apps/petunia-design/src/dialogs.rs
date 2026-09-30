@@ -6,7 +6,7 @@
 
 use freya::prelude::*;
 
-use petunia_design_application::ActionId;
+use petunia_design_application::{ActionId, ActionRequest};
 
 use crate::actions::run_action_token;
 use crate::chrome::{app_icon, tool_label, tool_shortcut, tool_summary, with_tooltip};
@@ -88,39 +88,64 @@ fn palette_row(
     let mut customize_open = ui.customize_open;
     let mut new_doc_open = ui.new_doc_open;
     let mut export_open = ui.export_open;
+    let mut confirm_close_open = ui.confirm_close_open;
+    let mut pending_close = ui.pending_close;
+    let mut offset_prompt_open = ui.offset_prompt_open;
     let photo = *ui.persona.read() == petunia_design_application::surfaces::PERSONA_PHOTO;
-    rect()
-        .width(Size::fill())
-        .child(
-            Button::new()
-                .on_press(move |_| {
-                    if let Some(action_id) = run_action_token(&mut shell.write(), &token) {
-                        if action_id == ActionId::EDIT_PREFERENCES {
-                            customize_open.set(true);
-                        }
-                        if action_id == "ptnd.action.file.new" {
-                            new_doc_open.set(true);
-                        }
-                        if action_id == "ptnd.action.file.export" {
-                            export_open.set(true);
-                        }
-                        if let Some(tool) =
-                            petunia_design_application::tools::ToolKind::from_action_id(&action_id)
-                        {
-                            active_tool.set(tool);
-                            tool_rail.write().remember_tool(photo, tool);
+    rect().width(Size::fill()).child(
+        Button::new()
+            .on_press(move |_| {
+                let action_id = run_action_token(&mut shell.write(), &token);
+                if let Some(action_id) = action_id {
+                    if action_id == ActionId::EDIT_PREFERENCES {
+                        customize_open.set(true);
+                    }
+                    if action_id == "ptnd.action.file.new" {
+                        new_doc_open.set(true);
+                    }
+                    if action_id == "ptnd.action.file.export" {
+                        export_open.set(true);
+                    }
+                    if action_id == "ptnd.action.object.offset_path" {
+                        offset_prompt_open.set(true);
+                    }
+                    if action_id == "ptnd.action.file.close" {
+                        let mut s = shell.write();
+                        let dirty = s.bridge.is_dirty();
+                        let active = s.bridge.active_session_index();
+                        if dirty {
+                            pending_close.set(active);
+                            confirm_close_open.set(true);
+                        } else if let Some(idx) = active {
+                            let _ = s.bridge.close_session_at(idx, false);
                         }
                     }
-                    palette_open.set(false);
-                    palette_query.set(String::new());
-                })
-                .child(
-                    label()
-                        .text(item.label.clone())
-                        .color(theme::TEXT_PRIMARY)
-                        .font_size(theme::BODY_SIZE),
-                ),
-        )
+                    if action_id == "ptnd.action.file.quit" {
+                        let mut s = shell.write();
+                        if s.bridge.any_session_dirty() {
+                            pending_close.set(None);
+                            confirm_close_open.set(true);
+                        } else {
+                            let _ = s.bridge.close_all_sessions(false);
+                        }
+                    }
+                    if let Some(tool) =
+                        petunia_design_application::tools::ToolKind::from_action_id(&action_id)
+                    {
+                        active_tool.set(tool);
+                        tool_rail.write().remember_tool(photo, tool);
+                    }
+                }
+                palette_open.set(false);
+                palette_query.set(String::new());
+            })
+            .child(
+                label()
+                    .text(item.label.clone())
+                    .color(theme::TEXT_PRIMARY)
+                    .font_size(theme::BODY_SIZE),
+            ),
+    )
 }
 
 ///// Preferences and toolbar customization dialog.
@@ -179,56 +204,48 @@ impl Component for CustomizeDialog {
                                         .width(Size::fill())
                                         .spacing(theme::SPACE_1)
                                         .child(
-                                            Button::new()
-                                                .on_press(move |_| tab_tb.set(0))
-                                                .child(
-                                                    label()
-                                                        .text(if current_tab == 0 {
-                                                            "✓ Ferramentas"
-                                                        } else {
-                                                            "Ferramentas"
-                                                        })
-                                                        .font_size(11.),
-                                                ),
+                                            Button::new().on_press(move |_| tab_tb.set(0)).child(
+                                                label()
+                                                    .text(if current_tab == 0 {
+                                                        "✓ Ferramentas"
+                                                    } else {
+                                                        "Ferramentas"
+                                                    })
+                                                    .font_size(11.),
+                                            ),
                                         )
                                         .child(
-                                            Button::new()
-                                                .on_press(move |_| tab_gen.set(1))
-                                                .child(
-                                                    label()
-                                                        .text(if current_tab == 1 {
-                                                            "✓ Geral & Idioma"
-                                                        } else {
-                                                            "Geral & Idioma"
-                                                        })
-                                                        .font_size(11.),
-                                                ),
+                                            Button::new().on_press(move |_| tab_gen.set(1)).child(
+                                                label()
+                                                    .text(if current_tab == 1 {
+                                                        "✓ Geral & Idioma"
+                                                    } else {
+                                                        "Geral & Idioma"
+                                                    })
+                                                    .font_size(11.),
+                                            ),
                                         )
                                         .child(
-                                            Button::new()
-                                                .on_press(move |_| tab_perf.set(2))
-                                                .child(
-                                                    label()
-                                                        .text(if current_tab == 2 {
-                                                            "✓ Desempenho"
-                                                        } else {
-                                                            "Desempenho"
-                                                        })
-                                                        .font_size(11.),
-                                                ),
+                                            Button::new().on_press(move |_| tab_perf.set(2)).child(
+                                                label()
+                                                    .text(if current_tab == 2 {
+                                                        "✓ Desempenho"
+                                                    } else {
+                                                        "Desempenho"
+                                                    })
+                                                    .font_size(11.),
+                                            ),
                                         )
                                         .child(
-                                            Button::new()
-                                                .on_press(move |_| tab_sc.set(3))
-                                                .child(
-                                                    label()
-                                                        .text(if current_tab == 3 {
-                                                            "✓ Atalhos"
-                                                        } else {
-                                                            "Atalhos"
-                                                        })
-                                                        .font_size(11.),
-                                                ),
+                                            Button::new().on_press(move |_| tab_sc.set(3)).child(
+                                                label()
+                                                    .text(if current_tab == 3 {
+                                                        "✓ Atalhos"
+                                                    } else {
+                                                        "Atalhos"
+                                                    })
+                                                    .font_size(11.),
+                                            ),
                                         ),
                                 )
                                 .child(match current_tab {
@@ -238,11 +255,9 @@ impl Component for CustomizeDialog {
                                     _ => rect()
                                         .direction(Direction::Vertical)
                                         .spacing(theme::SPACE_1)
-                                        .children(
-                                            catalog.iter().enumerate().map(|(index, row)| {
-                                                catalog_row(ui.clone(), index, row)
-                                            }),
-                                        )
+                                        .children(catalog.iter().enumerate().map(|(index, row)| {
+                                            catalog_row(ui.clone(), index, row)
+                                        }))
                                         .child(
                                             rect()
                                                 .direction(Direction::Horizontal)
@@ -446,7 +461,12 @@ fn preferences_shortcuts_tab() -> impl IntoElement {
                         .background(theme::SURFACE_CHROME_STRONG)
                         .child(label().text(*key).font_size(11.).color(theme::TEXT_PRIMARY)),
                 )
-                .child(label().text(*desc).font_size(11.).color(theme::TEXT_SECONDARY))
+                .child(
+                    label()
+                        .text(*desc)
+                        .font_size(11.)
+                        .color(theme::TEXT_SECONDARY),
+                )
         }))
 }
 
@@ -1379,43 +1399,37 @@ impl Component for ExportDialog {
                             .width(Size::fill())
                             .spacing(theme::SPACE_1)
                             .child(
-                                Button::new()
-                                    .on_press(move |_| dpi_state.set(72))
-                                    .child(
-                                        label()
-                                            .text(if cur_dpi == 72 {
-                                                "✓ 72 DPI (1x Tela)"
-                                            } else {
-                                                "72 DPI (1x Tela)"
-                                            })
-                                            .font_size(11.),
-                                    ),
+                                Button::new().on_press(move |_| dpi_state.set(72)).child(
+                                    label()
+                                        .text(if cur_dpi == 72 {
+                                            "✓ 72 DPI (1x Tela)"
+                                        } else {
+                                            "72 DPI (1x Tela)"
+                                        })
+                                        .font_size(11.),
+                                ),
                             )
                             .child(
-                                Button::new()
-                                    .on_press(move |_| dpi_state.set(144))
-                                    .child(
-                                        label()
-                                            .text(if cur_dpi == 144 {
-                                                "✓ 144 DPI (2x Retina)"
-                                            } else {
-                                                "144 DPI (2x Retina)"
-                                            })
-                                            .font_size(11.),
-                                    ),
+                                Button::new().on_press(move |_| dpi_state.set(144)).child(
+                                    label()
+                                        .text(if cur_dpi == 144 {
+                                            "✓ 144 DPI (2x Retina)"
+                                        } else {
+                                            "144 DPI (2x Retina)"
+                                        })
+                                        .font_size(11.),
+                                ),
                             )
                             .child(
-                                Button::new()
-                                    .on_press(move |_| dpi_state.set(300))
-                                    .child(
-                                        label()
-                                            .text(if cur_dpi == 300 {
-                                                "✓ 300 DPI (Impressão)"
-                                            } else {
-                                                "300 DPI (Impressão)"
-                                            })
-                                            .font_size(11.),
-                                    ),
+                                Button::new().on_press(move |_| dpi_state.set(300)).child(
+                                    label()
+                                        .text(if cur_dpi == 300 {
+                                            "✓ 300 DPI (Impressão)"
+                                        } else {
+                                            "300 DPI (Impressão)"
+                                        })
+                                        .font_size(11.),
+                                ),
                             ),
                     )
                     .child(
@@ -1430,30 +1444,26 @@ impl Component for ExportDialog {
                             .width(Size::fill())
                             .spacing(theme::SPACE_1)
                             .child(
-                                Button::new()
-                                    .on_press(move |_| bg_state.set(true))
-                                    .child(
-                                        label()
-                                            .text(if cur_bg_trans {
-                                                "✓ Transparente (Alpha)"
-                                            } else {
-                                                "Transparente (Alpha)"
-                                            })
-                                            .font_size(11.),
-                                    ),
+                                Button::new().on_press(move |_| bg_state.set(true)).child(
+                                    label()
+                                        .text(if cur_bg_trans {
+                                            "✓ Transparente (Alpha)"
+                                        } else {
+                                            "Transparente (Alpha)"
+                                        })
+                                        .font_size(11.),
+                                ),
                             )
                             .child(
-                                Button::new()
-                                    .on_press(move |_| bg_state.set(false))
-                                    .child(
-                                        label()
-                                            .text(if !cur_bg_trans {
-                                                "✓ Branco Opaco"
-                                            } else {
-                                                "Branco Opaco"
-                                            })
-                                            .font_size(11.),
-                                    ),
+                                Button::new().on_press(move |_| bg_state.set(false)).child(
+                                    label()
+                                        .text(if !cur_bg_trans {
+                                            "✓ Branco Opaco"
+                                        } else {
+                                            "Branco Opaco"
+                                        })
+                                        .font_size(11.),
+                                ),
                             ),
                     )
                     .child(if let Some((name, w, h)) = active_surf_info {
@@ -1537,7 +1547,9 @@ impl Component for ConfirmCloseDialog {
             return rect().width(Size::px(0.)).height(Size::px(0.));
         }
         let mut confirm_close_open = ui.confirm_close_open;
+        let mut pending_close = ui.pending_close;
         let mut shell = ui.shell;
+        let target = *pending_close.read();
 
         rect()
             .position(Position::new_absolute().top(120.))
@@ -1565,7 +1577,11 @@ impl Component for ConfirmCloseDialog {
                     )
                     .child(
                         label()
-                            .text("O documento possui alterações não salvas. Deseja fechar e descartar as alterações?")
+                            .text(if target.is_some() {
+                                "O documento possui alterações não salvas. Deseja fechar e descartar as alterações?"
+                            } else {
+                                "Há documentos com alterações não salvas. Deseja sair e descartar as alterações de todos?"
+                            })
                             .font_size(12.)
                             .color(theme::TEXT_SECONDARY),
                     )
@@ -1578,6 +1594,7 @@ impl Component for ConfirmCloseDialog {
                             .child(
                                 Button::new()
                                     .on_press(move |_| {
+                                        pending_close.set(None);
                                         confirm_close_open.set(false);
                                     })
                                     .child(label().text("Cancelar").font_size(11.)),
@@ -1586,7 +1603,12 @@ impl Component for ConfirmCloseDialog {
                                 Button::new()
                                     .on_press(move |_| {
                                         confirm_close_open.set(false);
-                                        let _ = shell.write().new_document("Untitled");
+                                        pending_close.set(None);
+                                        if let Some(idx) = target {
+                                            let _ = shell.write().bridge.close_session_at(idx, true);
+                                        } else {
+                                            let _ = shell.write().bridge.close_all_sessions(true);
+                                        }
                                     })
                                     .child(label().text("Fechar Sem Salvar").font_size(11.)),
                             ),
@@ -1595,3 +1617,315 @@ impl Component for ConfirmCloseDialog {
     }
 }
 
+/// Error ink for rejected prompt values (no theme error token exists yet).
+const PROMPT_ERROR: Color = Color::from_rgb(0xE5, 0x6B, 0x6B);
+
+/// Parses a typed numeric prompt value in points.
+///
+/// Trims whitespace, accepts `,` as the decimal separator, and refuses empty,
+/// non-numeric or non-finite input with a bilingual message instead of a
+/// silent `0.0` (dossier §13: rejeita-ou-explica).
+pub fn parse_prompt_distance(raw: &str) -> Result<f64, &'static str> {
+    petunia_design_foundation::parse_numeric_input(
+        raw,
+        petunia_design_foundation::NumericFieldKind::DistancePt,
+    )
+    .map_err(|err| match err {
+        petunia_design_foundation::NumericParseError::Empty => {
+            "Digite um valor em pt / Type a value in pt"
+        }
+        _ => "Valor inválido: use um número em pt / Invalid value: use a number in pt",
+    })
+}
+
+/// Generic numeric prompt: title + typed value + unit (10.2 `offset_path`).
+///
+/// The Object menu and the palette open this instead of dispatching a default
+/// distance. Apply dispatches `ptnd.action.object.offset_path` with the typed
+/// `distance`, which lands as one undo entry holding live `ContourOffset`
+/// modifiers; the hint shows the live distance so the prompt never invents
+/// a value, and `0` clears the offset.
+#[derive(Clone, PartialEq)]
+pub struct OffsetPathDialog(pub UiShell);
+
+impl Component for OffsetPathDialog {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        let value = use_state(String::new);
+        let error = use_state(|| None::<String>);
+
+        if !(*ui.offset_prompt_open.read()) {
+            return rect().width(Size::px(0.)).height(Size::px(0.));
+        }
+        let mut prompt_open = ui.offset_prompt_open;
+        let mut shell = ui.shell;
+        let mut value_state = value;
+        let mut error_state = error;
+
+        let current: Option<f64> = {
+            let guard = shell.peek();
+            guard
+                .bridge
+                .selection()
+                .selected_ids
+                .first()
+                .copied()
+                .and_then(|id| guard.bridge.session()?.find_object(id))
+                .and_then(|object| {
+                    object.modifiers.iter().find_map(|m| {
+                        if let petunia_design_document::ModifierKind::ContourOffset {
+                            distance,
+                            ..
+                        } = m.kind
+                        {
+                            Some(distance)
+                        } else {
+                            None
+                        }
+                    })
+                })
+        };
+        let hint = match current {
+            Some(distance) => {
+                format!("Atual / Current: {distance:.2} pt (0 remove / clears)")
+            }
+            None => "Sem deslocamento / No offset yet".to_string(),
+        };
+        let error_text = error.read().clone();
+
+        rect()
+            .position(Position::new_absolute().top(120.))
+            .width(Size::fill())
+            .cross_align(Alignment::Center)
+            .main_align(Alignment::Center)
+            .child(
+                rect()
+                    .direction(Direction::Vertical)
+                    .width(Size::px(400.))
+                    .background(theme::SURFACE_PANEL)
+                    .border(
+                        Border::new()
+                            .fill(theme::SURFACE_CHROME_STRONG)
+                            .width(1.)
+                            .alignment(BorderAlignment::Inner),
+                    )
+                    .padding(Gaps::new_all(theme::SPACE_3))
+                    .spacing(theme::SPACE_2)
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .width(Size::fill())
+                            .main_align(Alignment::SpaceBetween)
+                            .cross_align(Alignment::Center)
+                            .child(
+                                label()
+                                    .text("Deslocar caminho / Offset Path")
+                                    .font_size(14.)
+                                    .color(theme::TEXT_PRIMARY),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        prompt_open.set(false);
+                                    })
+                                    .child(label().text("✕").font_size(12.)),
+                            ),
+                    )
+                    .child(
+                        label()
+                            .text("DISTÂNCIA / DISTANCE")
+                            .font_size(10.)
+                            .color(theme::TEXT_TERTIARY),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .width(Size::fill())
+                            .spacing(theme::SPACE_1)
+                            .cross_align(Alignment::Center)
+                            .child(
+                                rect()
+                                    .width(Size::flex(1.0))
+                                    .child(Input::new(value).placeholder("ex. 6")),
+                            )
+                            .child(
+                                label()
+                                    .text("pt")
+                                    .font_size(12.)
+                                    .color(theme::TEXT_SECONDARY),
+                            ),
+                    )
+                    .child(
+                        label()
+                            .text(hint)
+                            .font_size(11.)
+                            .color(theme::TEXT_SECONDARY),
+                    )
+                    .child(if let Some(message) = error_text {
+                        rect().child(label().text(message).font_size(11.).color(PROMPT_ERROR))
+                    } else {
+                        rect()
+                    })
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .width(Size::fill())
+                            .main_align(Alignment::End)
+                            .spacing(theme::SPACE_1)
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        error_state.set(None);
+                                        value_state.set(String::new());
+                                        prompt_open.set(false);
+                                    })
+                                    .child(label().text("Cancelar").font_size(11.)),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        let typed = value_state.peek().clone();
+                                        match parse_prompt_distance(&typed) {
+                                            Err(message) => {
+                                                error_state.set(Some(message.to_string()));
+                                            }
+                                            Ok(distance) => {
+                                                let res = shell.write().bridge.dispatch_action(
+                                                    ActionRequest::new(
+                                                        ActionId::new(
+                                                            "ptnd.action.object.offset_path",
+                                                        ),
+                                                        serde_json::json!({
+                                                            "distance": distance,
+                                                        }),
+                                                    ),
+                                                );
+                                                match res {
+                                                    Ok(_) => {
+                                                        error_state.set(None);
+                                                        value_state.set(String::new());
+                                                        prompt_open.set(false);
+                                                    }
+                                                    Err(err) => {
+                                                        error_state.set(Some(err.to_string()));
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    })
+                                    .child(label().text("Aplicar / Apply").font_size(11.)),
+                            ),
+                    ),
+            )
+    }
+}
+
+/// Overwrite Conflict Dialog (`ptnd.dialog.overwrite_conflict`).
+///
+/// Prompts the user before destructive overwrite of an existing file (Figma/Photoshop convention).
+#[derive(Clone, PartialEq)]
+pub struct OverwriteConflictDialog(pub UiShell);
+
+impl Component for OverwriteConflictDialog {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        if !(*ui.overwrite_conflict_open.read()) {
+            return rect().width(Size::px(0.)).height(Size::px(0.));
+        }
+        let mut overwrite_open = ui.overwrite_conflict_open;
+        let conflict_path = (*ui.overwrite_conflict_path.read()).clone();
+
+        rect()
+            .position(Position::new_absolute().top(140.))
+            .width(Size::fill())
+            .cross_align(Alignment::Center)
+            .main_align(Alignment::Center)
+            .child(
+                rect()
+                    .direction(Direction::Vertical)
+                    .width(Size::px(420.))
+                    .background(theme::SURFACE_PANEL)
+                    .border(
+                        Border::new()
+                            .fill(theme::SURFACE_CHROME_STRONG)
+                            .width(1.)
+                            .alignment(BorderAlignment::Inner),
+                    )
+                    .padding(Gaps::new_all(theme::SPACE_3))
+                    .spacing(theme::SPACE_2)
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .width(Size::fill())
+                            .main_align(Alignment::SpaceBetween)
+                            .cross_align(Alignment::Center)
+                            .child(
+                                label()
+                                    .text("O arquivo já existe / File already exists")
+                                    .font_size(13.)
+                                    .color(theme::TEXT_PRIMARY),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        overwrite_open.set(false);
+                                    })
+                                    .child(label().text("✕").font_size(11.)),
+                            ),
+                    )
+                    .child(
+                        label()
+                            .text(format!(
+                                "Um arquivo chamado \"{}\" já existe neste local. Deseja substituí-lo?",
+                                conflict_path
+                            ))
+                            .font_size(11.)
+                            .color(theme::TEXT_SECONDARY),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .width(Size::fill())
+                            .main_align(Alignment::End)
+                            .spacing(theme::SPACE_1)
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        overwrite_open.set(false);
+                                    })
+                                    .child(label().text("Cancelar").font_size(11.)),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        overwrite_open.set(false);
+                                    })
+                                    .child(label().text("Substituir / Overwrite").font_size(11.)),
+                            ),
+                    ),
+            )
+    }
+}
+
+#[cfg(test)]
+mod prompt_tests {
+    use super::parse_prompt_distance;
+
+    #[test]
+    fn prompt_parses_plain_and_signed_values() {
+        assert_eq!(parse_prompt_distance("6").unwrap(), 6.0);
+        assert_eq!(parse_prompt_distance("  -2.5 ").unwrap(), -2.5);
+        assert_eq!(parse_prompt_distance("3,5").unwrap(), 3.5);
+        assert_eq!(parse_prompt_distance("0").unwrap(), 0.0);
+    }
+
+    #[test]
+    fn prompt_rejects_empty_non_numeric_and_non_finite() {
+        assert!(parse_prompt_distance("").is_err());
+        assert!(parse_prompt_distance("   ").is_err());
+        assert!(parse_prompt_distance("longe").is_err());
+        assert!(parse_prompt_distance("NaN").is_err());
+        assert!(parse_prompt_distance("inf").is_err());
+        assert!(parse_prompt_distance("1e999").is_err());
+    }
+}

@@ -300,9 +300,21 @@ pub struct UiShell {
     pub new_doc_open: State<bool>,
     pub export_open: State<bool>,
     pub confirm_close_open: State<bool>,
+    /// Tab the close confirmation applies to. `None` means "quit": the
+    /// confirmation is about every open document, not one tab.
+    pub pending_close: State<Option<usize>>,
+    pub offset_prompt_open: State<bool>,
+    pub overwrite_conflict_open: State<bool>,
+    pub overwrite_conflict_path: State<String>,
     pub dock_width: State<f32>,
     pub soft_proof: State<bool>,
     pub channel_view: State<usize>,
+    pub left_dock_open: State<bool>,
+    pub left_dock_width: State<f32>,
+    pub left_dock_tab: State<usize>,
+    pub bottom_dock_open: State<bool>,
+    pub bottom_dock_height: State<f32>,
+    pub bottom_dock_tab: State<usize>,
 }
 
 impl PartialEq for UiShell {
@@ -326,14 +338,28 @@ impl PartialEq for UiShell {
             && self.new_doc_open == other.new_doc_open
             && self.export_open == other.export_open
             && self.confirm_close_open == other.confirm_close_open
+            && self.pending_close == other.pending_close
+            && self.offset_prompt_open == other.offset_prompt_open
+            && self.overwrite_conflict_open == other.overwrite_conflict_open
+            && self.overwrite_conflict_path == other.overwrite_conflict_path
             && self.dock_width == other.dock_width
             && self.soft_proof == other.soft_proof
             && self.channel_view == other.channel_view
+            && self.left_dock_open == other.left_dock_open
+            && self.left_dock_width == other.left_dock_width
+            && self.left_dock_tab == other.left_dock_tab
+            && self.bottom_dock_open == other.bottom_dock_open
+            && self.bottom_dock_height == other.bottom_dock_height
+            && self.bottom_dock_tab == other.bottom_dock_tab
     }
 }
 
 impl UiShell {
     #[must_use]
+    // One `State` handle per shell concern, fanned out once from the component
+    // scope; grouping them would only move the arity into a struct literal at
+    // each construction site, so the arity is allowed here.
+    // (clippy::too_many_arguments: Freya state-fan-out boundary)
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         shell: State<PetuniaShell>,
@@ -355,9 +381,19 @@ impl UiShell {
         new_doc_open: State<bool>,
         export_open: State<bool>,
         confirm_close_open: State<bool>,
+        pending_close: State<Option<usize>>,
+        offset_prompt_open: State<bool>,
+        overwrite_conflict_open: State<bool>,
+        overwrite_conflict_path: State<String>,
         dock_width: State<f32>,
         soft_proof: State<bool>,
         channel_view: State<usize>,
+        left_dock_open: State<bool>,
+        left_dock_width: State<f32>,
+        left_dock_tab: State<usize>,
+        bottom_dock_open: State<bool>,
+        bottom_dock_height: State<f32>,
+        bottom_dock_tab: State<usize>,
     ) -> Self {
         Self {
             shell,
@@ -379,9 +415,19 @@ impl UiShell {
             new_doc_open,
             export_open,
             confirm_close_open,
+            pending_close,
+            offset_prompt_open,
+            overwrite_conflict_open,
+            overwrite_conflict_path,
             dock_width,
             soft_proof,
             channel_view,
+            left_dock_open,
+            left_dock_width,
+            left_dock_tab,
+            bottom_dock_open,
+            bottom_dock_height,
+            bottom_dock_tab,
         }
     }
 
@@ -441,9 +487,19 @@ impl UiShell {
         let new_doc_open = use_state(|| false);
         let export_open = use_state(|| false);
         let confirm_close_open = use_state(|| false);
+        let pending_close = use_state(|| None);
+        let offset_prompt_open = use_state(|| false);
+        let overwrite_conflict_open = use_state(|| false);
+        let overwrite_conflict_path = use_state(|| "export.png".to_string());
         let dock_width = use_state(|| 320.0f32);
         let soft_proof = use_state(|| false);
         let channel_view = use_state(|| 0usize);
+        let left_dock_open = use_state(|| false);
+        let left_dock_width = use_state(|| 240.0f32);
+        let left_dock_tab = use_state(|| 0usize);
+        let bottom_dock_open = use_state(|| false);
+        let bottom_dock_height = use_state(|| 160.0f32);
+        let bottom_dock_tab = use_state(|| 0usize);
         Self::new(
             shell,
             open_family,
@@ -464,9 +520,19 @@ impl UiShell {
             new_doc_open,
             export_open,
             confirm_close_open,
+            pending_close,
+            offset_prompt_open,
+            overwrite_conflict_open,
+            overwrite_conflict_path,
             dock_width,
             soft_proof,
             channel_view,
+            left_dock_open,
+            left_dock_width,
+            left_dock_tab,
+            bottom_dock_open,
+            bottom_dock_height,
+            bottom_dock_tab,
         )
     }
 }

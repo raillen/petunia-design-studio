@@ -307,19 +307,13 @@ impl Document {
     ///
     /// This compatibility wrapper preserves the existing `PetuniaError` API while
     /// delegating validation to [`Self::world_transform_checked`].
-    pub fn world_transform(
-        &self,
-        id: ObjectId,
-    ) -> Result<GAffine, PetuniaError> {
+    pub fn world_transform(&self, id: ObjectId) -> Result<GAffine, PetuniaError> {
         self.world_transform_checked(id)
             .map_err(|error| PetuniaError::invalid_input(error.to_string()))
     }
 
     /// Returns the object's base path projected into world/pasteboard space.
-    pub fn base_path_world(
-        &self,
-        id: ObjectId,
-    ) -> Result<GPath, crate::GeometryFrameError> {
+    pub fn base_path_world(&self, id: ObjectId) -> Result<GPath, crate::GeometryFrameError> {
         let object = self
             .find_object(id)
             .ok_or(crate::GeometryFrameError::MissingObject(id))?;
@@ -333,10 +327,7 @@ impl Document {
     }
 
     /// Returns the object's evaluated path projected into world/pasteboard space.
-    pub fn evaluated_path_world(
-        &self,
-        id: ObjectId,
-    ) -> Result<GPath, crate::GeometryFrameError> {
+    pub fn evaluated_path_world(&self, id: ObjectId) -> Result<GPath, crate::GeometryFrameError> {
         let object = self
             .find_object(id)
             .ok_or(crate::GeometryFrameError::MissingObject(id))?;
@@ -350,10 +341,7 @@ impl Document {
     }
 
     /// Returns the nominal placement frame projected into world space.
-    pub fn frame_bounds_world(
-        &self,
-        id: ObjectId,
-    ) -> Result<[f64; 4], crate::GeometryFrameError> {
+    pub fn frame_bounds_world(&self, id: ObjectId) -> Result<[f64; 4], crate::GeometryFrameError> {
         let object = self
             .find_object(id)
             .ok_or(crate::GeometryFrameError::MissingObject(id))?;
@@ -378,15 +366,23 @@ impl Document {
             petunia_design_geometry::GPoint::new(0.0, bounds[3]),
         ]
         .map(|point| transform.apply(point));
-        let min_x = points.iter().map(|point| point.x).fold(f64::INFINITY, f64::min);
-        let min_y = points.iter().map(|point| point.y).fold(f64::INFINITY, f64::min);
-        let max_x = points.iter().map(|point| point.x).fold(f64::NEG_INFINITY, f64::max);
-        let max_y = points.iter().map(|point| point.y).fold(f64::NEG_INFINITY, f64::max);
-        if !min_x.is_finite()
-            || !min_y.is_finite()
-            || !max_x.is_finite()
-            || !max_y.is_finite()
-        {
+        let min_x = points
+            .iter()
+            .map(|point| point.x)
+            .fold(f64::INFINITY, f64::min);
+        let min_y = points
+            .iter()
+            .map(|point| point.y)
+            .fold(f64::INFINITY, f64::min);
+        let max_x = points
+            .iter()
+            .map(|point| point.x)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let max_y = points
+            .iter()
+            .map(|point| point.y)
+            .fold(f64::NEG_INFINITY, f64::max);
+        if !min_x.is_finite() || !min_y.is_finite() || !max_x.is_finite() || !max_y.is_finite() {
             return Err(crate::GeometryFrameError::NonFinite(id));
         }
         Ok([min_x, min_y, max_x - min_x, max_y - min_y])
@@ -398,15 +394,17 @@ impl Document {
         id: ObjectId,
     ) -> Result<Option<[f64; 4]>, crate::GeometryFrameError> {
         Ok(self.evaluated_path_world(id)?.bounding_box().map(|rect| {
-            [rect.x0, rect.y0, rect.width().max(1.0), rect.height().max(1.0)]
+            [
+                rect.x0,
+                rect.y0,
+                rect.width().max(1.0),
+                rect.height().max(1.0),
+            ]
         }))
     }
 
     /// Alias for the world-space bounds used by spatial queries and culling.
-    pub fn world_aabb(
-        &self,
-        id: ObjectId,
-    ) -> Result<Option<[f64; 4]>, crate::GeometryFrameError> {
+    pub fn world_aabb(&self, id: ObjectId) -> Result<Option<[f64; 4]>, crate::GeometryFrameError> {
         self.evaluated_bounds_world(id)
     }
 
@@ -539,7 +537,10 @@ mod tests {
         );
         let local = object.base_path_local().expect("local path");
         let bounds = local.bounding_box().expect("local bounds");
-        assert_eq!([bounds.x0, bounds.y0, bounds.width(), bounds.height()], [0.0, 0.0, 80.0, 40.0]);
+        assert_eq!(
+            [bounds.x0, bounds.y0, bounds.width(), bounds.height()],
+            [0.0, 0.0, 80.0, 40.0]
+        );
     }
 
     #[test]
@@ -562,7 +563,10 @@ mod tests {
             .base_path_world(ObjectId::new(2))
             .expect("world path");
         let bounds = world.bounding_box().expect("world bounds");
-        assert_eq!([bounds.x0, bounds.y0, bounds.width(), bounds.height()], [100.0, 200.0, 80.0, 40.0]);
+        assert_eq!(
+            [bounds.x0, bounds.y0, bounds.width(), bounds.height()],
+            [100.0, 200.0, 80.0, 40.0]
+        );
     }
 
     #[test]
@@ -595,7 +599,10 @@ mod tests {
             .base_path_world(ObjectId::new(3))
             .expect("world path");
         let bounds = world.bounding_box().expect("world bounds");
-        assert_eq!([bounds.x0, bounds.y0, bounds.width(), bounds.height()], [125.0, 230.0, 50.0, 40.0]);
+        assert_eq!(
+            [bounds.x0, bounds.y0, bounds.width(), bounds.height()],
+            [125.0, 230.0, 50.0, 40.0]
+        );
     }
 
     #[test]
@@ -668,7 +675,10 @@ mod tests {
         ));
         assert!(matches!(
             object.evaluated_path_local(),
-            Err(crate::GeometryFrameError::AmbiguousModifier(_, "Perspective"))
+            Err(crate::GeometryFrameError::AmbiguousModifier(
+                _,
+                "Perspective"
+            ))
         ));
     }
 }

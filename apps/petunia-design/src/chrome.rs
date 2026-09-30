@@ -281,9 +281,6 @@ impl Component for DocumentTabStrip {
         let ui = &self.0;
         let shell_ref = ui.shell.peek();
         let session = shell_ref.bridge.session();
-        let title = session
-            .map_or_else(|| "Sem Título".to_string(), |s| s.title().to_string());
-        let is_dirty = session.is_some_and(|s| s.is_dirty());
         let snap_label = shell_ref
             .bridge
             .surface_label("ptnd.surface.tabs.snapping")
@@ -304,6 +301,18 @@ impl Component for DocumentTabStrip {
         let mut shell = ui.shell;
         let mut new_doc_open = ui.new_doc_open;
         let mut confirm_close_open = ui.confirm_close_open;
+        let mut pending_close = ui.pending_close;
+
+        let tabs: Vec<(usize, String, bool, bool)> = {
+            let bridge = &shell_ref.bridge;
+            let active = bridge.active_session_index();
+            bridge
+                .sessions()
+                .iter()
+                .enumerate()
+                .map(|(i, s)| (i, s.title().to_string(), s.is_dirty(), active == Some(i)))
+                .collect()
+        };
 
         rect()
             .direction(Direction::Horizontal)
@@ -314,24 +323,35 @@ impl Component for DocumentTabStrip {
             .main_align(Alignment::SpaceBetween)
             .cross_align(Alignment::Center)
             .child(
-                // Left: Document Tab & New Tab (+) Button
+                // Left: Document Tabs & New Tab (+) Button
                 rect()
                     .direction(Direction::Horizontal)
                     .spacing(theme::SPACE_1)
                     .cross_align(Alignment::Center)
-                    .child(
-                        // Active Document Tab
+                    .children(tabs.into_iter().map(|(idx, title, is_dirty, is_active)| {
+                        let mut shell = shell;
                         rect()
                             .direction(Direction::Horizontal)
                             .height(Size::px(26.))
-                            .background(theme::SURFACE_PANEL)
+                            .background(if is_active {
+                                theme::SURFACE_PANEL
+                            } else {
+                                theme::SURFACE_CHROME
+                            })
                             .padding(Gaps::new(0., theme::SPACE_2, 0., theme::SPACE_2))
                             .spacing(theme::SPACE_2)
                             .cross_align(Alignment::Center)
+                            .on_press(move |_| {
+                                let _ = shell.write().bridge.switch_session(idx);
+                            })
                             .child(
                                 label()
                                     .text(title)
-                                    .color(theme::TEXT_PRIMARY)
+                                    .color(if is_active {
+                                        theme::TEXT_PRIMARY
+                                    } else {
+                                        theme::TEXT_TERTIARY
+                                    })
                                     .font_size(theme::CAPTION_SIZE),
                             )
                             .maybe_child(if is_dirty {
@@ -351,9 +371,11 @@ impl Component for DocumentTabStrip {
                                     .center()
                                     .on_press(move |_| {
                                         if is_dirty {
+                                            pending_close.set(Some(idx));
                                             confirm_close_open.set(true);
                                         } else {
-                                            let _ = run_action_token(&mut shell.write(), "ptnd.action.file.new");
+                                            let _ =
+                                                shell.write().bridge.close_session_at(idx, false);
                                         }
                                     })
                                     .child(
@@ -362,8 +384,8 @@ impl Component for DocumentTabStrip {
                                             .color(theme::TEXT_TERTIARY)
                                             .font_size(12.),
                                     ),
-                            ),
-                    )
+                            )
+                    }))
                     .child(
                         // New Document Tab Button (+)
                         rect()
@@ -394,12 +416,23 @@ impl Component for DocumentTabStrip {
                             .spacing(theme::SPACE_1)
                             .cross_align(Alignment::Center)
                             .on_press(move |_| {
-                                let _ = run_action_token(&mut shell.write(), "ptnd.action.view.toggle_rulers");
+                                let _ = run_action_token(
+                                    &mut shell.write(),
+                                    "ptnd.action.view.toggle_rulers",
+                                );
                             })
                             .child(
                                 label()
-                                    .text(if rulers_on { "Régua: On" } else { "Régua: Off" })
-                                    .color(if rulers_on { theme::TEXT_PRIMARY } else { theme::TEXT_TERTIARY })
+                                    .text(if rulers_on {
+                                        "Régua: On"
+                                    } else {
+                                        "Régua: Off"
+                                    })
+                                    .color(if rulers_on {
+                                        theme::TEXT_PRIMARY
+                                    } else {
+                                        theme::TEXT_TERTIARY
+                                    })
                                     .font_size(theme::CAPTION_SIZE),
                             ),
                     )
@@ -409,7 +442,10 @@ impl Component for DocumentTabStrip {
                             .spacing(theme::SPACE_1)
                             .cross_align(Alignment::Center)
                             .on_press(move |_| {
-                                let _ = run_action_token(&mut shell.write(), "ptnd.action.view.fit_surface");
+                                let _ = run_action_token(
+                                    &mut shell.write(),
+                                    "ptnd.action.view.fit_surface",
+                                );
                             })
                             .child(
                                 label()
@@ -436,7 +472,11 @@ impl Component for DocumentTabStrip {
                             })
                             .child(
                                 label()
-                                    .text(if soft_proof { "Prova: SWOP" } else { "Prova: Off" })
+                                    .text(if soft_proof {
+                                        "Prova: SWOP"
+                                    } else {
+                                        "Prova: Off"
+                                    })
                                     .color(if soft_proof {
                                         theme::ACCENT_BLOOM
                                     } else {
@@ -744,7 +784,12 @@ pub fn resolve_tool_shortcut(
     let groups = rail_state.groups(photo);
     let matching_groups: Vec<_> = groups
         .iter()
-        .filter(|group| group.tools.iter().any(|tool| tool_shortcut(*tool).eq_ignore_ascii_case(key)))
+        .filter(|group| {
+            group
+                .tools
+                .iter()
+                .any(|tool| tool_shortcut(*tool).eq_ignore_ascii_case(key))
+        })
         .collect();
     let group = matching_groups
         .iter()
@@ -1709,6 +1754,9 @@ fn menu_item(ui: UiShell, item: &MenuItemPresentation) -> impl IntoElement {
     let mut customize_open = ui.customize_open;
     let mut new_doc_open = ui.new_doc_open;
     let mut export_open = ui.export_open;
+    let mut confirm_close_open = ui.confirm_close_open;
+    let mut pending_close = ui.pending_close;
+    let mut offset_prompt_open = ui.offset_prompt_open;
     let photo = *ui.persona.read() == petunia_design_application::surfaces::PERSONA_PHOTO;
 
     let summary = action_summary(&ui, &item.action_id);
@@ -1732,7 +1780,8 @@ fn menu_item(ui: UiShell, item: &MenuItemPresentation) -> impl IntoElement {
             if !enabled {
                 return;
             }
-            if let Some(action_id) = run_action_token(&mut shell.write(), &token) {
+            let action_id = run_action_token(&mut shell.write(), &token);
+            if let Some(action_id) = action_id {
                 if action_id == ActionId::EDIT_PREFERENCES {
                     customize_open.set(true);
                 }
@@ -1741,6 +1790,29 @@ fn menu_item(ui: UiShell, item: &MenuItemPresentation) -> impl IntoElement {
                 }
                 if action_id == "ptnd.action.file.export" {
                     export_open.set(true);
+                }
+                if action_id == "ptnd.action.object.offset_path" {
+                    offset_prompt_open.set(true);
+                }
+                if action_id == "ptnd.action.file.close" {
+                    let mut s = shell.write();
+                    let dirty = s.bridge.is_dirty();
+                    let active = s.bridge.active_session_index();
+                    if dirty {
+                        pending_close.set(active);
+                        confirm_close_open.set(true);
+                    } else if let Some(idx) = active {
+                        let _ = s.bridge.close_session_at(idx, false);
+                    }
+                }
+                if action_id == "ptnd.action.file.quit" {
+                    let mut s = shell.write();
+                    if s.bridge.any_session_dirty() {
+                        pending_close.set(None);
+                        confirm_close_open.set(true);
+                    } else {
+                        let _ = s.bridge.close_all_sessions(false);
+                    }
                 }
                 if let Some(tool) = ToolKind::from_action_id(&action_id) {
                     active_tool.set(tool);

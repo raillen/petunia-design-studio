@@ -393,9 +393,12 @@ mod tests {
 
     #[test]
     fn crop_rect_clips_to_window() {
-        let item = ModifierItem::enabled(1, ModifierKind::CropRect {
-            rect: [25.0, 10.0, 50.0, 40.0],
-        });
+        let item = ModifierItem::enabled(
+            1,
+            ModifierKind::CropRect {
+                rect: [25.0, 10.0, 50.0, 40.0],
+            },
+        );
         let out = evaluate_modifiers(&rect(), &[item]);
         let bounds = out.bounding_box().expect("bounds");
         assert!((bounds.x0 - 25.0).abs() < 1.0, "got {bounds:?}");
@@ -405,18 +408,24 @@ mod tests {
 
     #[test]
     fn crop_outside_keeps_previous_outline() {
-        let item = ModifierItem::enabled(1, ModifierKind::CropRect {
-            rect: [500.0, 500.0, 10.0, 10.0],
-        });
+        let item = ModifierItem::enabled(
+            1,
+            ModifierKind::CropRect {
+                rect: [500.0, 500.0, 10.0, 10.0],
+            },
+        );
         let out = evaluate_modifiers(&rect(), &[item]);
         assert_eq!(out.verbs.len(), rect().verbs.len());
     }
 
     #[test]
     fn warp_and_crop_chain_in_order() {
-        let crop = ModifierItem::enabled(2, ModifierKind::CropRect {
-            rect: [0.0, 0.0, 60.0, 60.0],
-        });
+        let crop = ModifierItem::enabled(
+            2,
+            ModifierKind::CropRect {
+                rect: [0.0, 0.0, 60.0, 60.0],
+            },
+        );
         let out = evaluate_modifiers(&rect(), &[trapezoid(), crop]);
         let bounds = out.bounding_box().expect("bounds");
         assert!(bounds.width() <= 61.0, "got {bounds:?}");

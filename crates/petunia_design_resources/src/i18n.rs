@@ -211,6 +211,27 @@ impl LocalizationService {
         result
     }
 
+    /// Formats a pluralized item count for a given locale (Ledger M20).
+    #[must_use]
+    pub fn plural_items(&self, count: usize, locale: &Locale) -> String {
+        match locale {
+            Locale::PtBr => {
+                if count == 1 {
+                    "1 item".to_string()
+                } else {
+                    format!("{count} itens")
+                }
+            }
+            _ => {
+                if count == 1 {
+                    "1 item".to_string()
+                } else {
+                    format!("{count} items")
+                }
+            }
+        }
+    }
+
     /// Preloads built-in core translations.
     fn load_builtin_strings(&mut self) {
         let mut en = LocaleCatalog::new(Locale::EnUs);
@@ -340,5 +361,19 @@ mod tests {
 
         assert_eq!(en, "Exported 5 items to SVG successfully");
         assert_eq!(pt, "Exportados 5 itens para SVG com sucesso");
+    }
+
+    #[test]
+    fn plural_items_formats_correctly_for_en_and_pt() {
+        let service = LocalizationService::new();
+        assert_eq!(service.plural_items(0, &Locale::EnUs), "0 items");
+        assert_eq!(service.plural_items(1, &Locale::EnUs), "1 item");
+        assert_eq!(service.plural_items(2, &Locale::EnUs), "2 items");
+        assert_eq!(service.plural_items(5, &Locale::EnUs), "5 items");
+
+        assert_eq!(service.plural_items(0, &Locale::PtBr), "0 itens");
+        assert_eq!(service.plural_items(1, &Locale::PtBr), "1 item");
+        assert_eq!(service.plural_items(2, &Locale::PtBr), "2 itens");
+        assert_eq!(service.plural_items(5, &Locale::PtBr), "5 itens");
     }
 }

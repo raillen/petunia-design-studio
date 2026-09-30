@@ -534,17 +534,19 @@ impl PenTool {
     /// Resolves preview overlays for the Pen tool.
     #[must_use]
     pub fn overlays(&self) -> CanvasOverlays {
-        let mut overlays = CanvasOverlays::default();
-        overlays.cursor = match &self.phase {
-            PenPhase::ClosePreview { .. } => CursorAffordance::Pointer,
-            PenPhase::HandleAdjust { .. } => CursorAffordance::Crosshair,
-            _ => {
-                if self.continuing_object.is_some() {
-                    CursorAffordance::Pointer
-                } else {
-                    CursorAffordance::Crosshair
+        let mut overlays = CanvasOverlays {
+            cursor: match &self.phase {
+                PenPhase::ClosePreview { .. } => CursorAffordance::Pointer,
+                PenPhase::HandleAdjust { .. } => CursorAffordance::Crosshair,
+                _ => {
+                    if self.continuing_object.is_some() {
+                        CursorAffordance::Pointer
+                    } else {
+                        CursorAffordance::Crosshair
+                    }
                 }
-            }
+            },
+            ..Default::default()
         };
 
         if self.anchors.is_empty() {

@@ -23,4 +23,5 @@ pub use package::{
 pub use pdf::{
     export_document_pdf, DegradationItem, FidelityGrade, PdfExportOptions, PreflightReport,
 };
+pub use petunia_design_raster::PixelFormat;
 pub use svg::{export_document_svg, export_path_d, parse_path_d};

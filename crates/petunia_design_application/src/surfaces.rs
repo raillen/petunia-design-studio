@@ -258,7 +258,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.surface.tabs.document_close",
         kind: SurfaceKind::Shell,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.tabs.close",
         action: Some("ptnd.action.file.close"),
         shortcut: None,
@@ -313,7 +313,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.surface.dock.left",
         kind: SurfaceKind::Shell,
         scope: SurfaceScope::MilestoneRequired,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.dock.left",
         action: None,
         shortcut: None,
@@ -331,7 +331,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.surface.dock.bottom",
         kind: SurfaceKind::Shell,
         scope: SurfaceScope::MilestoneRequired,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.dock.bottom",
         action: None,
         shortcut: None,
@@ -377,7 +377,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.file.close",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.file.close",
         action: None,
         shortcut: None,
@@ -422,7 +422,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.file.quit",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.file.quit",
         action: None,
         shortcut: None,
@@ -450,7 +450,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.edit.cut",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.edit.cut",
         action: None,
         shortcut: Some("Ctrl+X"),
@@ -459,7 +459,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.edit.copy",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.edit.copy",
         action: None,
         shortcut: Some("Ctrl+C"),
@@ -468,7 +468,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.edit.paste",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.edit.paste",
         action: None,
         shortcut: Some("Ctrl+V"),
@@ -522,8 +522,8 @@ pub const SURFACES: &[SurfaceEntry] = &[
     SurfaceEntry {
         id: "ptnd.action.select.invert",
         kind: SurfaceKind::Action,
-        scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Absent,
+        scope: SurfaceScope::V1Required,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.select.invert",
         action: None,
         shortcut: None,
@@ -614,7 +614,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.action.object.offset_path",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Disabled("ptnd.text.blocked.offset_path"),
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.object.offset_path",
         action: None,
         shortcut: None,
@@ -871,9 +871,9 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.tool.vector.place_image",
         kind: SurfaceKind::Tool,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.tool.place_image",
-        action: None,
+        action: Some("ptnd.action.file.place"),
         shortcut: None,
     },
     SurfaceEntry {
@@ -1152,7 +1152,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.panel.color",
         kind: SurfaceKind::Panel,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.panel.color",
         action: None,
         shortcut: None,
@@ -1161,7 +1161,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.panel.swatches",
         kind: SurfaceKind::Panel,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.panel.swatches",
         action: None,
         shortcut: None,
@@ -1215,7 +1215,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.panel.navigator",
         kind: SurfaceKind::Panel,
         scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.panel.navigator",
         action: None,
         shortcut: None,
@@ -1233,7 +1233,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.panel.assets",
         kind: SurfaceKind::Panel,
         scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.panel.assets",
         action: None,
         shortcut: None,
@@ -1279,7 +1279,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.dialog.overwrite_conflict",
         kind: SurfaceKind::Dialog,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.dialog.overwrite",
         action: None,
         shortcut: None,
@@ -1306,7 +1306,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.panel.background_tasks",
         kind: SurfaceKind::Panel,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.panel.jobs",
         action: None,
         shortcut: None,
@@ -1322,17 +1322,22 @@ pub const SURFACES: &[SurfaceEntry] = &[
 /// behavior: an `ActionId` constant in `actions.rs` is a declaration, not an
 /// implementation. A surface claiming `Wired` MUST bind one of these (15.C/15.G).
 pub const LIVE_ACTIONS: &[&str] = &[
+    "ptnd.action.edit.copy",
+    "ptnd.action.edit.cut",
     "ptnd.action.edit.delete",
     "ptnd.action.edit.deselect",
     "ptnd.action.edit.duplicate",
+    "ptnd.action.edit.paste",
     "ptnd.action.edit.preferences",
     "ptnd.action.edit.redo",
     "ptnd.action.edit.select_all",
     "ptnd.action.edit.undo",
+    "ptnd.action.file.close",
     "ptnd.action.file.export",
     "ptnd.action.file.new",
     "ptnd.action.file.open",
     "ptnd.action.file.place",
+    "ptnd.action.file.quit",
     "ptnd.action.file.save",
     "ptnd.action.file.save_as",
     "ptnd.action.object.align",
@@ -1347,7 +1352,9 @@ pub const LIVE_ACTIONS: &[&str] = &[
     "ptnd.action.object.group",
     "ptnd.action.object.hide",
     "ptnd.action.object.lock",
+    "ptnd.action.object.offset_path",
     "ptnd.action.object.ungroup",
+    "ptnd.action.select.invert",
     "ptnd.action.view.command_palette",
     "ptnd.action.view.fit_surface",
     "ptnd.action.view.toggle_rulers",
@@ -1416,10 +1423,7 @@ pub fn personas() -> Vec<&'static SurfaceEntry> {
 /// Every id here must also exist in [`SURFACES`] with a non-`Wired` status
 /// and, when it is merely blocked rather than unimplemented, an explicit
 /// [`SurfaceStatus::Disabled`] reason (reconciliation test below).
-pub const DECLARED_NOT_LIVE: &[&str] = &[
-    "ptnd.action.object.offset_path",
-    "ptnd.action.object.slice_path",
-];
+pub const DECLARED_NOT_LIVE: &[&str] = &["ptnd.action.object.slice_path"];
 
 /// Looks up one surface by stable id.
 #[must_use]
@@ -1653,6 +1657,46 @@ mod tests {
         assert!(
             surface("ptnd.panel.layers").is_some_and(|e| e.status == SurfaceStatus::Wired),
             "layers panel must be wired"
+        );
+        assert!(
+            surface("ptnd.panel.color").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "color panel must be wired"
+        );
+        assert!(
+            surface("ptnd.panel.swatches").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "swatches panel must be wired"
+        );
+        assert!(
+            surface("ptnd.panel.background_tasks")
+                .is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "background tasks panel must be wired"
+        );
+        assert!(
+            surface("ptnd.tool.vector.place_image")
+                .is_some_and(|e| e.status == SurfaceStatus::Wired
+                    && e.action == Some("ptnd.action.file.place")),
+            "place image tool must be wired to file.place"
+        );
+        assert!(
+            surface("ptnd.dialog.overwrite_conflict")
+                .is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "overwrite conflict dialog must be wired"
+        );
+        assert!(
+            surface("ptnd.surface.dock.left").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "left dock must be wired"
+        );
+        assert!(
+            surface("ptnd.surface.dock.bottom").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "bottom dock must be wired"
+        );
+        assert!(
+            surface("ptnd.panel.navigator").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "navigator panel must be wired"
+        );
+        assert!(
+            surface("ptnd.panel.assets").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "assets panel must be wired"
         );
     }
 

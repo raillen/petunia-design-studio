@@ -26,6 +26,12 @@ pub struct SelectionSession {
     pub selected_ids: Vec<ObjectId>,
     /// Explicit key object override, if any.
     pub key_object_override: Option<ObjectId>,
+    /// Monotonic selection version, bumped on every real selection change.
+    /// The snapshot cache keys on `(doc_revision, selection_version)`, so a
+    /// missed bump here is a stale `active` flag on screen. Bumps only fire
+    /// when the observable selection actually changes: NoOp retains and
+    /// identical re-selects keep the cache hot.
+    version: u64,
 }
 
 impl SelectionSession {
@@ -35,10 +41,19 @@ impl SelectionSession {
         Self::default()
     }
 
+    /// Monotonic version of the observable selection state.
+    #[must_use]
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+
     /// Selects an explicit set of IDs.
     pub fn select_exact(&mut self, ids: Vec<ObjectId>) {
-        self.selected_ids = ids;
-        self.key_object_override = None;
+        if self.selected_ids != ids || self.key_object_override.is_some() {
+            self.selected_ids = ids;
+            self.key_object_override = None;
+            self.version += 1;
+        }
     }
 
     /// Toggles an object ID in the selection.
@@ -51,12 +66,16 @@ impl SelectionSession {
         } else {
             self.selected_ids.push(id);
         }
+        self.version += 1;
     }
 
     /// Clears the selection.
     pub fn clear(&mut self) {
-        self.selected_ids.clear();
-        self.key_object_override = None;
+        if !self.selected_ids.is_empty() || self.key_object_override.is_some() {
+            self.selected_ids.clear();
+            self.key_object_override = None;
+            self.version += 1;
+        }
     }
 
     /// Resolves the primary/key object according to stable 10.1 rules.
@@ -68,11 +87,16 @@ impl SelectionSession {
 
     /// Removes deleted IDs from the selection.
     pub fn prune_missing(&mut self, valid_ids: &[ObjectId]) {
+        let before_ids = self.selected_ids.len();
+        let before_key = self.key_object_override;
         self.selected_ids.retain(|id| valid_ids.contains(id));
         if let Some(key) = self.key_object_override {
             if !valid_ids.contains(&key) {
                 self.key_object_override = None;
             }
+        }
+        if self.selected_ids.len() != before_ids || self.key_object_override != before_key {
+            self.version += 1;
         }
     }
 }
@@ -114,6 +138,8 @@ pub struct DocumentSession {
     current_revision: u64,
     /// Revision at last explicit save.
     saved_revision: u64,
+    /// Internal clipboard buffer storing copied/cut objects for pasting (Dossier V1 §15).
+    clipboard: Vec<petunia_design_document::DocumentObject>,
 }
 
 impl DocumentSession {
@@ -148,6 +174,7 @@ impl DocumentSession {
             active_surface,
             current_revision: 0,
             saved_revision: 0,
+            clipboard: Vec::new(),
         }
     }
 
@@ -181,7 +208,19 @@ impl DocumentSession {
             active_surface,
             current_revision: 0,
             saved_revision: 0,
+            clipboard: Vec::new(),
         }
+    }
+
+    /// Returns the current clipboard objects buffer.
+    #[must_use]
+    pub fn clipboard(&self) -> &[petunia_design_document::DocumentObject] {
+        &self.clipboard
+    }
+
+    /// Sets the clipboard buffer.
+    pub fn set_clipboard(&mut self, objects: Vec<petunia_design_document::DocumentObject>) {
+        self.clipboard = objects;
     }
 
     /// Allocates a new monotonically increasing ObjectId that is guaranteed unique within the document.
@@ -403,6 +442,10 @@ impl DocumentSession {
                 self.selection.clear();
                 Ok(ChangeSet::empty())
             }
+            "ptnd.action.select.invert" => {
+                self.select_invert();
+                Ok(ChangeSet::empty())
+            }
             // History actions rewind the document itself, so unlike view and
             // file actions they report the ChangeSet they reversed.
             "ptnd.action.edit.undo" => {
@@ -443,7 +486,8 @@ impl DocumentSession {
                 })?;
                 let path_buf = request_path(&request.payload)
                     .or_else(|_| {
-                        request.payload
+                        request
+                            .payload
                             .as_str()
                             .filter(|s| !s.trim().is_empty())
                             .map(std::path::PathBuf::from)
@@ -460,16 +504,14 @@ impl DocumentSession {
                 let mut bounds = [100.0, 100.0, 300.0, 200.0];
                 let mut data = None;
                 if let Ok(bytes) = std::fs::read(&path_buf) {
-                    if let Ok(imported) = petunia_design_io::import_raster(&bytes, 32 * 1024 * 1024) {
+                    if let Ok(imported) = petunia_design_io::import_raster(&bytes, 32 * 1024 * 1024)
+                    {
                         bounds[2] = imported.width as f64;
                         bounds[3] = imported.height as f64;
                     }
                     data = Some(bytes);
                 }
-                let shape = petunia_design_document::ShapeKind::Image {
-                    path,
-                    data,
-                };
+                let shape = petunia_design_document::ShapeKind::Image { path, data };
                 let cmd = CommandRequest::new(Command::CreateShapeObject {
                     surface: active_surface,
                     id,
@@ -481,7 +523,7 @@ impl DocumentSession {
                     stroke_width: 0.0,
                 });
                 let changes = self.execute_command(cmd)?;
-                self.selection.selected_ids = vec![id];
+                self.selection.select_exact(vec![id]);
                 Ok(changes)
             }
             // View actions mutate view state, not the document, so they
@@ -553,7 +595,7 @@ impl DocumentSession {
                     role: petunia_design_document::ContainerRole::Group,
                 }))?;
                 // Select the container: the gesture's subject is now the group.
-                self.selection.selected_ids = vec![group_id];
+                self.selection.select_exact(vec![group_id]);
                 Ok(changes)
             }
             "ptnd.action.object.ungroup" => {
@@ -586,6 +628,75 @@ impl DocumentSession {
                 }
                 Ok(changes)
             }
+            // Copy stores clones of selected objects in the session clipboard.
+            "ptnd.action.edit.copy" => {
+                let ids = self.selection.selected_ids.clone();
+                if ids.is_empty() {
+                    return Ok(ChangeSet::empty());
+                }
+                let mut copied = Vec::new();
+                for id in ids {
+                    if let Some(obj) = self.document.find_object(id) {
+                        copied.push(obj.clone());
+                    }
+                }
+                self.clipboard = copied;
+                Ok(ChangeSet::empty())
+            }
+            // Cut copies selected objects then deletes them in a single undo transaction.
+            "ptnd.action.edit.cut" => {
+                let ids = self.selection.selected_ids.clone();
+                if ids.is_empty() {
+                    return Ok(ChangeSet::empty());
+                }
+                let mut copied = Vec::new();
+                let mut cmds = Vec::new();
+                for id in &ids {
+                    if let Some(obj) = self.document.find_object(*id) {
+                        copied.push(obj.clone());
+                    }
+                    cmds.push(Command::DeleteObject { id: *id });
+                }
+                self.clipboard = copied;
+                let changes = self.transact("Cut", cmds)?;
+                self.selection.clear();
+                Ok(changes)
+            }
+            // Paste creates copies of clipboard objects on the active surface with an offset.
+            "ptnd.action.edit.paste" => {
+                if self.clipboard.is_empty() {
+                    return Ok(ChangeSet::empty());
+                }
+                let target_surface = self
+                    .active_surface
+                    .or_else(|| self.document.surfaces().first().map(|s| s.id))
+                    .ok_or_else(|| {
+                        PetuniaError::invalid_input("no active surface to paste onto")
+                    })?;
+
+                let mut cmds = Vec::new();
+                let mut pasted_ids = Vec::new();
+                for obj in &self.clipboard {
+                    let next_id = self.id_generator.next_object();
+                    pasted_ids.push(next_id);
+                    cmds.push(Command::PasteObject {
+                        surface: target_surface,
+                        object: obj.clone(),
+                        id: next_id,
+                        offset: [12.0, 12.0],
+                    });
+                }
+                // Cascading offset for subsequent pastes (position only)
+                for obj in &mut self.clipboard {
+                    if let Some(b) = &mut obj.bounds {
+                        b[0] += 12.0;
+                        b[1] += 12.0;
+                    }
+                }
+                let changes = self.transact("Paste", cmds)?;
+                self.selection.select_exact(pasted_ids);
+                Ok(changes)
+            }
             // Duplicate copies the selection with fresh identities and a small
             // visual offset, so the copy is distinguishable from the original.
             "ptnd.action.edit.duplicate" => {
@@ -612,7 +723,7 @@ impl DocumentSession {
                 let changes = self.transact("Duplicate", cmds)?;
                 // Select the copies so a follow-up drag moves the duplicate,
                 // not the original.
-                self.selection.selected_ids = created;
+                self.selection.select_exact(created);
                 Ok(changes)
             }
             // Arrange moves the whole selection to a z-order edge. Objects are
@@ -688,7 +799,7 @@ impl DocumentSession {
                     op,
                 });
                 let changes = self.execute_command(cmd)?;
-                self.selection.selected_ids = vec![target_id];
+                self.selection.select_exact(vec![target_id]);
                 Ok(changes)
             }
             // Explicit, user-invoked destructive conversions (A1/A5): they
@@ -709,6 +820,35 @@ impl DocumentSession {
                     .collect();
                 self.transact("Bake corners", cmds)
             }
+            // Offset path is the Action-lane twin of the Contour tool gesture:
+            // the distance travels in the payload (typed in the numeric
+            // prompt), targets default to the live selection, and the whole
+            // batch commits as one undo entry holding live `ContourOffset`
+            // modifiers. Base geometry is untouched; Bake stays explicit.
+            // A missing or non-finite distance is refused loudly: defaulting
+            // it would be the fake command 15.F §2 forbids.
+            "ptnd.action.object.offset_path" => {
+                let payload = self.with_selection_targets(&request.payload);
+                let ids = target_ids(&payload)?;
+                let distance = payload
+                    .get("distance")
+                    .or_else(|| payload.get("delta"))
+                    .and_then(serde_json::Value::as_f64)
+                    .filter(|value| value.is_finite())
+                    .ok_or_else(|| {
+                        PetuniaError::invalid_input(
+                            "object.offset_path requires a finite `distance` payload field in points",
+                        )
+                    })?;
+                let cmds = ids
+                    .into_iter()
+                    .map(|id| Command::OffsetPath {
+                        id,
+                        delta: distance,
+                    })
+                    .collect();
+                self.transact("Offset path", cmds)
+            }
             // Clipping masks: the first selected object is the mask boundary
             // (10.5 Table B), mirrored from `hierarchy_service` so the panel
             // and the Action lane cannot drift apart.
@@ -722,7 +862,7 @@ impl DocumentSession {
                     "Create clip group",
                     crate::hierarchy_service::clip_group_commands(plan),
                 )?;
-                self.selection.selected_ids = vec![group_id];
+                self.selection.select_exact(vec![group_id]);
                 Ok(changes)
             }
             "ptnd.action.object.clip_mask.release" => {
@@ -855,6 +995,45 @@ impl DocumentSession {
             if let Ok(surface) = self.document.surface(surface_id) {
                 let all_ids: Vec<ObjectId> = surface.objects().iter().map(|o| o.id).collect();
                 self.selection.select_exact(all_ids);
+            }
+        }
+    }
+
+    /// Inverts the live selection on the active surface (10.9, V1).
+    ///
+    /// Object selection becomes the complement of the eligible set
+    /// (visible and unlocked, in surface order): with nothing selected this
+    /// selects everything eligible. A non-empty raster mask inverts inside
+    /// the active surface bounds via `RasterSelection::invert_in` (empty
+    /// masks stay empty). Both selections are transient session state like
+    /// `select_all`/marquee: empty `ChangeSet`, no history, no revision bump.
+    pub fn select_invert(&mut self) {
+        if !self.raster_selection.is_empty() {
+            if let Some(surface_id) = self.active_surface {
+                if let Ok(surface) = self.document.surface(surface_id) {
+                    let [x, y, w, h] = surface.bounds();
+                    let frame = vec![
+                        petunia_design_geometry::GPoint::new(x, y),
+                        petunia_design_geometry::GPoint::new(x + w, y),
+                        petunia_design_geometry::GPoint::new(x + w, y + h),
+                        petunia_design_geometry::GPoint::new(x, y + h),
+                    ];
+                    self.raster_selection.invert_in(&frame);
+                }
+            }
+        }
+        if let Some(surface_id) = self.active_surface {
+            if let Ok(surface) = self.document.surface(surface_id) {
+                let selected: std::collections::HashSet<ObjectId> =
+                    self.selection.selected_ids.iter().copied().collect();
+                let inverted: Vec<ObjectId> = surface
+                    .objects()
+                    .iter()
+                    .filter(|o| o.visible && !o.locked)
+                    .map(|o| o.id)
+                    .filter(|id| !selected.contains(id))
+                    .collect();
+                self.selection.select_exact(inverted);
             }
         }
     }
@@ -1893,6 +2072,39 @@ mod arrange_action_tests {
         assert!(changes.is_empty());
         assert_eq!(session.current_revision(), revision);
     }
+
+    #[test]
+    fn copy_cut_paste_lifecycle_and_undo_restores_objects() {
+        let mut session = session_with_three();
+        session.selection.selected_ids = vec![ObjectId::new(1), ObjectId::new(2)];
+
+        // 1. Copy
+        dispatch(&mut session, "ptnd.action.edit.copy");
+        assert_eq!(session.clipboard().len(), 2);
+        assert_eq!(order(&session), vec![1, 2, 3]);
+
+        // 2. Paste creates 2 new objects with fresh IDs
+        dispatch(&mut session, "ptnd.action.edit.paste");
+        assert_eq!(order(&session).len(), 5);
+        let pasted_ids = session.selection.selected_ids.clone();
+        assert_eq!(pasted_ids.len(), 2);
+        assert!(!pasted_ids.contains(&ObjectId::new(1)));
+        assert!(!pasted_ids.contains(&ObjectId::new(2)));
+
+        // 3. Undo undoes the Paste
+        session.undo().unwrap();
+        assert_eq!(order(&session), vec![1, 2, 3]);
+
+        // 4. Cut
+        session.selection.selected_ids = vec![ObjectId::new(3)];
+        dispatch(&mut session, "ptnd.action.edit.cut");
+        assert_eq!(session.clipboard().len(), 1);
+        assert_eq!(order(&session), vec![1, 2]);
+
+        // 5. Undo restores cut object 3
+        session.undo().unwrap();
+        assert_eq!(order(&session), vec![1, 2, 3]);
+    }
 }
 
 #[cfg(test)]
@@ -2367,5 +2579,219 @@ mod newly_wired_action_tests {
         )
         .expect_err("no selection means no target");
         assert!(error.to_string().contains("target"), "got {error}");
+    }
+
+    #[test]
+    fn offset_path_applies_a_live_contour_upsert_in_one_undo() {
+        let mut session = session_with_rects(2);
+        let changes = dispatch_with(
+            &mut session,
+            "ptnd.action.object.offset_path",
+            json!({"distance": 6.0}),
+        )
+        .expect("offset dispatches with a typed distance");
+        assert!(!changes.is_empty());
+        for id in [ObjectId::new(1), ObjectId::new(2)] {
+            let object = session.find_object(id).expect("target survives");
+            assert!(
+                matches!(
+                    object.shape,
+                    Some(petunia_design_document::ShapeKind::Rectangle { .. })
+                ),
+                "base geometry stays parametric: the offset is a live modifier"
+            );
+            let distance = object.modifiers.iter().find_map(|m| match &m.kind {
+                petunia_design_document::ModifierKind::ContourOffset { distance, .. } => {
+                    Some(*distance)
+                }
+                _ => None,
+            });
+            assert_eq!(distance, Some(6.0), "one live ContourOffset per target");
+        }
+
+        dispatch_with(&mut session, "ptnd.action.edit.undo", json!({})).unwrap();
+        for id in [ObjectId::new(1), ObjectId::new(2)] {
+            let object = session.find_object(id).expect("target survives undo");
+            assert!(
+                object.modifiers.iter().all(|m| !matches!(
+                    &m.kind,
+                    petunia_design_document::ModifierKind::ContourOffset { .. }
+                )),
+                "one undo must clear every live offset at once"
+            );
+        }
+    }
+
+    #[test]
+    fn offset_path_zero_distance_clears_the_live_offset() {
+        let mut session = session_with_rects(1);
+        dispatch_with(
+            &mut session,
+            "ptnd.action.object.offset_path",
+            json!({"distance": 6.0}),
+        )
+        .expect("offset applies");
+        let cleared = dispatch_with(
+            &mut session,
+            "ptnd.action.object.offset_path",
+            json!({"distance": 0.0}),
+        )
+        .expect("zero distance clears");
+        assert!(!cleared.is_empty());
+        let object = session
+            .find_object(ObjectId::new(1))
+            .expect("target survives");
+        assert!(
+            object.modifiers.iter().all(|m| !matches!(
+                &m.kind,
+                petunia_design_document::ModifierKind::ContourOffset { .. }
+            )),
+            "zero distance removes the ContourOffset entry"
+        );
+    }
+
+    #[test]
+    fn offset_path_rejects_a_missing_or_non_numeric_distance() {
+        let mut session = session_with_rects(1);
+        let revision = session.current_revision();
+        let missing = dispatch_with(&mut session, "ptnd.action.object.offset_path", json!({}))
+            .expect_err("a missing distance must not be defaulted");
+        assert!(missing.to_string().contains("distance"), "got {missing}");
+        let textual = dispatch_with(
+            &mut session,
+            "ptnd.action.object.offset_path",
+            json!({"distance": "far"}),
+        )
+        .expect_err("a non-numeric distance is refused, never a silent 0.0");
+        assert!(textual.to_string().contains("distance"), "got {textual}");
+        assert_eq!(
+            session.current_revision(),
+            revision,
+            "refused prompts stay out of history"
+        );
+    }
+}
+
+#[cfg(test)]
+mod select_invert_tests {
+    use super::*;
+    use crate::ActionId;
+    use serde_json::json;
+
+    fn session_with_flags() -> DocumentSession {
+        let mut session = DocumentSession::new("invert");
+        let surface = SurfaceId::new(1);
+        session
+            .execute_command(CommandRequest::new(Command::CreateSurface {
+                id: surface,
+                name: "Surface".to_string(),
+            }))
+            .unwrap();
+        for id in [1u64, 2, 3, 4] {
+            session
+                .execute_command(CommandRequest::new(Command::CreateObject {
+                    surface,
+                    id: ObjectId::new(id),
+                    name: format!("Obj {id}"),
+                }))
+                .unwrap();
+        }
+        session
+            .execute_command(CommandRequest::new(Command::SetVisibility {
+                id: ObjectId::new(3),
+                visible: false,
+            }))
+            .unwrap();
+        session
+            .execute_command(CommandRequest::new(Command::SetLocked {
+                id: ObjectId::new(4),
+                locked: true,
+            }))
+            .unwrap();
+        session.set_active_surface(surface);
+        session.selection.clear();
+        session
+    }
+
+    fn dispatch(session: &mut DocumentSession, action: &str) -> ChangeSet {
+        session
+            .dispatch_action(ActionRequest::new(ActionId::new(action), json!({})))
+            .expect("select invert must dispatch")
+    }
+
+    #[test]
+    fn select_invert_complements_visible_unlocked_on_active_surface() {
+        let mut session = session_with_flags();
+        // Only 1 and 2 are eligible (3 hidden, 4 locked).
+        session.selection.select_exact(vec![ObjectId::new(1)]);
+        let revision = session.current_revision();
+        let can_undo = session.history().can_undo();
+
+        let changes = dispatch(&mut session, "ptnd.action.select.invert");
+        assert!(
+            changes.is_empty(),
+            "selection is transient, like select_all"
+        );
+        assert_eq!(
+            session.selection.selected_ids,
+            vec![ObjectId::new(2)],
+            "invert selects everything eligible except the current selection"
+        );
+        assert_eq!(session.current_revision(), revision);
+        assert_eq!(session.history().can_undo(), can_undo);
+
+        // Double invert restores the starting selection.
+        dispatch(&mut session, "ptnd.action.select.invert");
+        assert_eq!(session.selection.selected_ids, vec![ObjectId::new(1)]);
+
+        // Nothing selected inverts to everything eligible.
+        session.selection.clear();
+        dispatch(&mut session, "ptnd.action.select.invert");
+        assert_eq!(
+            session.selection.selected_ids,
+            vec![ObjectId::new(1), ObjectId::new(2)]
+        );
+    }
+
+    #[test]
+    fn select_invert_inverts_raster_mask_inside_surface_bounds() {
+        use crate::selection_mask::{SelectionMode, SelectionShape};
+        use petunia_design_geometry::GPoint;
+
+        let mut session = DocumentSession::new("invert-mask");
+        let surface = SurfaceId::new(1);
+        session
+            .execute_command(CommandRequest::new(Command::CreateSurface {
+                id: surface,
+                name: "Surface".to_string(),
+            }))
+            .unwrap();
+        session.set_active_surface(surface);
+        // Default surface is 800x600 at the origin.
+        session.raster_selection.combine(
+            &SelectionShape::Rect {
+                x0: 0.0,
+                y0: 0.0,
+                x1: 10.0,
+                y1: 10.0,
+            },
+            SelectionMode::Replace,
+        );
+        assert!(session.raster_selection.contains(GPoint::new(5.0, 5.0)));
+
+        let revision = session.current_revision();
+        let can_undo = session.history().can_undo();
+        let changes = dispatch(&mut session, "ptnd.action.select.invert");
+        assert!(changes.is_empty(), "raster selection is transient, no undo");
+        assert!(
+            !session.raster_selection.contains(GPoint::new(5.0, 5.0)),
+            "the old mask interior must clear after invert"
+        );
+        assert!(
+            session.raster_selection.contains(GPoint::new(400.0, 300.0)),
+            "invert must select the surface complement via invert_in"
+        );
+        assert_eq!(session.current_revision(), revision);
+        assert_eq!(session.history().can_undo(), can_undo);
     }
 }

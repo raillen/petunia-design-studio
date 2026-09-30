@@ -9,6 +9,19 @@ use petunia_design_application::tools::ToolKind;
 use petunia_design_application::{ActionId, ActionRequest};
 use petunia_design_shell::PetuniaShell;
 
+/// User-typed values stay in the UI; `run_action_token` never dispatches a
+/// bare menu token for them (payload `null` would only error silently), and
+/// reports the action id so the caller opens the prompt dialog instead. The
+/// dialog dispatches with the real typed value.
+fn needs_typed_value(action_id: &str, payload: &serde_json::Value) -> bool {
+    action_id == "ptnd.action.object.offset_path"
+        && payload
+            .get("distance")
+            .or_else(|| payload.get("delta"))
+            .and_then(serde_json::Value::as_f64)
+            .is_none_or(|value| !value.is_finite())
+}
+
 /// User-chosen destinations stay in the UI; `run_action_token` only dispatches
 /// actions that need no destination, and reports the action id either way.
 fn needs_destination(action_id: &str) -> bool {
@@ -41,6 +54,9 @@ pub fn run_action_token(shell: &mut PetuniaShell, token: &str) -> Option<String>
         return Some(action_id);
     }
     if needs_destination(&action_id) {
+        return Some(action_id);
+    }
+    if needs_typed_value(&action_id, &payload) {
         return Some(action_id);
     }
     if !menus::availability(&action_id, &ctx).enabled {

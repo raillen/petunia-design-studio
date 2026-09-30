@@ -137,12 +137,8 @@ fn oriented_selection_handles_and_hit_testing() {
     let rot = std::f64::consts::FRAC_PI_2;
     let transform = petunia_design_geometry::GAffine::translate(100.0, 100.0)
         .after(petunia_design_geometry::GAffine::rotate(rot));
-    let handles = compute_selection_handles_oriented(
-        [0.0, 0.0, 100.0, 100.0],
-        transform,
-        &camera,
-        10.0,
-    );
+    let handles =
+        compute_selection_handles_oriented([0.0, 0.0, 100.0, 100.0], transform, &camera, 10.0);
 
     assert_eq!(handles.len(), 9);
     // TopLeft local (0, 0) -> (100, 100)

@@ -1,5 +1,3 @@
-#![allow(clippy::chunks_exact_to_as_chunks)]
-
 use crate::pdf::{DegradationItem, FidelityGrade};
 use image::{
     codecs::jpeg::JpegEncoder, codecs::png::PngEncoder, ExtendedColorType, ImageEncoder,

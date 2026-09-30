@@ -18,14 +18,22 @@ mod rect;
 mod smooth;
 mod warp;
 
-pub use affine::{pivot_angle_delta, rotate_point_around, scale_bounds_about, scale_factor_around, GAffine};
-pub use boolean::{boolean_op, boolean_op_with_fill, BooleanInput, BooleanOp, FillRule, GeometryTolerance};
+pub use affine::{
+    pivot_angle_delta, rotate_point_around, scale_bounds_about, scale_factor_around, GAffine,
+};
+pub use boolean::{
+    boolean_op, boolean_op_with_fill, BooleanInput, BooleanOp, FillRule, GeometryTolerance,
+};
 pub use cut::{cut_path_by_line, split_path_at_point};
 pub use measure::{area_readout, measure_readout, AreaReadout, MeasurementReadout};
 pub use node_edit::{move_verb, move_verb_to};
 pub use offset::{offset_path, OffsetCap, OffsetJoin};
-pub use warp::{clip_path_to_rect, homography_quad_to_quad, warp_path, warp_path_to_quad, Homography};
-pub use path::{GPath, PathVerb, zoom_flatten_tol};
+pub use path::{zoom_flatten_tol, GPath, PathVerb};
 pub use point::GPoint;
-pub use rect::{resize_rect_from_handle, step_corner_radius, MIN_RESIZE_SIZE, ResizeHandle, GRect};
-pub use smooth::{anchors_to_path, chaikin_smooth, fit_midpoint_quads, midpoint, simplify_rdp, smooth_samples};
+pub use rect::{resize_rect_from_handle, step_corner_radius, GRect, ResizeHandle, MIN_RESIZE_SIZE};
+pub use smooth::{
+    anchors_to_path, chaikin_smooth, fit_midpoint_quads, midpoint, simplify_rdp, smooth_samples,
+};
+pub use warp::{
+    clip_path_to_rect, homography_quad_to_quad, warp_path, warp_path_to_quad, Homography,
+};

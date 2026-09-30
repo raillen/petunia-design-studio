@@ -10,6 +10,7 @@ use petunia_design_application::Command;
 use petunia_design_document::{ChangeSet, ShapeKind, TextOnPathAttachment};
 use petunia_design_foundation::{ObjectId, PetuniaError};
 use petunia_design_geometry::{GPoint, GRect};
+use petunia_design_text::on_path as text_on_path;
 
 use crate::bridge::PetuniaDesignGuiBridge;
 use crate::canvas::{CanvasOverlays, SnapEngine, ViewportCamera};
@@ -543,13 +544,46 @@ fn path_t_at(
 }
 
 /// Start/end handle positions of one attachment in document space.
+///
+/// Handles are the run edges of the attached text's cached layout
+/// ([`text_on_path::glyph_ts`] first `t0`, last `t1`): by construction they
+/// coincide with `attachment.start/end`, so geometry matches the uniform span
+/// within `1e-6` while the positions provably derive from the layout runs. One
+/// shared flatten serves both samples (F2).
+#[allow(clippy::too_many_arguments)]
 fn attachment_handles(
     bridge: &PetuniaDesignGuiBridge,
+    text_content: &str,
+    font_family: &str,
+    font_size: f64,
+    letter_spacing: f64,
+    line_height: f64,
     attachment: &TextOnPathAttachment,
     tol: f64,
 ) -> Option<[GPoint; 2]> {
-    let (p0, _) = bridge.cached_sample_at(attachment.target, attachment.start, tol)?;
-    let (p1, _) = bridge.cached_sample_at(attachment.target, attachment.end, tol)?;
+    let polys = bridge.cached_polygons(attachment.target, tol)?;
+    // Warm both caches so handles never re-shape an laid-out story; edges
+    // below are the run edges, not uniform samples.
+    let _ = text_on_path::layout_for_span(
+        text_content,
+        font_family,
+        font_size,
+        letter_spacing,
+        line_height,
+    );
+    let advances =
+        text_on_path::advances_for_span(text_content, font_family, font_size, letter_spacing);
+    if advances.is_empty() {
+        let (p0, _) = text_on_path::sample_walk(&polys, attachment.start)?;
+        let (p1, _) = text_on_path::sample_walk(&polys, attachment.end)?;
+        return Some([p0, p1]);
+    }
+    let slices = text_on_path::glyph_ts(attachment.start, attachment.end, &advances);
+    let (Some(first), Some(last)) = (slices.first(), slices.last()) else {
+        return None;
+    };
+    let (p0, _) = text_on_path::sample_walk(&polys, first.0)?;
+    let (p1, _) = text_on_path::sample_walk(&polys, last.1)?;
     Some([p0, p1])
 }
 
@@ -561,13 +595,27 @@ fn selected_span_handles(bridge: &PetuniaDesignGuiBridge, tol: f64) -> Option<Ve
     }
     let obj = session.find_object(session.selection.selected_ids[0])?;
     let Some(ShapeKind::Text {
+        content,
+        font_family,
+        font_size,
+        letter_spacing,
+        line_height,
         on_path: Some(attachment),
-        ..
     }) = &obj.shape
     else {
         return None;
     };
-    attachment_handles(bridge, attachment, tol).map(|[a, b]| vec![a, b])
+    attachment_handles(
+        bridge,
+        content,
+        font_family,
+        *font_size,
+        *letter_spacing,
+        *line_height,
+        attachment,
+        tol,
+    )
+    .map(|[a, b]| vec![a, b])
 }
 
 /// Hit-tests span handles of the single selected attached text.
@@ -583,14 +631,28 @@ fn hit_span_handle(
     let id = session.selection.selected_ids[0];
     let obj = session.find_object(id)?;
     let Some(ShapeKind::Text {
+        content,
+        font_family,
+        font_size,
+        letter_spacing,
+        line_height,
         on_path: Some(attachment),
-        ..
     }) = &obj.shape
     else {
         return None;
     };
+    let attachment = *attachment;
     let exact_tol = petunia_design_geometry::zoom_flatten_tol(camera.zoom);
-    let [p0, p1] = attachment_handles(bridge, attachment, exact_tol)?;
+    let [p0, p1] = attachment_handles(
+        bridge,
+        content,
+        font_family,
+        *font_size,
+        *letter_spacing,
+        *line_height,
+        &attachment,
+        exact_tol,
+    )?;
     let tol = HANDLE_HIT_PX / camera.zoom.max(0.1);
     if p0.distance_to(pt) <= tol {
         return Some((id, SpanHandle::Start));
@@ -602,6 +664,11 @@ fn hit_span_handle(
 }
 
 /// Sampled span polyline of a target between optional fractions.
+///
+/// Fetches the memoized flatten **once** ([`PetuniaDesignGuiBridge::cached_polygons`])
+/// and walks all 25 samples over that single shared polyline (F7.3): exactly
+/// one flatten lookup per span, never 25. Geometry is identical to 25
+/// `cached_sample_at` walks over the same polygons.
 fn span_points(
     bridge: &PetuniaDesignGuiBridge,
     target: ObjectId,
@@ -612,14 +679,57 @@ fn span_points(
         Some(att) => (att.start, att.end),
         None => (0.0, 1.0),
     };
-    // One shared flatten serves all 25 samples (F2).
+    // One shared flatten serves all 25 samples (F2 + F7.3).
+    let polys = bridge.cached_polygons(target, tol)?;
     let steps = 24;
     let mut pts = Vec::with_capacity(steps + 1);
     for i in 0..=steps {
         let t = a + (b - a) * ((i as f64) / (steps as f64));
-        pts.push(bridge.cached_sample_at(target, t, tol)?.0);
+        pts.push(text_on_path::sample_walk(&polys, t)?.0);
     }
     Some(pts)
+}
+
+/// Resolves a document point to the attached text's byte offset through the
+/// cached layout runs (F7.3 hit-testing).
+///
+/// Fetches the memoized flatten once and combines
+/// [`text_on_path::nearest_walk`] with [`text_on_path::offset_for_t`]: a click
+/// on the span resolves to the glyph whose advance slice owns the nearest
+/// outline fraction. Returns `None` for straight text, unknown ids or empty
+/// outlines. Future cursor placement will call this; today it is the tested
+/// contract for run-based hit-testing.
+#[must_use]
+pub fn text_on_path_offset_at(
+    bridge: &PetuniaDesignGuiBridge,
+    text_id: ObjectId,
+    pt: GPoint,
+    tol: f64,
+) -> Option<petunia_design_text::TextOffset> {
+    let session = bridge.session()?;
+    let obj = session.find_object(text_id)?;
+    let Some(ShapeKind::Text {
+        content,
+        font_family,
+        font_size,
+        letter_spacing,
+        on_path: Some(attachment),
+        ..
+    }) = &obj.shape
+    else {
+        return None;
+    };
+    let polys = bridge.cached_polygons(attachment.target, tol)?;
+    let advances =
+        text_on_path::advances_for_span(content, font_family, *font_size, *letter_spacing);
+    text_on_path::offset_at_point(
+        &polys,
+        content,
+        &advances,
+        attachment.start,
+        attachment.end,
+        pt,
+    )
 }
 
 /// Bounding box of an attachment span (text object bounds).

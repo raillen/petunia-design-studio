@@ -420,11 +420,10 @@ impl GPath {
             }
         };
         // Quarter-circle arc as one cubic through tangent points.
-        let corner_arc =
-            |path: &mut Self, start: GPoint, c1: GPoint, c2: GPoint, end: GPoint| {
-                edge_to(path, start);
-                let _ = path.push(PathVerb::CubicTo(c1, c2, end));
-            };
+        let corner_arc = |path: &mut Self, start: GPoint, c1: GPoint, c2: GPoint, end: GPoint| {
+            edge_to(path, start);
+            let _ = path.push(PathVerb::CubicTo(c1, c2, end));
+        };
         // Clockwise from the left of the top edge.
         if tl > 1e-9 {
             let (k, cx, cy) = (tl * KAPPA, x0 + tl, y0 + tl);
@@ -727,7 +726,10 @@ mod tests {
     #[test]
     fn rect_corners_all_sharp_matches_plain_rect() {
         let sharp = GPath::rect_corners(GRect::new(0.0, 0.0, 100.0, 60.0), [0.0; 4]);
-        assert_eq!(sharp.bounding_box(), Some(GRect::new(0.0, 0.0, 100.0, 60.0)));
+        assert_eq!(
+            sharp.bounding_box(),
+            Some(GRect::new(0.0, 0.0, 100.0, 60.0))
+        );
         assert!(sharp.verbs.iter().all(|v| matches!(
             v,
             PathVerb::MoveTo(_) | PathVerb::LineTo(_) | PathVerb::Close
@@ -739,7 +741,10 @@ mod tests {
         let one = GPath::rect_corners(GRect::new(0.0, 0.0, 100.0, 60.0), [20.0, 0.0, 0.0, 0.0]);
         assert_eq!(one.bounding_box(), Some(GRect::new(0.0, 0.0, 100.0, 60.0)));
         assert_eq!(
-            one.verbs.iter().filter(|v| matches!(v, PathVerb::CubicTo(_, _, _))).count(),
+            one.verbs
+                .iter()
+                .filter(|v| matches!(v, PathVerb::CubicTo(_, _, _)))
+                .count(),
             1
         );
     }
