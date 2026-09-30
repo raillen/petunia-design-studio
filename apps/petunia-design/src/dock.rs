@@ -87,7 +87,7 @@ impl Component for RightDock {
                         1 => properties_tab(ui.clone()).into_element(),
                         2 => ColorsTab(ui.clone()).into_element(),
                         3 => history_tab(ui.clone()).into_element(),
-                        4 => navigator_tab(ui.clone()).into_element(),
+                        4 => NavigatorTab(ui.clone()).into_element(),
                         5 => BackgroundTasksPanel(ui.clone()).into_element(),
                         _ => layers_tab(ui.clone()).into_element(),
                     }),
@@ -2114,129 +2114,209 @@ fn history_tab(ui: UiShell) -> impl IntoElement {
 // 5. Navigator Tab (Minimap)
 // =========================================================================
 
-fn navigator_tab(ui: UiShell) -> impl IntoElement {
-    let shell = ui.shell;
-    let snapshot = shell.peek().canvas_snapshot();
-    let zoom_pct = (snapshot.camera.zoom * 100.0) as i32;
-    let pan_x = snapshot.camera.pan_x as i32;
-    let pan_y = snapshot.camera.pan_y as i32;
+#[derive(Clone, PartialEq)]
+pub struct NavigatorTab(pub UiShell);
 
-    let (surf_w, surf_h) = snapshot
-        .surface
-        .as_ref()
-        .map(|s| (s.bounds[2], s.bounds[3]))
-        .unwrap_or((800.0, 600.0));
+impl Component for NavigatorTab {
+    fn render(&self) -> impl IntoElement {
+        let shell = self.0.shell;
+        let is_dragging = use_state(|| false);
+        let snapshot = shell.peek().canvas_snapshot();
+        let zoom_pct = (snapshot.camera.zoom * 100.0) as i32;
+        let pan_x = snapshot.camera.pan_x as i32;
+        let pan_y = snapshot.camera.pan_y as i32;
 
-    // Thumbnail scale: fit within 240px wide, 150px high
-    let scale_x = 240.0 / surf_w.max(10.0);
-    let scale_y = 150.0 / surf_h.max(10.0);
-    let scale = scale_x.min(scale_y);
-    let thumb_w = (surf_w * scale) as f32;
-    let thumb_h = (surf_h * scale) as f32;
+        let (surf_w, surf_h) = snapshot
+            .surface
+            .as_ref()
+            .map(|s| (s.bounds[2], s.bounds[3]))
+            .unwrap_or((800.0, 600.0));
 
-    let mut shell_for_reset = shell;
-    let mut shell_for_zoom_in = shell;
-    let mut shell_for_zoom_out = shell;
+        // Thumbnail scale: fit within 240px wide, 150px high
+        let scale_x = 240.0 / surf_w.max(10.0);
+        let scale_y = 150.0 / surf_h.max(10.0);
+        let scale = scale_x.min(scale_y);
+        let thumb_w = (surf_w * scale) as f32;
+        let thumb_h = (surf_h * scale) as f32;
 
-    rect()
-        .direction(Direction::Vertical)
-        .width(Size::fill())
-        .spacing(theme::SPACE_2)
-        .child(
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::fill())
-                .main_align(Alignment::SpaceBetween)
-                .cross_align(Alignment::Center)
-                .child(section_header("NAVEGADOR & ZOOM"))
-                .child(
-                    Button::new()
-                        .on_press(move |_| {
-                            let _ = run_action_token(
-                                &mut shell_for_reset.write(),
-                                "ptnd.action.view.fit_surface",
-                            );
-                        })
-                        .child(label().text("Enquadrar").font_size(11.)),
-                ),
-        )
-        .child(
-            rect()
-                .direction(Direction::Horizontal)
-                .spacing(theme::SPACE_1)
-                .child(value_pill("Zoom", format!("{}%", zoom_pct)))
-                .child(value_pill("X", format!("{} pt", pan_x)))
-                .child(value_pill("Y", format!("{} pt", pan_y))),
-        )
-        .child(
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::fill())
-                .spacing(theme::SPACE_1)
-                .child(
-                    Button::new()
-                        .on_press(move |_| {
-                            let _ = run_action_token(
-                                &mut shell_for_zoom_in.write(),
-                                "ptnd.action.view.zoom_in",
-                            );
-                        })
-                        .child(label().text("Zoom +").font_size(11.)),
-                )
-                .child(
-                    Button::new()
-                        .on_press(move |_| {
-                            let _ = run_action_token(
-                                &mut shell_for_zoom_out.write(),
-                                "ptnd.action.view.zoom_out",
-                            );
-                        })
-                        .child(label().text("Zoom -").font_size(11.)),
-                )
-                .child(
-                    Button::new()
-                        .on_press(move |_| {
-                            let _ = run_action_token(
-                                &mut shell_for_reset.write(),
-                                "ptnd.action.view.zoom_100",
-                            );
-                        })
-                        .child(label().text("100%").font_size(11.)),
-                ),
-        )
-        .child(
-            // Mini Canvas Viewport Box
-            rect()
-                .width(Size::fill())
-                .height(Size::px(180.))
-                .center()
-                .background(theme::SURFACE_CHROME)
-                .border(
-                    Border::new()
-                        .fill(theme::SURFACE_CHROME_STRONG)
-                        .width(1.)
-                        .alignment(BorderAlignment::Inner),
-                )
-                .child(
-                    rect()
-                        .width(Size::px(thumb_w.max(20.)))
-                        .height(Size::px(thumb_h.max(20.)))
-                        .background(Color::WHITE)
-                        .border(
-                            Border::new()
-                                .fill(theme::BLOOM.value)
-                                .width(1.)
-                                .alignment(BorderAlignment::Inner),
-                        )
-                        .center()
-                        .child(
-                            label()
-                                .text(format!("{:.0} × {:.0}", surf_w, surf_h))
-                                .font_size(9.)
-                                .color(Color::from_rgb(0x80, 0x80, 0x80)),
-                        ),
-                ),
-        )
+        let mut shell_for_reset = shell;
+        let mut shell_for_zoom_in = shell;
+        let mut shell_for_zoom_out = shell;
+        let mut shell_for_zoom_100 = shell;
+
+        // Viewport visible rect in document space
+        let vis_doc = snapshot.camera.visible_doc_rect();
+        let vis_box_x = ((vis_doc.x0 * scale) as f32).clamp(0.0, thumb_w);
+        let vis_box_y = ((vis_doc.y0 * scale) as f32).clamp(0.0, thumb_h);
+        let vis_box_w = (((vis_doc.width() * scale) as f32).min(thumb_w - vis_box_x)).max(4.0);
+        let vis_box_h = (((vis_doc.height() * scale) as f32).min(thumb_h - vis_box_y)).max(4.0);
+
+        let mut shell_for_down = shell;
+        let mut shell_for_move = shell;
+        let mut drag_down = is_dragging;
+        let drag_move = is_dragging;
+        let mut drag_up = is_dragging;
+
+        rect()
+            .direction(Direction::Vertical)
+            .width(Size::fill())
+            .spacing(theme::SPACE_2)
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .main_align(Alignment::SpaceBetween)
+                    .cross_align(Alignment::Center)
+                    .child(section_header("NAVEGADOR & ZOOM"))
+                    .child(
+                        Button::new()
+                            .on_press(move |_| {
+                                let _ = run_action_token(
+                                    &mut shell_for_reset.write(),
+                                    "ptnd.action.view.fit_surface",
+                                );
+                            })
+                            .child(label().text("Enquadrar").font_size(11.)),
+                    ),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(theme::SPACE_1)
+                    .child(value_pill("Zoom", format!("{}%", zoom_pct)))
+                    .child(value_pill("X", format!("{} pt", pan_x)))
+                    .child(value_pill("Y", format!("{} pt", pan_y))),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .spacing(theme::SPACE_1)
+                    .child(
+                        Button::new()
+                            .on_press(move |_| {
+                                let _ = run_action_token(
+                                    &mut shell_for_zoom_in.write(),
+                                    "ptnd.action.view.zoom_in",
+                                );
+                            })
+                            .child(label().text("Zoom +").font_size(11.)),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press(move |_| {
+                                let _ = run_action_token(
+                                    &mut shell_for_zoom_out.write(),
+                                    "ptnd.action.view.zoom_out",
+                                );
+                            })
+                            .child(label().text("Zoom -").font_size(11.)),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press(move |_| {
+                                let _ = run_action_token(
+                                    &mut shell_for_zoom_100.write(),
+                                    "ptnd.action.view.zoom_100",
+                                );
+                            })
+                            .child(label().text("100%").font_size(11.)),
+                    ),
+            )
+            .child(
+                // Mini Canvas Viewport Box
+                rect()
+                    .width(Size::fill())
+                    .height(Size::px(180.))
+                    .center()
+                    .background(theme::SURFACE_CHROME)
+                    .border(
+                        Border::new()
+                            .fill(theme::SURFACE_CHROME_STRONG)
+                            .width(1.)
+                            .alignment(BorderAlignment::Inner),
+                    )
+                    .child(
+                        rect()
+                            .width(Size::px(thumb_w.max(20.)))
+                            .height(Size::px(thumb_h.max(20.)))
+                            .background(Color::WHITE)
+                            .border(
+                                Border::new()
+                                    .fill(theme::BLOOM.value)
+                                    .width(1.)
+                                    .alignment(BorderAlignment::Inner),
+                            )
+                            .on_pointer_down(move |event: Event<PointerEventData>| {
+                                drag_down.set(true);
+                                let loc = event.element_location();
+                                let target_doc_x = (loc.x / scale).clamp(0.0, surf_w);
+                                let target_doc_y = (loc.y / scale).clamp(0.0, surf_h);
+                                let mut s = shell_for_down.write();
+                                let mut cam = s.view_camera();
+                                let vp_w = cam.viewport_width;
+                                let vp_h = cam.viewport_height;
+                                cam.pan_x = vp_w / 2.0 - target_doc_x * cam.zoom;
+                                cam.pan_y = vp_h / 2.0 - target_doc_y * cam.zoom;
+                                s.set_view_camera(cam);
+                            })
+                            .on_pointer_move(move |event: Event<PointerEventData>| {
+                                if *drag_move.peek() {
+                                    let loc = event.element_location();
+                                    let target_doc_x = (loc.x / scale).clamp(0.0, surf_w);
+                                    let target_doc_y = (loc.y / scale).clamp(0.0, surf_h);
+                                    let mut s = shell_for_move.write();
+                                    let mut cam = s.view_camera();
+                                    let vp_w = cam.viewport_width;
+                                    let vp_h = cam.viewport_height;
+                                    cam.pan_x = vp_w / 2.0 - target_doc_x * cam.zoom;
+                                    cam.pan_y = vp_h / 2.0 - target_doc_y * cam.zoom;
+                                    s.set_view_camera(cam);
+                                }
+                            })
+                            .on_mouse_up(move |_| {
+                                drag_up.set(false);
+                            })
+                            .on_pointer_leave(move |_| {
+                                drag_up.set(false);
+                            })
+                            .children(snapshot.objects.iter().filter_map(|obj| {
+                                let min_x = (obj.world_bounds[0] * scale) as f32;
+                                let min_y = (obj.world_bounds[1] * scale) as f32;
+                                let w = ((obj.world_bounds[2] - obj.world_bounds[0]) * scale) as f32;
+                                let h = ((obj.world_bounds[3] - obj.world_bounds[1]) * scale) as f32;
+                                if w > 1.0 && h > 1.0 {
+                                    let fill_col = obj.fill.as_deref().and_then(parse_color_rgb).map(|(r, g, b)| {
+                                        Color::from_rgb(r.round() as u8, g.round() as u8, b.round() as u8)
+                                    }).unwrap_or(Color::from_rgb(0x94, 0xA3, 0xB8));
+                                    Some(
+                                        rect()
+                                            .position(Position::new_absolute().left(min_x).top(min_y))
+                                            .width(Size::px(w))
+                                            .height(Size::px(h))
+                                            .background(fill_col)
+                                            .into_element(),
+                                    )
+                                } else {
+                                    None
+                                }
+                            }))
+                            .child(
+                                rect()
+                                    .position(Position::new_absolute().left(vis_box_x).top(vis_box_y))
+                                    .width(Size::px(vis_box_w))
+                                    .height(Size::px(vis_box_h))
+                                    .background(Color::from_argb(0x22, 0xEF, 0x44, 0x44))
+                                    .border(
+                                        Border::new()
+                                            .fill(Color::from_rgb(0xEF, 0x44, 0x44))
+                                            .width(1.5)
+                                            .alignment(BorderAlignment::Inner),
+                                    ),
+                            ),
+                    ),
+            )
+    }
 }
 
 // =========================================================================
@@ -4701,6 +4781,17 @@ mod tests {
             3,
             "active tab should switch to Histórico (3)"
         );
+
+        // Switch to tab 4: Navegador
+        let mut dock_tab = ui.dock_tab;
+        dock_tab.set(4);
+        runner.sync_and_update();
+        assert_eq!(*ui.dock_tab.read(), 4, "active tab should switch to Navegador (4)");
+
+        // Switch to tab 5: Tarefas
+        dock_tab.set(5);
+        runner.sync_and_update();
+        assert_eq!(*ui.dock_tab.read(), 5, "active tab should switch to Tarefas (5)");
     }
 
     #[test]

@@ -1478,6 +1478,25 @@ mod workspace_tests {
         assert_eq!((100.0f32).clamp(min_w, max_w), min_w);
         assert_eq!((600.0f32).clamp(min_w, max_w), max_w);
         assert_eq!((300.0f32).clamp(min_w, max_w), 300.0f32);
+
+        // Minimap scale and click-pan center target logic
+        let surf_w = 800.0f64;
+        let surf_h = 600.0f64;
+        let scale = (240.0f64 / surf_w).min(150.0f64 / surf_h);
+        let click_x = 120.0f64;
+        let click_y = 75.0f64;
+        let target_doc_x = (click_x / scale).clamp(0.0, surf_w);
+        let target_doc_y = (click_y / scale).clamp(0.0, surf_h);
+        assert_eq!(target_doc_x, 480.0);
+        assert_eq!(target_doc_y, 300.0);
+
+        let mut camera = shell.view_camera();
+        let expected_pan_x = camera.viewport_width / 2.0 - target_doc_x * camera.zoom;
+        camera.pan_x = expected_pan_x;
+        camera.pan_y = camera.viewport_height / 2.0 - target_doc_y * camera.zoom;
+        shell.set_view_camera(camera);
+        let updated_cam = shell.view_camera();
+        assert!((updated_cam.pan_x - expected_pan_x).abs() < 1e-4);
     }
 
     #[test]
