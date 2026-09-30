@@ -32,14 +32,15 @@ Documentos históricos pré-Freya foram arquivados em `archive/` (`PROJECT_STATE
 - **P1-8 Conflito de Sobrescrita (`OverwriteConflictDialog`)**: Proteção modal contra substituição destrutiva de arquivos existentes (`ptnd.dialog.overwrite_conflict`).
 - **P1-9 Histograma Real de Buffer**: Amostragem e cálculo de bins sobre pixels de objetos raster (`RawRasterImage` Rgba8), com suporte a ajustes de tonalidade e fallback para tokens.
 - **P2-1 Minimap Navigator Interativo (`NavigatorTab`)**: Componente `NavigatorTab` (`ptnd.tab.navigator`) renderizando objetos em baixa resolução, retângulo de viewport dinâmico em coordenadas de documento e navegação pan-by-drag interativa.
+- **P2-2 Validação Numérica Rígida (`numeric.rs`)**: Módulo de validação numérica estrita (`parse_numeric_input`), rejeita-ou-explica com bounds semânticos e mensagens bilíngues, eliminando coerção silenciosa para `0.0`.
 
 ---
 
 ## 3. Próximos Passos (Dossiê V1)
 
-1. **Validação Numérica Rígida (P2 - XS)**: Rejeita-ou-explica, sem `0.0` silencioso em campos numéricos de propriedades/transform.
-2. **Splitters e Layout de Docks (P2 - M)**: Splitter interativo real para painéis laterais.
-3. **i18n EN+pt-BR e Catálogo de Textos (P2 - M)**: Migração de literais restantes para chaves `TextId`.
+1. **Splitters e Layout de Docks (P2 - M)**: Splitter interativo real para painéis laterais.
+2. **i18n EN+pt-BR e Catálogo de Textos (P2 - M)**: Migração de literais restantes para chaves `TextId`.
+3. **Symbols / Styles / Assets Browsing (P2 - M)**: Instâncias e paleta de recursos.
 
 ---
 

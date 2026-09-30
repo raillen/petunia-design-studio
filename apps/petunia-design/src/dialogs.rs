@@ -1626,15 +1626,16 @@ const PROMPT_ERROR: Color = Color::from_rgb(0xE5, 0x6B, 0x6B);
 /// non-numeric or non-finite input with a bilingual message instead of a
 /// silent `0.0` (dossier §13: rejeita-ou-explica).
 pub fn parse_prompt_distance(raw: &str) -> Result<f64, &'static str> {
-    let normalized = raw.trim().replace(',', ".");
-    if normalized.is_empty() {
-        return Err("Digite um valor em pt / Type a value in pt");
-    }
-    normalized
-        .parse::<f64>()
-        .ok()
-        .filter(|v| v.is_finite())
-        .ok_or("Valor inválido: use um número em pt / Invalid value: use a number in pt")
+    petunia_design_foundation::parse_numeric_input(
+        raw,
+        petunia_design_foundation::NumericFieldKind::DistancePt,
+    )
+    .map_err(|err| match err {
+        petunia_design_foundation::NumericParseError::Empty => {
+            "Digite um valor em pt / Type a value in pt"
+        }
+        _ => "Valor inválido: use um número em pt / Invalid value: use a number in pt",
+    })
 }
 
 /// Generic numeric prompt: title + typed value + unit (10.2 `offset_path`).
