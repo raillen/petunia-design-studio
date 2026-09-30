@@ -871,9 +871,9 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.tool.vector.place_image",
         kind: SurfaceKind::Tool,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.tool.place_image",
-        action: None,
+        action: Some("ptnd.action.file.place"),
         shortcut: None,
     },
     SurfaceEntry {
@@ -1279,7 +1279,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.dialog.overwrite_conflict",
         kind: SurfaceKind::Dialog,
         scope: SurfaceScope::V1Required,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.dialog.overwrite",
         action: None,
         shortcut: None,
@@ -1666,6 +1666,14 @@ mod tests {
         assert!(
             surface("ptnd.panel.background_tasks").is_some_and(|e| e.status == SurfaceStatus::Wired),
             "background tasks panel must be wired"
+        );
+        assert!(
+            surface("ptnd.tool.vector.place_image").is_some_and(|e| e.status == SurfaceStatus::Wired && e.action == Some("ptnd.action.file.place")),
+            "place image tool must be wired to file.place"
+        );
+        assert!(
+            surface("ptnd.dialog.overwrite_conflict").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "overwrite conflict dialog must be wired"
         );
     }
 

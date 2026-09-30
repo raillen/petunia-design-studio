@@ -4306,80 +4306,120 @@ fn parse_color_rgb(color_str: &str) -> Option<(f64, f64, f64)> {
     }
 }
 
+fn apply_adjustments_to_rgb(
+    mut r: f64,
+    mut g: f64,
+    mut b: f64,
+    adjustments: &[petunia_design_document::adjustments::AdjustmentItem],
+) -> (f64, f64, f64) {
+    for adj in adjustments {
+        match &adj.kind {
+            petunia_design_document::adjustments::AdjustmentKind::Exposure {
+                exposure,
+                offset,
+                gamma,
+            } => {
+                let exp_mul = 2.0f64.powf(*exposure);
+                let apply_exp = |c: f64| -> f64 {
+                    let norm = (c / 255.0 * exp_mul + offset).clamp(0.0, 1.0);
+                    norm.powf(1.0 / gamma.max(0.01)) * 255.0
+                };
+                r = apply_exp(r);
+                g = apply_exp(g);
+                b = apply_exp(b);
+            }
+            petunia_design_document::adjustments::AdjustmentKind::Levels { master, .. } => {
+                let bp = master.input_black;
+                let wp = master.input_white;
+                let gamma = master.gamma.max(0.01);
+                let out_b = master.output_black;
+                let out_w = master.output_white;
+                let apply_levels = |c: f64| -> f64 {
+                    let norm = ((c - bp) / (wp - bp).max(1.0)).clamp(0.0, 1.0);
+                    let mapped = norm.powf(1.0 / gamma);
+                    out_b + mapped * (out_w - out_b)
+                };
+                r = apply_levels(r);
+                g = apply_levels(g);
+                b = apply_levels(b);
+            }
+            petunia_design_document::adjustments::AdjustmentKind::Hsl { lightness, .. } => {
+                let l_shift = *lightness * 60.0;
+                r = (r + l_shift).clamp(0.0, 255.0);
+                g = (g + l_shift).clamp(0.0, 255.0);
+                b = (b + l_shift).clamp(0.0, 255.0);
+            }
+            petunia_design_document::adjustments::AdjustmentKind::WhiteBalance {
+                temperature,
+                tint,
+            } => {
+                r = (r + *temperature * 35.0).clamp(0.0, 255.0);
+                b = (b - *temperature * 35.0).clamp(0.0, 255.0);
+                g = (g + *tint * 25.0).clamp(0.0, 255.0);
+            }
+            _ => {}
+        }
+    }
+    (r, g, b)
+}
+
 pub fn compute_histogram_bins(
     shell: &PetuniaShell,
     selected_obj: Option<&petunia_design_document::DocumentObject>,
     channel: u8, // 0: RGB, 1: R, 2: G, 3: B, 4: Luma
 ) -> ([f32; 32], u32, u32, u32, u32) {
     let mut centers: Vec<(f64, f64, f64)> = Vec::new();
+    let mut is_raster_sample = false;
 
     if let Some(obj) = selected_obj {
-        let base_rgb = obj
-            .fill
-            .as_deref()
-            .and_then(parse_color_rgb)
-            .or_else(|| obj.stroke.as_deref().and_then(parse_color_rgb))
-            .unwrap_or((140.0, 140.0, 140.0));
-
-        let mut r = base_rgb.0;
-        let mut g = base_rgb.1;
-        let mut b = base_rgb.2;
-
-        if let Some(app) = &obj.appearance {
-            for adj in &app.adjustments {
-                match &adj.kind {
-                    petunia_design_document::adjustments::AdjustmentKind::Exposure {
-                        exposure,
-                        offset,
-                        gamma,
-                    } => {
-                        let exp_mul = 2.0f64.powf(*exposure);
-                        let apply_exp = |c: f64| -> f64 {
-                            let norm = (c / 255.0 * exp_mul + offset).clamp(0.0, 1.0);
-                            norm.powf(1.0 / gamma.max(0.01)) * 255.0
-                        };
-                        r = apply_exp(r);
-                        g = apply_exp(g);
-                        b = apply_exp(b);
+        let mut sampled = Vec::new();
+        if let Some(petunia_design_document::ShapeKind::Image { data, .. }) = &obj.shape {
+            if let Some(bytes) = data.as_deref() {
+                if let Ok(raw_img) = petunia_design_io::import_raster(bytes, 32 * 1024 * 1024) {
+                    if raw_img.format == petunia_design_io::PixelFormat::Rgba8 && !raw_img.data.is_empty() {
+                        let total_pixels = (raw_img.width * raw_img.height) as usize;
+                        let stride = (total_pixels / 500).max(1);
+                        for i in (0..total_pixels).step_by(stride) {
+                            let idx = i * 4;
+                            if idx + 3 < raw_img.data.len() {
+                                let pr = raw_img.data[idx] as f64;
+                                let pg = raw_img.data[idx + 1] as f64;
+                                let pb = raw_img.data[idx + 2] as f64;
+                                let pa = raw_img.data[idx + 3] as f64 / 255.0;
+                                if pa > 0.05 {
+                                    sampled.push((pr, pg, pb));
+                                }
+                            }
+                        }
+                        if !sampled.is_empty() {
+                            is_raster_sample = true;
+                        }
                     }
-                    petunia_design_document::adjustments::AdjustmentKind::Levels {
-                        master, ..
-                    } => {
-                        let bp = master.input_black;
-                        let wp = master.input_white;
-                        let gamma = master.gamma.max(0.01);
-                        let out_b = master.output_black;
-                        let out_w = master.output_white;
-                        let apply_levels = |c: f64| -> f64 {
-                            let norm = ((c - bp) / (wp - bp).max(1.0)).clamp(0.0, 1.0);
-                            let mapped = norm.powf(1.0 / gamma);
-                            out_b + mapped * (out_w - out_b)
-                        };
-                        r = apply_levels(r);
-                        g = apply_levels(g);
-                        b = apply_levels(b);
-                    }
-                    petunia_design_document::adjustments::AdjustmentKind::Hsl {
-                        lightness, ..
-                    } => {
-                        let l_shift = *lightness * 60.0;
-                        r = (r + l_shift).clamp(0.0, 255.0);
-                        g = (g + l_shift).clamp(0.0, 255.0);
-                        b = (b + l_shift).clamp(0.0, 255.0);
-                    }
-                    petunia_design_document::adjustments::AdjustmentKind::WhiteBalance {
-                        temperature,
-                        tint,
-                    } => {
-                        r = (r + *temperature * 35.0).clamp(0.0, 255.0);
-                        b = (b - *temperature * 35.0).clamp(0.0, 255.0);
-                        g = (g + *tint * 25.0).clamp(0.0, 255.0);
-                    }
-                    _ => {}
                 }
             }
         }
-        centers.push((r, g, b));
+
+        if sampled.is_empty() {
+            let base_rgb = obj
+                .fill
+                .as_deref()
+                .and_then(parse_color_rgb)
+                .or_else(|| obj.stroke.as_deref().and_then(parse_color_rgb))
+                .unwrap_or((140.0, 140.0, 140.0));
+            sampled.push(base_rgb);
+        }
+
+        let empty_adj = Vec::new();
+        let adjustments = obj
+            .appearance
+            .as_ref()
+            .map(|a| a.adjustments.as_slice())
+            .unwrap_or(&empty_adj);
+
+        for (r, g, b) in sampled {
+            let (adj_r, adj_g, adj_b) = apply_adjustments_to_rgb(r, g, b, adjustments);
+            centers.push((adj_r, adj_g, adj_b));
+        }
     } else {
         if let Some(session) = shell.bridge.session() {
             if let Some(surf_id) = session.active_surface() {
@@ -4417,12 +4457,17 @@ pub fn compute_histogram_bins(
         total_channel_sum += c;
         total_weight += 1.0;
 
-        let sigma = 24.0;
-        for (i, bin) in raw_bins.iter_mut().enumerate() {
-            let bin_center = (i as f64) * 8.0 + 4.0;
-            let diff = (bin_center - c) / sigma;
-            let weight = (-0.5 * diff * diff).exp();
-            *bin += weight as f32;
+        if is_raster_sample {
+            let bin_idx = ((c / 8.0).floor() as usize).clamp(0, 31);
+            raw_bins[bin_idx] += 1.0;
+        } else {
+            let sigma = 24.0;
+            for (i, bin) in raw_bins.iter_mut().enumerate() {
+                let bin_center = (i as f64) * 8.0 + 4.0;
+                let diff = (bin_center - c) / sigma;
+                let weight = (-0.5 * diff * diff).exp();
+                *bin += weight as f32;
+            }
         }
     }
 
@@ -4983,6 +5028,51 @@ mod tests {
             g_mean_exp > g_mean,
             "Exposure must increase mean channel value"
         );
+
+        // 4. Raster buffer histogram sampling on Image object
+        let img_id = shell.bridge.next_object_id().unwrap();
+        let raw_pixels: Vec<u8> = vec![
+            250, 20, 20, 255, // red pixel
+            250, 20, 20, 255, // red pixel
+            10, 240, 10, 255, // green pixel
+            10, 10, 240, 255, // blue pixel
+        ];
+        let raw_img = petunia_design_io::RawRasterImage::from_rgba8(2, 2, raw_pixels).unwrap();
+        let (png_bytes, _) = petunia_design_io::export_raster(
+            &raw_img,
+            &petunia_design_io::RasterExportOptions::default(),
+        )
+        .unwrap();
+
+        let _ = shell.bridge.submit_all(
+            "Add Image object",
+            vec![
+                Command::CreateObject {
+                    surface: surf_id,
+                    id: img_id,
+                    name: "SampleImage".to_string(),
+                },
+                Command::SetShape {
+                    id: img_id,
+                    shape: Some(ShapeKind::Image {
+                        path: "sample.png".to_string(),
+                        data: Some(png_bytes),
+                    }),
+                },
+            ],
+        );
+
+        let session = shell.bridge.session().unwrap();
+        let surf = session.surface(surf_id).unwrap();
+        let img_obj = surf.objects().iter().find(|o| o.id == img_id).unwrap();
+
+        let (img_bins, img_mean, _, _, _) = compute_histogram_bins(&shell, Some(img_obj), 0);
+        assert_eq!(img_bins.len(), 32);
+        assert!(
+            img_bins.iter().any(|&b| b > 0.0),
+            "Raster sampling must populate bins"
+        );
+        assert!(img_mean > 0);
     }
 
     #[test]

@@ -50,7 +50,7 @@ use crate::chrome::{
 };
 use crate::dialogs::{
     CommandPalette, ConfirmCloseDialog, CustomizeDialog, ExportDialog, NewDocumentDialog,
-    OffsetPathDialog,
+    OffsetPathDialog, OverwriteConflictDialog,
 };
 use crate::ui_state::{ToolRailState, UiShell};
 
@@ -190,6 +190,7 @@ fn app() -> impl IntoElement {
         .child(ExportDialog(ui.clone()))
         .child(ConfirmCloseDialog(ui.clone()))
         .child(OffsetPathDialog(ui.clone()))
+        .child(OverwriteConflictDialog(ui.clone()))
         .child(TooltipOverlay(ui.clone()))
         .on_global_key_down({
             let shell = keyboard_shell;
@@ -1526,7 +1527,8 @@ mod workspace_tests {
                     .child(ExportDialog(ui.clone()))
                     .child(CustomizeDialog(ui.clone()))
                     .child(ConfirmCloseDialog(ui.clone()))
-                    .child(OffsetPathDialog(ui))
+                    .child(OffsetPathDialog(ui.clone()))
+                    .child(OverwriteConflictDialog(ui))
             },
             (800., 600.).into(),
             |_| {},
@@ -1562,6 +1564,12 @@ mod workspace_tests {
         ui.offset_prompt_open.set(false);
         runner.sync_and_update();
 
+        // Toggle OverwriteConflictDialog open and close
+        ui.overwrite_conflict_open.set(true);
+        runner.sync_and_update();
+        ui.overwrite_conflict_open.set(false);
+        runner.sync_and_update();
+
         // Toggle all open simultaneously and close all
         ui.palette_open.set(true);
         ui.new_doc_open.set(true);
@@ -1569,6 +1577,7 @@ mod workspace_tests {
         ui.customize_open.set(true);
         ui.confirm_close_open.set(true);
         ui.offset_prompt_open.set(true);
+        ui.overwrite_conflict_open.set(true);
         runner.sync_and_update();
 
         ui.palette_open.set(false);
@@ -1577,6 +1586,7 @@ mod workspace_tests {
         ui.customize_open.set(false);
         ui.confirm_close_open.set(false);
         ui.offset_prompt_open.set(false);
+        ui.overwrite_conflict_open.set(false);
         runner.sync_and_update();
     }
 

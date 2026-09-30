@@ -304,6 +304,8 @@ pub struct UiShell {
     /// confirmation is about every open document, not one tab.
     pub pending_close: State<Option<usize>>,
     pub offset_prompt_open: State<bool>,
+    pub overwrite_conflict_open: State<bool>,
+    pub overwrite_conflict_path: State<String>,
     pub dock_width: State<f32>,
     pub soft_proof: State<bool>,
     pub channel_view: State<usize>,
@@ -332,6 +334,8 @@ impl PartialEq for UiShell {
             && self.confirm_close_open == other.confirm_close_open
             && self.pending_close == other.pending_close
             && self.offset_prompt_open == other.offset_prompt_open
+            && self.overwrite_conflict_open == other.overwrite_conflict_open
+            && self.overwrite_conflict_path == other.overwrite_conflict_path
             && self.dock_width == other.dock_width
             && self.soft_proof == other.soft_proof
             && self.channel_view == other.channel_view
@@ -367,6 +371,8 @@ impl UiShell {
         confirm_close_open: State<bool>,
         pending_close: State<Option<usize>>,
         offset_prompt_open: State<bool>,
+        overwrite_conflict_open: State<bool>,
+        overwrite_conflict_path: State<String>,
         dock_width: State<f32>,
         soft_proof: State<bool>,
         channel_view: State<usize>,
@@ -393,6 +399,8 @@ impl UiShell {
             confirm_close_open,
             pending_close,
             offset_prompt_open,
+            overwrite_conflict_open,
+            overwrite_conflict_path,
             dock_width,
             soft_proof,
             channel_view,
@@ -457,6 +465,8 @@ impl UiShell {
         let confirm_close_open = use_state(|| false);
         let pending_close = use_state(|| None);
         let offset_prompt_open = use_state(|| false);
+        let overwrite_conflict_open = use_state(|| false);
+        let overwrite_conflict_path = use_state(|| "export.png".to_string());
         let dock_width = use_state(|| 320.0f32);
         let soft_proof = use_state(|| false);
         let channel_view = use_state(|| 0usize);
@@ -482,6 +492,8 @@ impl UiShell {
             confirm_close_open,
             pending_close,
             offset_prompt_open,
+            overwrite_conflict_open,
+            overwrite_conflict_path,
             dock_width,
             soft_proof,
             channel_view,

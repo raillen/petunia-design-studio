@@ -1819,6 +1819,93 @@ impl Component for OffsetPathDialog {
     }
 }
 
+/// Overwrite Conflict Dialog (`ptnd.dialog.overwrite_conflict`).
+///
+/// Prompts the user before destructive overwrite of an existing file (Figma/Photoshop convention).
+#[derive(Clone, PartialEq)]
+pub struct OverwriteConflictDialog(pub UiShell);
+
+impl Component for OverwriteConflictDialog {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        if !(*ui.overwrite_conflict_open.read()) {
+            return rect().width(Size::px(0.)).height(Size::px(0.));
+        }
+        let mut overwrite_open = ui.overwrite_conflict_open;
+        let conflict_path = (*ui.overwrite_conflict_path.read()).clone();
+
+        rect()
+            .position(Position::new_absolute().top(140.))
+            .width(Size::fill())
+            .cross_align(Alignment::Center)
+            .main_align(Alignment::Center)
+            .child(
+                rect()
+                    .direction(Direction::Vertical)
+                    .width(Size::px(420.))
+                    .background(theme::SURFACE_PANEL)
+                    .border(
+                        Border::new()
+                            .fill(theme::SURFACE_CHROME_STRONG)
+                            .width(1.)
+                            .alignment(BorderAlignment::Inner),
+                    )
+                    .padding(Gaps::new_all(theme::SPACE_3))
+                    .spacing(theme::SPACE_2)
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .width(Size::fill())
+                            .main_align(Alignment::SpaceBetween)
+                            .cross_align(Alignment::Center)
+                            .child(
+                                label()
+                                    .text("O arquivo já existe / File already exists")
+                                    .font_size(13.)
+                                    .color(theme::TEXT_PRIMARY),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        overwrite_open.set(false);
+                                    })
+                                    .child(label().text("✕").font_size(11.)),
+                            ),
+                    )
+                    .child(
+                        label()
+                            .text(format!(
+                                "Um arquivo chamado \"{}\" já existe neste local. Deseja substituí-lo?",
+                                conflict_path
+                            ))
+                            .font_size(11.)
+                            .color(theme::TEXT_SECONDARY),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .width(Size::fill())
+                            .main_align(Alignment::End)
+                            .spacing(theme::SPACE_1)
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        overwrite_open.set(false);
+                                    })
+                                    .child(label().text("Cancelar").font_size(11.)),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| {
+                                        overwrite_open.set(false);
+                                    })
+                                    .child(label().text("Substituir / Overwrite").font_size(11.)),
+                            ),
+                    ),
+            )
+    }
+}
+
 #[cfg(test)]
 mod prompt_tests {
     use super::parse_prompt_distance;

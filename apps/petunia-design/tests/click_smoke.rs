@@ -120,6 +120,8 @@ fn mount() -> (
             let confirm_close_open = use_state(|| false);
             let pending_close = use_state(|| None);
             let offset_prompt_open = use_state(|| false);
+            let overwrite_conflict_open = use_state(|| false);
+            let overwrite_conflict_path = use_state(|| "export.png".to_string());
             let dock_width = use_state(|| 240.0f32);
             let soft_proof = use_state(|| false);
             let channel_view = use_state(|| 0usize);
@@ -145,6 +147,8 @@ fn mount() -> (
                 confirm_close_open,
                 pending_close,
                 offset_prompt_open,
+                overwrite_conflict_open,
+                overwrite_conflict_path,
                 dock_width,
                 soft_proof,
                 channel_view,
@@ -489,6 +493,8 @@ fn mount_full() -> FullMount {
             let confirm_close_open = use_state(|| false);
             let pending_close = use_state(|| None);
             let offset_prompt_open = use_state(|| false);
+            let overwrite_conflict_open = use_state(|| false);
+            let overwrite_conflict_path = use_state(|| "export.png".to_string());
             let dock_width = use_state(|| 240.0f32);
             let soft_proof = use_state(|| false);
             let channel_view = use_state(|| 0usize);
@@ -514,6 +520,8 @@ fn mount_full() -> FullMount {
                 confirm_close_open,
                 pending_close,
                 offset_prompt_open,
+                overwrite_conflict_open,
+                overwrite_conflict_path,
                 dock_width,
                 soft_proof,
                 channel_view,
