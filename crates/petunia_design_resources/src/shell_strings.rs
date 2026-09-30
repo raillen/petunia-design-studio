@@ -708,6 +708,11 @@ pub const SHELL_STRINGS: &[ShellString] = &[
         "Inserir imagem",
     ),
     entry(
+        "ptnd.text.tool.place_image.summary",
+        "Place an image file onto the active artboard",
+        "Insira um arquivo de imagem na prancheta ativa",
+    ),
+    entry(
         "ptnd.text.tool.point_transform",
         "Point Transform",
         "Transformar ponto",

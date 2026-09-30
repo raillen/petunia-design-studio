@@ -14,6 +14,7 @@
 use petunia_design_application::menus::{
     self, ActionContext, MenuFamilyModel, MenuItemModel, MenuNodeModel,
 };
+use petunia_design_application::tools::ToolKind;
 use petunia_design_resources::i18n::{Locale, LocalizationService};
 use serde::{Deserialize, Serialize};
 
@@ -205,6 +206,48 @@ pub fn persona_hint_text_id(persona: &str) -> Option<&'static str> {
         }
         petunia_design_application::surfaces::PERSONA_PHOTO => Some("ptnd.text.persona.photo.hint"),
         _ => None,
+    }
+}
+
+/// Localization TextId for the hint shown when a tool becomes active (Ledger M17).
+#[must_use]
+pub fn tool_hint_text_id(tool: ToolKind) -> Option<&'static str> {
+    match tool {
+        ToolKind::Select => Some("ptnd.text.tool.select.summary"),
+        ToolKind::Node => Some("ptnd.text.tool.node.summary"),
+        ToolKind::PointTransform => Some("ptnd.text.tool.point_transform.summary"),
+        ToolKind::Pen => Some("ptnd.text.tool.pen.summary"),
+        ToolKind::Pencil => Some("ptnd.text.tool.pencil.summary"),
+        ToolKind::Corner => Some("ptnd.text.tool.corner.summary"),
+        ToolKind::Contour => Some("ptnd.text.tool.contour.summary"),
+        ToolKind::Perspective => Some("ptnd.text.tool.perspective.summary"),
+        ToolKind::Knife => Some("ptnd.text.tool.knife.summary"),
+        ToolKind::Scissors => Some("ptnd.text.tool.scissors.summary"),
+        ToolKind::Rectangle => Some("ptnd.text.tool.rectangle.summary"),
+        ToolKind::Ellipse => Some("ptnd.text.tool.ellipse.summary"),
+        ToolKind::Polygon => Some("ptnd.text.tool.polygon.summary"),
+        ToolKind::Star => Some("ptnd.text.tool.star.summary"),
+        ToolKind::ShapeBuilder => Some("ptnd.text.tool.shape_builder.summary"),
+        ToolKind::VectorFloodFill => Some("ptnd.text.tool.vector_flood_fill.summary"),
+        ToolKind::ArtisticText => Some("ptnd.text.tool.artistic_text.summary"),
+        ToolKind::FrameText => Some("ptnd.text.tool.frame_text.summary"),
+        ToolKind::Gradient => Some("ptnd.text.tool.gradient.summary"),
+        ToolKind::Transparency => Some("ptnd.text.tool.transparency.summary"),
+        ToolKind::ColorPicker => Some("ptnd.text.tool.eyedropper.summary"),
+        ToolKind::StylePicker => Some("ptnd.text.tool.style_picker.summary"),
+        ToolKind::Artboard => Some("ptnd.text.tool.surface.summary"),
+        ToolKind::Measure => Some("ptnd.text.tool.measure.summary"),
+        ToolKind::Zoom => Some("ptnd.text.tool.zoom.summary"),
+        ToolKind::Hand => Some("ptnd.text.tool.hand.summary"),
+        ToolKind::MarqueeRect => Some("ptnd.text.tool.marquee_rect.summary"),
+        ToolKind::MarqueeEllipse => Some("ptnd.text.tool.marquee_ellipse.summary"),
+        ToolKind::Lasso => Some("ptnd.text.tool.lasso.summary"),
+        ToolKind::SelectionBrush => Some("ptnd.text.tool.selection_brush.summary"),
+        ToolKind::FloodSelect => Some("ptnd.text.tool.flood_select.summary"),
+        ToolKind::PixelPaintBrush => Some("ptnd.text.tool.brush.summary"),
+        ToolKind::PixelEraser => Some("ptnd.text.tool.eraser.summary"),
+        ToolKind::PhotoGradient => Some("ptnd.text.tool.gradient.summary"),
+        ToolKind::Crop => Some("ptnd.text.tool.crop.summary"),
     }
 }
 

@@ -155,6 +155,18 @@ impl PetuniaDesignGuiBridge {
         menu::persona_hint_text_id(persona).map(|id| self.localization.text(id, &self.locale))
     }
 
+    /// The one-line hint describing what the given tool is for in the active locale (Ledger M17).
+    #[must_use]
+    pub fn tool_hint(&self, tool: ToolKind) -> Option<String> {
+        menu::tool_hint_text_id(tool).map(|id| self.localization.text(id, &self.locale))
+    }
+
+    /// Pluralized item count formatted for the active session locale (Ledger M20).
+    #[must_use]
+    pub fn plural_items(&self, count: usize) -> String {
+        self.localization.plural_items(count, &self.locale)
+    }
+
     /// The localization service resolving `ptnd.text.*` ids.
     #[must_use]
     pub fn localization(&self) -> &LocalizationService {

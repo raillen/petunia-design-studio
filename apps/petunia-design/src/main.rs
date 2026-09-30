@@ -836,11 +836,13 @@ impl Component for StatusBar {
         // A hovered control explains itself here: tooltips live in the status
         // bar so buttons stay exactly where the registry put them.
         let hovered = self.0.hovered.read().clone();
+        let active_tool = *self.0.active_tool.read();
         let hint = hovered.map_or_else(
             || {
                 shell_ref
                     .bridge
-                    .persona_hint(shell_ref.bridge.persona())
+                    .tool_hint(active_tool)
+                    .or_else(|| shell_ref.bridge.persona_hint(shell_ref.bridge.persona()))
                     .unwrap_or_default()
             },
             |target| {
@@ -1487,6 +1489,37 @@ mod workspace_tests {
         shell.set_view_camera(camera);
         let updated_cam = shell.view_camera();
         assert!((updated_cam.pan_x - expected_pan_x).abs() < 1e-4);
+    }
+
+    #[test]
+    fn status_bar_tool_hints_resolve_in_both_locales_and_pluralize() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        shell.new_document("HintsDoc").expect("doc opens");
+
+        // Tool hint in default EnUs
+        assert_eq!(
+            shell.bridge.tool_hint(ToolKind::Select).as_deref(),
+            Some("Select and transform objects")
+        );
+        assert_eq!(
+            shell.bridge.tool_hint(ToolKind::Pen).as_deref(),
+            Some("Build precise Bézier paths")
+        );
+        assert_eq!(shell.bridge.plural_items(1), "1 item");
+        assert_eq!(shell.bridge.plural_items(4), "4 items");
+
+        // Switch to pt-BR
+        shell.bridge.set_locale(petunia_design_shell::bridge::Locale::PtBr);
+        assert_eq!(
+            shell.bridge.tool_hint(ToolKind::Select).as_deref(),
+            Some("Selecione e transforme objetos")
+        );
+        assert_eq!(
+            shell.bridge.tool_hint(ToolKind::Pen).as_deref(),
+            Some("Construa caminhos Bézier precisos")
+        );
+        assert_eq!(shell.bridge.plural_items(1), "1 item");
+        assert_eq!(shell.bridge.plural_items(4), "4 itens");
     }
 
     #[test]

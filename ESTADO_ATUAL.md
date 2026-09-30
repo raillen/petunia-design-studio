@@ -35,14 +35,15 @@ Documentos históricos pré-Freya foram arquivados em `archive/` (`PROJECT_STATE
 - **P2-2 Validação Numérica Rígida (`numeric.rs`)**: Módulo de validação numérica estrita (`parse_numeric_input`), rejeita-ou-explica com bounds semânticos e mensagens bilíngues, eliminando coerção silenciosa para `0.0`.
 - **P2-3 Docks Flexíveis & Splitters Reais (`LeftDock`, `BottomDock`)**: Doca esquerda (`ptnd.surface.dock.left`) e doca inferior (`ptnd.surface.dock.bottom`) promovidas a `Wired`, com splitters verticais e horizontais baseados no padrão `Portal`, persistência de dimensões/abas, toggles na `StatusBar` e fechamento modal.
 - **P2-4 Assets & Symbols Browsing (`AssetsTab`, `SymbolsTab`)**: Painel de ativos do documento (`ptnd.panel.assets`) com listagem e importação (`file.place`), e biblioteca de componentes e formas com inserção direta via `Command`.
+- **P2-5 i18n & Hints de Ferramenta (`tool_hint`, `plural_items`)**: Mapeamento completo de hints de ferramentas para o catálogo bilíngue en-US/pt-BR (`SHELL_STRINGS`), pluralização semântica de itens (M20) e feedback contextual em tempo real no `StatusBar`.
 
 ---
 
 ## 3. Próximos Passos (Dossiê V1)
 
-1. **i18n EN+pt-BR e Catálogo de Textos (P2 - M)**: Migração de literais restantes para chaves `TextId`.
-2. **Estabilizador Live (StreamLine + velocidade) (P2 - M)**: Suavização móvel e sensibilidade para traço livre.
-3. **Clipboard / Portas Headless (P2 - S)**: Suporte a copiar/colar de objetos entre sessões.
+1. **Estabilizador Live (StreamLine + velocidade) (P2 - M)**: Suavização móvel e sensibilidade para traço livre.
+2. **Clipboard / Portas Headless (P2 - S)**: Suporte a copiar/colar de objetos entre sessões.
+3. **Preferences / Settings Window (P2 - M)**: Gestão de configurações e gerações de ferramenta.
 
 ---
 
