@@ -125,6 +125,12 @@ fn mount() -> (
             let dock_width = use_state(|| 240.0f32);
             let soft_proof = use_state(|| false);
             let channel_view = use_state(|| 0usize);
+            let left_dock_open = use_state(|| false);
+            let left_dock_width = use_state(|| 240.0f32);
+            let left_dock_tab = use_state(|| 0usize);
+            let bottom_dock_open = use_state(|| false);
+            let bottom_dock_height = use_state(|| 160.0f32);
+            let bottom_dock_tab = use_state(|| 0usize);
             let ui = UiShell::new(
                 shell,
                 open_family,
@@ -152,6 +158,12 @@ fn mount() -> (
                 dock_width,
                 soft_proof,
                 channel_view,
+                left_dock_open,
+                left_dock_width,
+                left_dock_tab,
+                bottom_dock_open,
+                bottom_dock_height,
+                bottom_dock_tab,
             );
             seen_hook.replace(Some((shell, open_family, customize_open)));
             AppChrome(ui)
@@ -498,6 +510,12 @@ fn mount_full() -> FullMount {
             let dock_width = use_state(|| 240.0f32);
             let soft_proof = use_state(|| false);
             let channel_view = use_state(|| 0usize);
+            let left_dock_open = use_state(|| false);
+            let left_dock_width = use_state(|| 240.0f32);
+            let left_dock_tab = use_state(|| 0usize);
+            let bottom_dock_open = use_state(|| false);
+            let bottom_dock_height = use_state(|| 160.0f32);
+            let bottom_dock_tab = use_state(|| 0usize);
             let ui = UiShell::new(
                 shell,
                 open_family,
@@ -525,6 +543,12 @@ fn mount_full() -> FullMount {
                 dock_width,
                 soft_proof,
                 channel_view,
+                left_dock_open,
+                left_dock_width,
+                left_dock_tab,
+                bottom_dock_open,
+                bottom_dock_height,
+                bottom_dock_tab,
             );
             seen_hook.replace(Some((shell, open_family, customize_open, active_tool)));
             AppChrome(ui)

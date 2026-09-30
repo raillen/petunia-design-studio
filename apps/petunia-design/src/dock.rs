@@ -4714,6 +4714,626 @@ fn channel_button(
         }))
 }
 
+/// Draggable splitter between Workspace and RightDock.
+#[derive(Clone, PartialEq)]
+pub struct DockSplitter(pub UiShell);
+
+impl Component for DockSplitter {
+    fn render(&self) -> impl IntoElement {
+        let is_dragging = use_state(|| false);
+        let drag_start_x = use_state(|| 0.0f64);
+        let drag_start_width = use_state(|| 240.0f32);
+        let dock_width = self.0.dock_width;
+        let dragging_val = *is_dragging.read();
+
+        let splitter_bar = rect()
+            .width(Size::px(4.))
+            .height(Size::fill())
+            .background(if dragging_val {
+                theme::ACCENT_BLOOM
+            } else {
+                theme::SURFACE_CHROME_STRONG
+            })
+            .cursor(CursorIcon::EwResize)
+            .on_mouse_down({
+                let mut is_dragging = is_dragging;
+                let mut drag_start_x = drag_start_x;
+                let mut drag_start_width = drag_start_width;
+                move |event: Event<MouseEventData>| {
+                    is_dragging.set(true);
+                    drag_start_x.set(event.global_location.x);
+                    drag_start_width.set(*dock_width.peek());
+                }
+            });
+
+        if dragging_val {
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::px(4.))
+                .height(Size::fill())
+                .child(splitter_bar)
+                .child(
+                    Portal::new("dock-splitter-drag")
+                        .width(Size::px(0.))
+                        .height(Size::px(0.))
+                        .child(
+                            rect()
+                                .position(Position::new_absolute().top(0.).left(0.))
+                                .width(Size::fill())
+                                .height(Size::fill())
+                                .cursor(CursorIcon::EwResize)
+                                .on_mouse_move({
+                                    let mut dock_width = dock_width;
+                                    move |event: Event<MouseEventData>| {
+                                        let delta = *drag_start_x.read() - event.global_location.x;
+                                        let new_w = (*drag_start_width.read() + delta as f32)
+                                            .clamp(180.0, 520.0);
+                                        dock_width.set(new_w);
+                                    }
+                                })
+                                .on_mouse_up({
+                                    let mut is_dragging = is_dragging;
+                                    move |_| {
+                                        is_dragging.set(false);
+                                    }
+                                }),
+                        ),
+                )
+        } else {
+            rect()
+                .width(Size::px(4.))
+                .height(Size::fill())
+                .child(splitter_bar)
+        }
+    }
+}
+
+/// Draggable vertical splitter between LeftDock and Center area.
+#[derive(Clone, PartialEq)]
+pub struct LeftDockSplitter(pub UiShell);
+
+impl Component for LeftDockSplitter {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        if !*ui.left_dock_open.read() {
+            return rect().width(Size::px(0.)).height(Size::px(0.));
+        }
+
+        let is_dragging = use_state(|| false);
+        let drag_start_x = use_state(|| 0.0f64);
+        let drag_start_width = use_state(|| 240.0f32);
+        let left_dock_width = ui.left_dock_width;
+        let dragging_val = *is_dragging.read();
+
+        let splitter_bar = rect()
+            .width(Size::px(4.))
+            .height(Size::fill())
+            .background(if dragging_val {
+                theme::ACCENT_BLOOM
+            } else {
+                theme::SURFACE_CHROME_STRONG
+            })
+            .cursor(CursorIcon::EwResize)
+            .on_mouse_down({
+                let mut is_dragging = is_dragging;
+                let mut drag_start_x = drag_start_x;
+                let mut drag_start_width = drag_start_width;
+                move |event: Event<MouseEventData>| {
+                    is_dragging.set(true);
+                    drag_start_x.set(event.global_location.x);
+                    drag_start_width.set(*left_dock_width.peek());
+                }
+            });
+
+        if dragging_val {
+            rect()
+                .direction(Direction::Horizontal)
+                .width(Size::px(4.))
+                .height(Size::fill())
+                .child(splitter_bar)
+                .child(
+                    Portal::new("left-dock-splitter-drag")
+                        .width(Size::px(0.))
+                        .height(Size::px(0.))
+                        .child(
+                            rect()
+                                .position(Position::new_absolute().top(0.).left(0.))
+                                .width(Size::fill())
+                                .height(Size::fill())
+                                .cursor(CursorIcon::EwResize)
+                                .on_mouse_move({
+                                    let mut left_dock_width = left_dock_width;
+                                    move |event: Event<MouseEventData>| {
+                                        let delta = event.global_location.x - *drag_start_x.read();
+                                        let new_w = (*drag_start_width.read() + delta as f32)
+                                            .clamp(160.0, 480.0);
+                                        left_dock_width.set(new_w);
+                                    }
+                                })
+                                .on_mouse_up({
+                                    let mut is_dragging = is_dragging;
+                                    move |_| {
+                                        is_dragging.set(false);
+                                    }
+                                }),
+                        ),
+                )
+        } else {
+            rect()
+                .width(Size::px(4.))
+                .height(Size::fill())
+                .child(splitter_bar)
+        }
+    }
+}
+
+/// Draggable horizontal splitter between Workspace and BottomDock.
+#[derive(Clone, PartialEq)]
+pub struct BottomDockSplitter(pub UiShell);
+
+impl Component for BottomDockSplitter {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        if !*ui.bottom_dock_open.read() {
+            return rect().width(Size::px(0.)).height(Size::px(0.));
+        }
+
+        let is_dragging = use_state(|| false);
+        let drag_start_y = use_state(|| 0.0f64);
+        let drag_start_height = use_state(|| 160.0f32);
+        let bottom_dock_height = ui.bottom_dock_height;
+        let dragging_val = *is_dragging.read();
+
+        let splitter_bar = rect()
+            .width(Size::fill())
+            .height(Size::px(4.))
+            .background(if dragging_val {
+                theme::ACCENT_BLOOM
+            } else {
+                theme::SURFACE_CHROME_STRONG
+            })
+            .cursor(CursorIcon::NsResize)
+            .on_mouse_down({
+                let mut is_dragging = is_dragging;
+                let mut drag_start_y = drag_start_y;
+                let mut drag_start_height = drag_start_height;
+                move |event: Event<MouseEventData>| {
+                    is_dragging.set(true);
+                    drag_start_y.set(event.global_location.y);
+                    drag_start_height.set(*bottom_dock_height.peek());
+                }
+            });
+
+        if dragging_val {
+            rect()
+                .direction(Direction::Vertical)
+                .width(Size::fill())
+                .height(Size::px(4.))
+                .child(splitter_bar)
+                .child(
+                    Portal::new("bottom-dock-splitter-drag")
+                        .width(Size::px(0.))
+                        .height(Size::px(0.))
+                        .child(
+                            rect()
+                                .position(Position::new_absolute().top(0.).left(0.))
+                                .width(Size::fill())
+                                .height(Size::fill())
+                                .cursor(CursorIcon::NsResize)
+                                .on_mouse_move({
+                                    let mut bottom_dock_height = bottom_dock_height;
+                                    move |event: Event<MouseEventData>| {
+                                        let delta = *drag_start_y.read() - event.global_location.y;
+                                        let new_h = (*drag_start_height.read() + delta as f32)
+                                            .clamp(80.0, 420.0);
+                                        bottom_dock_height.set(new_h);
+                                    }
+                                })
+                                .on_mouse_up({
+                                    let mut is_dragging = is_dragging;
+                                    move |_| {
+                                        is_dragging.set(false);
+                                    }
+                                }),
+                        ),
+                )
+        } else {
+            rect()
+                .width(Size::fill())
+                .height(Size::px(4.))
+                .child(splitter_bar)
+        }
+    }
+}
+
+/// The left dock surface containing Assets & Symbol libraries.
+#[derive(Clone, PartialEq)]
+pub struct LeftDock(pub UiShell);
+
+impl Component for LeftDock {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        if !*ui.left_dock_open.read() {
+            return rect().width(Size::px(0.)).height(Size::px(0.));
+        }
+
+        let mut left_dock_tab = ui.left_dock_tab;
+        let active_tab = *left_dock_tab.read();
+        let dock_w = *ui.left_dock_width.read();
+        let mut left_dock_open = ui.left_dock_open;
+
+        rect()
+            .direction(Direction::Vertical)
+            .content(Content::Flex)
+            .width(Size::px(dock_w))
+            .height(Size::fill())
+            .background(theme::SURFACE_PANEL)
+            .border(
+                Border::new()
+                    .fill(theme::SURFACE_CHROME_STRONG)
+                    .width(1.)
+                    .alignment(BorderAlignment::Inner),
+            )
+            .child(
+                // Tab Header Bar
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .height(Size::px(34.))
+                    .background(theme::SURFACE_CHROME)
+                    .cross_align(Alignment::Center)
+                    .main_align(Alignment::SpaceBetween)
+                    .padding(Gaps::new(0., theme::SPACE_1, 0., theme::SPACE_1))
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .spacing(theme::SPACE_1)
+                            .cross_align(Alignment::Center)
+                            .child(tab_button(ui, "Ativos", 0, active_tab == 0, &mut left_dock_tab))
+                            .child(tab_button(ui, "Símbolos", 1, active_tab == 1, &mut left_dock_tab)),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press(move |_| left_dock_open.set(false))
+                            .child(label().text("✕").font_size(11.).color(theme::TEXT_TERTIARY)),
+                    ),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Vertical)
+                    .content(Content::Flex)
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .padding(Gaps::new(theme::SPACE_2, theme::SPACE_2, theme::SPACE_2, theme::SPACE_2))
+                    .child(match active_tab {
+                        0 => AssetsTab(ui.clone()).into_element(),
+                        _ => SymbolsTab(ui.clone()).into_element(),
+                    }),
+            )
+    }
+}
+
+/// Assets panel tab: lists placed images and project assets.
+#[derive(Clone, PartialEq)]
+pub struct AssetsTab(pub UiShell);
+
+impl Component for AssetsTab {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        let snapshot = ui.shell.read().canvas_snapshot();
+        let image_assets: Vec<_> = snapshot
+            .objects
+            .iter()
+            .filter(|o| matches!(o.shape.as_deref(), Some(ShapeKind::Image { .. })))
+            .collect();
+        let mut shell_for_place = ui.shell;
+
+        ScrollView::new()
+            .child(
+                rect()
+                    .direction(Direction::Vertical)
+                    .width(Size::fill())
+                    .spacing(theme::SPACE_2)
+                    .child(section_header("ATIVOS DO DOCUMENTO"))
+                    .child(
+                        Button::new()
+                            .on_press(move |_| {
+                                run_action_token(&mut shell_for_place.write(), "ptnd.action.file.place");
+                            })
+                            .child(
+                                rect()
+                                    .direction(Direction::Horizontal)
+                                    .padding(Gaps::new(4., 8., 4., 8.))
+                                    .background(theme::SURFACE_CHROME_STRONG)
+                                    .corner_radius(4.0)
+                                    .cross_align(Alignment::Center)
+                                    .child(
+                                        label()
+                                            .text("+ Importar Imagem (file.place)")
+                                            .font_size(11.)
+                                            .color(theme::ACCENT_BLOOM),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        label()
+                            .text(format!("Imagens posicionadas: {}", image_assets.len()))
+                            .font_size(11.)
+                            .color(theme::TEXT_SECONDARY),
+                    )
+                    .children(image_assets.iter().map(|img| {
+                        let bounds = img.world_bounds;
+                        let w = bounds[2] - bounds[0];
+                        let h = bounds[3] - bounds[1];
+                        rect()
+                            .direction(Direction::Vertical)
+                            .padding(Gaps::new(4., 6., 4., 6.))
+                            .background(theme::SURFACE_CHROME)
+                            .corner_radius(4.0)
+                            .child(
+                                label()
+                                    .text(format!("Imagem #{}", img.id))
+                                    .font_size(11.)
+                                    .color(theme::TEXT_PRIMARY),
+                            )
+                            .child(
+                                label()
+                                    .text(format!("{:.0} x {:.0} pt", w, h))
+                                    .font_size(10.)
+                                    .color(theme::TEXT_TERTIARY),
+                            )
+                            .into_element()
+                    })),
+            )
+    }
+}
+
+/// Symbols & component templates tab.
+#[derive(Clone, PartialEq)]
+pub struct SymbolsTab(pub UiShell);
+
+impl Component for SymbolsTab {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        let shell = ui.shell;
+
+        ScrollView::new()
+            .child(
+                rect()
+                    .direction(Direction::Vertical)
+                    .width(Size::fill())
+                    .spacing(theme::SPACE_2)
+                    .child(section_header("BIBLIOTECA DE FORMAS"))
+                    .child(symbol_preset_item(
+                        shell,
+                        "Retângulo Básico",
+                        "200x150 pt",
+                        ShapeKind::Rectangle { corner_radii: [0.0; 4] },
+                        [50.0, 50.0, 250.0, 200.0],
+                        "ptnd.blue/500",
+                    ))
+                    .child(symbol_preset_item(
+                        shell,
+                        "Cartão UI",
+                        "240x140 pt · r=8",
+                        ShapeKind::Rectangle { corner_radii: [8.0; 4] },
+                        [50.0, 50.0, 290.0, 190.0],
+                        "ptnd.gray/900",
+                    ))
+                    .child(symbol_preset_item(
+                        shell,
+                        "Círculo / Avatar",
+                        "100x100 pt",
+                        ShapeKind::Ellipse,
+                        [50.0, 50.0, 150.0, 150.0],
+                        "ptnd.teal/500",
+                    ))
+                    .child(symbol_preset_item(
+                        shell,
+                        "Estrela 5 Pontas",
+                        "120x120 pt",
+                        ShapeKind::Star { points: 5, inner_ratio: 0.5 },
+                        [50.0, 50.0, 170.0, 170.0],
+                        "ptnd.purple/500",
+                    )),
+            )
+    }
+}
+
+fn symbol_preset_item(
+    shell: State<PetuniaShell>,
+    name: &'static str,
+    subtitle: &'static str,
+    shape: ShapeKind,
+    bounds: [f64; 4],
+    fill: &'static str,
+) -> impl IntoElement {
+    let mut shell_for_insert = shell;
+    let shape_clone = shape;
+    rect()
+        .direction(Direction::Horizontal)
+        .width(Size::fill())
+        .main_align(Alignment::SpaceBetween)
+        .cross_align(Alignment::Center)
+        .padding(Gaps::new(4., 6., 4., 6.))
+        .background(theme::SURFACE_CHROME)
+        .corner_radius(4.0)
+        .child(
+            rect()
+                .direction(Direction::Vertical)
+                .child(label().text(name).font_size(11.).color(theme::TEXT_PRIMARY))
+                .child(label().text(subtitle).font_size(10.).color(theme::TEXT_TERTIARY)),
+        )
+        .child(
+            Button::new()
+                .on_press(move |_| {
+                    let mut s = shell_for_insert.write();
+                    if let Some(surf) = s.bridge.active_surface() {
+                        if let Ok(obj_id) = s.bridge.next_object_id() {
+                            let msg = format!("Insert {}", name);
+                            let _ = s.bridge.submit_all(
+                                &msg,
+                                vec![
+                                    Command::CreateObject {
+                                        surface: surf,
+                                        id: obj_id,
+                                        name: name.to_string(),
+                                    },
+                                    Command::SetShape {
+                                        id: obj_id,
+                                        shape: Some(shape_clone.clone()),
+                                    },
+                                    Command::SetBounds {
+                                        id: obj_id,
+                                        bounds: Some(bounds),
+                                        rotation: 0.0,
+                                    },
+                                    Command::SetFill {
+                                        id: obj_id,
+                                        fill: Some(fill.to_string()),
+                                    },
+                                ],
+                            );
+                        }
+                    }
+                })
+                .child(
+                    rect()
+                        .padding(Gaps::new(2., 6., 2., 6.))
+                        .background(theme::SURFACE_CHROME_STRONG)
+                        .corner_radius(4.0)
+                        .child(label().text("Inserir").font_size(10.).color(theme::ACCENT_BLOOM)),
+                ),
+        )
+}
+
+/// The bottom dock surface containing Background Tasks & Diagnostics.
+#[derive(Clone, PartialEq)]
+pub struct BottomDock(pub UiShell);
+
+impl Component for BottomDock {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        if !*ui.bottom_dock_open.read() {
+            return rect().width(Size::px(0.)).height(Size::px(0.));
+        }
+
+        let mut bottom_dock_tab = ui.bottom_dock_tab;
+        let active_tab = *bottom_dock_tab.read();
+        let dock_h = *ui.bottom_dock_height.read();
+        let mut bottom_dock_open = ui.bottom_dock_open;
+
+        rect()
+            .direction(Direction::Vertical)
+            .content(Content::Flex)
+            .width(Size::fill())
+            .height(Size::px(dock_h))
+            .background(theme::SURFACE_PANEL)
+            .border(
+                Border::new()
+                    .fill(theme::SURFACE_CHROME_STRONG)
+                    .width(1.)
+                    .alignment(BorderAlignment::Inner),
+            )
+            .child(
+                // Tab Header Bar
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .height(Size::px(30.))
+                    .background(theme::SURFACE_CHROME)
+                    .cross_align(Alignment::Center)
+                    .main_align(Alignment::SpaceBetween)
+                    .padding(Gaps::new(0., theme::SPACE_2, 0., theme::SPACE_2))
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .spacing(theme::SPACE_1)
+                            .cross_align(Alignment::Center)
+                            .child(tab_button(ui, "Tarefas", 0, active_tab == 0, &mut bottom_dock_tab))
+                            .child(tab_button(ui, "Diagnóstico", 1, active_tab == 1, &mut bottom_dock_tab)),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press(move |_| bottom_dock_open.set(false))
+                            .child(label().text("✕").font_size(11.).color(theme::TEXT_TERTIARY)),
+                    ),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Vertical)
+                    .content(Content::Flex)
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .padding(Gaps::new(theme::SPACE_1, theme::SPACE_2, theme::SPACE_1, theme::SPACE_2))
+                    .child(match active_tab {
+                        0 => BackgroundTasksPanel(ui.clone()).into_element(),
+                        _ => DiagnosticsTab(ui.clone()).into_element(),
+                    }),
+            )
+    }
+}
+
+/// Diagnostics & session preflight tab for BottomDock.
+#[derive(Clone, PartialEq)]
+pub struct DiagnosticsTab(pub UiShell);
+
+impl Component for DiagnosticsTab {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        let shell_ref = ui.shell.read();
+        let snapshot = shell_ref.canvas_snapshot();
+        let cam = shell_ref.view_camera();
+        let session = shell_ref.bridge.session();
+        let title = session.map_or("Sem Documento", |s| s.title());
+        let rev = session.map_or(0, |s| s.saved_revision());
+        let dirty = shell_ref.bridge.is_dirty();
+        let surf_id = shell_ref.bridge.active_surface().map_or("Nenhum".to_string(), |id| id.to_string());
+        let obj_count = snapshot.objects.len();
+
+        ScrollView::new()
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .width(Size::fill())
+                    .spacing(theme::SPACE_3)
+                    .padding(Gaps::new(theme::SPACE_1, theme::SPACE_2, theme::SPACE_1, theme::SPACE_2))
+                    .child(
+                        rect()
+                            .direction(Direction::Vertical)
+                            .spacing(theme::SPACE_1)
+                            .child(label().text("DOCUMENTO").font_size(10.).color(theme::TEXT_TERTIARY))
+                            .child(label().text(format!("{title} (rev: {rev})")).font_size(11.).color(theme::TEXT_PRIMARY))
+                            .child(label().text(if dirty { "Modificado (não salvo)" } else { "Salvo / Sem alterações" }).font_size(10.).color(if dirty { theme::ACCENT_BLOOM } else { theme::TEXT_SECONDARY })),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Vertical)
+                            .spacing(theme::SPACE_1)
+                            .child(label().text("SUPERFÍCIE & OBJETOS").font_size(10.).color(theme::TEXT_TERTIARY))
+                            .child(label().text(format!("Ativa: {surf_id}")).font_size(11.).color(theme::TEXT_PRIMARY))
+                            .child(label().text(format!("Total de objetos: {obj_count}")).font_size(10.).color(theme::TEXT_SECONDARY)),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Vertical)
+                            .spacing(theme::SPACE_1)
+                            .child(label().text("VIEWPORT & CÂMERA").font_size(10.).color(theme::TEXT_TERTIARY))
+                            .child(label().text(format!("{:.0}% zoom", cam.zoom * 100.0)).font_size(11.).color(theme::TEXT_PRIMARY))
+                            .child(label().text(format!("Pan: ({:.1}, {:.1})", cam.pan_x, cam.pan_y)).font_size(10.).color(theme::TEXT_SECONDARY)),
+                    )
+                    .child(
+                        rect()
+                            .direction(Direction::Vertical)
+                            .spacing(theme::SPACE_1)
+                            .child(label().text("FERRAMENTA & PERSONA").font_size(10.).color(theme::TEXT_TERTIARY))
+                            .child(label().text(format!("{:?}", *ui.active_tool.read())).font_size(11.).color(theme::TEXT_PRIMARY))
+                            .child(label().text(ui.persona.read().clone()).font_size(10.).color(theme::TEXT_SECONDARY)),
+                    ),
+            )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5574,5 +6194,136 @@ mod tests {
         );
         shell.bridge.jobs().clear_completed();
         assert_eq!(shell.bridge.jobs().list_jobs().len(), 0);
+    }
+
+    #[test]
+    fn left_dock_and_splitter_open_close_and_symbol_insertion() {
+        let seen: Rc<RefCell<Option<UiShell>>> = Rc::new(RefCell::new(None));
+        let seen_hook = seen.clone();
+
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                let shell = use_state(|| {
+                    let mut s = PetuniaShell::new(1000., 700.);
+                    s.new_document("LeftDockDoc").expect("doc opens");
+                    s
+                });
+                let mut ui = UiShell::fresh(shell);
+                ui.left_dock_open.set(true);
+                seen_hook.replace(Some(ui.clone()));
+                rect()
+                    .direction(Direction::Horizontal)
+                    .child(LeftDock(ui.clone()))
+                    .child(LeftDockSplitter(ui))
+            },
+            (400., 700.).into(),
+            |_| {},
+            1.,
+        );
+
+        runner.sync_and_update();
+        let mut ui = seen.borrow().clone().unwrap();
+        assert!(*ui.left_dock_open.read(), "Left dock is open");
+        assert_eq!(*ui.left_dock_tab.read(), 0, "Default tab is Ativos (0)");
+
+        // Switch to Símbolos (1)
+        let mut left_tab = ui.left_dock_tab;
+        left_tab.set(1);
+        runner.sync_and_update();
+        assert_eq!(*ui.left_dock_tab.read(), 1, "Tab switched to Símbolos (1)");
+
+        // Insert symbol preset into document
+        let surf_id = ui.shell.read().bridge.active_surface().unwrap();
+        let obj_id = ui.shell.write().bridge.next_object_id().unwrap();
+        let _ = ui.shell.write().bridge.submit_all(
+            "Insert Retângulo Básico",
+            vec![
+                Command::CreateObject {
+                    surface: surf_id,
+                    id: obj_id,
+                    name: "Retângulo Básico".to_string(),
+                },
+                Command::SetShape {
+                    id: obj_id,
+                    shape: Some(ShapeKind::Rectangle { corner_radii: [0.0; 4] }),
+                },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([50.0, 50.0, 250.0, 200.0]),
+                    rotation: 0.0,
+                },
+                Command::SetFill {
+                    id: obj_id,
+                    fill: Some("ptnd.blue/500".to_string()),
+                },
+            ],
+        );
+
+        // Verify shape exists on surface
+        {
+            let shell_ref = ui.shell.read();
+            let session = shell_ref.bridge.session().unwrap();
+            let surf = session.surface(surf_id).unwrap();
+            let obj = surf.objects().iter().find(|o| o.id == obj_id).expect("symbol inserted");
+            assert_eq!(obj.name, "Retângulo Básico");
+            assert_eq!(obj.fill.as_deref(), Some("ptnd.blue/500"));
+        }
+
+        // Left dock width clamping
+        let mut dock_w = ui.left_dock_width;
+        dock_w.set((100.0f32).clamp(160.0, 480.0));
+        assert_eq!(*ui.left_dock_width.read(), 160.0);
+        dock_w.set((600.0f32).clamp(160.0, 480.0));
+        assert_eq!(*ui.left_dock_width.read(), 480.0);
+    }
+
+    #[test]
+    fn bottom_dock_and_splitter_open_close_and_diagnostics() {
+        let seen: Rc<RefCell<Option<UiShell>>> = Rc::new(RefCell::new(None));
+        let seen_hook = seen.clone();
+
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                let shell = use_state(|| {
+                    let mut s = PetuniaShell::new(1000., 700.);
+                    s.new_document("BottomDockDoc").expect("doc opens");
+                    s
+                });
+                let mut ui = UiShell::fresh(shell);
+                ui.bottom_dock_open.set(true);
+                seen_hook.replace(Some(ui.clone()));
+                rect()
+                    .direction(Direction::Vertical)
+                    .child(BottomDockSplitter(ui.clone()))
+                    .child(BottomDock(ui))
+            },
+            (1000., 300.).into(),
+            |_| {},
+            1.,
+        );
+
+        runner.sync_and_update();
+        let ui = seen.borrow().clone().unwrap();
+        assert!(*ui.bottom_dock_open.read(), "Bottom dock is open");
+        assert_eq!(*ui.bottom_dock_tab.read(), 0, "Default tab is Tarefas (0)");
+
+        // Switch to Diagnóstico (1)
+        let mut bot_tab = ui.bottom_dock_tab;
+        bot_tab.set(1);
+        runner.sync_and_update();
+        assert_eq!(*ui.bottom_dock_tab.read(), 1, "Tab switched to Diagnóstico (1)");
+
+        // Bottom dock height clamping
+        let mut dock_h = ui.bottom_dock_height;
+        dock_h.set((50.0f32).clamp(80.0, 420.0));
+        assert_eq!(*ui.bottom_dock_height.read(), 80.0);
+        dock_h.set((500.0f32).clamp(80.0, 420.0));
+        assert_eq!(*ui.bottom_dock_height.read(), 420.0);
+
+        // Close bottom dock
+        let mut open = ui.bottom_dock_open;
+        open.set(false);
+        runner.sync_and_update();
+        assert!(!*ui.bottom_dock_open.read(), "Bottom dock closed successfully");
     }
 }

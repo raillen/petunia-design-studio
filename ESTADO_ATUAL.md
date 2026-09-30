@@ -33,14 +33,16 @@ Documentos históricos pré-Freya foram arquivados em `archive/` (`PROJECT_STATE
 - **P1-9 Histograma Real de Buffer**: Amostragem e cálculo de bins sobre pixels de objetos raster (`RawRasterImage` Rgba8), com suporte a ajustes de tonalidade e fallback para tokens.
 - **P2-1 Minimap Navigator Interativo (`NavigatorTab`)**: Componente `NavigatorTab` (`ptnd.tab.navigator`) renderizando objetos em baixa resolução, retângulo de viewport dinâmico em coordenadas de documento e navegação pan-by-drag interativa.
 - **P2-2 Validação Numérica Rígida (`numeric.rs`)**: Módulo de validação numérica estrita (`parse_numeric_input`), rejeita-ou-explica com bounds semânticos e mensagens bilíngues, eliminando coerção silenciosa para `0.0`.
+- **P2-3 Docks Flexíveis & Splitters Reais (`LeftDock`, `BottomDock`)**: Doca esquerda (`ptnd.surface.dock.left`) e doca inferior (`ptnd.surface.dock.bottom`) promovidas a `Wired`, com splitters verticais e horizontais baseados no padrão `Portal`, persistência de dimensões/abas, toggles na `StatusBar` e fechamento modal.
+- **P2-4 Assets & Symbols Browsing (`AssetsTab`, `SymbolsTab`)**: Painel de ativos do documento (`ptnd.panel.assets`) com listagem e importação (`file.place`), e biblioteca de componentes e formas com inserção direta via `Command`.
 
 ---
 
 ## 3. Próximos Passos (Dossiê V1)
 
-1. **Splitters e Layout de Docks (P2 - M)**: Splitter interativo real para painéis laterais.
-2. **i18n EN+pt-BR e Catálogo de Textos (P2 - M)**: Migração de literais restantes para chaves `TextId`.
-3. **Symbols / Styles / Assets Browsing (P2 - M)**: Instâncias e paleta de recursos.
+1. **i18n EN+pt-BR e Catálogo de Textos (P2 - M)**: Migração de literais restantes para chaves `TextId`.
+2. **Estabilizador Live (StreamLine + velocidade) (P2 - M)**: Suavização móvel e sensibilidade para traço livre.
+3. **Clipboard / Portas Headless (P2 - S)**: Suporte a copiar/colar de objetos entre sessões.
 
 ---
 

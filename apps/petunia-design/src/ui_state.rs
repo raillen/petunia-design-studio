@@ -309,6 +309,12 @@ pub struct UiShell {
     pub dock_width: State<f32>,
     pub soft_proof: State<bool>,
     pub channel_view: State<usize>,
+    pub left_dock_open: State<bool>,
+    pub left_dock_width: State<f32>,
+    pub left_dock_tab: State<usize>,
+    pub bottom_dock_open: State<bool>,
+    pub bottom_dock_height: State<f32>,
+    pub bottom_dock_tab: State<usize>,
 }
 
 impl PartialEq for UiShell {
@@ -339,6 +345,12 @@ impl PartialEq for UiShell {
             && self.dock_width == other.dock_width
             && self.soft_proof == other.soft_proof
             && self.channel_view == other.channel_view
+            && self.left_dock_open == other.left_dock_open
+            && self.left_dock_width == other.left_dock_width
+            && self.left_dock_tab == other.left_dock_tab
+            && self.bottom_dock_open == other.bottom_dock_open
+            && self.bottom_dock_height == other.bottom_dock_height
+            && self.bottom_dock_tab == other.bottom_dock_tab
     }
 }
 
@@ -376,6 +388,12 @@ impl UiShell {
         dock_width: State<f32>,
         soft_proof: State<bool>,
         channel_view: State<usize>,
+        left_dock_open: State<bool>,
+        left_dock_width: State<f32>,
+        left_dock_tab: State<usize>,
+        bottom_dock_open: State<bool>,
+        bottom_dock_height: State<f32>,
+        bottom_dock_tab: State<usize>,
     ) -> Self {
         Self {
             shell,
@@ -404,6 +422,12 @@ impl UiShell {
             dock_width,
             soft_proof,
             channel_view,
+            left_dock_open,
+            left_dock_width,
+            left_dock_tab,
+            bottom_dock_open,
+            bottom_dock_height,
+            bottom_dock_tab,
         }
     }
 
@@ -470,6 +494,12 @@ impl UiShell {
         let dock_width = use_state(|| 320.0f32);
         let soft_proof = use_state(|| false);
         let channel_view = use_state(|| 0usize);
+        let left_dock_open = use_state(|| false);
+        let left_dock_width = use_state(|| 240.0f32);
+        let left_dock_tab = use_state(|| 0usize);
+        let bottom_dock_open = use_state(|| false);
+        let bottom_dock_height = use_state(|| 160.0f32);
+        let bottom_dock_tab = use_state(|| 0usize);
         Self::new(
             shell,
             open_family,
@@ -497,6 +527,12 @@ impl UiShell {
             dock_width,
             soft_proof,
             channel_view,
+            left_dock_open,
+            left_dock_width,
+            left_dock_tab,
+            bottom_dock_open,
+            bottom_dock_height,
+            bottom_dock_tab,
         )
     }
 }

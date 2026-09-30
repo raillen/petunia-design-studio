@@ -313,7 +313,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.surface.dock.left",
         kind: SurfaceKind::Shell,
         scope: SurfaceScope::MilestoneRequired,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.dock.left",
         action: None,
         shortcut: None,
@@ -331,7 +331,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.surface.dock.bottom",
         kind: SurfaceKind::Shell,
         scope: SurfaceScope::MilestoneRequired,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.dock.bottom",
         action: None,
         shortcut: None,
@@ -1215,7 +1215,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.panel.navigator",
         kind: SurfaceKind::Panel,
         scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.panel.navigator",
         action: None,
         shortcut: None,
@@ -1233,7 +1233,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         id: "ptnd.panel.assets",
         kind: SurfaceKind::Panel,
         scope: SurfaceScope::PostV1Candidate,
-        status: SurfaceStatus::Absent,
+        status: SurfaceStatus::Wired,
         label: "ptnd.text.panel.assets",
         action: None,
         shortcut: None,
@@ -1674,6 +1674,22 @@ mod tests {
         assert!(
             surface("ptnd.dialog.overwrite_conflict").is_some_and(|e| e.status == SurfaceStatus::Wired),
             "overwrite conflict dialog must be wired"
+        );
+        assert!(
+            surface("ptnd.surface.dock.left").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "left dock must be wired"
+        );
+        assert!(
+            surface("ptnd.surface.dock.bottom").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "bottom dock must be wired"
+        );
+        assert!(
+            surface("ptnd.panel.navigator").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "navigator panel must be wired"
+        );
+        assert!(
+            surface("ptnd.panel.assets").is_some_and(|e| e.status == SurfaceStatus::Wired),
+            "assets panel must be wired"
         );
     }
 

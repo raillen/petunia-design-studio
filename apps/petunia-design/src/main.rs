@@ -179,8 +179,19 @@ fn app() -> impl IntoElement {
                 .width(Size::fill())
                 .height(Size::flex(1.0))
                 .child(ToolRail(ui.clone()))
-                .child(Workspace(ui.clone()))
-                .child(DockSplitter(ui.clone()))
+                .child(dock::LeftDock(ui.clone()))
+                .child(dock::LeftDockSplitter(ui.clone()))
+                .child(
+                    rect()
+                        .direction(Direction::Vertical)
+                        .content(Content::Flex)
+                        .width(Size::flex(1.0))
+                        .height(Size::fill())
+                        .child(Workspace(ui.clone()))
+                        .child(dock::BottomDockSplitter(ui.clone()))
+                        .child(dock::BottomDock(ui.clone())),
+                )
+                .child(dock::DockSplitter(ui.clone()))
                 .child(dock::RightDock(ui.clone())),
         )
         .child(StatusBar(ui.clone()))
@@ -226,80 +237,6 @@ fn app() -> impl IntoElement {
                 }
             }
         })
-}
-
-/// Draggable splitter between Workspace and RightDock.
-#[derive(Clone, PartialEq)]
-struct DockSplitter(UiShell);
-
-impl Component for DockSplitter {
-    fn render(&self) -> impl IntoElement {
-        let is_dragging = use_state(|| false);
-        let drag_start_x = use_state(|| 0.0f64);
-        let drag_start_width = use_state(|| 240.0f32);
-        let dock_width = self.0.dock_width;
-        let dragging_val = *is_dragging.read();
-
-        let splitter_bar = rect()
-            .width(Size::px(4.))
-            .height(Size::fill())
-            .background(if dragging_val {
-                theme::ACCENT_BLOOM
-            } else {
-                theme::SURFACE_CHROME_STRONG
-            })
-            .cursor(CursorIcon::EwResize)
-            .on_mouse_down({
-                let mut is_dragging = is_dragging;
-                let mut drag_start_x = drag_start_x;
-                let mut drag_start_width = drag_start_width;
-                move |event: Event<MouseEventData>| {
-                    is_dragging.set(true);
-                    drag_start_x.set(event.global_location.x);
-                    drag_start_width.set(*dock_width.peek());
-                }
-            });
-
-        if dragging_val {
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::px(4.))
-                .height(Size::fill())
-                .child(splitter_bar)
-                .child(
-                    Portal::new("dock-splitter-drag")
-                        .width(Size::px(0.))
-                        .height(Size::px(0.))
-                        .child(
-                            rect()
-                                .position(Position::new_absolute().top(0.).left(0.))
-                                .width(Size::fill())
-                                .height(Size::fill())
-                                .cursor(CursorIcon::EwResize)
-                                .on_mouse_move({
-                                    let mut dock_width = dock_width;
-                                    move |event: Event<MouseEventData>| {
-                                        let delta = *drag_start_x.read() - event.global_location.x;
-                                        let new_w = (*drag_start_width.read() + delta as f32)
-                                            .clamp(180.0, 520.0);
-                                        dock_width.set(new_w);
-                                    }
-                                })
-                                .on_mouse_up({
-                                    let mut is_dragging = is_dragging;
-                                    move |_| {
-                                        is_dragging.set(false);
-                                    }
-                                }),
-                        ),
-                )
-        } else {
-            rect()
-                .width(Size::px(4.))
-                .height(Size::fill())
-                .child(splitter_bar)
-        }
-    }
 }
 
 /// The document workspace. The canvas slice (08.29) draws the artboard here.
@@ -935,6 +872,59 @@ impl Component for StatusBar {
                     .text(hint)
                     .color(theme::TEXT_TERTIARY)
                     .font_size(theme::CAPTION_SIZE),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(theme::SPACE_1)
+                    .child(
+                        Button::new()
+                            .on_press({
+                                let mut open = self.0.left_dock_open;
+                                move |_| {
+                                    let cur = *open.peek();
+                                    open.set(!cur);
+                                }
+                            })
+                            .child(
+                                label()
+                                    .text(if *self.0.left_dock_open.read() {
+                                        "◧ Doca Esq (Ativa)"
+                                    } else {
+                                        "◧ Doca Esq"
+                                    })
+                                    .font_size(10.)
+                                    .color(if *self.0.left_dock_open.read() {
+                                        theme::ACCENT_BLOOM
+                                    } else {
+                                        theme::TEXT_SECONDARY
+                                    }),
+                            ),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press({
+                                let mut open = self.0.bottom_dock_open;
+                                move |_| {
+                                    let cur = *open.peek();
+                                    open.set(!cur);
+                                }
+                            })
+                            .child(
+                                label()
+                                    .text(if *self.0.bottom_dock_open.read() {
+                                        "⬒ Doca Inf (Ativa)"
+                                    } else {
+                                        "⬒ Doca Inf"
+                                    })
+                                    .font_size(10.)
+                                    .color(if *self.0.bottom_dock_open.read() {
+                                        theme::ACCENT_BLOOM
+                                    } else {
+                                        theme::TEXT_SECONDARY
+                                    }),
+                            ),
+                    ),
             )
             .child(AppearanceBar(self.0.clone()))
     }
@@ -1638,8 +1628,19 @@ mod workspace_tests {
                             .width(Size::fill())
                             .height(Size::flex(1.0))
                             .child(ToolRail(ui.clone()))
-                            .child(Workspace(ui.clone()))
-                            .child(DockSplitter(ui.clone()))
+                            .child(dock::LeftDock(ui.clone()))
+                            .child(dock::LeftDockSplitter(ui.clone()))
+                            .child(
+                                rect()
+                                    .direction(Direction::Vertical)
+                                    .content(Content::Flex)
+                                    .width(Size::flex(1.0))
+                                    .height(Size::fill())
+                                    .child(Workspace(ui.clone()))
+                                    .child(dock::BottomDockSplitter(ui.clone()))
+                                    .child(dock::BottomDock(ui.clone())),
+                            )
+                            .child(dock::DockSplitter(ui.clone()))
                             .child(dock::RightDock(ui.clone())),
                     )
                     .child(StatusBar(ui.clone()))
