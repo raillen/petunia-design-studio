@@ -93,6 +93,9 @@ impl JobManager {
     pub fn complete_job(&self, id: u64) {
         if let Ok(mut lock) = self.jobs.lock() {
             if let Some(job) = lock.iter_mut().find(|j| j.id == id) {
+                if job.state != JobState::Running || job.token.is_cancelled() {
+                    return;
+                }
                 job.state = JobState::Completed;
                 job.percent = 100;
             }
@@ -103,6 +106,9 @@ impl JobManager {
     pub fn fail_job(&self, id: u64) {
         if let Ok(mut lock) = self.jobs.lock() {
             if let Some(job) = lock.iter_mut().find(|j| j.id == id) {
+                if job.state != JobState::Running && job.state != JobState::Queued {
+                    return;
+                }
                 job.state = JobState::Failed;
             }
         }
@@ -112,6 +118,9 @@ impl JobManager {
     pub fn cancel_job(&self, id: u64) {
         if let Ok(mut lock) = self.jobs.lock() {
             if let Some(job) = lock.iter_mut().find(|j| j.id == id) {
+                if job.state != JobState::Running && job.state != JobState::Queued {
+                    return;
+                }
                 job.token.cancel();
                 job.state = JobState::Cancelled;
             }

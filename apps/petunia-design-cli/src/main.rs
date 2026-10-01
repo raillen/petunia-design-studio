@@ -186,7 +186,7 @@ fn run() -> Result<(), String> {
         color: [1.0, 0.2, 0.1, 1.0],
         blend_mode: BlendMode::Normal,
     };
-    dab.stamp_onto(&mut tile_map);
+    dab.stamp_onto(&mut tile_map).map_err(|e| e.to_string())?;
     tile_map.commit();
     let raster_bounds = tile_map.bounds().ok_or("raster bounds")?;
     assert_eq!(tile_map.resident_tile_count(), 1);

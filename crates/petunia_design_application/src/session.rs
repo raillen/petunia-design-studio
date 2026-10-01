@@ -138,6 +138,8 @@ pub struct DocumentSession {
     current_revision: u64,
     /// Revision at last explicit save.
     saved_revision: u64,
+    /// Identity of the saved history state, independent of cache revisions.
+    saved_history_state: u64,
     /// Internal clipboard buffer storing copied/cut objects for pasting (Dossier V1 §15).
     clipboard: Vec<petunia_design_document::DocumentObject>,
 }
@@ -162,7 +164,7 @@ impl DocumentSession {
             .unwrap_or(0);
         Self {
             document,
-            history: History::new(0),
+            history: History::default(),
             selection: SelectionSession::new(),
             spatial: std::cell::RefCell::new(crate::spatial_index::SpatialIndex::new()),
             geo_cache: std::cell::RefCell::new(crate::geo_cache::GeoCache::new()),
@@ -174,6 +176,7 @@ impl DocumentSession {
             active_surface,
             current_revision: 0,
             saved_revision: 0,
+            saved_history_state: 0,
             clipboard: Vec::new(),
         }
     }
@@ -196,7 +199,7 @@ impl DocumentSession {
             .unwrap_or(0);
         Self {
             document,
-            history: History::new(0),
+            history: History::default(),
             selection: SelectionSession::new(),
             spatial: std::cell::RefCell::new(crate::spatial_index::SpatialIndex::new()),
             geo_cache: std::cell::RefCell::new(crate::geo_cache::GeoCache::new()),
@@ -208,6 +211,7 @@ impl DocumentSession {
             active_surface,
             current_revision: 0,
             saved_revision: 0,
+            saved_history_state: 0,
             clipboard: Vec::new(),
         }
     }
@@ -262,12 +266,13 @@ impl DocumentSession {
     /// True if unsaved modifications exist.
     #[must_use]
     pub fn is_dirty(&self) -> bool {
-        self.current_revision != self.saved_revision
+        self.history.state_id() != self.saved_history_state
     }
 
     /// Marks the current revision as saved.
     pub fn mark_saved(&mut self) {
         self.saved_revision = self.current_revision;
+        self.saved_history_state = self.history.state_id();
     }
 
     /// Read-only view of the canonical document (A2).
@@ -681,7 +686,7 @@ impl DocumentSession {
                     pasted_ids.push(next_id);
                     cmds.push(Command::PasteObject {
                         surface: target_surface,
-                        object: obj.clone(),
+                        object: Box::new(obj.clone()),
                         id: next_id,
                         offset: [12.0, 12.0],
                     });
@@ -963,7 +968,7 @@ impl DocumentSession {
         if staged.is_empty() {
             return Ok(staged);
         }
-        tx.commit(&mut self.document, &mut self.history);
+        tx.commit(&mut self.document, &mut self.history)?;
         self.current_revision += 1;
         self.prune_selection();
         Ok(staged)
@@ -2322,18 +2327,18 @@ mod newly_wired_action_tests {
                 }))
                 .unwrap();
             session
+                .execute_command(CommandRequest::new(Command::SetBounds {
+                    id,
+                    bounds: Some([x, 10.0, 20.0, 20.0]),
+                    rotation: 0.0,
+                }))
+                .unwrap();
+            session
                 .execute_command(CommandRequest::new(Command::SetShape {
                     id,
                     shape: Some(petunia_design_document::ShapeKind::Rectangle {
                         corner_radii: [0.0; 4],
                     }),
-                }))
-                .unwrap();
-            session
-                .execute_command(CommandRequest::new(Command::SetBounds {
-                    id,
-                    bounds: Some([x, 10.0, 20.0, 20.0]),
-                    rotation: 0.0,
                 }))
                 .unwrap();
             session
@@ -2463,7 +2468,10 @@ mod newly_wired_action_tests {
                 .unwrap()
                 .objects()
                 .iter()
-                .all(|o| matches!(o.shape, Some(petunia_design_document::ShapeKind::Path(_)))),
+                .all(|o| matches!(
+                    o.shape,
+                    Some(petunia_design_document::ShapeKind::LocalPath { .. })
+                )),
             "conversion must bake explicit paths"
         );
 

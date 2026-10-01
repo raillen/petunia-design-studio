@@ -5,6 +5,8 @@ Decisions are first-class documentation. Each ADR records context, decision, con
 | ADR | Title | Status |
 | --- | ----- | ------ |
 | [ADR-001](/developers/adr/ADR-001-effect-chain) | Non-destructive editing via typed ordered EffectChain | Accepted |
+| [ADR-002](/developers/adr/ADR-002-local-path-and-integrity) | Local paths, schema 2 and atomic publication | Accepted · Milestone Required |
+| [ADR-003](/developers/adr/ADR-003-local-modifier-frames) | Persistent local modifier frames, schema 3 and appearance-preserving bake | Accepted · Milestone Required |
 
 ## Writing a new ADR
 

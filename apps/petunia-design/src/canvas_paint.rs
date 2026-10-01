@@ -21,7 +21,7 @@ fn make_skia_image_from_rgba8(width: i32, height: i32, data: &[u8]) -> Option<Im
     let info = ImageInfo::new(
         (width, height),
         ColorType::RGBA8888,
-        AlphaType::Premul,
+        AlphaType::Unpremul,
         None,
     );
     let bytes = Data::new_copy(data);
@@ -39,7 +39,11 @@ pub fn paint_raster_tile(
     channel_view: usize,
 ) {
     let mut rgba8 = match tile.format {
-        petunia_design_raster::PixelFormat::Rgba8 => tile.data.clone(),
+        petunia_design_raster::PixelFormat::Rgba8
+            if tile.alpha_mode == petunia_design_raster::AlphaMode::Straight =>
+        {
+            tile.data.clone()
+        }
         _ => {
             let mut out = Vec::with_capacity(
                 petunia_design_raster::TILE_SIZE * petunia_design_raster::TILE_SIZE * 4,
@@ -57,7 +61,7 @@ pub fn paint_raster_tile(
         }
     };
     if !adjustments.is_empty() || soft_proof || channel_view != 0 {
-        for chunk in rgba8.chunks_exact_mut(4) {
+        for chunk in rgba8.as_chunks_mut::<4>().0 {
             let mut rgb = [
                 chunk[0] as f32 / 255.0,
                 chunk[1] as f32 / 255.0,

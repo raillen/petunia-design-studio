@@ -184,7 +184,7 @@ impl RawRasterImage {
         match self.format {
             PixelFormat::Rgba16 => {
                 let mut out = Vec::with_capacity(self.data.len() / 2);
-                for chunk in self.data.chunks_exact(2) {
+                for chunk in self.data.as_chunks::<2>().0 {
                     out.push(u16::from_ne_bytes([chunk[0], chunk[1]]));
                 }
                 out
@@ -199,7 +199,7 @@ impl RawRasterImage {
             }
             PixelFormat::Gray16 => {
                 let mut out = Vec::with_capacity(self.data.len() * 2);
-                for chunk in self.data.chunks_exact(2) {
+                for chunk in self.data.as_chunks::<2>().0 {
                     let g = u16::from_ne_bytes([chunk[0], chunk[1]]);
                     out.extend_from_slice(&[g, g, g, 65535]);
                 }
@@ -223,7 +223,7 @@ impl RawRasterImage {
             PixelFormat::Rgba8 => self.data.clone(),
             PixelFormat::Rgba16 => {
                 let mut out = Vec::with_capacity(self.data.len() / 2);
-                for chunk in self.data.chunks_exact(2) {
+                for chunk in self.data.as_chunks::<2>().0 {
                     let val = u16::from_ne_bytes([chunk[0], chunk[1]]);
                     out.push((val >> 8) as u8);
                 }
@@ -238,7 +238,7 @@ impl RawRasterImage {
             }
             PixelFormat::Gray16 => {
                 let mut out = Vec::with_capacity(self.data.len() * 2);
-                for chunk in self.data.chunks_exact(2) {
+                for chunk in self.data.as_chunks::<2>().0 {
                     let g = (u16::from_ne_bytes([chunk[0], chunk[1]]) >> 8) as u8;
                     out.extend_from_slice(&[g, g, g, 255]);
                 }
@@ -329,7 +329,7 @@ pub fn export_raster(
             // JPEG requires RGB8 (no alpha)
             let rgba8 = image.to_rgba8();
             let mut rgb8 = Vec::with_capacity((image.width as usize) * (image.height as usize) * 3);
-            for chunk in rgba8.chunks_exact(4) {
+            for chunk in rgba8.as_chunks::<4>().0 {
                 rgb8.push(chunk[0]);
                 rgb8.push(chunk[1]);
                 rgb8.push(chunk[2]);
@@ -434,7 +434,7 @@ pub fn import_raster(bytes: &[u8], max_bytes: usize) -> Result<RawRasterImage, P
         image::DynamicImage::ImageRgb16(img) => {
             let raw_samples = img.into_raw();
             let mut rgba16 = Vec::with_capacity(pixel_count * 4);
-            for chunk in raw_samples.chunks_exact(3) {
+            for chunk in raw_samples.as_chunks::<3>().0 {
                 rgba16.push(chunk[0]);
                 rgba16.push(chunk[1]);
                 rgba16.push(chunk[2]);

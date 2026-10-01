@@ -128,10 +128,46 @@ impl PerspectiveTool {
         ];
         let mut cmds = Vec::new();
         for id in bridge.selection().selected_ids.clone() {
-            cmds.push(Command::SetPerspective {
-                id,
-                quad: quad_array,
+            let document = bridge
+                .session()
+                .ok_or_else(|| {
+                    petunia_design_foundation::PetuniaError::invalid_input("no session")
+                })?
+                .document();
+            let mut modifiers = bridge.modifiers(id);
+            let index = modifiers.iter().position(|m| {
+                matches!(
+                    m.kind,
+                    petunia_design_document::ModifierKind::Perspective { .. }
+                )
             });
+            let modifier_id = match index {
+                Some(i) => modifiers[i].id,
+                None => modifiers
+                    .iter()
+                    .map(|m| m.id)
+                    .max()
+                    .unwrap_or(0)
+                    .checked_add(1)
+                    .ok_or_else(|| {
+                        petunia_design_foundation::PetuniaError::invalid_input(
+                            "modifier IDs exhausted",
+                        )
+                    })?,
+            };
+            let item = document.modifier_from_world(
+                id,
+                petunia_design_document::ModifierItem::enabled(
+                    modifier_id,
+                    petunia_design_document::ModifierKind::Perspective { quad: quad_array },
+                ),
+            )?;
+            if let Some(index) = index {
+                modifiers[index] = item;
+            } else {
+                modifiers.push(item);
+            }
+            cmds.push(Command::SetModifiers { id, modifiers });
         }
         if cmds.is_empty() {
             return Ok(ChangeSet::empty());
@@ -201,20 +237,48 @@ fn current_quad(bridge: &PetuniaDesignGuiBridge) -> Option<[GPoint; 4]> {
                 }
                 if let petunia_design_document::ModifierKind::Perspective { quad } = &modifier.kind
                 {
-                    return Some(quad.map(|[x, y]| GPoint::new(x, y)));
+                    let [_, _, w, h] = obj.bounds?;
+                    let world = session.document().world_transform_checked(*id).ok()?;
+                    let mut points = [GPoint::ORIGIN; 4];
+                    for (out, point) in points.iter_mut().zip(quad) {
+                        *out = world.apply(modifier.project_point(*point, [w, h])?);
+                    }
+                    return Some(points);
                 }
             }
         }
     }
-    // Fall back to combined evaluated bounds.
+    // A single object's default handles follow its local frame and rotation.
+    // Starting from a world AABB would move untouched corners on the first drag.
+    if session.selection.selected_ids.len() == 1 {
+        let id = session.selection.selected_ids[0];
+        let object = session.find_object(id)?;
+        let bounds = object.evaluated_path_local().ok()?.bounding_box()?;
+        let world = session.document().world_transform_checked(id).ok()?;
+        return Some(
+            [
+                GPoint::new(bounds.x0, bounds.y0),
+                GPoint::new(bounds.x1, bounds.y0),
+                GPoint::new(bounds.x1, bounds.y1),
+                GPoint::new(bounds.x0, bounds.y1),
+            ]
+            .map(|point| world.apply(point)),
+        );
+    }
+    // Fall back to combined evaluated bounds for a multiple selection.
     let mut x0 = f64::MAX;
     let mut y0 = f64::MAX;
     let mut x1 = f64::MIN;
     let mut y1 = f64::MIN;
     let mut any = false;
     for id in &session.selection.selected_ids {
-        if let Some(obj) = session.find_object(*id) {
-            if let Some([x, y, w, h]) = obj.evaluated_bounds() {
+        if session.find_object(*id).is_some() {
+            if let Some([x, y, w, h]) = session
+                .document()
+                .evaluated_bounds_world(*id)
+                .ok()
+                .flatten()
+            {
                 any = true;
                 x0 = x0.min(x);
                 y0 = y0.min(y);
@@ -238,14 +302,32 @@ fn current_quad(bridge: &PetuniaDesignGuiBridge) -> Option<[GPoint; 4]> {
 fn pending_outline(bridge: &PetuniaDesignGuiBridge, quad: [GPoint; 4]) -> Option<Vec<GPoint>> {
     let session = bridge.session()?;
     let id = *session.selection.selected_ids.first()?;
-    let obj = session.find_object(id)?;
-    let base = obj.to_path();
-    if base.is_empty() {
-        return None;
+    let mut obj = session.find_object(id)?.clone();
+    let item = session
+        .document()
+        .modifier_from_world(
+            id,
+            petunia_design_document::ModifierItem::enabled(
+                0,
+                petunia_design_document::ModifierKind::Perspective {
+                    quad: quad.map(|p| [p.x, p.y]),
+                },
+            ),
+        )
+        .ok()?;
+    if let Some(index) = obj.modifiers.iter().position(|m| {
+        matches!(
+            m.kind,
+            petunia_design_document::ModifierKind::Perspective { .. }
+        )
+    }) {
+        obj.modifiers[index] = item;
+    } else {
+        obj.modifiers.push(item);
     }
-    // LOD optimization (F4): adaptive tolerance for interactive drag preview
-    let tol = if base.verbs.len() > 80 { 1.5 } else { 0.5 };
-    let warped = petunia_design_geometry::warp_path_to_quad(&base, quad, tol)?;
+    let local = obj.evaluated_path_local().ok()?;
+    let warped = local.transformed(session.document().world_transform_checked(id).ok()?);
+    let tol = 0.5;
     let flat: Vec<GPoint> = warped.to_polygons(tol).into_iter().flatten().collect();
     if flat.len() >= 2 {
         Some(flat)

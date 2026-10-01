@@ -510,7 +510,7 @@ fn hit_path(
         if !obj.visible || obj.locked {
             continue;
         }
-        if !matches!(obj.shape, Some(ShapeKind::Path(_))) {
+        if !obj.shape.as_ref().is_some_and(ShapeKind::is_path) {
             continue;
         }
         // Fill hit or outline proximity (open strokes have no interior).

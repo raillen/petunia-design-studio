@@ -43,15 +43,23 @@ pub struct GeoCacheEntry {
 pub struct GeoCache {
     entries: HashMap<ObjectId, GeoCacheEntry>,
     /// Flattened legacy outlines keyed by `(object, tolerance bits)`.
-    flats: HashMap<(ObjectId, u64), Vec<Vec<GPoint>>>,
+    flats: HashMap<(ObjectId, u64), FlattenedEntry>,
     /// Flattened world outlines keyed by `(object, tolerance bits)`.
-    world_flats: HashMap<(ObjectId, u64), Vec<Vec<GPoint>>>,
+    world_flats: HashMap<(ObjectId, u64), FlattenedEntry>,
     /// Total `cached_polygons` / `cached_world_polygons` lookups (F7.3 probe:
     /// `span_points` must serve 25 samples with exactly one lookup).
     flat_lookups: u64,
     /// Actual `to_polygons` computations (cache misses). Hits reuse `flats`
     /// without re-flattening.
     flat_computes: u64,
+}
+
+/// A flattened result owns its generation: refreshing another cache entry
+/// must never make old polygons appear fresh.
+#[derive(Clone, Debug)]
+struct FlattenedEntry {
+    revision: u64,
+    polygons: Vec<Vec<GPoint>>,
 }
 
 impl GeoCache {
@@ -125,6 +133,25 @@ impl GeoCache {
 
 /// Session-side accessors. All take `&self`: the cache is interior-mutable.
 impl crate::session::DocumentSession {
+    // Project only the requested cached component. Bounds/transform queries
+    // must not clone all three Bézier outlines on every cache hit.
+    fn cached_component<T>(
+        &self,
+        id: ObjectId,
+        project: impl Fn(&GeoCacheEntry) -> T,
+    ) -> Option<T> {
+        {
+            let cache = self.geo_cache.borrow();
+            if let Some(entry) = cache
+                .entries
+                .get(&id)
+                .filter(|e| e.revision == self.current_revision())
+            {
+                return Some(project(entry));
+            }
+        }
+        self.cached_geometry_entry(id).as_ref().map(project)
+    }
     /// Evaluates legacy, local and world domains at the current revision.
     pub fn cached_geometry_entry(&self, id: ObjectId) -> Option<GeoCacheEntry> {
         let revision = self.current_revision();
@@ -197,49 +224,52 @@ impl crate::session::DocumentSession {
     /// Explicit local evaluated path.
     #[must_use]
     pub fn cached_local_path(&self, id: ObjectId) -> Option<GPath> {
-        self.cached_geometry_entry(id)?.local_path
+        self.cached_component(id, |e| e.local_path.clone())
+            .flatten()
     }
 
     /// Explicit local evaluated bounds.
     #[must_use]
     pub fn cached_local_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
-        self.cached_geometry_entry(id)?.local_bounds
+        self.cached_component(id, |e| e.local_bounds).flatten()
     }
 
     /// Explicit world transform.
     #[must_use]
     pub fn cached_world_transform(&self, id: ObjectId) -> Option<GAffine> {
-        self.cached_geometry_entry(id)?.world_transform
+        self.cached_component(id, |e| e.world_transform).flatten()
     }
 
     /// Explicit world evaluated path.
     #[must_use]
     pub fn cached_world_path(&self, id: ObjectId) -> Option<GPath> {
-        self.cached_geometry_entry(id)?.world_path
+        self.cached_component(id, |e| e.world_path.clone())
+            .flatten()
     }
 
     /// Explicit world evaluated bounds.
     #[must_use]
     pub fn cached_world_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
-        self.cached_geometry_entry(id)?.world_bounds
+        self.cached_component(id, |e| e.world_bounds).flatten()
     }
 
     /// Nominal world frame bounds, including unversioned legacy paths.
     #[must_use]
     pub fn cached_world_frame_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
-        self.cached_geometry_entry(id)?.world_frame_bounds
+        self.cached_component(id, |e| e.world_frame_bounds)
+            .flatten()
     }
 
     /// Evaluated outline, memoized.
     #[must_use]
     pub fn cached_path(&self, id: ObjectId) -> Option<GPath> {
-        self.cached_geometry(id).map(|(path, _)| path)
+        self.cached_component(id, |e| e.legacy_path.clone())
     }
 
     /// Evaluated bounds, memoized.
     #[must_use]
     pub fn cached_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
-        self.cached_geometry(id).and_then(|(_, bounds)| bounds)
+        self.cached_component(id, |e| e.legacy_bounds).flatten()
     }
 
     /// Hit-test against the memoized evaluated outline.
@@ -248,8 +278,11 @@ impl crate::session::DocumentSession {
     /// every query at the same tolerance.
     #[must_use]
     pub fn cached_hit(&self, id: ObjectId, pt: GPoint, tol: f64) -> bool {
-        self.cached_polygons(id, tol)
-            .is_some_and(|polys| polys.iter().any(|poly| point_in_poly(pt, poly)))
+        self.cached_polygons(id, tol).is_some_and(|polys| {
+            polys
+                .iter()
+                .fold(false, |inside, poly| inside ^ point_in_poly(pt, poly))
+        })
     }
 
     /// Flattened evaluated outline at `tol`, memoized per revision.
@@ -263,13 +296,8 @@ impl crate::session::DocumentSession {
         {
             let cache = self.geo_cache.borrow();
             if let Some(flats) = cache.flats.get(&key) {
-                // Fresh only when the geometry entry matches this revision.
-                if cache
-                    .entries
-                    .get(&id)
-                    .is_some_and(|entry| entry.revision == revision)
-                {
-                    return Some(flats.clone());
+                if flats.revision == revision {
+                    return Some(flats.polygons.clone());
                 }
             }
         }
@@ -278,7 +306,13 @@ impl crate::session::DocumentSession {
         {
             let mut cache = self.geo_cache.borrow_mut();
             cache.flat_computes += 1;
-            cache.flats.insert(key, polys.clone());
+            cache.flats.insert(
+                key,
+                FlattenedEntry {
+                    revision,
+                    polygons: polys.clone(),
+                },
+            );
         }
         Some(polys)
     }
@@ -293,12 +327,8 @@ impl crate::session::DocumentSession {
         {
             let cache = self.geo_cache.borrow();
             if let Some(flats) = cache.world_flats.get(&key) {
-                if cache
-                    .entries
-                    .get(&id)
-                    .is_some_and(|entry| entry.revision == revision)
-                {
-                    return Some(flats.clone());
+                if flats.revision == revision {
+                    return Some(flats.polygons.clone());
                 }
             }
         }
@@ -307,7 +337,13 @@ impl crate::session::DocumentSession {
         {
             let mut cache = self.geo_cache.borrow_mut();
             cache.flat_computes += 1;
-            cache.world_flats.insert(key, polys.clone());
+            cache.world_flats.insert(
+                key,
+                FlattenedEntry {
+                    revision,
+                    polygons: polys.clone(),
+                },
+            );
         }
         Some(polys)
     }
@@ -315,8 +351,11 @@ impl crate::session::DocumentSession {
     /// Exact world-space hit test with the shared spatial tolerance.
     #[must_use]
     pub fn cached_world_hit(&self, id: ObjectId, pt: GPoint, tol: f64) -> bool {
-        self.cached_world_polygons(id, tol)
-            .is_some_and(|polys| polys.iter().any(|poly| point_in_poly(pt, poly)))
+        self.cached_world_polygons(id, tol).is_some_and(|polys| {
+            polys
+                .iter()
+                .fold(false, |inside, poly| inside ^ point_in_poly(pt, poly))
+        })
     }
 
     /// World-space outline sample at normalized fraction `t`.

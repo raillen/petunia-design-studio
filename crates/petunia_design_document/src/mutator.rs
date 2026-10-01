@@ -7,6 +7,13 @@ use crate::changeset::{Change, ChangeSet};
 use crate::document::Document;
 use crate::document_object::DocumentObject;
 
+fn next_local_id(ids: impl Iterator<Item = u32>) -> Result<u32, PetuniaError> {
+    ids.max()
+        .unwrap_or(0)
+        .checked_add(1)
+        .ok_or_else(|| PetuniaError::invalid_input("local entry IDs exhausted"))
+}
+
 fn frame_transform_error(id: ObjectId) -> PetuniaError {
     PetuniaError::invalid_input(format!(
         "object `{id}` cannot be reframed without finite bounds"
@@ -89,11 +96,6 @@ impl<'doc> DocumentMutator<'doc> {
         self.document
     }
 
-    /// Borrows the underlying document mutably.
-    pub fn document_mut(&mut self) -> &mut Document {
-        self.document
-    }
-
     /// Adds a surface with an explicit stable ID.
     pub fn add_surface(
         &mut self,
@@ -118,7 +120,7 @@ impl<'doc> DocumentMutator<'doc> {
     pub fn add_object(
         &mut self,
         surface: SurfaceId,
-        object: DocumentObject,
+        mut object: DocumentObject,
     ) -> Result<ChangeSet, PetuniaError> {
         if self.document.find_object(object.id).is_some() {
             return Err(PetuniaError::invalid_input(format!(
@@ -126,6 +128,14 @@ impl<'doc> DocumentMutator<'doc> {
                 object.id
             )));
         }
+        if let Some(shape) = object.shape.take() {
+            object.shape = Some(shape.into_local(object.bounds)?);
+        }
+        object.modifiers = std::mem::take(&mut object.modifiers)
+            .into_iter()
+            .map(|modifier| modifier.into_local(object.bounds))
+            .collect::<Result<_, _>>()?;
+        crate::validation::validate_object(&object)?;
         let target = self.document.surface_mut(surface)?;
         target.objects.push(object.clone());
         let index = target.objects.len() - 1;
@@ -163,6 +173,23 @@ impl<'doc> DocumentMutator<'doc> {
                 }
                 // Clear clip pointers referencing the removed object.
                 for other in surface.objects.iter_mut() {
+                    if let Some(crate::ShapeKind::Text {
+                        on_path: Some(attachment),
+                        ..
+                    }) = &other.shape
+                    {
+                        if attachment.target == id {
+                            let previous = other.shape.clone();
+                            if let Some(crate::ShapeKind::Text { on_path, .. }) = &mut other.shape {
+                                *on_path = None;
+                            }
+                            changes.push(Change::ShapeChanged {
+                                id: other.id,
+                                previous,
+                                next: other.shape.clone(),
+                            });
+                        }
+                    }
                     if other.clip_mask_id == Some(id) {
                         let prev_mask = other.clip_mask_id;
                         let prev_is = other.is_clip_mask;
@@ -190,6 +217,16 @@ impl<'doc> DocumentMutator<'doc> {
                         });
                     }
                 }
+                self.document.bindings.retain(|binding| {
+                    if binding.target_object == id {
+                        changes.push(Change::DataBindingRemoved {
+                            binding: binding.clone(),
+                        });
+                        false
+                    } else {
+                        true
+                    }
+                });
                 changes.push(Change::ObjectRemoved {
                     surface: surface.id,
                     object,
@@ -301,6 +338,9 @@ impl<'doc> DocumentMutator<'doc> {
 
     /// Sets an object's opacity factor in [0.0, 1.0].
     pub fn set_opacity(&mut self, id: ObjectId, opacity: f64) -> Result<ChangeSet, PetuniaError> {
+        if !opacity.is_finite() {
+            return Err(PetuniaError::invalid_input("opacity must be finite"));
+        }
         let clamped = opacity.clamp(0.0, 1.0);
         for surface in &mut self.document.surfaces {
             if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
@@ -327,6 +367,9 @@ impl<'doc> DocumentMutator<'doc> {
         stroke: Option<String>,
         width: f64,
     ) -> Result<ChangeSet, PetuniaError> {
+        if !width.is_finite() {
+            return Err(PetuniaError::invalid_input("stroke width must be finite"));
+        }
         for surface in &mut self.document.surfaces {
             if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
                 let previous_stroke = object.stroke.clone();
@@ -356,6 +399,14 @@ impl<'doc> DocumentMutator<'doc> {
         bounds: Option<[f64; 4]>,
         rotation: f64,
     ) -> Result<ChangeSet, PetuniaError> {
+        if !rotation.is_finite()
+            || bounds
+                .is_some_and(|b| !b.iter().all(|v| v.is_finite()) || b[2] <= 0.0 || b[3] <= 0.0)
+        {
+            return Err(PetuniaError::invalid_input(
+                "bounds must be finite with positive dimensions and finite rotation",
+            ));
+        }
         for surface in &mut self.document.surfaces {
             if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
                 let previous_bounds = object.bounds;
@@ -386,20 +437,71 @@ impl<'doc> DocumentMutator<'doc> {
     ) -> Result<ChangeSet, PetuniaError> {
         for surface in &mut self.document.surfaces {
             if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
-                let previous = object.shape.clone();
-                object.shape = shape.clone();
+                // Build and validate everything before publishing either frame
+                // or shape. This makes the primitive safe for in-place staging.
+                let mut candidate = object.clone();
+                if candidate.bounds.is_none() {
+                    if let Some(crate::ShapeKind::Path(path)) = &shape {
+                        if !path.is_finite() {
+                            return Err(PetuniaError::invalid_input("path must be finite"));
+                        }
+                        let rect = path.bounding_box().ok_or_else(|| {
+                            PetuniaError::invalid_input("empty path requires an explicit frame")
+                        })?;
+                        candidate.bounds = Some([
+                            rect.x0,
+                            rect.y0,
+                            rect.width().max(1.0),
+                            rect.height().max(1.0),
+                        ]);
+                    }
+                }
+                candidate.shape = shape.map(|s| s.into_local(candidate.bounds)).transpose()?;
+                crate::validation::validate_object(&candidate)?;
                 let mut changes = ChangeSet::empty();
+                if candidate.bounds != object.bounds {
+                    changes.push(Change::BoundsChanged {
+                        id,
+                        previous_bounds: object.bounds,
+                        next_bounds: candidate.bounds,
+                        previous_rotation: object.rotation,
+                        next_rotation: candidate.rotation,
+                    });
+                }
                 changes.push(Change::ShapeChanged {
                     id,
-                    previous,
-                    next: shape,
+                    previous: object.shape.clone(),
+                    next: candidate.shape.clone(),
                 });
+                *object = candidate;
                 return Ok(changes);
             }
         }
         Err(PetuniaError::not_found(format!(
             "object `{id}` does not exist"
         )))
+    }
+
+    /// Replaces geometry and frame together, validating before changing either.
+    pub fn set_path(
+        &mut self,
+        id: ObjectId,
+        path: petunia_design_geometry::GPath,
+        bounds: [f64; 4],
+        rotation: f64,
+    ) -> Result<ChangeSet, PetuniaError> {
+        if !rotation.is_finite() {
+            return Err(PetuniaError::invalid_input("path rotation must be finite"));
+        }
+        let shape = crate::ShapeKind::Path(path).into_local(Some(bounds))?;
+        if self.document.find_object(id).is_none() {
+            return Err(PetuniaError::not_found(format!(
+                "object `{id}` does not exist"
+            )));
+        }
+        let mut changes = self.set_bounds(id, Some(bounds), rotation)?;
+        changes.extend(self.set_shape(id, Some(shape))?);
+        Ok(changes)
     }
 
     /// Divides two objects into non-overlapping pieces (10.3, F-21).
@@ -538,7 +640,7 @@ impl<'doc> DocumentMutator<'doc> {
                     )));
                 }
                 let previous = object.shape.clone();
-                let next = Some(crate::ShapeKind::Path(path));
+                let next = Some(crate::ShapeKind::Path(path).into_local(object.bounds)?);
                 object.shape = next.clone();
                 let mut changes = ChangeSet::empty();
                 changes.push(Change::ShapeChanged { id, previous, next });
@@ -558,7 +660,7 @@ impl<'doc> DocumentMutator<'doc> {
         let is_path = self
             .document
             .find_object(id)
-            .map(|o| matches!(o.shape, Some(crate::ShapeKind::Path(_))))
+            .map(|o| o.shape.as_ref().is_some_and(crate::ShapeKind::is_path))
             .unwrap_or(false);
         if is_path {
             return Ok(ChangeSet::empty());
@@ -598,6 +700,11 @@ impl<'doc> DocumentMutator<'doc> {
     ) -> Result<ChangeSet, PetuniaError> {
         for surface in &mut self.document.surfaces {
             if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
+                let modifiers: Vec<_> = modifiers
+                    .into_iter()
+                    .map(|m| m.into_local(object.bounds))
+                    .collect::<Result<_, _>>()?;
+                crate::validation::validate_modifiers(&modifiers, object.bounds)?;
                 let previous = object.modifiers.clone();
                 if previous == modifiers {
                     return Ok(ChangeSet::empty());
@@ -621,42 +728,25 @@ impl<'doc> DocumentMutator<'doc> {
     /// The evaluated outline becomes the base `Path`, contour entries clear,
     /// bounds follow. Other modifier kinds survive.
     pub fn bake_contour(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
-        let (evaluated, bounds, has_contour) = {
-            let obj = self
-                .document
-                .find_object(id)
-                .ok_or_else(|| PetuniaError::not_found(format!("object `{id}` does not exist")))?;
-            let has = obj.modifiers.iter().any(|m| {
-                m.enabled && matches!(m.kind, crate::modifiers::ModifierKind::ContourOffset { .. })
-            });
-            (obj.evaluated_path(), obj.evaluated_bounds(), has)
-        };
-        if !has_contour {
-            return Ok(ChangeSet::empty());
-        }
-        let mut changes = ChangeSet::empty();
-        changes.extend(self.set_shape(id, Some(crate::ShapeKind::Path(evaluated)))?);
-        let rotation = self.document.find_object(id).map_or(0.0, |o| o.rotation);
-        changes.extend(self.set_bounds(id, bounds, rotation)?);
-        let remaining: Vec<crate::modifiers::ModifierItem> = self
+        let object = self
             .document
             .find_object(id)
-            .map(|o| {
-                o.modifiers
-                    .iter()
-                    .filter(|m| {
-                        !(m.enabled
-                            && matches!(
-                                m.kind,
-                                crate::modifiers::ModifierKind::ContourOffset { .. }
-                            ))
-                    })
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default();
-        changes.extend(self.set_modifiers(id, remaining)?);
-        Ok(changes)
+            .ok_or_else(|| PetuniaError::not_found(format!("object `{id}` does not exist")))?;
+        let Some(last) = object.modifiers.iter().rposition(|m| {
+            m.enabled && matches!(m.kind, crate::ModifierKind::ContourOffset { .. })
+        }) else {
+            return Ok(ChangeSet::empty());
+        };
+        if object.modifiers[..=last].iter().any(|m| {
+            m.enabled
+                && Self::is_geometry_modifier(&m.kind)
+                && !matches!(m.kind, crate::ModifierKind::ContourOffset { .. })
+        }) {
+            return Err(PetuniaError::invalid_input(
+                "contour after another geometry modifier requires BakeGeometry",
+            ));
+        }
+        self.bake_geometry_prefix(id, last + 1)
     }
 
     /// Chain with the contour entry upserted (joins/caps preserved on update).
@@ -681,9 +771,10 @@ impl<'doc> DocumentMutator<'doc> {
             {
                 *d = distance;
             }
+            entry.space = crate::ModifierSpace::Parent;
             let _ = (join, cap);
         } else {
-            let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+            let nid = next_local_id(next.iter().map(|m| m.id))?;
             next.push(crate::modifiers::ModifierItem::enabled(
                 nid,
                 crate::modifiers::ModifierKind::ContourOffset {
@@ -782,8 +873,9 @@ impl<'doc> DocumentMutator<'doc> {
             if let crate::modifiers::ModifierKind::Perspective { quad: q } = &mut entry.kind {
                 *q = quad;
             }
+            entry.space = crate::ModifierSpace::Parent;
         } else {
-            let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+            let nid = next_local_id(next.iter().map(|m| m.id))?;
             next.push(crate::modifiers::ModifierItem::enabled(
                 nid,
                 crate::modifiers::ModifierKind::Perspective { quad },
@@ -816,8 +908,9 @@ impl<'doc> DocumentMutator<'doc> {
             if let crate::modifiers::ModifierKind::CropRect { rect: r } = &mut entry.kind {
                 *r = rect;
             }
+            entry.space = crate::ModifierSpace::Parent;
         } else {
-            let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+            let nid = next_local_id(next.iter().map(|m| m.id))?;
             next.push(crate::modifiers::ModifierItem::enabled(
                 nid,
                 crate::modifiers::ModifierKind::CropRect { rect },
@@ -840,36 +933,95 @@ impl<'doc> DocumentMutator<'doc> {
     /// (explicit user op, 09.31). The evaluated outline becomes the base
     /// `Path`, geometry entries clear, bounds follow. Transparency survives.
     pub fn bake_geometry(&mut self, id: ObjectId) -> Result<ChangeSet, PetuniaError> {
-        let (evaluated, bounds, has_geometry) = {
-            let obj = self
-                .document
-                .find_object(id)
-                .ok_or_else(|| PetuniaError::not_found(format!("object `{id}` does not exist")))?;
-            let has = obj
-                .modifiers
-                .iter()
-                .any(|m| m.enabled && Self::is_geometry_modifier(&m.kind));
-            (obj.evaluated_path(), obj.evaluated_bounds(), has)
-        };
-        if !has_geometry {
-            return Ok(ChangeSet::empty());
-        }
-        let mut changes = ChangeSet::empty();
-        changes.extend(self.set_shape(id, Some(crate::ShapeKind::Path(evaluated)))?);
-        let rotation = self.document.find_object(id).map_or(0.0, |o| o.rotation);
-        changes.extend(self.set_bounds(id, bounds, rotation)?);
-        let remaining: Vec<crate::modifiers::ModifierItem> = self
+        let object = self
             .document
             .find_object(id)
-            .map(|o| {
-                o.modifiers
-                    .iter()
-                    .filter(|m| !(m.enabled && Self::is_geometry_modifier(&m.kind)))
-                    .cloned()
-                    .collect()
+            .ok_or_else(|| PetuniaError::not_found(format!("object `{id}` does not exist")))?;
+        if !object
+            .modifiers
+            .iter()
+            .any(|m| m.enabled && Self::is_geometry_modifier(&m.kind))
+        {
+            return Ok(ChangeSet::empty());
+        }
+        self.bake_geometry_prefix(id, object.modifiers.len())
+    }
+
+    fn bake_geometry_prefix(
+        &mut self,
+        id: ObjectId,
+        end: usize,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let object = self
+            .document
+            .find_object(id)
+            .ok_or_else(|| PetuniaError::not_found(format!("object `{id}` does not exist")))?;
+        let bounds = object.bounds.ok_or_else(|| frame_transform_error(id))?;
+        let base = object
+            .base_path_local()
+            .map_err(|e| PetuniaError::invalid_input(e.to_string()))?;
+        let evaluated = crate::modifiers::evaluate_modifiers_local(
+            &base,
+            &object.modifiers[..end],
+            [bounds[2], bounds[3]],
+        )
+        .ok_or_else(|| PetuniaError::invalid_input("modifier evaluation failed"))?;
+        let (origin, size) = evaluated
+            .bounding_box()
+            .map_or(([0.0, 0.0], [bounds[2], bounds[3]]), |b| {
+                ([b.x0, b.y0], [b.width().max(1.0), b.height().max(1.0)])
+            });
+        // Placement rotates about the local top-left. Moving the source origin
+        // requires a rotated translation to keep every world point unchanged.
+        let placed = object
+            .local_transform()
+            .apply(petunia_design_geometry::GPoint::new(origin[0], origin[1]));
+        let next_bounds = Some([placed.x, placed.y, size[0], size[1]]);
+        let next_shape = Some(crate::ShapeKind::LocalPath {
+            path: std::sync::Arc::new(evaluated.transformed(
+                petunia_design_geometry::GAffine::translate(-origin[0], -origin[1]),
+            )),
+            reference_size: size,
+        });
+        let next_modifiers = object
+            .modifiers
+            .iter()
+            .enumerate()
+            .filter(|(i, m)| !(*i < end && m.enabled && Self::is_geometry_modifier(&m.kind)))
+            .map(|(_, m)| {
+                m.clone()
+                    .rebase_local([-origin[0], -origin[1]], [bounds[2], bounds[3]], size)
             })
-            .unwrap_or_default();
-        changes.extend(self.set_modifiers(id, remaining)?);
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut candidate = object.clone();
+        candidate.bounds = next_bounds;
+        candidate.shape = next_shape.clone();
+        candidate.modifiers = next_modifiers.clone();
+        crate::validation::validate_object(&candidate)?;
+        let mut changes = ChangeSet::empty();
+        if object.bounds != next_bounds {
+            changes.push(Change::BoundsChanged {
+                id,
+                previous_bounds: object.bounds,
+                next_bounds,
+                previous_rotation: object.rotation,
+                next_rotation: object.rotation,
+            });
+        }
+        changes.push(Change::ShapeChanged {
+            id,
+            previous: object.shape.clone(),
+            next: next_shape,
+        });
+        changes.push(Change::ModifiersChanged {
+            id,
+            previous: object.modifiers.clone(),
+            next: next_modifiers,
+        });
+        *self
+            .document
+            .find_object_mut(id)
+            .expect("object was checked") = candidate;
         Ok(changes)
     }
 
@@ -904,8 +1056,12 @@ impl<'doc> DocumentMutator<'doc> {
                 .ok_or_else(|| PetuniaError::not_found(format!("object `{id}` does not exist")))?;
             (obj.shape.clone(), obj.bounds, obj.rotation)
         };
-        let path = match prev_shape.clone() {
-            Some(crate::ShapeKind::Path(p)) => p,
+        let path = match prev_shape.as_ref() {
+            Some(shape) if shape.is_path() => self
+                .document
+                .find_object(id)
+                .expect("object checked above")
+                .to_path(),
             _ => {
                 return Err(PetuniaError::invalid_input(format!(
                     "object `{id}` is not an editable path: convert to curves first"
@@ -970,7 +1126,9 @@ impl<'doc> DocumentMutator<'doc> {
             .bounding_box()
             .map(|r| [r.x0, r.y0, r.width(), r.height()]);
         if let Some(obj) = self.document.find_object_mut(id) {
-            obj.shape = Some(crate::ShapeKind::Path(new_path.clone()));
+            let next_shape =
+                Some(crate::ShapeKind::Path(new_path).into_local(new_bounds.or(prev_bounds))?);
+            obj.shape = next_shape.clone();
             if new_bounds.is_some() {
                 obj.bounds = new_bounds;
             }
@@ -978,7 +1136,7 @@ impl<'doc> DocumentMutator<'doc> {
             changes.push(Change::ShapeChanged {
                 id,
                 previous: prev_shape,
-                next: Some(crate::ShapeKind::Path(new_path)),
+                next: next_shape,
             });
             if new_bounds != prev_bounds {
                 changes.push(Change::BoundsChanged {
@@ -1202,6 +1360,9 @@ impl<'doc> DocumentMutator<'doc> {
         id: ObjectId,
         appearance: Option<crate::appearance::AppearanceStack>,
     ) -> Result<ChangeSet, PetuniaError> {
+        if let Some(stack) = &appearance {
+            crate::validation::validate_appearance(stack)?;
+        }
         for surface in &mut self.document.surfaces {
             if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
                 let previous = object.appearance.clone();
@@ -1273,7 +1434,7 @@ impl<'doc> DocumentMutator<'doc> {
     ) -> Result<ChangeSet, PetuniaError> {
         let mut stack = self.editable_stack(id)?;
         if stack.fills.iter().any(|f| f.id == fill.id) {
-            fill.id = stack.fills.iter().map(|f| f.id).max().unwrap_or(0) + 1;
+            fill.id = next_local_id(stack.fills.iter().map(|f| f.id))?;
         }
         stack.add_fill(fill);
         self.set_appearance(id, Some(stack))
@@ -1368,7 +1529,7 @@ impl<'doc> DocumentMutator<'doc> {
     ) -> Result<ChangeSet, PetuniaError> {
         let mut stack = self.editable_stack(id)?;
         if stack.strokes.iter().any(|s| s.id == stroke.id) {
-            stroke.id = stack.strokes.iter().map(|s| s.id).max().unwrap_or(0) + 1;
+            stroke.id = next_local_id(stack.strokes.iter().map(|s| s.id))?;
         }
         stack.add_stroke(stroke);
         self.set_appearance(id, Some(stack))
@@ -1448,7 +1609,7 @@ impl<'doc> DocumentMutator<'doc> {
     ) -> Result<ChangeSet, PetuniaError> {
         let mut stack = self.editable_stack(id)?;
         if stack.effects.iter().any(|e| e.id == effect.id) {
-            effect.id = stack.effects.iter().map(|e| e.id).max().unwrap_or(0) + 1;
+            effect.id = next_local_id(stack.effects.iter().map(|e| e.id))?;
         }
         stack.add_effect(effect);
         self.set_appearance(id, Some(stack))
@@ -1500,7 +1661,7 @@ impl<'doc> DocumentMutator<'doc> {
     ) -> Result<ChangeSet, PetuniaError> {
         let mut stack = self.editable_stack(id)?;
         if stack.adjustments.iter().any(|a| a.id == adjustment.id) {
-            adjustment.id = stack.adjustments.iter().map(|a| a.id).max().unwrap_or(0) + 1;
+            adjustment.id = next_local_id(stack.adjustments.iter().map(|a| a.id))?;
         }
         stack.add_adjustment(adjustment);
         self.set_appearance(id, Some(stack))
@@ -2235,11 +2396,16 @@ impl<'doc> DocumentMutator<'doc> {
         origin: [f64; 2],
         dimensions: [f64; 2],
     ) -> Result<ChangeSet, PetuniaError> {
+        if !origin.iter().all(|v| v.is_finite())
+            || !dimensions.iter().all(|v| v.is_finite() && *v > 0.0)
+        {
+            return Err(PetuniaError::invalid_input("invalid surface geometry"));
+        }
         let surf = self.document.surface_mut(id)?;
         let prev_orig = surf.origin;
         let prev_dim = surf.dimensions;
         surf.origin = origin;
-        surf.dimensions = [dimensions[0].max(1.0), dimensions[1].max(1.0)];
+        surf.dimensions = dimensions;
         let mut changes = ChangeSet::empty();
         changes.push(Change::SurfaceGeometryChanged {
             id,
@@ -2257,6 +2423,12 @@ impl<'doc> DocumentMutator<'doc> {
         id: SurfaceId,
         bleed: crate::surface_metadata::Bleed,
     ) -> Result<ChangeSet, PetuniaError> {
+        if ![bleed.top, bleed.right, bleed.bottom, bleed.left]
+            .iter()
+            .all(|v| v.is_finite() && *v >= 0.0)
+        {
+            return Err(PetuniaError::invalid_input("invalid surface bleed"));
+        }
         let surf = self.document.surface_mut(id)?;
         let prev = surf.bleed;
         surf.bleed = bleed;
@@ -2275,6 +2447,12 @@ impl<'doc> DocumentMutator<'doc> {
         id: SurfaceId,
         margins: crate::surface_metadata::Margins,
     ) -> Result<ChangeSet, PetuniaError> {
+        if ![margins.top, margins.right, margins.bottom, margins.left]
+            .iter()
+            .all(|v| v.is_finite() && *v >= 0.0)
+        {
+            return Err(PetuniaError::invalid_input("invalid surface margins"));
+        }
         let surf = self.document.surface_mut(id)?;
         let prev = surf.margins;
         surf.margins = margins;
@@ -2305,13 +2483,50 @@ impl<'doc> DocumentMutator<'doc> {
         Ok(changes)
     }
 
+    /// Sets inclusion in batch export, with reversible history.
+    pub fn set_surface_export_enabled(
+        &mut self,
+        id: SurfaceId,
+        enabled: bool,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let surface = self.document.surface_mut(id)?;
+        let previous = surface.export_enabled;
+        if previous == enabled {
+            return Ok(ChangeSet::empty());
+        }
+        surface.export_enabled = enabled;
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::SurfaceExportEnabledChanged {
+            id,
+            previous,
+            next: enabled,
+        });
+        Ok(changes)
+    }
+
     /// Adds a layout guide to a surface.
+    pub fn create_surface_guide(
+        &mut self,
+        surface: SurfaceId,
+        orientation: crate::GuideOrientation,
+        position: f64,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let id = next_local_id(self.document.surface(surface)?.guides.iter().map(|g| g.id))?;
+        self.add_surface_guide(surface, crate::Guide::new(id, orientation, position))
+    }
+
+    /// Adds a guide with an explicit identity (restore/import/replay).
     pub fn add_surface_guide(
         &mut self,
         surface: SurfaceId,
         guide: crate::surface_metadata::Guide,
     ) -> Result<ChangeSet, PetuniaError> {
         let surf = self.document.surface_mut(surface)?;
+        if !guide.position.is_finite() || surf.guides.iter().any(|g| g.id == guide.id) {
+            return Err(PetuniaError::invalid_input(
+                "invalid or duplicate surface guide",
+            ));
+        }
         surf.guides.push(guide.clone());
         let mut changes = ChangeSet::empty();
         changes.push(Change::SurfaceGuideAdded { surface, guide });
@@ -2957,6 +3172,9 @@ impl<'doc> DocumentMutator<'doc> {
                 Change::SurfaceBackgroundChanged { id, previous, .. } => {
                     let surf = self.document.surface_mut(id)?;
                     surf.background = previous;
+                }
+                Change::SurfaceExportEnabledChanged { id, previous, .. } => {
+                    self.document.surface_mut(id)?.export_enabled = previous;
                 }
                 Change::SurfaceGuideAdded { surface, guide } => {
                     let surf = self.document.surface_mut(surface)?;

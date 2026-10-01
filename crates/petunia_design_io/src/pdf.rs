@@ -1,4 +1,4 @@
-//! High-fidelity vector PDF export engine using `krilla`.
+//! Vector PDF export for the supported subset using `krilla`.
 //!
 //! Maps Petunia Document surfaces into PDF pages with vector paths, fills,
 //! strokes, RGB and CMYK color preservation, and preflight fidelity analysis.
@@ -83,14 +83,19 @@ impl Default for PdfExportOptions {
     }
 }
 
-/// Exports a Petunia canonical document into high-quality vector PDF bytes.
+/// Exports selected surfaces, reporting fidelity losses in the supported subset.
 pub fn export_document_pdf(
     document: &Document,
     options: &PdfExportOptions,
 ) -> Result<(Vec<u8>, PreflightReport), PetuniaError> {
+    document.validate()?;
     let mut krilla_doc = KrillaDocument::new();
     let mut report = PreflightReport {
-        surfaces: document.surfaces().len(),
+        surfaces: document
+            .surfaces()
+            .iter()
+            .filter(|s| s.export_enabled)
+            .count(),
         objects: 0,
         degradations: Vec::new(),
         passed: true,
@@ -109,15 +114,25 @@ pub fn export_document_pdf(
         return Ok((bytes, report));
     }
 
-    for surface in document.surfaces() {
+    if report.surfaces == 0 {
+        return Err(PetuniaError::invalid_input(
+            "no surfaces enabled for PDF export",
+        ));
+    }
+    for surface in document.surfaces().iter().filter(|s| s.export_enabled) {
         export_surface_page(&mut krilla_doc, surface, options, &mut report)?;
     }
 
-    let has_destructive = report.degradations.iter().any(|d| {
-        d.grade == FidelityGrade::DestructiveDegradation || d.grade == FidelityGrade::Unsupported
+    let has_loss = report.degradations.iter().any(|d| {
+        matches!(
+            d.grade,
+            FidelityGrade::Approximate
+                | FidelityGrade::DestructiveDegradation
+                | FidelityGrade::Unsupported
+        )
     });
 
-    if has_destructive && !options.allow_degradations {
+    if has_loss && !options.allow_degradations {
         report.passed = false;
         return Err(PetuniaError::invalid_input(
             "PDF export aborted due to blocking preflight degradations",
@@ -134,11 +149,20 @@ pub fn export_document_pdf(
 fn export_surface_page(
     krilla_doc: &mut KrillaDocument,
     surface: &Surface,
-    options: &PdfExportOptions,
+    _options: &PdfExportOptions,
     report: &mut PreflightReport,
 ) -> Result<(), PetuniaError> {
-    let width = options.default_page_width;
-    let height = options.default_page_height;
+    let width = surface.dimensions[0] as f32;
+    let height = surface.dimensions[1] as f32;
+    let origin = surface.origin.map(|v| v as f32);
+    if ![width, height, origin[0], origin[1]]
+        .iter()
+        .all(|v| v.is_finite())
+    {
+        return Err(PetuniaError::invalid_input(
+            "surface exceeds PDF coordinate range",
+        ));
+    }
 
     let page_settings = PageSettings::from_wh(width, height).ok_or_else(|| {
         PetuniaError::invalid_input(format!("Invalid surface dimensions {width}x{height}"))
@@ -146,11 +170,13 @@ fn export_surface_page(
 
     let mut page = krilla_doc.start_page_with(page_settings);
     let mut krilla_surface = page.surface();
+    krilla_surface.push_transform(&Transform::from_translate(-origin[0], -origin[1]));
 
     for (i, obj) in surface.objects().iter().enumerate() {
         report.objects += 1;
         export_object(&mut krilla_surface, surface, obj, i, width, height, report);
     }
+    krilla_surface.pop();
 
     krilla_surface.finish();
     page.finish();
@@ -539,7 +565,7 @@ fn resolve_fill_paint(fill: Option<&str>, report: &mut PreflightReport) -> (Pain
                 description: format!(
                     "Semantic color token '{fill}' approximated to fallback neutral RGB"
                 ),
-                grade: FidelityGrade::EquivalentAppearance,
+                grade: FidelityGrade::Unsupported,
             });
             (rgb::Color::new(140, 140, 140).into(), NormalizedF32::ONE)
         }
@@ -626,9 +652,6 @@ mod tests {
         assert!(bytes.starts_with(b"%PDF-"));
         assert_eq!(report.degradations.len(), 1);
         assert_eq!(report.degradations[0].code, "COLOR_TOKEN_SUBSTITUTED");
-        assert_eq!(
-            report.degradations[0].grade,
-            FidelityGrade::EquivalentAppearance
-        );
+        assert_eq!(report.degradations[0].grade, FidelityGrade::Unsupported);
     }
 }

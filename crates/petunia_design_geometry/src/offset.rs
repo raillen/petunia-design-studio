@@ -1,8 +1,8 @@
 //! True path offsetting with joins and caps (10.3).
 //!
 //! Expansion follows the stroked outer edge (curves stay curves).
-//! Insetting erodes through the offset engine (despiked, concave-correct;
-//! curves flatten at 0.25pt per F-21).
+//! Compound closed paths and insets use the topology-aware offset engine;
+//! curves flatten at 0.25pt per F-21 while their editable source is retained.
 
 use kurbo::{BezPath, Cap, Join, PathEl, Point, Stroke};
 
@@ -71,16 +71,22 @@ pub fn offset_path(path: &GPath, distance: f64, join: OffsetJoin, cap: OffsetCap
         .with_caps(cap.kurbo());
     let bez = to_kurbo(path);
     let closed = is_closed(path);
-    if closed && distance < 0.0 {
-        // Inset = erosion via the offset engine (despiked, concave-correct).
-        return erode(path, -distance, join);
+    if closed && (distance < 0.0 || path.subpath_count() > 1) {
+        return offset_closed(path, distance, join);
     }
     let band = kurbo::stroke(bez.iter(), &stroke, &kurbo::StrokeOpts::default(), 0.25);
-    // Expand (and open-path bands): the wanted boundary is the largest contour.
-    let contour = pick_largest(&band)?;
+    // A single closed loop expands to the outer boundary of its stroke.
+    // Open-path stroke bands must retain every component (and winding hole).
+    let contours = if closed {
+        vec![pick_largest(&band)?]
+    } else {
+        band_contours(&band)
+    };
     let mut out = GPath::new();
-    for verb in contour {
-        out.push(verb).ok()?;
+    for contour in contours {
+        for verb in contour {
+            out.push(verb).ok()?;
+        }
     }
     if out.is_empty() {
         return None;
@@ -110,7 +116,12 @@ fn is_closed(path: &GPath) -> bool {
     let mut open = false;
     for verb in &path.verbs {
         match verb {
-            PathVerb::MoveTo(_) => open = true,
+            PathVerb::MoveTo(_) => {
+                if open {
+                    return false;
+                }
+                open = true;
+            }
             PathVerb::Close => open = false,
             _ => {}
         }
@@ -168,20 +179,19 @@ fn band_contours(band: &BezPath) -> Vec<Vec<PathVerb>> {
     contours
 }
 
-/// Erodes a closed path by `amount` with true offset semantics (sharp
-/// concave-correct corners, despiked). Curves flatten at 0.25pt per F-21
-/// (curve-exact booleans are POST_V1); expansion above stays curve-exact.
-fn erode(path: &GPath, amount: f64, join: OffsetJoin) -> Option<GPath> {
-    let flat: Vec<[f64; 2]> = path
+/// Offsets all closed contours together; never concatenate disconnected loops
+/// into one polygon. Orientation carries outer/hole identity into the engine.
+fn offset_closed(path: &GPath, distance: f64, join: OffsetJoin) -> Option<GPath> {
+    let flat: Vec<Vec<[f64; 2]>> = path
         .to_polygons(0.25)
         .into_iter()
-        .flatten()
-        .map(|p| [p.x, p.y])
+        .filter(|contour| contour.len() >= 3)
+        .map(|contour| contour.into_iter().map(|p| [p.x, p.y]).collect())
         .collect();
-    if flat.len() < 3 {
+    if flat.is_empty() {
         return None;
     }
-    let contours = io_offset_adapter::offset_contour(&flat, -amount, join);
+    let contours = io_offset_adapter::offset_contours(&flat, distance, join);
     if contours.is_empty() {
         return None;
     }
@@ -231,8 +241,8 @@ mod io_offset_adapter {
 
     /// True contour offset of one flattened loop. Positive expands,
     /// negative erodes (despiked). Joins follow `OffsetJoin`.
-    pub(super) fn offset_contour(
-        flat: &[[f64; 2]],
+    pub(super) fn offset_contours(
+        flat: &[Vec<[f64; 2]>],
         distance: f64,
         join: OffsetJoin,
     ) -> Vec<Vec<[f64; 2]>> {

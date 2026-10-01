@@ -29,6 +29,8 @@ const NATIVE_FILE_LABEL: &str = "name.PTND";
 
 const MANIFEST_PATH: &str = "manifest.json";
 const DOCUMENT_PATH: &str = "document/document.json";
+const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
+const MAX_DOCUMENT_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Legacy suffixes, accepted by the migration reader only (15.A).
 const LEGACY_SUFFIXES: &[&str] = &["aubrieta", "aubri"];
@@ -124,12 +126,28 @@ pub fn has_native_extension(path: &Path) -> bool {
 /// Save As so the original file is never overwritten (15.A).
 pub fn save_package(document: &Document, path: &Path) -> Result<(), PetuniaError> {
     check_writable_suffix(path)?;
-    let temp_path = temp_sibling(path);
-    write_package(document, &temp_path).inspect_err(|_| {
-        let _ = std::fs::remove_file(&temp_path);
-    })?;
-    std::fs::rename(&temp_path, path)
+    document.validate()?;
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let temp = tempfile::Builder::new()
+        .prefix(".petunia-save-")
+        .tempfile_in(parent)
+        .map_err(|e| PetuniaError::io(format!("create temporary package: {e}")))?;
+    let file = temp
+        .as_file()
+        .try_clone()
+        .map_err(|e| PetuniaError::io(format!("clone package handle: {e}")))?;
+    write_package(document, file)?
+        .sync_all()
+        .map_err(|e| PetuniaError::io(format!("sync package: {e}")))?;
+    temp.persist(path)
         .map_err(|e| PetuniaError::io(format!("atomic rename {}: {e}", path.display())))?;
+    #[cfg(unix)]
+    File::open(parent)
+        .and_then(|dir| dir.sync_all())
+        .map_err(|e| PetuniaError::io(format!("sync package directory: {e}")))?;
     Ok(())
 }
 
@@ -142,15 +160,18 @@ pub fn open_package(path: &Path) -> Result<OpenedPackage, PetuniaError> {
         File::open(path).map_err(|e| PetuniaError::io(format!("open {}: {e}", path.display())))?;
     let mut archive = zip::ZipArchive::new(file)
         .map_err(|e| PetuniaError::io(format!("read zip {}: {e}", path.display())))?;
+    if archive.len() > 10_000 {
+        return Err(PetuniaError::invalid_input("package has too many entries"));
+    }
+    for name in [MANIFEST_PATH, DOCUMENT_PATH] {
+        if archive.file_names().filter(|n| *n == name).count() != 1 {
+            return Err(PetuniaError::invalid_input(format!(
+                "package requires exactly one `{name}`"
+            )));
+        }
+    }
 
-    let mut manifest_text = String::new();
-    archive
-        .by_name(MANIFEST_PATH)
-        .map_err(|_| {
-            PetuniaError::invalid_input(format!("{} lacks {MANIFEST_PATH}", path.display()))
-        })?
-        .read_to_string(&mut manifest_text)
-        .map_err(|e| PetuniaError::io(format!("read manifest: {e}")))?;
+    let manifest_text = read_bounded_entry(&mut archive, MANIFEST_PATH, MAX_MANIFEST_BYTES)?;
     let manifest: PackageManifest = serde_json::from_str(&manifest_text)
         .map_err(|e| PetuniaError::io(format!("parse manifest: {e}")))?;
     let manifest_format = match manifest.media_type.as_str() {
@@ -163,21 +184,26 @@ pub fn open_package(path: &Path) -> Result<OpenedPackage, PetuniaError> {
             )))
         }
     };
-    if manifest.schema_version != NATIVE_SCHEMA_VERSION {
+    if !(1..=NATIVE_SCHEMA_VERSION).contains(&manifest.schema_version) {
         return Err(PetuniaError::invalid_input(format!(
             "unsupported package schema {}, expected {}",
             manifest.schema_version, NATIVE_SCHEMA_VERSION
         )));
     }
 
-    let mut document_text = String::new();
-    archive
-        .by_name(DOCUMENT_PATH)
-        .map_err(|_| {
-            PetuniaError::invalid_input(format!("{} lacks {DOCUMENT_PATH}", path.display()))
-        })?
-        .read_to_string(&mut document_text)
-        .map_err(|e| PetuniaError::io(format!("read document: {e}")))?;
+    let document_text = read_bounded_entry(&mut archive, DOCUMENT_PATH, MAX_DOCUMENT_BYTES)?;
+    #[derive(Deserialize)]
+    struct SchemaHeader {
+        schema_version: u32,
+    }
+    let payload_version = serde_json::from_str::<SchemaHeader>(&document_text)
+        .map_err(|e| PetuniaError::invalid_input(format!("document JSON: {e}")))?
+        .schema_version;
+    if payload_version != manifest.schema_version {
+        return Err(PetuniaError::invalid_input(
+            "manifest and document schema versions disagree",
+        ));
+    }
     let document = Document::from_json(&document_text)?;
     // A legacy suffix alone marks the package legacy even when the manifest
     // already carries the current media type.
@@ -189,9 +215,33 @@ pub fn open_package(path: &Path) -> Result<OpenedPackage, PetuniaError> {
     Ok(OpenedPackage { document, format })
 }
 
-fn write_package(document: &Document, path: &Path) -> Result<(), PetuniaError> {
-    let file = File::create(path)
-        .map_err(|e| PetuniaError::io(format!("create {}: {e}", path.display())))?;
+fn read_bounded_entry(
+    archive: &mut zip::ZipArchive<File>,
+    name: &str,
+    limit: u64,
+) -> Result<String, PetuniaError> {
+    let entry = archive
+        .by_name(name)
+        .map_err(|e| PetuniaError::invalid_input(format!("package entry `{name}`: {e}")))?;
+    if entry.size() > limit {
+        return Err(PetuniaError::invalid_input(format!(
+            "package entry `{name}` exceeds {limit} bytes"
+        )));
+    }
+    let mut text = String::new();
+    entry
+        .take(limit + 1)
+        .read_to_string(&mut text)
+        .map_err(|e| PetuniaError::io(format!("read `{name}`: {e}")))?;
+    if text.len() as u64 > limit {
+        return Err(PetuniaError::invalid_input(format!(
+            "package entry `{name}` exceeds budget"
+        )));
+    }
+    Ok(text)
+}
+
+fn write_package(document: &Document, file: File) -> Result<File, PetuniaError> {
     let mut zip = zip::ZipWriter::new(file);
     let manifest_options =
         zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
@@ -206,12 +256,10 @@ fn write_package(document: &Document, path: &Path) -> Result<(), PetuniaError> {
         .compression_method(zip::CompressionMethod::Deflated);
     zip.start_file(DOCUMENT_PATH, document_options)
         .map_err(|e| PetuniaError::io(format!("zip document: {e}")))?;
-    let document_json = document.to_json()?;
-    zip.write_all(document_json.as_bytes())
+    serde_json::to_writer_pretty(&mut zip, document)
         .map_err(|e| PetuniaError::io(format!("write document: {e}")))?;
     zip.finish()
-        .map_err(|e| PetuniaError::io(format!("finish {}: {e}", path.display())))?;
-    Ok(())
+        .map_err(|e| PetuniaError::io(format!("finish package: {e}")))
 }
 
 /// Writable formats: the current native suffix only (15.A forbids writing
@@ -255,15 +303,6 @@ fn check_readable_suffix(path: &Path) -> Result<PackageFormat, PetuniaError> {
     )))
 }
 
-fn temp_sibling(path: &Path) -> PathBuf {
-    let mut name = path
-        .file_name()
-        .map(|s| s.to_os_string())
-        .unwrap_or_default();
-    name.push(".tmp");
-    path.with_file_name(name)
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -291,14 +330,18 @@ mod tests {
 
     #[test]
     fn native_roundtrip_preserves_semantic_state() {
-        let dir = std::env::temp_dir().join("petunia-design-io-tests");
-        std::fs::create_dir_all(&dir).unwrap();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let dir = temp_dir.path();
         let path = dir.join("roundtrip.PTND");
         let _ = std::fs::remove_file(&path);
         let doc = sample_doc();
         save_package(&doc, &path).unwrap();
         // No temp residue after atomic save.
-        assert!(!temp_sibling(&path).exists());
+        assert!(!std::fs::read_dir(dir).unwrap().any(|entry| entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".petunia-save-")));
         let opened = open_package(&path).unwrap();
         assert_eq!(opened.format, PackageFormat::Ptnd);
         assert!(!opened.format.requires_save_as());

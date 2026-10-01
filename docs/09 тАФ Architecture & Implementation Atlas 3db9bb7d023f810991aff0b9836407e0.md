@@ -88,3 +88,12 @@ The earlier notebook described intent well but lacked implementation-level contr
 [09.29 — MCP API Usability, Agent Contracts, Safety, Discovery & Deterministic Automation](09%2029%20%E2%80%94%20MCP%20API%20Usability,%20Agent%20Contracts,%20Safety%203db9bb7d023f8193a933c547bdf2aafe.md)
 
 [09.30 — Plugin Scripting Runtime ADR: Lua vs Python vs JavaScript](09%2030%20%E2%80%94%20Plugin%20Scripting%20Runtime%20ADR%20Lua%20vs%20Python%203db9bb7d023f8129853cc7461081cf62.md)
+## Current implementation contract — 2026-10-01
+
+Milestone Required: ADR-002 (`docs/developers/adr/ADR-002-local-path-and-integrity.md`, synchronized pt-BR mirror) governs native schema 2, local path reference sizing, explicit parent input migration, integrity validation, atomic publication, bounded history and package writes. Generated references live in `docs/public/implementation/contracts.json`; execution evidence/status in `docs/developers/implementation-progress.md`. These implemented contracts supersede older coordinate/transaction descriptions on conflict. Runtime is Freya/Skia as pinned in Cargo.lock. Full M0/MVP/V1 and historical GUI authority reconciliation remain open.
+
+Publication integrity includes finite/ranged effect and adjustment chains, unique local entry IDs, checked ID exhaustion, read-only external document access and reversible `SetSurfaceExportEnabled`. Surface placement/layout setters reject invalid inputs before mutation. Raw serde input still requires explicit validation at trust boundaries. The snapshot benchmark accepts explicit workloads and emits structured percentiles; it does not measure full painted frames.
+
+## Modifier-frame contract — schema 3
+
+Milestone Required: ADR-003 (`docs/developers/adr/ADR-003-local-modifier-frames.md`, synchronized pt-BR mirror) supersedes ADR-002 modifier frames/schema version. Persist local reference sizes; migrate schemas 1/2 explicitly; preserve source and parameters on placement edits. Geometry and opacity evaluate in the reference frame. Bake is atomic and preserves world placement/masks; empty crop stays empty. World-space tool conversion and unique guide creation use domain contracts. Shared scene/spatial render, pixel resources and full MVP/V1 remain open.

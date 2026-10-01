@@ -5,6 +5,8 @@ Decisões são documentação de primeira classe. Cada ADR registra contexto, de
 | ADR | Título | Status |
 | --- | ------ | ------ |
 | [ADR-001](/pt/developers/adr/ADR-001-effect-chain) | Edição não destrutiva via EffectChain ordenada tipada | Aceito |
+| [ADR-002](/pt/developers/adr/ADR-002-local-path-and-integrity) | Caminhos locais, schema 2 e publicação atômica | Aceito · Milestone Required |
+| [ADR-003](/pt/developers/adr/ADR-003-local-modifier-frames) | Frames locais persistentes, schema 3 e bake que preserva aparência | Aceito · Milestone Required |
 
 ## Como escrever um novo ADR
 

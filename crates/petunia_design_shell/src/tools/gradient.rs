@@ -827,14 +827,25 @@ fn transparency_chain_for(
         .into_iter()
         .filter(|m| !matches!(m.kind, ModifierKind::TransparentGradient { .. }))
         .collect();
-    let nid = next.iter().map(|m| m.id).max().unwrap_or(0) + 1;
-    next.push(ModifierItem::enabled(
+    let nid = next
+        .iter()
+        .map(|m| m.id)
+        .max()
+        .unwrap_or(0)
+        .checked_add(1)
+        .ok_or_else(|| PetuniaError::invalid_input("modifier IDs exhausted"))?;
+    let item = ModifierItem::enabled(
         nid,
         ModifierKind::TransparentGradient {
             start: [p0.x, p0.y],
             end: [p1.x, p1.y],
             stops: vec![OpacityStop::new(0.0, 1.0), OpacityStop::new(1.0, 0.0)],
         },
-    ));
+    );
+    let document = bridge
+        .session()
+        .ok_or_else(|| PetuniaError::invalid_input("no session"))?
+        .document();
+    next.push(document.modifier_from_world(id, item)?);
     Ok(next)
 }

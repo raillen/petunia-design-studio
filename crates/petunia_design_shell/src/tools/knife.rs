@@ -344,7 +344,7 @@ fn needs_convert(bridge: &PetuniaDesignGuiBridge, id: ObjectId) -> bool {
     bridge
         .session()
         .and_then(|s| s.find_object(id))
-        .is_some_and(|obj| !matches!(obj.shape, Some(ShapeKind::Path(_))))
+        .is_some_and(|obj| !obj.shape.as_ref().is_some_and(ShapeKind::is_path))
 }
 
 /// Emits one undo-batch worth of cut commands: the source object becomes
@@ -388,13 +388,10 @@ fn push_cut_commands(
     for (piece, bounds) in kept {
         if first {
             first = false;
-            cmds.push(Command::SetShape {
+            cmds.push(Command::SetPath {
                 id: source.id,
-                shape: Some(ShapeKind::Path(piece)),
-            });
-            cmds.push(Command::SetBounds {
-                id: source.id,
-                bounds: Some(bounds),
+                path: piece,
+                bounds,
                 rotation: source.rotation,
             });
         } else {

@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "measurement": "fixture construction and canvas_snapshot; microseconds",
+  "excludes": "painting, GPU work, presentation, input latency, allocation/RSS profiling",
+  "profile": "release",
+  "os": "linux",
+  "arch": "x86_64",
+  "scenes": [
+    {
+      "objects": 500,
+      "visible": 500,
+      "digest": "c8b21b38abbccf57",
+      "fixture_build_us": 5592.775000000001,
+      "cold_snapshot_us": 1516.355,
+      "warmup": 2,
+      "iterations": 5,
+      "snapshot": {
+        "mean_us": 79.4528,
+        "p50_us": 59.592,
+        "p95_us": 159.057,
+        "p99_us": 159.057
+      }
+    },
+    {
+      "objects": 2000,
+      "visible": 2000,
+      "digest": "f3121259bff5af0d",
+      "fixture_build_us": 19860.254,
+      "cold_snapshot_us": 10075.778,
+      "warmup": 2,
+      "iterations": 5,
+      "snapshot": {
+        "mean_us": 276.1076,
+        "p50_us": 275.16200000000003,
+        "p95_us": 328.496,
+        "p99_us": 328.496
+      }
+    }
+  ]
+}

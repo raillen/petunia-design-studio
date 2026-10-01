@@ -1,0 +1,19 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.22s
+     Running `/workspace/.petunia-cache/target/debug/xtask conformance`
+xtask conformance: headless CLI flow
+   Compiling petunia_design_document v0.1.0 (/workspace/petunia-design-studio/crates/petunia_design_document)
+   Compiling petunia_design_render v0.1.0 (/workspace/petunia-design-studio/crates/petunia_design_render)
+   Compiling petunia_design_io v0.1.0 (/workspace/petunia-design-studio/crates/petunia_design_io)
+   Compiling petunia_design_evaluation v0.1.0 (/workspace/petunia-design-studio/crates/petunia_design_evaluation)
+   Compiling petunia_design_application v0.1.0 (/workspace/petunia-design-studio/crates/petunia_design_application)
+   Compiling petunia_design_mcp v0.1.0 (/workspace/petunia-design-studio/crates/petunia_design_mcp)
+   Compiling petunia_design_extension v0.1.0 (/workspace/petunia-design-studio/crates/petunia_design_extension)
+   Compiling petunia-design-cli v0.1.0 (/workspace/petunia-design-studio/apps/petunia-design-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.86s
+     Running `/workspace/.petunia-cache/target/debug/petunia-design-cli`
+OK surfaces=1 objects=1 gen=3 bounds=(4,3) union_contours=1 white=(1.00,1.00,1.00) lines=2 raster_tiles=1 svg_len=257 tokens=10 locales=2 clip_len=257 plugin_out="stats: surfaces=1 app=Petunia Design Studio" mcp_rev=2 pdf_len=1468 png_len=77 planned_bytes=1520
+i18n en-US: "Exported 1 items to SVG successfully"
+i18n pt-BR: "Exportados 1 itens para SVG com sucesso"
+Raster bounds: (0,0) to (128,128)
+scene fragments=1 objects=1
+- SurfaceId:1 objects=1 fills=[ptnd.red/500]

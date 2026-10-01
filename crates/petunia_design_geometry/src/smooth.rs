@@ -32,11 +32,21 @@ pub fn simplify_rdp(points: &[GPoint], epsilon: f64) -> Vec<GPoint> {
         let b = points[last];
         let dx = b.x - a.x;
         let dy = b.y - a.y;
-        let denom = (dx * dx + dy * dy).sqrt().max(1e-9);
+        let length = dx.hypot(dy);
         let mut max_dist = 0.0;
         let mut max_idx = first;
         for (i, p) in points.iter().enumerate().take(last).skip(first + 1) {
-            let dist = ((dy * p.x - dx * p.y + b.x * a.y - b.y * a.x).abs()) / denom;
+            // Distance to the finite chord, not its supporting infinite line.
+            // A return stroke can extend beyond either endpoint, including
+            // the zero-length chord of a closed gesture.
+            let dist = if length == 0.0 {
+                p.distance_to(a)
+            } else {
+                let ux = dx / length;
+                let uy = dy / length;
+                let projection = ((p.x - a.x) * ux + (p.y - a.y) * uy).clamp(0.0, length);
+                p.distance_to(GPoint::new(a.x + projection * ux, a.y + projection * uy))
+            };
             if dist > max_dist {
                 max_dist = dist;
                 max_idx = i;

@@ -1,0 +1,2927 @@
+{
+  "baseline": "73447647a34f5b4be209415c36e6965c5f71b9b9",
+  "files": [
+    {
+      "path": "apps/petunia-design-cli/src/main.rs",
+      "lines": 398,
+      "sha256": "1d5cdb4c1ef64c7187f0c8f8262b656e613c884b90f66ea998e34945949c7963",
+      "kind": "rust"
+    },
+    {
+      "path": "apps/petunia-design/src/actions.rs",
+      "lines": 77,
+      "sha256": "0daef6613682a848bbf30bfed92af3e9f48ad6de63a4fa0c5f725dc1587ff7cb",
+      "kind": "rust"
+    },
+    {
+      "path": "apps/petunia-design/src/appearance.rs",
+      "lines": 88,
+      "sha256": "17be22c8972dfe21266b75bf4503c1f31680223192133e345b9634ae142fbb04",
+      "kind": "rust"
+    },
+    {
+      "path": "apps/petunia-design/src/canvas_paint.rs",
+      "lines": 1551,
+      "sha256": "9943cc022e5f2f8d952586085e9c0b09cb09602595044abd9ad4193ad77d7e30",
+      "kind": "rust"
+    },
+    {
+      "path": "apps/petunia-design/src/chrome.rs",
+      "lines": 2348,
+      "sha256": "ec9a1d30666a6647a3eb5696cc3136ceb9b32e3b0c8c4290cb6ba592bd033b63",
+      "kind": "rust"
+    },
+    {
+      "path": "apps/petunia-design/src/dialogs.rs",
+      "lines": 1931,
+      "sha256": "aa5f032b602a48615dd92d8b4c4ed1b241fd6844e4e12bd5da93e27064d77a5d",
+      "kind": "rust"
+    },
+    {
+      "path": "apps/petunia-design/src/dock.rs",
+      "lines": 6620,
+      "sha256": "dee42a93c73c937ca614d5dcf1d7c8064e3e16a14e3f4b1320760c4692dba996",
+      "kind": "rust"
+    },
+    {
+      "path": "apps/petunia-design/src/main.rs",
+      "lines": 1786,
+      "sha256": "1354fdf0f8fb1bb9b32806464e5dc7e151673cbf59afddb52201f1a4c7f64404",
+      "kind": "rust"
+    },
+    {
+      "path": "apps/petunia-design/src/theme.rs",
+      "lines": 242,
+      "sha256": "6b28329fb207c7043968a8a08a377d70158684584e489f887d5f762fa3eef600",
+      "kind": "rust"
+    },
+    {
+      "path": "apps/petunia-design/src/ui_state.rs",
+      "lines": 538,
+      "sha256": "51ce86bdfb6fb98fec7882822f2c6c7e8bcc2206df283ac8977add40bc9b71ff",
+      "kind": "rust"
+    },
+    {
+      "path": "apps/petunia-design/tests/click_smoke.rs",
+      "lines": 648,
+      "sha256": "69fde4bc537ba784f7721826eedab5e8dd0b4eb874d8de490f49def703470cda",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/actions.rs",
+      "lines": 104,
+      "sha256": "883481d2664b4e6989487b7a2c2eeb8b1888814335aad5b01392727e15852434",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/appearance_service.rs",
+      "lines": 238,
+      "sha256": "604318efab54ef5d9c6aa62b509d14eb1809a83900fe1cf2be87dc8d44f8fa7f",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/boolean_service.rs",
+      "lines": 43,
+      "sha256": "1e617e2b3bebab03135bbf4baa57f44ece3bd18bb0e678269ec33cb5cf8a9ce0",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/capabilities.rs",
+      "lines": 112,
+      "sha256": "55c96d9806639f0a2caa9184068f13cb77f0d2f56606697565a548c84e1d1ac3",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/commands.rs",
+      "lines": 673,
+      "sha256": "7f787e95c9787346f99bd905cb5e5e43800939d83146b5f40d9cace71664444a",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/creation.rs",
+      "lines": 68,
+      "sha256": "6491a4bf6a8e16790b6f0f5fbc07b8702c48757543e17ab6b515f82c745d923c",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/data_merge.rs",
+      "lines": 83,
+      "sha256": "18c7b6eb86a471b54a9d7d8cd7e63e87fe98398e12396e169e6ebbb597ae7203",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/export_service.rs",
+      "lines": 509,
+      "sha256": "2c26c68ed7b338dc32c8455348b0516bf0a52c0b3f6725a4fb553f1c31d718f7",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/geo_cache.rs",
+      "lines": 456,
+      "sha256": "c733f338ba2d8871ac8777c56e8fce1f7dbd1c6c472eadd96a8fd1c558950aa4",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/hierarchy_service.rs",
+      "lines": 96,
+      "sha256": "c797d4fd1d0888f4bb5a5bf2e2db516e5efa74ec005b1c54d707b6b7422462d1",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/history.rs",
+      "lines": 458,
+      "sha256": "1d462d217ef663df23d128c2da8c959dcbd33f0d0eb577e891975836a2a5d6fd",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/interaction.rs",
+      "lines": 81,
+      "sha256": "c4a0561e8b4c2f3bc7043cf034990b8ddc4555a67ba7d5ec15b61068da7e8199",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/lib.rs",
+      "lines": 52,
+      "sha256": "76abd2d67a3e5504ce5f0384fb5be8632126474a837086a25fa4b8260ac0139c",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/menus.rs",
+      "lines": 1457,
+      "sha256": "922aeec43662b7146b008bb641ab4069dbf01c3be2f6eb20a63d7b5cb776fe03",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/ports.rs",
+      "lines": 231,
+      "sha256": "11ed7872b24126eaad47aadb99b606b3af2357ad1d7f231fad9378a602710af8",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/selection_mask.rs",
+      "lines": 426,
+      "sha256": "97cdbe17358518796f7d2edffa560dd04c9038de0de94fa00eb595024c6f13f0",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/session.rs",
+      "lines": 2797,
+      "sha256": "e22f81777353e4b1a2b50882ec144da37ad877bb4450bf9e4ecc276a60d8683b",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/spatial_index.rs",
+      "lines": 161,
+      "sha256": "464ed8e3df40802902bd612d396fcb0260d5581266349f3b4a9665e80d3c883e",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/surface_service.rs",
+      "lines": 36,
+      "sha256": "621ec6d02e9af341e3792e902e9eac1811d5290a11011dda34532832f9e3c135",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/surfaces.rs",
+      "lines": 1756,
+      "sha256": "8724c553cb8c88f6838d782d64cac1ad27fcc698607ba74bd5b7fda662f10102",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/tools.rs",
+      "lines": 258,
+      "sha256": "9d3b94969f1462392a5368f5b23d94f68cb9ebebd1029445ac6b70c747666244",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/transaction.rs",
+      "lines": 149,
+      "sha256": "2755e356e573d87581e96d6f4e3ce71672221ace9621d4d3d6e1a1bff723511e",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/view_camera.rs",
+      "lines": 278,
+      "sha256": "eed64540daae84ccb9050a70fbc883353adfe4ac502bbc0dd033b69d4788c653",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_application/src/view_models.rs",
+      "lines": 401,
+      "sha256": "c5ea621f73f4b55a580839774a7589b0b590a91899754af594d1ff9d683940e0",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_color/src/intent.rs",
+      "lines": 17,
+      "sha256": "a01467d5ad2420bb048615eb276a6fff8f8ba44f488c7387a7754c19111c25d7",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_color/src/lib.rs",
+      "lines": 19,
+      "sha256": "0b4bfb70ac251eb80fa18904a1da2e0820144217caf1e28cc36030104549ecec",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_color/src/proof.rs",
+      "lines": 333,
+      "sha256": "8f29129a6fc00fc0ee4ad764145135d44d885a9ccfe4f3d0fdb1775b9b50dd08",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_color/src/transform.rs",
+      "lines": 77,
+      "sha256": "eb124603e7754bbd877f7eac3191853fcefe07be17b46280abd05f33bdb4a293",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_color/src/value.rs",
+      "lines": 206,
+      "sha256": "40e7c548310f830d3f17779b44ed88bca4df4e0ee8ed32428d3dcfa214f11886",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_color/tests/proof_proptest.rs",
+      "lines": 52,
+      "sha256": "3a20c5790eba95a2fd178830bf59e593e99dab4527492c18adffe6d68e241d5e",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_document/src/adjustments.rs",
+      "lines": 581,
+      "sha256": "be9b8624bc6bb7098641a7fdc9f1a73d62174bc3d14f98e44b95faa15a77f376",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_document/src/appearance.rs",
+      "lines": 852,
+      "sha256": "98b2daeee99bd0a5e8cececa58cc6b3d9d4e26bc420c2c4fcf33e01f43db7817",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_document/src/changeset.rs",
+      "lines": 223,
+      "sha256": "b49afe4ab553df946e306618aedda79c5c67abfbc4e9369a5e9a952961b11495",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_document/src/document.rs",
+      "lines": 684,
+      "sha256": "a9252c4c3f63cc598a1e881dab5b33788798c4ea0239a63fd00d4c4434a36ef2",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_document/src/document_object.rs",
+      "lines": 567,
+      "sha256": "a8ed14c36d410f3a80e866409d5b7a584a2700aacd0761bb73ec998880fa57b0",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_document/src/hierarchy.rs",
+      "lines": 66,
+      "sha256": "aeaf6616037665d367ddcc15499668de45b1f09c3b638737e3a9b9b1b9a6f75f",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_document/src/lib.rs",
+      "lines": 45,
+      "sha256": "a2ac47b485eaf96492447bad6fdf450aabd0283feef13bc4a9a94d3e0a55a9f4",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_document/src/modifiers.rs",
+      "lines": 433,
+      "sha256": "04c86b7bd37667b930581d03ca87ce5cbdf4f934569908f0bc652d6662a55a2e",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_document/src/mutator.rs",
+      "lines": 3431,
+      "sha256": "5f3cc5f6cc97746c87fab9b7cf556544085c24b2392d609fc78c9948035f1df5",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_document/src/shape_factory.rs",
+      "lines": 95,
+      "sha256": "0331961f70d0ef98e0fcbede7bddeecf5323d7e131227cb3412ecd875caac453",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_document/src/surface_metadata.rs",
+      "lines": 150,
+      "sha256": "8b0d4549cbe6476dce827346b064ecf123f5ad1b30483981bab3f6de9e5def29",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_document/src/variable_data.rs",
+      "lines": 814,
+      "sha256": "8484ecb9e1deb4a988606157c9aea86c0904c8a9284012906682cd79173b7dea",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_document/tests/document_proptest.rs",
+      "lines": 87,
+      "sha256": "7cf7fc1e93b55f72d1564a972d248907d45e7fdb0806135fb353cc2131c998d0",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_evaluation/src/lib.rs",
+      "lines": 137,
+      "sha256": "b1ecc3c98dcf5ad90dd02856bf3cf23f99f652c3abe11dead1cd4637bcf10f1b",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_extension/src/host.rs",
+      "lines": 403,
+      "sha256": "5c17cb8c28d9286eed8f7ebbb7d1c4e64175e7f13d9dd9a125b8d42edf7c3bf9",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_extension/src/lib.rs",
+      "lines": 15,
+      "sha256": "d24371c32b35582909971e8746b3391e6a2d04199d0ae1ba2ca935e1a618c485",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_extension/src/manifest.rs",
+      "lines": 144,
+      "sha256": "e426cc53ef7b7c580ed5ca379c61bc0c664849cf6d9089b3cbc8bb7a8d2b9913",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_extension/src/security.rs",
+      "lines": 122,
+      "sha256": "dd691357f744a4e0b71669bfae281eb7fc01fea4156647473a3657e3018b1db6",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_extension/tests/extension_proptest.rs",
+      "lines": 32,
+      "sha256": "86a91e0eb9474897a6cc9b0b4d024806730ffd24ae80f61fa0d7ea5ee217596c",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_foundation/src/diagnostics.rs",
+      "lines": 104,
+      "sha256": "acce54bf4650deb030d4a0c7a4cea950c0211ba45be75911260fc53aa9a4aeaa",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_foundation/src/ids.rs",
+      "lines": 150,
+      "sha256": "696448f989bf917c13540ddfc37c1d82ce2cc09aafb34eb153712547f5a9cabf",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_foundation/src/lib.rs",
+      "lines": 22,
+      "sha256": "37bdafe1f58fcb9a5c66e36ca6f1edc9db4f87e859648ceeb227929c7cc6caea",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_foundation/src/namespace.rs",
+      "lines": 165,
+      "sha256": "c693b89ac13b10590823694a2fcdacf88c1d10623008893b8e7c59792c6d5ce2",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_foundation/src/numeric.rs",
+      "lines": 248,
+      "sha256": "984fe909d57141ff1e9774c4f2e2ccc16c88ad31c3a7f169e6fa2d5ddfad3d16",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_foundation/tests/ids_proptest.rs",
+      "lines": 43,
+      "sha256": "6391be4d0da61e76916c63fdd49c5d8105adccf495a5db0fed4d65f96e014bf0",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_geometry/src/affine.rs",
+      "lines": 207,
+      "sha256": "278ac82cba3a99ba426ac2d4fc170df1e28c7d6c846981a77195744d217ba961",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_geometry/src/boolean.rs",
+      "lines": 234,
+      "sha256": "428f2ccc387955b8f9f8a05c896890aab29669f5b51efbfb4698dcdec6515c6f",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_geometry/src/cut.rs",
+      "lines": 390,
+      "sha256": "da8ad5162de398cc44103ad0a123ad37b78d0d1982f9358b55aba9b7dddfd31e",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_geometry/src/lib.rs",
+      "lines": 39,
+      "sha256": "1ce87fbf03cb5e678dc6e12bd524d1131faab7da50ba7375abd34848355991ef",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_geometry/src/measure.rs",
+      "lines": 96,
+      "sha256": "838d1c3437e3a130a8a7c16a3b4e0457ee909e88abb3fec595b97a4dc6cd0748",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_geometry/src/node_edit.rs",
+      "lines": 84,
+      "sha256": "9405499dd7bc1df89e42444b1f335d9464c1619eb973fbeca6f8812b00c6816d",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_geometry/src/offset.rs",
+      "lines": 325,
+      "sha256": "bdeb7b298d710e7053172a0c41dab63ae8d82b053d8defebb0f972f5814cddae",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_geometry/src/path.rs",
+      "lines": 772,
+      "sha256": "c4b1577f5a1e97514b5fb51b5dd8162b373b52c505bd7851bc17ddb5720d7f0d",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_geometry/src/point.rs",
+      "lines": 56,
+      "sha256": "23a3255eeaf6eadd837241ea8718483c7a80c44b64049e3c64d25b2dbe7ecea4",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_geometry/src/rect.rs",
+      "lines": 219,
+      "sha256": "f443151bbd47eaaac50f824f17bfbd8c1c0bbfd58372748a8dc6c493eb46b44e",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_geometry/src/smooth.rs",
+      "lines": 230,
+      "sha256": "21cb1113a498f1c350c12a8a0d7de99c0afc4d6a77dc4a454df5f0414f6eecba",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_geometry/src/warp.rs",
+      "lines": 470,
+      "sha256": "3992c95f115da28549b3e902920bc34ab6a698c81111c7d16a26c8a61f82c8d0",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_io/src/image_io.rs",
+      "lines": 551,
+      "sha256": "c9ee39a811eb29a9014c404ba08fee71e8fe49e743b275014a7666cf9b4d1acf",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_io/src/lib.rs",
+      "lines": 27,
+      "sha256": "ef9b0c1d56a4fa8ee02cefe2985cfb311ecef3a811f2a6e76ade0be4f43057a8",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_io/src/package.rs",
+      "lines": 392,
+      "sha256": "201a98492b61eeb3f95929cf6dae914fc22b56eb588c6e1f727a33a608d2c1d5",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_io/src/pdf.rs",
+      "lines": 634,
+      "sha256": "3c7e9a5e3e1389f38c107962ac2124706d24dfe85f0556138213005cdec0055c",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_io/src/svg.rs",
+      "lines": 483,
+      "sha256": "1be1ef22e7bf6bd76f226931bf31f521b53972115d968dc6c3a49ca04dd5593b",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_io/tests/image_io_proptest.rs",
+      "lines": 54,
+      "sha256": "1d6cac03428302dd32612a22b5b47985f98205b9e2273ee9f067197ad45fb222",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_io/tests/pdf_proptest.rs",
+      "lines": 43,
+      "sha256": "909d8d1cdec8c1451b50f92bdc873af09afd4bf6360f661c01c9bbb647ba9d5f",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_jobs/src/cancellation.rs",
+      "lines": 65,
+      "sha256": "e7212db831076ea8f62d31dcbb1d0f98a6e4673560135958c2ed42d7e66039db",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_jobs/src/lib.rs",
+      "lines": 12,
+      "sha256": "d86b6771601289fea4f6a5e65e21c4e04fc85ab980a127b38237475b8afc5605",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_jobs/src/manager.rs",
+      "lines": 144,
+      "sha256": "0b8a2edcdc6a030cfb39f435e70ec385f2e8b91aa851b8549bad7a9b841362a0",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_jobs/tests/jobs_test.rs",
+      "lines": 43,
+      "sha256": "2eff7b5385fbcfa61e0474bfd802da2f11da995f6b82ddb524b36af5efe6c8fa",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_mcp/src/lib.rs",
+      "lines": 13,
+      "sha256": "50235dd4f96fb163544d2701c163438ce549ae14cabc5773a889c782c9e38d00",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_mcp/src/protocol.rs",
+      "lines": 117,
+      "sha256": "90d2cb211efde826a0e932ad7d2e1417f4d535fd210b26a8b35da0f1fec68e94",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_mcp/src/server.rs",
+      "lines": 737,
+      "sha256": "07c93019261434180b37371c7d002c6df3f038febc728738c452a4e1032418dc",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_mcp/tests/mcp_proptest.rs",
+      "lines": 22,
+      "sha256": "1e95182667e836a7b29c1233ce72591f1cc910968eaf5256cfedea7995302c27",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_platform/src/clipboard.rs",
+      "lines": 116,
+      "sha256": "47d9a093326428dd935e8cf6736fef7323148ea2cf1b7e0ce6961d10926ad1d2",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_platform/src/dialogs.rs",
+      "lines": 158,
+      "sha256": "09be0d9bfe43883aa1ebeac8b195917d7ddcbdece1e077bf52a50475230e6226",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_platform/src/env.rs",
+      "lines": 75,
+      "sha256": "4400b36d38bd0e445f35988d810def050338c330a5d73d0f866a1323c67cd49c",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_platform/src/error.rs",
+      "lines": 23,
+      "sha256": "ab0d8d69006765604ea8a6a2e3ee186d31d24a7eb3f8ca8a9b2bbe7ecf619888",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_platform/src/lib.rs",
+      "lines": 19,
+      "sha256": "74f85065f5e3500b59d0ae4b5dd2e991e178db7623992e106cd695ff5f832cec",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_platform/tests/platform_proptest.rs",
+      "lines": 43,
+      "sha256": "620fd939185149bbd011533d976cf23dcc81809cdfb160408dd82f6649848bb6",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_raster/src/brush.rs",
+      "lines": 196,
+      "sha256": "dab1070412890d9b280221507b9ccbbc749c8f3394958497dcbd1d2b8dd4408e",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_raster/src/lib.rs",
+      "lines": 14,
+      "sha256": "a751c33b08eea9be6d20be332000f593dada3ab64485b42d0510f5004c7e077b",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_raster/src/pixel.rs",
+      "lines": 61,
+      "sha256": "b8ad3d2f641b3c87b25af46feceaf1f68c082665c30efd300a36da5c570f170f",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_raster/src/tile.rs",
+      "lines": 284,
+      "sha256": "f199c94882c33ea232647bc1ddf3db99e488848f71013a67200581606c8d36a3",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_render/src/blend.rs",
+      "lines": 459,
+      "sha256": "d561cecd5f302eb8648ec256ae66413dc0aef31724e0c7ffbab1983e6f80bc45",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_render/src/composition.rs",
+      "lines": 139,
+      "sha256": "5c50dd3ec17e5c7153e118a9d6e47ea3d40db270684a3ae2626fbc400f7e0ca1",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_render/src/lib.rs",
+      "lines": 21,
+      "sha256": "2ab201e56f97bf9089e33b07ee4fff8062ab0201e44809137ffd26dcd8e47da9",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_render/src/pixel_compositor.rs",
+      "lines": 918,
+      "sha256": "c55710d78f7fc58605d9a4665659efe2a690baa96490620b0e22e3722d6a5a03",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_render/src/scene.rs",
+      "lines": 170,
+      "sha256": "3bb30880beeb4224bd02996e43d85edc364af38ef703f34eca3f760e361b9fae",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_render/src/surface_planner.rs",
+      "lines": 243,
+      "sha256": "27f42a0cd76a01af5ba7f30e231e6d5233068810571845dc98b01aa05e829d83",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_render/tests/compositor_proptest.rs",
+      "lines": 87,
+      "sha256": "c51c60ae81d6afee80c8cd3a631b0a82d3376d63ad101f81627bdfaa0507857d",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_resources/src/i18n.rs",
+      "lines": 379,
+      "sha256": "f1e98532fce20cd8709cad56b68d6cbe33b4accf1e2a998de5803fda697e6b72",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_resources/src/lib.rs",
+      "lines": 19,
+      "sha256": "1be0177db427563e5e5f8ac80db0ebb50cb2a994337c934968fbed3bb3406fef",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_resources/src/pack.rs",
+      "lines": 282,
+      "sha256": "b7903b6c85b9369acbb65a4aba07f3d71a5dbaf0596ff09916a500453fb3e9e4",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_resources/src/shell_strings.rs",
+      "lines": 1008,
+      "sha256": "e644cffeebb49bdd9bdb6ff2b63a91f2f60b6f1cafb53881826d6a1d4567fa9b",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_resources/src/tokens.rs",
+      "lines": 300,
+      "sha256": "d9d5f171e4bc2d2f24add7ec31b87e7a6b77545538f25dac73266995c3694002",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_resources/tests/tokens_proptest.rs",
+      "lines": 40,
+      "sha256": "c22ed054244355cbe037e4639ab0144eeb9c5ad4c396406007689c37ba43e20a",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/bridge/gui_bridge.rs",
+      "lines": 1937,
+      "sha256": "d313ac4492b1170b2a2db79ef316cd8fdfbcc99b39fbbef58850813ca6ccd54a",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/bridge/mod.rs",
+      "lines": 17,
+      "sha256": "2eb2af5db119506ed2791bec8ad2110a96ddb51f3f93168f5f55ab4d78d6cd37",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/canvas/mod.rs",
+      "lines": 18,
+      "sha256": "41ccd82bace4e703a71f66a7b34af1257215c0e65093e42a4dfc13ce3e258c8f",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/canvas/overlay.rs",
+      "lines": 327,
+      "sha256": "2d81d35840629632d0070a2a9356f47c00e3ce51e93c0f336816ceb721767b16",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/canvas/snapping.rs",
+      "lines": 262,
+      "sha256": "de0a474a8df46ed6087468f4338ab004898267ed8feb16f4e348154fe1c4e047",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/canvas/snapshot.rs",
+      "lines": 263,
+      "sha256": "6d35803e7abbb2a4a58b4350d9e385777a3c4ae0c6398a452d6c88b66376a20d",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/context_toolbar.rs",
+      "lines": 954,
+      "sha256": "071ee455143fc1c063542e29f40112ebd2fbfe63b11cc998f4a6cda163ce42d6",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/lib.rs",
+      "lines": 25,
+      "sha256": "7ce8b20ddb4c5ad1e66ea582afbc41aa3cf370dcb948c3d0a8119ed1df1ef8c2",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/menu/mod.rs",
+      "lines": 783,
+      "sha256": "509199f305ebb335674913835ef0953208d8eb2da0f6bd65b02ea6f1fa36d223",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/panels/data_merge.rs",
+      "lines": 111,
+      "sha256": "17b44423e992a86b96f58cee3928c0d899b46be14b7ec40091405cf5a51afaa8",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/panels/history.rs",
+      "lines": 33,
+      "sha256": "629d64ef8247d5b46af614eaac498903ce3c648aec03f2646a969fa0171380c5",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/panels/layers.rs",
+      "lines": 266,
+      "sha256": "54ab6e8faa6521526e18d1646e9b60488ec462828dd8471ab531ecf76462824c",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/panels/mod.rs",
+      "lines": 9,
+      "sha256": "7a1bb894ec40371ecfa7c525bbce2b0f3a31fba65c4ff0858fe48055be99c49b",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/panels/properties.rs",
+      "lines": 221,
+      "sha256": "9da9e86f3184aedc339055282087a9aa2b4d53fb585b3bc15019c8aaad4fef80",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/shell/desktop_shell.rs",
+      "lines": 224,
+      "sha256": "f6ab1a8fbd13baab6d1a7ba0be57ca7d164c326981896f2b571e87c82b28bcd4",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/shell/mock_adapter.rs",
+      "lines": 113,
+      "sha256": "f33f8c9e0259ec91a90b68bb3c224706f60ba70342bfa6166f002238f990d3ac",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/shell/mod.rs",
+      "lines": 7,
+      "sha256": "fde06b0c71232bdc5d3ea3937e29aabad45c3e9f0356a4c0bfd7c508be37323e",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/artboard.rs",
+      "lines": 124,
+      "sha256": "9f5cbc902f85baee0eb29a0739fbd0d0a31de28a5e56e70153a312812484b826",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/contour.rs",
+      "lines": 593,
+      "sha256": "b4a4e79cfcbbd690a5a511412adbce9c1c8a836bf56a44883e01586d9935c45a",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/gradient.rs",
+      "lines": 840,
+      "sha256": "9f8e227890ae3634c879b0d5ad377f7f194aeef50a0ed69cda7526ca6616f0e8",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/knife.rs",
+      "lines": 446,
+      "sha256": "ba88743251d690d93593f00da23d10e83153cddd41c307429f7d8c1c7c77b0ae",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/manager.rs",
+      "lines": 485,
+      "sha256": "0b34293834aea8233c49f19213c477ce20bf4d9f40234d1e9db7e2a831d8f960",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/measure.rs",
+      "lines": 205,
+      "sha256": "461010bd954df3900c5a04b55d2e2350e9ea042b8ceeeef935692bae7f71eae6",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/mod.rs",
+      "lines": 45,
+      "sha256": "36b8b1556561f8d513e683aaa40dcc38a2a6dcfc38678d2d9d6821002392ecae",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/node.rs",
+      "lines": 1472,
+      "sha256": "6703bd5249641ff2a30f81733971eddb318b30e6c0f6545497ae7c79353016b0",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/pen.rs",
+      "lines": 794,
+      "sha256": "0f7aade02dbdb58804c7f8a81bf09db258167b99a41c31a89862df06f0085ebf",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/pencil.rs",
+      "lines": 609,
+      "sha256": "32007bcdf8aba2545e9e8861766a21134769252a54c3443c8ca4d8ab00e3ccd5",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/perspective.rs",
+      "lines": 255,
+      "sha256": "1c29bb2a07c96e6b837449f0be6cc3b039cf36bdaae7645c3e7eaedc24bf3921",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/photo.rs",
+      "lines": 373,
+      "sha256": "20c9b4d69567fa20afcca234156e568fda8e517271509c9933a87e01c6a801f3",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/picker.rs",
+      "lines": 300,
+      "sha256": "cc525a23dc9b793899787a8940a70c0fd281a32919599c8b0bc161c9227c1f48",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/point_transform.rs",
+      "lines": 119,
+      "sha256": "7522fb6a410a76e743f0af9edc8dfa7f16153574e088804c535b9ba51f1a2eb0",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/select.rs",
+      "lines": 1450,
+      "sha256": "2a3e1cee3a0f7b4ffce11b046540f57912c87497fe9fbfc469e74e10c2e023a6",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/shape.rs",
+      "lines": 189,
+      "sha256": "d34038e43d35605a95027de151ae473784836aa1284d5ba8712c2c1030ab37df",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/shape_builder.rs",
+      "lines": 849,
+      "sha256": "fcbc67494e0f59003337b1850e2dcb0d61f1fc057226ef003ff6b9de32892d4f",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/stroke_hit.rs",
+      "lines": 31,
+      "sha256": "0f4dc06f8238471dbe40ea1e4dcffc482e4f98bdd102cec847ca1b4a8661ecff",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/text.rs",
+      "lines": 763,
+      "sha256": "c5a8e930c31fd2de1b496b8f0b24e4bbb17b67050db395cd716a5f2f13bd38fa",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/view.rs",
+      "lines": 122,
+      "sha256": "cf131214be9b7309b19704a420a6909f7f63903686c469941c14a5d65a2689ac",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/tests/bridge_test.rs",
+      "lines": 751,
+      "sha256": "cd9e8f99bc4612a43bafc841431086f45c587e33f1903c68473301753fac67d6",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/tests/menu_test.rs",
+      "lines": 367,
+      "sha256": "633a78e47c6fb356525a4a019fe885418839fffffee89a371f6b944b75acd980",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/tests/panels_test.rs",
+      "lines": 519,
+      "sha256": "eb0d7808c7efceb1933fee2ed819206c77f717f20e36a47ee135f32e6821beff",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/tests/tools_test.rs",
+      "lines": 6642,
+      "sha256": "264b511cbd2e5be4d0bfa21df259282de955035cd15aeb1808a8ff5c541b7a1d",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/tests/ui_proptest.rs",
+      "lines": 83,
+      "sha256": "5c1fda4df3470f74d72e8e97ec5c246a3cec3ccc2d0458f98a8f6b0288cefc74",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_shell/tests/viewport_test.rs",
+      "lines": 170,
+      "sha256": "6063bd435fc07eb20dd78a16be7e93887e7b0e301f65b0ece458b7e7c0b14fbc",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_testkit/src/bin/canvas_benchmark.rs",
+      "lines": 41,
+      "sha256": "7c0809a2255131c88a74461cf2d56cf22acbc8492bf299841f250f7a6178ee59",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_testkit/src/lib.rs",
+      "lines": 322,
+      "sha256": "aa4d967e0854bc8d8483c559a6a6133b7d04b5aa4ac42638f258be10e147a42c",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_text/src/fonts.rs",
+      "lines": 181,
+      "sha256": "9413201f336e6e71b27c03fadee6a450f47f10691a5ee623a4b70621502ce208",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_text/src/layout.rs",
+      "lines": 521,
+      "sha256": "305e0e46466d3cbe8ce69780f803a84e04598c98f9fa56170b8f8aa5f1095165",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_text/src/lib.rs",
+      "lines": 20,
+      "sha256": "37798329723710f65bf98888ec6376c0c612fc4acf555d5927879d94ebda2806",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_text/src/on_path.rs",
+      "lines": 429,
+      "sha256": "1fefab06fd8a33d3ecb4d0a791e063def8a4923487df1018a73bc7b939e81502",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_text/src/story.rs",
+      "lines": 278,
+      "sha256": "de63f8236c15067ac168f11810f3049268c5434af474a0c0b337ea171308e5e8",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_text/tests/text_foundation.rs",
+      "lines": 86,
+      "sha256": "dd53156c0a703c35f714ab4ea93de0bf1d6e929c931f681beef2bc9e56d6c85d",
+      "kind": "rust"
+    },
+    {
+      "path": "crates/petunia_design_text/tests/text_layout_real.rs",
+      "lines": 125,
+      "sha256": "8d126953d929a76fa25b4e550d48b683b7273760142a5dba3280ed5de6a51784",
+      "kind": "rust"
+    },
+    {
+      "path": "xtask/src/main.rs",
+      "lines": 423,
+      "sha256": "197453fde83f07e262ee2fc1b60fcadd64c8aa8b1bc3d8caa4137edfe018c656",
+      "kind": "rust"
+    },
+    {
+      "path": ".ai/README.md",
+      "lines": 14,
+      "sha256": "1100ff6bfda83812db470a7436205cd93a8f37aa9774d9380ab960d8f3fe2092",
+      "kind": "markdown"
+    },
+    {
+      "path": ".ai/agents/README.md",
+      "lines": 10,
+      "sha256": "f755d045ec6a5fdbcf7f8692eee9254f8d06f84b16dd2ecaaae8a56b110fba79",
+      "kind": "markdown"
+    },
+    {
+      "path": ".ai/goals/P00/P00-dossier.md",
+      "lines": 72,
+      "sha256": "464d2190c071fe41d23b5ca7f160f535eb6465d707eb285e852341cc0e24afc6",
+      "kind": "markdown"
+    },
+    {
+      "path": ".ai/goals/P00/README.md",
+      "lines": 10,
+      "sha256": "cfefde5e14e5da9862e2dada40cd0a9c68dd1140a5b9e6af23377abe945d35e7",
+      "kind": "markdown"
+    },
+    {
+      "path": ".ai/goals/P01/P01-dossier.md",
+      "lines": 71,
+      "sha256": "6022ff13eced772523b50e5989ef7ded8b34159a84c50c8f9390554a25e3339e",
+      "kind": "markdown"
+    },
+    {
+      "path": ".ai/goals/P02/P02-dossier.md",
+      "lines": 79,
+      "sha256": "a8b65559d2d8c09482b65a231c43aaf5167b7be43943ff698430536397acd79d",
+      "kind": "markdown"
+    },
+    {
+      "path": ".ai/goals/P03/P03-dossier.md",
+      "lines": 46,
+      "sha256": "cde4a802ac48c2ac4869b82d33679a1ffba8b7c4684010ab799e2d2c2fef3628",
+      "kind": "markdown"
+    },
+    {
+      "path": ".ai/goals/P07/P07-G05-dossier.md",
+      "lines": 224,
+      "sha256": "82d5891f6d18baf294f2c98c865e1bce5d478c5ac515f18f3207b061901bcd55",
+      "kind": "markdown"
+    },
+    {
+      "path": ".ai/goals/README.md",
+      "lines": 11,
+      "sha256": "839adb7896d87874c41ed90030a71f0941921d5eb2786f54e8f28e085bf15698",
+      "kind": "markdown"
+    },
+    {
+      "path": ".ai/orchestration/README.md",
+      "lines": 13,
+      "sha256": "e67cd8e5e1e139ff2da50e48531f8d944ccecb5803b17207faa11241421ae676",
+      "kind": "markdown"
+    },
+    {
+      "path": ".ai/recipes/README.md",
+      "lines": 10,
+      "sha256": "791940a385a08cca07b83f4b5706bf99ccdfb58b0dba93423ce53a54095da8c1",
+      "kind": "markdown"
+    },
+    {
+      "path": ".ai/skills/README.md",
+      "lines": 10,
+      "sha256": "8ecb6f1243f7015ea8deb1c23d48bbaa4ca524e83ad33b6032c7b01c3ee68a61",
+      "kind": "markdown"
+    },
+    {
+      "path": ".opencode/agents/architect.md",
+      "lines": 3,
+      "sha256": "998562ee1183d7b8eb853aedd26cc2445622e9c35d8112cada990f58603b2ebf",
+      "kind": "markdown"
+    },
+    {
+      "path": ".opencode/agents/executor.md",
+      "lines": 3,
+      "sha256": "a9fde5f09acbe2c2188ba74b211d349f9d21814c65a43e736c6bf20355d88fe3",
+      "kind": "markdown"
+    },
+    {
+      "path": ".opencode/agents/prumo.md",
+      "lines": 25,
+      "sha256": "bc818f77e5b009a02dae2731b94ab7054deaa984a6e9091b0f2279c376f4e807",
+      "kind": "markdown"
+    },
+    {
+      "path": ".opencode/agents/verifier.md",
+      "lines": 3,
+      "sha256": "40c0a78d73840e16d321037c280168a37eb40cd7efeb16d4fd51205aaadc77a9",
+      "kind": "markdown"
+    },
+    {
+      "path": ".opencode/skills/code-review/SKILL.md",
+      "lines": 3,
+      "sha256": "1117c82f3f5df5a6339d9585d0c110c0df9ec361464449a9cb86534e592d6a2a",
+      "kind": "markdown"
+    },
+    {
+      "path": ".opencode/skills/evidence-collection/SKILL.md",
+      "lines": 3,
+      "sha256": "b8016126b8ded85c3f40ae3275fa9419cae47bf0fcfe7cf42b266e6cc72f5de1",
+      "kind": "markdown"
+    },
+    {
+      "path": ".opencode/skills/goal-management/SKILL.md",
+      "lines": 3,
+      "sha256": "8be9f3d5ec5015d2eb5bf79b7b9dcf1e454dae230019602e5905115d3020ed87",
+      "kind": "markdown"
+    },
+    {
+      "path": ".prumo/README.md",
+      "lines": 12,
+      "sha256": "567f1526af0874b4219af8dafc61fc62d0eb59431737f0fd7adb792e27fd62af",
+      "kind": "markdown"
+    },
+    {
+      "path": ".prumo/artifacts/DOCUMENTATION_INVENTORY.md",
+      "lines": 173,
+      "sha256": "5cf8a7cc6165fefe7e71eade54f14ea36e7e30279868495ff85f45005f6b6b3e",
+      "kind": "markdown"
+    },
+    {
+      "path": ".prumo/artifacts/REPOSITORY_INVENTORY.md",
+      "lines": 29,
+      "sha256": "bf7e4e2eb6fc5b3c5c572a8c72e1791f2f964eb2c259cc0b1ad41a234bc43099",
+      "kind": "markdown"
+    },
+    {
+      "path": ".prumo/history/README.md",
+      "lines": 10,
+      "sha256": "dfbd282234e9eed68434607ffa4c6fb2ab9daec1a6fb69aeafff3e204f2e5979",
+      "kind": "markdown"
+    },
+    {
+      "path": "AGENTS.md",
+      "lines": 13,
+      "sha256": "e192112ecbfb43f17eeef410cef648d9ae04dae84b6affb42e07024dd386f8a8",
+      "kind": "markdown"
+    },
+    {
+      "path": "DOSSIER_V1_2026-09-30.md",
+      "lines": 186,
+      "sha256": "dec565e2c9b2a452c0f8dd22167c54afc836d52689e66c73b3b497f13669a0a8",
+      "kind": "markdown"
+    },
+    {
+      "path": "ESTADO_ATUAL.md",
+      "lines": 58,
+      "sha256": "2d10881076c2f1d8ea615ce9b32e884dc3573e103669fa9014eb41e65f0eed0c",
+      "kind": "markdown"
+    },
+    {
+      "path": "GAUNTLET_LOG.md",
+      "lines": 164,
+      "sha256": "669563cce41af520c23e7a2397ede400332935ae1762b479b45370f3f376f5b6",
+      "kind": "markdown"
+    },
+    {
+      "path": "PENDING_PENCIL_STABILIZER_2026-09-22.md",
+      "lines": 29,
+      "sha256": "612e79073901aaa550b3da62a0a6a709513a492b4ad8109a858da139c0951dc6",
+      "kind": "markdown"
+    },
+    {
+      "path": "PENDING_SETTINGS_2026-09-22.md",
+      "lines": 53,
+      "sha256": "333b3e95f5fa133707e9349726e8aeecb35e4448e0448b304f1d1b26e4710e54",
+      "kind": "markdown"
+    },
+    {
+      "path": "PERF_REPORT_2026-09-23.md",
+      "lines": 280,
+      "sha256": "2822aed70297a10962b7bd0680f9da7a8342cf4c043f5073e0fc4fe7b1558220",
+      "kind": "markdown"
+    },
+    {
+      "path": "TOOLS_DECISIONS.md",
+      "lines": 284,
+      "sha256": "807dadf7cfea89e7a176c95cde0734722afbae0b13ac6d839c8bdf089260e608",
+      "kind": "markdown"
+    },
+    {
+      "path": "TOOLS_MAP_2026-09-22.md",
+      "lines": 211,
+      "sha256": "b3fd0701f44baef41c47edef56770616531eca5b5f2656a80b1d8249e03c1a08",
+      "kind": "markdown"
+    },
+    {
+      "path": "WORKTREE.md",
+      "lines": 25,
+      "sha256": "0b460db18dab8fb4bf710ee3d0b758f69320d84920070c5d2ec0cfb34c792583",
+      "kind": "markdown"
+    },
+    {
+      "path": "apps/petunia-design/assets/THIRD_PARTY_NOTICES.md",
+      "lines": 9,
+      "sha256": "0c14ccda924e603b626aa6b84f74d2b9a09f5721a3a197e84ae04ed4e4e46f6f",
+      "kind": "markdown"
+    },
+    {
+      "path": "archive/HANDOFF_LEGACY.md",
+      "lines": 280,
+      "sha256": "8be6e0e180c5cae8fd6239aabe56b544bcfa88fac819fc3d459a737fd6f4cf24",
+      "kind": "markdown"
+    },
+    {
+      "path": "archive/PROJECT_STATE_2026-09-20.md",
+      "lines": 63,
+      "sha256": "6dc4f5bf637cfc9b5992caedc094dc34a7d2f39b7ec4c389f030425f6be47903",
+      "kind": "markdown"
+    },
+    {
+      "path": "archive/UI_IMPLEMENTATION_LEDGER_SLINT.md",
+      "lines": 716,
+      "sha256": "2b44ada539f5e142cf0d52289dc69acff5c318d97009cfe891bd57581a29eba0",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/00 тАФ Product Charter & Scope 3db9bb7d023f8179b359f64100d8ed45.md",
+      "lines": 90,
+      "sha256": "6ab19b72d9d848ce34c0f134496b1627975583b8dffef9edd251178620c70a1e",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/01 тАФ Architecture, GUI Boundary & Canonical Docume 3db9bb7d023f81c8a92be6b662aa25d3.md",
+      "lines": 115,
+      "sha256": "402f0607c90dc145f38c11e31bf3ab2f45ba0b55a9a3d490ab77913959de0d58",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/02 тАФ Design Persona Vector, Layout & Variable Data 3db9bb7d023f81efbeb5d915be067e6f.md",
+      "lines": 82,
+      "sha256": "c56a0de059de06d68cfd58a10ec6c9db34ac73ed5fc5229dc71f3f3938b2109d",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/03 тАФ Photo Persona Raster, Masks & Nondestructive  3db9bb7d023f81aca90ce2a485809264.md",
+      "lines": 55,
+      "sha256": "b7501ca9551407dc6b988882fced2863eef36f21c27a51edf1a50ef9d5e77f1c",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/04 тАФ Canonical Rust Stack & Engine Boundaries 3db9bb7d023f813e826bd9ead40363b8.md",
+      "lines": 140,
+      "sha256": "e7fae542752833b42c915807d5b8793f21244ca6e72acf62ad94527072562a51",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/05 1 тАФ GPUI Primary UI Stack, Ecosystem & Icons 3db9bb7d023f812ca59cc6d12cb13c67.md",
+      "lines": 298,
+      "sha256": "820746c5d4d9add8fdafe0be697162c1b2050797466269ba7939277c72f9a443",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/05 тАФ GUI Technology Research & Decision Matrix 3db9bb7d023f81159d32e9bab39c9383.md",
+      "lines": 76,
+      "sha256": "cab0108a3c82335bfbd88c50930acef8277a30ddbf03009a02d35114ac33870e",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/06 тАФ Reference Projects Adopt Adapt Avoid 3db9bb7d023f81ba824df39ffb9f7ec5.md",
+      "lines": 39,
+      "sha256": "9a2bc2bfddfd856704c5aa65111c8bc678dbbc265079d4c823a2c51e14898959",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/07 тАФ Quality, Gauntlets, Plugins, MCP & AI Develop 3db9bb7d023f8148ab13e85800df4af7.md",
+      "lines": 90,
+      "sha256": "82c5af943d909d322670f87697efe47cc9a30ef0003b350a5718516234221988",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 1 тАФ Visual Foundations, Tokens, Typography, Spa 3db9bb7d023f81cb9d14fd9f7e67d2c7.md",
+      "lines": 172,
+      "sha256": "4fe452da81c573ee0f2c475d294efae58536c27354061b65b7031cea5ee116e2",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 10 тАФ Export, Quick Export, Batch Export & Outpu 3db9bb7d023f81b5a056f4d09e9b21fb.md",
+      "lines": 136,
+      "sha256": "1bfc9f311b2ba4d7ff38a4a766c7f9c581a66c92cbd9aa603961d714c49ce41c",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 11 тАФ Variable Data Data Merge Window, Bindings, 3db9bb7d023f8154b090cbb0f5d63b3d.md",
+      "lines": 156,
+      "sha256": "4a40adfa2c1955e609dbade55d16f9e045cf05a63ab7d89a56cccd2a3fb03cdc",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 12 тАФ Preferences, Customization, Themes, Icons, 3db9bb7d023f8141b9d8e64e35e00faa.md",
+      "lines": 150,
+      "sha256": "df8509c4bec2eaaea000a633561df447d7ebb78aefc18bc9d2b42e39ac1ac689",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 13 тАФ Tooltips, Popovers, Dialogs, Alerts, Notif 3db9bb7d023f816fa292e7fc620a84ba.md",
+      "lines": 146,
+      "sha256": "1e5d2eec08fee44fce97c9962eaa753e29d3b4e66f958caa234a466d08617dd5",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 14 тАФ Accessibility, Keyboard, Pointer, Pen, IME 3db9bb7d023f8167a9bdff182768f9f0.md",
+      "lines": 103,
+      "sha256": "37311ac47600d912b6846960870d9e44cb968e2c942744663d452ab4415d277c",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 15 тАФ GPUI GPUI Kit Implementation Map & Compone 3db9bb7d023f81bc8399f58f22c4e67b.md",
+      "lines": 67,
+      "sha256": "4222a7f2be4e01ecb94dac0d24899e3f57ef9852158bf3503e903a6f55e7027e",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 16 тАФ UI Gauntlet, Visual Regression, Atlas Cove 3db9bb7d023f816fb2d8fd1e55c0f69f.md",
+      "lines": 218,
+      "sha256": "6ce3821c33221656bd89c644024cf2dd20167039467bf56ff321cf9a57cd8a33",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 17 тАФ Panel Atlas Every Dockable Inspector, Brow 3db9bb7d023f81dfa0a2c4642a3c110e.md",
+      "lines": 79,
+      "sha256": "f89a116cc90befdf68dac4cb4b00013c8f3a6d18676590f4bc80034ed506045f",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 18 тАФ Window & Dialog Atlas Every Modal, Sheet,  3db9bb7d023f81dab281e2ca22b799ad.md",
+      "lines": 92,
+      "sha256": "3c508c2c7c198b8ef91dabe76428d7478a1c13e5843c00b0450ed3e1b7da9478",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 19 тАФ Microcopy, Labels, Naming, States, Units & 3db9bb7d023f817a8786c1aa38209a4a.md",
+      "lines": 122,
+      "sha256": "821c8a789954abeca02d3116981819703df0314ec25fce4057ca478040f1c044",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 2 тАФ Application Shell, Window Anatomy, Tabs, To 3db9bb7d023f81069063d901399c6bdf.md",
+      "lines": 128,
+      "sha256": "14da5cf9c25fd9845aa48b89b346629eeee56fd8495fc42f1fcc3b3fe0de0f50",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 20 тАФ UX, Usability, Information Architecture, C 3db9bb7d023f81c38d98c1ddc9a6956d.md",
+      "lines": 192,
+      "sha256": "8c991e0de19a666647b910f5474b53a62cdf54f107a38af598253edaadd7dd20",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 21 тАФ Design System Governance, Token Enforcemen 3db9bb7d023f819e90cbc2da911b8c03.md",
+      "lines": 229,
+      "sha256": "290acdbacdedc0f18a9c4b2530938c12753629135d22f7dd5259e9b92c07955f",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 22 тАФ Affinity Reference Model, Aubrieta Diverge 3df9bb7d023f815cbd73efe081adc2d6.md",
+      "lines": 97,
+      "sha256": "518cd0780394bcf283ca3bc948f7b431a6b9eca47a5ea2dd66f319f1cec7581c",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 23 тАФ Tool Interaction Grammar, Context Toolbar, 3df9bb7d023f8144bba3db77c199a947.md",
+      "lines": 100,
+      "sha256": "141fd6de926ccef3e5d0c3cc124f436ddc7baf9f62f7852822fd53e2b0121feb",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 24 тАФ Design Persona Tool-by-Tool UX Contract &  3df9bb7d023f81e7a45bdac3b72a71ea.md",
+      "lines": 136,
+      "sha256": "a2427c05eae0d2fc4305694f5874aa6f9ac9a94c4aef85d1dd825825d47edb3c",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 25 тАФ Panels, Layers, Appearance, Colour, Stroke 3df9bb7d023f814686f4e75513c11bd0.md",
+      "lines": 90,
+      "sha256": "48309e4afde464026c5a7e1c1181373894d109194b83cc095038afc9ab0acc14",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 26 тАФ Typography, Text Editing, Layout & Precisi 3df9bb7d023f81e5a00acd3217f200f6.md",
+      "lines": 109,
+      "sha256": "09552787147b3e76c72349c7514d5de8d475cdecd149bc28dcce0d9f3dd58515",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 27 тАФ Snapping, Guides, Measurement, Numeric Pre 3df9bb7d023f81409b2df9edb911f2b2.md",
+      "lines": 87,
+      "sha256": "213e9f1d7aa5d484dad01f91c6fce7d6ea5bbcb2e26b74f523542a24f90af3ec",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 28 тАФ Design тЖФ Photo Personas, Mixed Workspace P 3df9bb7d023f81faaae5e02b4a6eb1b3.md",
+      "lines": 92,
+      "sha256": "5cbe7194ebfe2870f473f9f06db6eac9e05cff9e65a0378e824d9a531f582f54",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 29 тАФ Import, Place, Export, Preflight & Workflo 3df9bb7d023f81c8b74ff301ce199160.md",
+      "lines": 80,
+      "sha256": "7ea05de659d8a4c42c7a0b74a07fa2383f9c66f41589ecf2e58a00c3af9fc30a",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 3 тАФ Docking, Panels, Inspectors, Floating Palet 3db9bb7d023f81259b36ea98ef7db4ca.md",
+      "lines": 164,
+      "sha256": "89a468ac12cf5a3f3cad92f0409ac0a55498be113dcb773c7610b6b43411cefe",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 30 тАФ UI UX Evidence Corpus, Interaction Conform 3df9bb7d023f81098725d56753eb0372.md",
+      "lines": 107,
+      "sha256": "66a41732a528d35cef6e76552f8dc77bacf1382f9d7294a838a8253966d064c2",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 31 тАФ Photo Persona Tool-by-Tool UX Contract & A 3df9bb7d023f810cada6d30e5b867888.md",
+      "lines": 159,
+      "sha256": "42d9e6ccc66374ca4d79be1e4147264f23021b3b8187e1d2ed8c1367fd96c521",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 32 тАФ Photo Layers, Adjustments, Masks, Live Fil 3df9bb7d023f81609273c08be65cd5a2.md",
+      "lines": 135,
+      "sha256": "cd2e99a9f51390deaedc60755ef71707c7761449b12cceb22f9f0ef31ff2b6db",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 33 тАФ Affinity Tool & Panel Coverage Ledger тЖТ Au 3df9bb7d023f812684f9d8b0bdb12c46.md",
+      "lines": 112,
+      "sha256": "4e0fad17f10f9bac43bc978e81e0b725cda89dfeebd0627f93e7db1936482ea9",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 4 тАФ Menus, Submenus, Context Menus, Command Pal 3db9bb7d023f817f9cc5ebb4ee801d29.md",
+      "lines": 152,
+      "sha256": "74f06a77657ab4146860622716fda2740898a1daa3683e6c3245762e55a00c8d",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 5 тАФ Complete Control Catalog Buttons, Fields, S 3db9bb7d023f81d19455ea5b6d0ddd14.md",
+      "lines": 207,
+      "sha256": "b02bdd92742212d0267aa5330dc92f4e811826470d438dc0d0fba699b54855db",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 6 тАФ Canvas, Rulers, Guides, Zoom, Selection, Sn 3db9bb7d023f816f910ad0aadc8984ea.md",
+      "lines": 162,
+      "sha256": "66959d0c20930f2b8edfb200a8f3f386d159b6ac74f9bdd5b1fdfb101adec04e",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 7 тАФ Design Persona Complete Interface Specifica 3db9bb7d023f817dae7dc5b0ad914897.md",
+      "lines": 145,
+      "sha256": "eed214940f3b2cc06be4e042dd4e84b0c4580a9bdbbb731f9635c48faf3a7d26",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 8 тАФ Photo Persona Complete Interface Specificat 3db9bb7d023f813c830fcd0c1e439524.md",
+      "lines": 192,
+      "sha256": "44ac63207cf3312681e0dea2079178a757d6b37692ffbab6a02ad63a207a05b1",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 9 тАФ Welcome, New Open, Place Import, Relink, Mi 3db9bb7d023f81878276df040ba2c753.md",
+      "lines": 128,
+      "sha256": "9b6612f3bd8679e9e30a1a2e9820e23bbbff8b5c57e7826f6f70a35bbce1d8b9",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/08 тАФ Interface Atlas & Aubrieta Design System 3db9bb7d023f816898b8cdc5efef3c76.md",
+      "lines": 161,
+      "sha256": "8403fd490941593a818335222861350cabb0a1cf083b1766f93fe942da677425",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 0 тАФ Documentation Gap Audit & Completeness Matr 3db9bb7d023f8110ae91f49bcd016efe.md",
+      "lines": 105,
+      "sha256": "18a95092750e801bbaed47136e8cb82689ef74aa5e03b7c6207942f21e6fd34d",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 1 тАФ Modularity, Capability Registry & Contribut 3db9bb7d023f8160a14dea24a4d00544.md",
+      "lines": 155,
+      "sha256": "c9c7ebab414679ac106bf6c775ae3f3a7f6ebe19493ebc5ee5c9a975a7c53685",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 10 1 тАФ Open Native Format, Interoperability Pro 3db9bb7d023f81a4a6c5d9edfcc5b904.md",
+      "lines": 143,
+      "sha256": "b834d997b696c37dfb25f59a25178d076558091394c9d462c9a03bf57458d052",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 10 тАФ Native File Format, Serialization, Version 3db9bb7d023f81b587e8fab1e4d8d339.md",
+      "lines": 316,
+      "sha256": "1d6201300a83f05d2a3dc543b304bff0dac546029d5f978c08c931498701d75a",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 11 тАФ Import Export Adapter Contracts, Capabilit 3db9bb7d023f8100a1e8e054604426f9.md",
+      "lines": 264,
+      "sha256": "ead2da877d5b289504477be973aca1b6ced767daf64d5c61f7874f8dc157a41b",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 12 тАФ Resource Packs, Tokens, Themes, Icons, Str 3db9bb7d023f81c5b2a3cbcc67e7c3ee.md",
+      "lines": 400,
+      "sha256": "769a478e32de123e54de2693b8bb61ccc22ed1070174ac14c785791c76dbb8f6",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 13 тАФ Job System, Concurrency, Cancellation & Pr 3db9bb7d023f81ab9dd9d6c95c2f7691.md",
+      "lines": 254,
+      "sha256": "2e1fd9dae16f55d12a7b931701ed9d7a6e6c1a4a9bcde1fd10e6bc673d229236",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 14 тАФ Plugin Host Isolation, WASM Components, Pe 3db9bb7d023f8160817bd7b0f1061e1e.md",
+      "lines": 207,
+      "sha256": "575c1d32b4cc64e01a32c08580e6641b46ca1c07be60ac766f5c7c38e5930537",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 15 тАФ MCP, Automation, Inspection API & External 3db9bb7d023f816fbfaaf12b89582c91.md",
+      "lines": 56,
+      "sha256": "b1f9633518a348efb34d2b60c8dc71530c300540a651c5d348b2325cdb11f32a",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 16 тАФ Localization, Locale Formatting, Translati 3db9bb7d023f819ea178cb86bcf6a0d0.md",
+      "lines": 53,
+      "sha256": "6378c1760587d1df2760908254e7b24081804f821f414b8b00f6ece7a2f8bae1",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 17 тАФ Platform Services, Filesystem, Clipboard,  3db9bb7d023f814ab768c1aeee5f6f5d.md",
+      "lines": 240,
+      "sha256": "8a09795cdebc5aa55747b8a9b325bd34c800bf9fde908bd174027c32600ba7ad",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 18 тАФ Security Model, Trust Boundaries, Hostile  3db9bb7d023f81f696d0cef7cce2a631.md",
+      "lines": 68,
+      "sha256": "4dcc344f0cec9a50447648104e0ef14ebb9dce2799b7bb58442006db6fb87ef3",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 19 тАФ Observability, Structured Diagnostics, Log 3db9bb7d023f8104ab75ec5fb681ef18.md",
+      "lines": 253,
+      "sha256": "9b1e3f27cd8bcd811bc751f5026e38a422d46e983a89d0143a10c889cd9017d5",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 2 тАФ Canonical Document Model, Object Graph, Res 3db9bb7d023f81eea154c0aceec4610b.md",
+      "lines": 177,
+      "sha256": "e74c26de003019d47926bf2c8edacf5a415f4b4ab0c3f7e019e4a1bdb5af528a",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 20 тАФ Build, Packaging, Release, Updates, Depend 3db9bb7d023f81e78381d9774582bcb7.md",
+      "lines": 63,
+      "sha256": "52195fe822107967f3c28ce39c0699e57ab7b3911572be6399e162a2a822cce3",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 21 тАФ Architecture Governance, ADRs, Compatibili 3db9bb7d023f81729bace22cfa3aa2e4.md",
+      "lines": 206,
+      "sha256": "7a2bf9517f584441b2da7a4226ee1d0ca750f5a124173715945bd47d01528c1e",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 22 тАФ Cargo Workspace, Crate Topology, Dependenc 3db9bb7d023f8137949cc85cc5313746.md",
+      "lines": 261,
+      "sha256": "7d38ba5d2c74bd7a3c942035d34cfdbeb4d7d8d914e75a323d8e082d8a803254",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 23 тАФ Preferences, Configuration Layers, Workspa 3db9bb7d023f81a0a63df217a214509c.md",
+      "lines": 295,
+      "sha256": "85dd2bbad732362597cc614b0a72f4a4cf9c8689edfbf64bec5af3b0d6e5762b",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 24 тАФ Application, Document Session, Multi-Windo 3db9bb7d023f8150a1a4dee7fefb025e.md",
+      "lines": 325,
+      "sha256": "a2047fbc519d728cfa098b8b5d87297c1c9137b53a40e259b6e78e1ebc6453f9",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 25 тАФ Property & Parameter Schema Registry, Gene 3db9bb7d023f81918b0cf4b468f588b0.md",
+      "lines": 370,
+      "sha256": "ba0838415ed7b469ddac1508f7fd9e3babe7a3a4d1263189a6e43e3e15ecc885",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 26 тАФ Open ADR Registry, Deferred Decisions & Re 3db9bb7d023f8166a751e3d1a8390b78.md",
+      "lines": 47,
+      "sha256": "5574c8bdafa92823164cb2c52a59457e5e266c2a426c2175b37837bbe8c1ed3c",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 27 тАФ UI-Agnostic Core, Ports Adapters, Presenta 3db9bb7d023f81968082fd246f9ff668.md",
+      "lines": 183,
+      "sha256": "3377c1ad0f66733b5f9dbca58bf31b0091a7d086736d72d59afb077dacb3d858",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 28 тАФ Plugin SDK, Safe Extension Contract, Capab 3db9bb7d023f812b924ffac8a8a3c41d.md",
+      "lines": 307,
+      "sha256": "4fc67dc465965fd707555ad74bf3165ff0b330d2ee33cca248013ac1b1d7efa4",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 29 тАФ MCP API Usability, Agent Contracts, Safety 3db9bb7d023f8193a933c547bdf2aafe.md",
+      "lines": 231,
+      "sha256": "22334c4dea3ec9e0b7339f2fde436135985226f8b834693c2df9f087abf32117",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 3 тАФ Actions, Commands, Transactions, Undo Redo  3db9bb7d023f81dc83e0ef56938b2932.md",
+      "lines": 197,
+      "sha256": "01527ec61660041eb599aca21d2b875cfe1a99e39975ffeed463f4804508d370",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 30 тАФ Plugin Scripting Runtime ADR Lua vs Python 3db9bb7d023f8129853cc7461081cf62.md",
+      "lines": 204,
+      "sha256": "2c767b3b53ea7b6763b256de1b0cadc0df8a1e7802d276982d82d32b3a77a227",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 32 — Coordinate Spaces, World Geometry and Migration ADR.md",
+      "lines": 164,
+      "sha256": "2ad3e47319be65fa734d49e892497147513533df48afb59c302dc137cadb4964",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 4 тАФ Evaluation Graph, Derived Data, Invalidatio 3db9bb7d023f81a09fe5d8251424e0c7.md",
+      "lines": 155,
+      "sha256": "1632b54e5620096e35a89c946a8ba90ea813441dce90a6aeb8813ea4d7b6d948",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 5 тАФ Vector Geometry Engine Numeric Policy, Path 3db9bb7d023f8151889eddb7e9c44952.md",
+      "lines": 150,
+      "sha256": "243fb0739fd30252411658a074ad49929473afa43d154d95aefce75604b819bc",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 6 тАФ Raster Engine Tiles, Brushes, Masks, Select 3db9bb7d023f81dcbd6ecddfbe80a52a.md",
+      "lines": 165,
+      "sha256": "463617ac6893e33c9ef5dd922badd847191bc14c3f4e775ef37e424ca86e2fdd",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 7 тАФ Render Scene, Vello wgpu Compositor & GPU R 3db9bb7d023f81c2bc3ec3d1a5b74cc2.md",
+      "lines": 208,
+      "sha256": "056ea699cc9462bb928607b94f6a409f17522abae752a5b5a179efc04e3919bf",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 8 тАФ Typography, Text Editing & Layout Engine 3db9bb7d023f81c3a4e5ebdeac49ae50.md",
+      "lines": 221,
+      "sha256": "7c8f0181a906388b78be7ca38b510409fa229029c132e429f62ca9cdb4ab28ab",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 9 тАФ Color Management, ICC, CMYK, Spot & Proofin 3db9bb7d023f811d9572d1978cb88e34.md",
+      "lines": 211,
+      "sha256": "2f2b5a708712c0f937803139c7b62a4a927b4184d453f32950f9987efb2d2b39",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/09 тАФ Architecture & Implementation Atlas 3db9bb7d023f810991aff0b9836407e0.md",
+      "lines": 90,
+      "sha256": "39f31558959d2e5076841b41985c78583970702258a59b8b6eb60bfec6a302f6",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 1 тАФ Selection, Transform, Arrange, Align, Distr 3db9bb7d023f811c84f5f42ffac2657b.md",
+      "lines": 96,
+      "sha256": "81b9cdcfc3c25e9fa33ac9f9a136a5e429591c5fac175fa732a45ac2bb46e207",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 10 тАФ Photo Masks, Adjustments, Live Filters, Ch 3db9bb7d023f8152a4b2c6ac15387c33.md",
+      "lines": 117,
+      "sha256": "b9d9007121c6c3c4b92f13124768722c117eb64d85868ee2f3ab2c80d8217ebf",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 11 тАФ Variable Data Data Merge Engine Sources, B 3db9bb7d023f81f4a6edc078f3bd753f.md",
+      "lines": 138,
+      "sha256": "5b56c0f044cb101fa38d887a29c0891088a1a69fca41974a27f6a24254ca02b1",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 12 тАФ Design тЖФ Photo Interoperability, Conversio 3db9bb7d023f81c6bcffd0dfd1592f06.md",
+      "lines": 113,
+      "sha256": "1a80bc7975ab661a272790e9134e70c5f5d38963753aade8a3068ed6b5181348",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 13 тАФ Functional Gauntlet, Edge-Case Matrix & To 3db9bb7d023f81588376c87f618f6b39.md",
+      "lines": 150,
+      "sha256": "2d44571cae2e46d5fc240e1ab5812c39a6d27a7ab6f1c29730ba83550bd602ec",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 2 тАФ Pen, Pencil, Nodes, Path Editing, Corners,  3db9bb7d023f81a0b12fdcf67e5f7739.md",
+      "lines": 106,
+      "sha256": "00f10c65bfa3ac39e4efaa6c9458ca7aacbfb9cd1621b3313814bffb105dc9e3",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 3 1 тАФ Shape and Handle Reference Dossier 3df9bb7d023f81fc8255d10257faf3ba.md",
+      "lines": 126,
+      "sha256": "1829dd7e1be4adf02fe9b4e1809aabe32e790a60366a0614d60191a16e594a5f",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 3 тАФ Shapes, Boolean Operations, Shape Builder,  3db9bb7d023f81fc8255d10257faf3ba.md",
+      "lines": 89,
+      "sha256": "e8ea57524480c9a23f372046e705d4c652006d5eaad788ab4475429ac8c96f74",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 4 тАФ Fill, Stroke, Gradients, Transparency, Appe 3db9bb7d023f8102a4c7d1befb3cc5c2.md",
+      "lines": 111,
+      "sha256": "a8e0e08c504c192f177a9ccb12efdf5a2c2a032a38eb83bab7d9c656a753ac6f",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 5 тАФ Layers, Groups, Clips, Masks, Symbols, Styl 3db9bb7d023f818584c0d305fd9576b8.md",
+      "lines": 105,
+      "sha256": "f4b09e6f87d180b5d0ea49df7c367816507199e66ff4baa5d60dd57a22345918",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 6 тАФ Typography Tools, Artistic Text, Text Frame 3db9bb7d023f8168aad1f32e4f616d33.md",
+      "lines": 107,
+      "sha256": "ba4aff4b94b595dced7e4de3e43ff6668f55468f7b65b482b4662e611fde142f",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 7 тАФ Surfaces, Artboards, Pages, Guides, Margins 3db9bb7d023f816cb69bfdea52a402f4.md",
+      "lines": 97,
+      "sha256": "02111efeaa7de17465608519c3b7e79715337aeb4b7afc8b1c8dba151994d590",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 8 тАФ Perspective, Projective Transform, Perspect 3db9bb7d023f813b9b86ef370e5c50cd.md",
+      "lines": 91,
+      "sha256": "13d65b50e2a67c230f662d6ebc1881f67b13b7b24e04edd2652f5686107cca05",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 9 тАФ Photo Selection, Brush, Eraser, Crop, Gradi 3db9bb7d023f81148d80deee6c0293a1.md",
+      "lines": 105,
+      "sha256": "0d9bd6bc835994eb6c022f1f48f51b1eb07de747204595184d89a48f4bf3625e",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/10 тАФ Functional Engine Atlas 3db9bb7d023f81a2b96dc9446aca0a77.md",
+      "lines": 42,
+      "sha256": "df5e00dbb1832ab27d8b2bba965ce5fea74a4a25d93b06e5f48f74ebfcc05222",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/11 тАФ Naming & Brand Audit 3db9bb7d023f8101bbf2f52337cbde26.md",
+      "lines": 83,
+      "sha256": "8489cf4b7a76eb4cf3a7aac24f92f1ab5842b64d70071d5548e9b9e15b461b3b",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/12 1 тАФ Source of Truth, Canonical Documentation, L 3db9bb7d023f81b08c9fd60fe7dc97bb.md",
+      "lines": 81,
+      "sha256": "b343a484c0b960cb34a4b31b9a977fcddd9c4223df0570e5652bbe1b241b5868",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/12 10 тАФ Prumo CLI Workflow, Goals Waves, Implement 3dc9bb7d023f81ba8bbfd27c9cb81baf.md",
+      "lines": 222,
+      "sha256": "6fa65a12f6dbff71063aba495bab81041cdd505bf268d7e2d5001b61a563192e",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/12 2 тАФ Code Agent Operating Protocol, Microcontext 3db9bb7d023f81eba360d7f459ebac35.md",
+      "lines": 142,
+      "sha256": "c361a1bc265aa6176063c4babb64decaac1824afe993dd50f3a55d4b4045ade7",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/12 3 тАФ Living Documentation Pipeline VitePress, i1 3db9bb7d023f8168a7b6e4d378b02d12.md",
+      "lines": 164,
+      "sha256": "ae1ddb42e612898975879db47d9d280736e8cc27388ec73d0660a9408352e181",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/12 4 тАФ Implementation Plan Template, Definition of 3db9bb7d023f819687aae98591d81fcb.md",
+      "lines": 117,
+      "sha256": "26d0e0010ca162383113b30515384516556f22b3b58658b5bebb921ce41f4a1c",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/12 5 тАФ API Documentation Standard for Core, Plugin 3db9bb7d023f81ae9b64f4236b9f7a03.md",
+      "lines": 110,
+      "sha256": "2bfd9fa0752488c303611d729e0049f657e8fec8f6c385af8125e8c8a16118ff",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/12 6 тАФ Documentation Quality Gauntlet, Translation 3db9bb7d023f816f97acdec5a8a82f79.md",
+      "lines": 84,
+      "sha256": "1d58323601005dadad56492da282f8badaf506485ef60a179d33971b89555eb6",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/12 7 тАФ Repository, Contribution, Review & Document 3db9bb7d023f8166a88fdc1a5fa53e03.md",
+      "lines": 92,
+      "sha256": "94f4059f71bfebea9b7f725bb971d72844c8b535c28573fbb36c578c24b7b2d2",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/12 8 тАФ Requirement Status, Scope Taxonomy, Backlog 3db9bb7d023f81a0b529c767560d3f7f.md",
+      "lines": 49,
+      "sha256": "d8f04ce64b23e356bda3b9017b4d29cd9afd1a24fbcef6355189104c7fa526be",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/12 9 тАФ Change Impact Matrix What Agents Must Updat 3db9bb7d023f81ceaf86dbf91a4bd2bf.md",
+      "lines": 108,
+      "sha256": "756764c51c8c638e236bb1c023978264e4c57db7a29215a7051ff87ddd6dc52d",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/12 тАФ Code Agent Implementation Handbook & Living D 3db9bb7d023f81049058df8d98185faa.md",
+      "lines": 133,
+      "sha256": "84fb9b02c5859d68d710a7b7b2dbfae96f9c5da16b623ddf894f879383fd5383",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/13 тАФ Full Notebook Page-by-Page Audit & Conformanc 3db9bb7d023f810fb6fdf8aa804ef74e.md",
+      "lines": 244,
+      "sha256": "347b1ada1731eb12e053b419ef20483f469f3212efb8ee7b305aca5867c900e4",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/14 1 тАФ Test Architecture, Conformance Matrix & Reg 3df9bb7d023f81708697efc517887807.md",
+      "lines": 72,
+      "sha256": "fe1a32e45c30dfed2f4af1869610142f63714eeae10f21c68c1f4f1f3d5c1845",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/14 2 тАФ Performance Contract, Hardware Tiers, Bench 3df9bb7d023f812e8de5e0c0328093ee.md",
+      "lines": 71,
+      "sha256": "29f7d122550623eb33f688cd57a6ec50f0ed65a48ec6c64665a908faa5ba4dc8",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/14 3 тАФ Golden Project, Fixture & Reproduction Corp 3df9bb7d023f81e7894fd7bc8dbe5141.md",
+      "lines": 64,
+      "sha256": "f21009afaac415044eb147c76607724b904b1400b505857bf9c002ff4f6caeb2",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/14 4 тАФ Capability Detach, Feature Isolation & Depe 3df9bb7d023f819c8cc0efa23f7a2a0e.md",
+      "lines": 65,
+      "sha256": "b3344cd252a2f55e88ceac3939e5649fcd824a0cc8a526e8b86cf07b843114e0",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/14 5 тАФ Security Verification, Fuzzing & Hostile-In 3df9bb7d023f8141850fdbebb6adbd67.md",
+      "lines": 48,
+      "sha256": "f02f2a4a76efa9ebe8bfe8764cde8a4ff57f06ecc5ac006808a47c732dcbc41a",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/14 6 тАФ Native Format Migration, Corruption, Atomic 3df9bb7d023f811fa42ef99f802cda98.md",
+      "lines": 48,
+      "sha256": "0caf807c9aed59aad46d79d50a2ce27e0ce4e6e72e3c551432ceb41641a2ae59",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/14 7 тАФ UI UX Evidence Integration, Semantic Golden 3df9bb7d023f81219888de43696f641d.md",
+      "lines": 70,
+      "sha256": "cafdd814421199fc5657c47d7ce1ac0243abac165f50a294f62349f2ecfb7de8",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/14 8 тАФ AgentOps, cargo xtask, CI Commands, Evidenc 3df9bb7d023f814daef3ebc28510d779.md",
+      "lines": 74,
+      "sha256": "f1cd08a5f02f1c3fd1e228e4ece25194613de95ed50d41f18e39f39852c84de9",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/14 тАФ Implementation Evidence, Verification & Agent 3df9bb7d023f81a78feedf6410de5065.md",
+      "lines": 85,
+      "sha256": "6d21338f020d21650672085a794e4f4a34b10dc3bc94634fd9485e47b535780c",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/404.md",
+      "lines": 8,
+      "sha256": "eef2f55461bc491715336c9d0e19369568f5934a7a57c9243c7a6ec921018f85",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/Aubrieta Design 3db9bb7d023f811192aff85b2efa8698.md",
+      "lines": 139,
+      "sha256": "47698fc6353a5fc5c8b88e02ea1d05b23cdad13908cb60fee61bb216c9babee7",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/FEATURE_PARITY_AUDIT.md",
+      "lines": 128,
+      "sha256": "6c215b776ddf8473be2717edcfc6a6527ff8ae69ef2d4d36319dd5f75d3b9180",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/PRUMO.md",
+      "lines": 40,
+      "sha256": "b400b5e50a35a3a24d3c22b13eab3a6d3eb3c843cdaa0fa271aa93071186b33f",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/bible/SPEC-001.md",
+      "lines": 48,
+      "sha256": "bd65f06766fc51a011f0c941643e9659b698d83f8234093302243befe46b85b3",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/bible/index.md",
+      "lines": 40,
+      "sha256": "a8eb31aa170f0779cd70e4c7771f897d224c0cd467b783d135ef1079e9c2cd80",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/contributing/guidelines.md",
+      "lines": 34,
+      "sha256": "5370747052b128a740d74abaf5c011156fe4c011da3159d9c7c1da97414dc63f",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/contributing/translations.md",
+      "lines": 74,
+      "sha256": "156f781131b6d15d2222cf2c5f48e8b46bcf6d9ec8249927797a12f6da132459",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/developers/adr/ADR-001-effect-chain.md",
+      "lines": 41,
+      "sha256": "6170fad529b6fe59211f25c3d79a6a03c16823c786bb6ae2e6665a4e32ca6985",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/developers/adr/index.md",
+      "lines": 16,
+      "sha256": "f125a602f15047ca6de89edc6cbd492a13b667a73bc500849b62e876f4cc197d",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/developers/architecture.md",
+      "lines": 89,
+      "sha256": "92bebe0f919273c03dc347d3889553b8b76fe90d00fa2a30e6ea40d22c20f9b0",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/developers/build-test.md",
+      "lines": 61,
+      "sha256": "588d02864af6d1dc675481bb2d29de13c51891f7a32a20dc4daf378bf6ea9fbb",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/developers/index.md",
+      "lines": 64,
+      "sha256": "a1dc2457ec2fb85e07ac3bac62130ccf17504d1129cbd561996d067fbf0a1a83",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/getting-started/index.md",
+      "lines": 31,
+      "sha256": "588fe11920aab6ab4b1f6467c5d7c8d9f5cb10be6a367f53288dcc7afe052d1b",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/getting-started/installation.md",
+      "lines": 64,
+      "sha256": "f8edbe95f983b2c06f2ecbc6bf0dbacc7ea257da67fc4bb9c891a98de8721ab4",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/getting-started/quickstart.md",
+      "lines": 53,
+      "sha256": "50d76c109b0aa18f9ed99ae1e66d49b95cf6eee02b050706c493379e7f600219",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/glossary.md",
+      "lines": 57,
+      "sha256": "d28beb892de2571976b8cba7667a28581a209a0ea6950c6b73e4bb0d68347bac",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/index.md",
+      "lines": 79,
+      "sha256": "4eeacbe3a99397493356704703c9da81a3c169872e728ca7b2faab55eba34b68",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/manual/index.md",
+      "lines": 67,
+      "sha256": "b320790b58223c4e419782024bd85dec2609566ee1897a697af1945e6c7c4df0",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/404.md",
+      "lines": 8,
+      "sha256": "6e894123640abbe79a21010120326c623f7546e630b55a8fb7446a6e15ee02ed",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/FEATURE_PARITY_AUDIT.md",
+      "lines": 128,
+      "sha256": "ad44f7d4fb2f6b8cd1b5ccd06e009dab74ab05b352f7fd4aa155822c0e5a3adc",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/bible/SPEC-001.md",
+      "lines": 48,
+      "sha256": "613228a74d9d486e5690555ae5e37102cae63895364fd1493ec4c159c05a2ad4",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/bible/index.md",
+      "lines": 40,
+      "sha256": "49096abb3196efbd758930f498a9bafe3ea9501711dad1caa2132f0231ab10d0",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/contributing/guidelines.md",
+      "lines": 34,
+      "sha256": "7b714897e4ef185a7b03f905d3db9e319d9025d9c142ede63fe8826a6b20b143",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/contributing/translations.md",
+      "lines": 74,
+      "sha256": "c408914121e8d1df41a9f9e1a15fdc9ec555c445d0ed7d67ca78f1dac20ae9b1",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/developers/adr/ADR-001-effect-chain.md",
+      "lines": 41,
+      "sha256": "fab29f5e70be76eddd0680a949c6c14f5be199619ff28e00b9a7cfdc60ccc625",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/developers/adr/index.md",
+      "lines": 16,
+      "sha256": "f7aa06fbdf6ee920080211aa05d3842320551c23c197a74c978a16eb826c59b8",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/developers/architecture.md",
+      "lines": 89,
+      "sha256": "a3e0db1866e5b900b59201149933917eea0b67f29c1a6b3b176614f40d9f9d4e",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/developers/build-test.md",
+      "lines": 61,
+      "sha256": "427e0b61e916e146b77ca7cd4a40e561fd61d5580264e34065d3c4a68453ac57",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/developers/index.md",
+      "lines": 64,
+      "sha256": "837b3b1f477726d9e83a3159683ac882d3ab30eb33e448828d5872ee6f0f818a",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/getting-started/index.md",
+      "lines": 31,
+      "sha256": "a5f90bafe583848cd8d6652ed7fe53be16ec1c184c684a02e368a19cf15757b0",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/getting-started/installation.md",
+      "lines": 64,
+      "sha256": "932db9730177b0c84115aea797612d64dc974d871215d34e1d4426a113607498",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/getting-started/quickstart.md",
+      "lines": 53,
+      "sha256": "83fd30d9a922c67186963ae902853a6ef8d5f59ef67677ae32f09f5b9a4d71a0",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/glossary.md",
+      "lines": 57,
+      "sha256": "a551737d55f1f4eb106bbbb5e1ec8836168b862f4d68baddc6e7b48e5802c8c1",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/index.md",
+      "lines": 79,
+      "sha256": "54cb0632b159cf2c3ae11ebf16323e6fd6e65556e1d98d0deaad655aa790d187",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/manual/index.md",
+      "lines": 67,
+      "sha256": "831c63e46d7bdf4dab207fe31150efa727ca8fb488e72bf4ffefcfc472627dae",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/pt/tools/index.md",
+      "lines": 59,
+      "sha256": "4e6b6f1dd21067dbb6a97fc657e5018564b6cd2562bd23bcb9be8349fc8004d7",
+      "kind": "markdown"
+    },
+    {
+      "path": "docs/tools/index.md",
+      "lines": 60,
+      "sha256": "497b26f2dff8f1869c79f1386a3110dd24c86a433841241c5b3d8d9d81a38795",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/00 — Product Charter & Scope 3db9bb7d023f8179b359f64100d8ed45.md",
+      "lines": 94,
+      "sha256": "99027aefb26c0959b5c0eba5c80e2e93a9704a16ce42d928d7cee1dc351b38e0",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/01 — Architecture, GUI Boundary & Canonical Docume 3db9bb7d023f81c8a92be6b662aa25d3.md",
+      "lines": 121,
+      "sha256": "57572657e843fbc28d766b3653b9f5d80617eb74f528de36689cfcf23c8a606c",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/02 — Design Persona Vector, Layout & Variable Data 3db9bb7d023f81efbeb5d915be067e6f.md",
+      "lines": 82,
+      "sha256": "c56a0de059de06d68cfd58a10ec6c9db34ac73ed5fc5229dc71f3f3938b2109d",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/03 — Photo Persona Raster, Masks & Nondestructive  3db9bb7d023f81aca90ce2a485809264.md",
+      "lines": 55,
+      "sha256": "b7501ca9551407dc6b988882fced2863eef36f21c27a51edf1a50ef9d5e77f1c",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/04 — Canonical Rust Stack & Engine Boundaries 3db9bb7d023f813e826bd9ead40363b8.md",
+      "lines": 150,
+      "sha256": "10e81e9e7a348daf6cc52f6a631a29e7f35ff136342ed8ad4a8edede82ccdb3f",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/05 1 — Legacy GPUI Stack, Prior Art & Migration No 3db9bb7d023f812ca59cc6d12cb13c67.md",
+      "lines": 307,
+      "sha256": "3ad646c2cac6d618f5567bb75543600975f1e341c96a879383736e234659d3d3",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/05 2 — Slint Primary UI Stack, Ecosystem & Icon St 3e29bb7d023f8162805ecf8253622a3b.md",
+      "lines": 67,
+      "sha256": "194e4e451c6aa09521131b637c49a7092813b38d4012b4f369eb06fe240d0024",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/05 — GUI Technology Research & Decision Matrix 3db9bb7d023f81159d32e9bab39c9383.md",
+      "lines": 133,
+      "sha256": "0b03440bc6757e63203adb93ff47612c16b7bff760c8d0d17cb3057d26b42213",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/06 — Reference Projects Adopt Adapt Avoid 3db9bb7d023f81ba824df39ffb9f7ec5.md",
+      "lines": 39,
+      "sha256": "9a2bc2bfddfd856704c5aa65111c8bc678dbbc265079d4c823a2c51e14898959",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/07 — Quality, Gauntlets, Plugins, MCP & AI Develop 3db9bb7d023f8148ab13e85800df4af7.md",
+      "lines": 90,
+      "sha256": "82c5af943d909d322670f87697efe47cc9a30ef0003b350a5718516234221988",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 1 — Visual Foundations, Tokens, Typography, Spa 3db9bb7d023f81cb9d14fd9f7e67d2c7.md",
+      "lines": 172,
+      "sha256": "4fe452da81c573ee0f2c475d294efae58536c27354061b65b7031cea5ee116e2",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 10 — Export, Quick Export, Batch Export & Outpu 3db9bb7d023f81b5a056f4d09e9b21fb.md",
+      "lines": 136,
+      "sha256": "1bfc9f311b2ba4d7ff38a4a766c7f9c581a66c92cbd9aa603961d714c49ce41c",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 11 — Variable Data Data Merge Window, Bindings, 3db9bb7d023f8154b090cbb0f5d63b3d.md",
+      "lines": 156,
+      "sha256": "4a40adfa2c1955e609dbade55d16f9e045cf05a63ab7d89a56cccd2a3fb03cdc",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 12 — Preferences, Customization, Themes, Icons, 3db9bb7d023f8141b9d8e64e35e00faa.md",
+      "lines": 150,
+      "sha256": "df8509c4bec2eaaea000a633561df447d7ebb78aefc18bc9d2b42e39ac1ac689",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 13 — Tooltips, Popovers, Dialogs, Alerts, Notif 3db9bb7d023f816fa292e7fc620a84ba.md",
+      "lines": 146,
+      "sha256": "1e5d2eec08fee44fce97c9962eaa753e29d3b4e66f958caa234a466d08617dd5",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 14 — Accessibility, Keyboard, Pointer, Pen, IME 3db9bb7d023f8167a9bdff182768f9f0.md",
+      "lines": 107,
+      "sha256": "eae0ddf7ea637cddb57d6e2f371861c04e09afbb58b182a92d73283675122c11",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 15 — Slint Implementation Map & Component Owner 3db9bb7d023f81bc8399f58f22c4e67b.md",
+      "lines": 151,
+      "sha256": "89226692cbb57cb1eaabfd9283e852128223bc4178058ceaec0c144f8a5d36a4",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 16 — UI Gauntlet, Visual Regression, Atlas Cove 3db9bb7d023f816fb2d8fd1e55c0f69f.md",
+      "lines": 218,
+      "sha256": "7448a2c2e389c3903cb3c876b6e3dccdeb521cf7ff4228d9cd49423e48cdcd4b",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 17 — Panel Atlas Every Dockable Inspector, Brow 3db9bb7d023f81dfa0a2c4642a3c110e.md",
+      "lines": 85,
+      "sha256": "6f6288c1768a5f05080037fe272aff8272f426e3201847164fa36e5973bc1df7",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 18 — Window & Dialog Atlas Every Modal, Sheet,  3db9bb7d023f81dab281e2ca22b799ad.md",
+      "lines": 96,
+      "sha256": "a323be036daf4807a326c2d9733e3a95014b91110a57c1b9fcc2371c9dd2d39e",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 19 — Microcopy, Labels, Naming, States, Units & 3db9bb7d023f817a8786c1aa38209a4a.md",
+      "lines": 122,
+      "sha256": "821c8a789954abeca02d3116981819703df0314ec25fce4057ca478040f1c044",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 2 — Application Shell, Window Anatomy, Tabs, To 3db9bb7d023f81069063d901399c6bdf.md",
+      "lines": 128,
+      "sha256": "14da5cf9c25fd9845aa48b89b346629eeee56fd8495fc42f1fcc3b3fe0de0f50",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 20 — UX, Usability, Information Architecture, C 3db9bb7d023f81c38d98c1ddc9a6956d.md",
+      "lines": 192,
+      "sha256": "8c991e0de19a666647b910f5474b53a62cdf54f107a38af598253edaadd7dd20",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 21 — Design System Governance, Token Enforcemen 3db9bb7d023f819e90cbc2da911b8c03.md",
+      "lines": 233,
+      "sha256": "c27bc5a264be223796cf2c8621ad00492c3c9d38b64a1720dceb7c164ed39460",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 22 — Affinity Reference Model, Petunia Divergen 3df9bb7d023f815cbd73efe081adc2d6.md",
+      "lines": 97,
+      "sha256": "e25d21a66c1144247239fba0670e920a10a7428feb1c4dbf9b6c603f1145deeb",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 23 — Tool Interaction Grammar, Context Toolbar, 3df9bb7d023f8144bba3db77c199a947.md",
+      "lines": 104,
+      "sha256": "8537589b0f5d1a3ecb84cc6c43334325fc3a3a4a45b8a65e9a785108381b79d1",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 24 — Design Persona Tool-by-Tool UX Contract &  3df9bb7d023f81e7a45bdac3b72a71ea.md",
+      "lines": 140,
+      "sha256": "bc719cd9e48a710799a72cedf2bdf38043851732f1335de06e01caa8b7f450c2",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 25 — Panels, Layers, Appearance, Colour, Stroke 3df9bb7d023f814686f4e75513c11bd0.md",
+      "lines": 94,
+      "sha256": "16b3b2c345e586e615a88dbd01f3859de74fd2995ef2d563b078801f446502ca",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 26 — Typography, Text Editing, Layout & Precisi 3df9bb7d023f81e5a00acd3217f200f6.md",
+      "lines": 109,
+      "sha256": "09552787147b3e76c72349c7514d5de8d475cdecd149bc28dcce0d9f3dd58515",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 27 — Snapping, Guides, Measurement, Numeric Pre 3df9bb7d023f81409b2df9edb911f2b2.md",
+      "lines": 87,
+      "sha256": "213e9f1d7aa5d484dad01f91c6fce7d6ea5bbcb2e26b74f523542a24f90af3ec",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 28 — Design ↔ Photo Personas, Mixed Workspace P 3df9bb7d023f81faaae5e02b4a6eb1b3.md",
+      "lines": 92,
+      "sha256": "5cbe7194ebfe2870f473f9f06db6eac9e05cff9e65a0378e824d9a531f582f54",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 29 — Import, Place, Export, Preflight & Workflo 3df9bb7d023f81c8b74ff301ce199160.md",
+      "lines": 80,
+      "sha256": "7ea05de659d8a4c42c7a0b74a07fa2383f9c66f41589ecf2e58a00c3af9fc30a",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 3 — Docking, Panels, Inspectors, Floating Palet 3db9bb7d023f81259b36ea98ef7db4ca.md",
+      "lines": 168,
+      "sha256": "a978c04d9e0b4bf85d3a26f70438c2b47768e8145f89ab75ecd37c9b781c931a",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 30 — UI UX Evidence Corpus, Interaction Conform 3df9bb7d023f81098725d56753eb0372.md",
+      "lines": 111,
+      "sha256": "9529b41d6c43011fe23ee379322ba96290dd58424f431c4821f1a356bfda4e83",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 31 — Photo Persona Tool-by-Tool UX Contract & A 3df9bb7d023f810cada6d30e5b867888.md",
+      "lines": 159,
+      "sha256": "8fa722572aa65b91e37caa17955345a8d22549c6443b17179e6c5bd43f5963b9",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 32 — Photo Layers, Adjustments, Masks, Live Fil 3df9bb7d023f81609273c08be65cd5a2.md",
+      "lines": 135,
+      "sha256": "cd2e99a9f51390deaedc60755ef71707c7761449b12cceb22f9f0ef31ff2b6db",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 33 — Affinity Tool & Panel Coverage Ledger → Pe 3df9bb7d023f812684f9d8b0bdb12c46.md",
+      "lines": 112,
+      "sha256": "9b336523993ba683a5a3d202b08fb935f0f4866cea68875521cb2d6da18049e8",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 34 — Affinity 2026 Forensic Interface Reference 3e29bb7d023f81ff98f6fcf67bee57c9.md",
+      "lines": 108,
+      "sha256": "f5d5223069d6cf34597666390d63f1772bcc94cb110d0c95ef7aa41c97f51248",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 35 — Slint Pixel Geometry, Color Tokens, Panels 3e29bb7d023f817a8132e3b3902f210c.md",
+      "lines": 115,
+      "sha256": "aacfe359ab47e87ec0982e33548275459c1a61e828ce9e5c95412fc5fc1388d5",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 36 — Slint Interface Conformance Gauntlet, Inte 3e29bb7d023f81f0a2bef6f1ce7e4338.md",
+      "lines": 57,
+      "sha256": "bd1535ef6ec53cc16934e05a537386e42f2dcf6748d1a06cad7dfe57a1fa1f36",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 4 — Menus, Submenus, Context Menus, Command Pal 3db9bb7d023f817f9cc5ebb4ee801d29.md",
+      "lines": 152,
+      "sha256": "74f06a77657ab4146860622716fda2740898a1daa3683e6c3245762e55a00c8d",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 5 — Complete Control Catalog Buttons, Fields, S 3db9bb7d023f81d19455ea5b6d0ddd14.md",
+      "lines": 207,
+      "sha256": "b02bdd92742212d0267aa5330dc92f4e811826470d438dc0d0fba699b54855db",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 6 — Canvas, Rulers, Guides, Zoom, Selection, Sn 3db9bb7d023f816f910ad0aadc8984ea.md",
+      "lines": 162,
+      "sha256": "66959d0c20930f2b8edfb200a8f3f386d159b6ac74f9bdd5b1fdfb101adec04e",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 7 — Design Persona Complete Interface Specifica 3db9bb7d023f817dae7dc5b0ad914897.md",
+      "lines": 145,
+      "sha256": "eed214940f3b2cc06be4e042dd4e84b0c4580a9bdbbb731f9635c48faf3a7d26",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 8 — Photo Persona Complete Interface Specificat 3db9bb7d023f813c830fcd0c1e439524.md",
+      "lines": 192,
+      "sha256": "44ac63207cf3312681e0dea2079178a757d6b37692ffbab6a02ad63a207a05b1",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 9 — Welcome, New Open, Place Import, Relink, Mi 3db9bb7d023f81878276df040ba2c753.md",
+      "lines": 128,
+      "sha256": "9b6612f3bd8679e9e30a1a2e9820e23bbbff8b5c57e7826f6f70a35bbce1d8b9",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/08 — Interface Atlas & Petunia Design System 3db9bb7d023f816898b8cdc5efef3c76.md",
+      "lines": 173,
+      "sha256": "bea6bbb37210e15fa1370fb8b1ed26886a7c537492f97590123b4fe1c088263c",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 0 — Documentation Gap Audit & Completeness Matr 3db9bb7d023f8110ae91f49bcd016efe.md",
+      "lines": 105,
+      "sha256": "18a95092750e801bbaed47136e8cb82689ef74aa5e03b7c6207942f21e6fd34d",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 1 — Modularity, Capability Registry & Contribut 3db9bb7d023f8160a14dea24a4d00544.md",
+      "lines": 155,
+      "sha256": "c9c7ebab414679ac106bf6c775ae3f3a7f6ebe19493ebc5ee5c9a975a7c53685",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 10 1 — Open Native Format, Interoperability Pro 3db9bb7d023f81a4a6c5d9edfcc5b904.md",
+      "lines": 141,
+      "sha256": "1786b8238f02fc89f7c7cef98ba0556fff904322b287f947c532a318fd67ef83",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 10 — Native File Format, Serialization, Version 3db9bb7d023f81b587e8fab1e4d8d339.md",
+      "lines": 322,
+      "sha256": "b276e409ba076647f6fa7e6e073d236d0ea6f421338780d438d7907cae7f4642",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 11 — Import Export Adapter Contracts, Capabilit 3db9bb7d023f8100a1e8e054604426f9.md",
+      "lines": 264,
+      "sha256": "ead2da877d5b289504477be973aca1b6ced767daf64d5c61f7874f8dc157a41b",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 12 — Resource Packs, Tokens, Themes, Icons, Str 3db9bb7d023f81c5b2a3cbcc67e7c3ee.md",
+      "lines": 400,
+      "sha256": "16b2fa17289d13bdb424a91ec004ef4b91bc3ba4ac578c698098544c7080ca72",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 13 — Job System, Concurrency, Cancellation & Pr 3db9bb7d023f81ab9dd9d6c95c2f7691.md",
+      "lines": 254,
+      "sha256": "2e1fd9dae16f55d12a7b931701ed9d7a6e6c1a4a9bcde1fd10e6bc673d229236",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 14 — Plugin Host Isolation, WASM Components, Pe 3db9bb7d023f8160817bd7b0f1061e1e.md",
+      "lines": 207,
+      "sha256": "575c1d32b4cc64e01a32c08580e6641b46ca1c07be60ac766f5c7c38e5930537",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 15 — MCP, Automation, Inspection API & External 3db9bb7d023f816fbfaaf12b89582c91.md",
+      "lines": 56,
+      "sha256": "b1f9633518a348efb34d2b60c8dc71530c300540a651c5d348b2325cdb11f32a",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 16 — Localization, Locale Formatting, Translati 3db9bb7d023f819ea178cb86bcf6a0d0.md",
+      "lines": 53,
+      "sha256": "6378c1760587d1df2760908254e7b24081804f821f414b8b00f6ece7a2f8bae1",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 17 — Platform Services, Filesystem, Clipboard,  3db9bb7d023f814ab768c1aeee5f6f5d.md",
+      "lines": 240,
+      "sha256": "2bbaebdb3fd7a0b414853daf6ca58d038435559775f497af521b3b79de89a6ea",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 18 — Security Model, Trust Boundaries, Hostile  3db9bb7d023f81f696d0cef7cce2a631.md",
+      "lines": 68,
+      "sha256": "4dcc344f0cec9a50447648104e0ef14ebb9dce2799b7bb58442006db6fb87ef3",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 19 — Observability, Structured Diagnostics, Log 3db9bb7d023f8104ab75ec5fb681ef18.md",
+      "lines": 253,
+      "sha256": "9b1e3f27cd8bcd811bc751f5026e38a422d46e983a89d0143a10c889cd9017d5",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 2 — Canonical Document Model, Object Graph, Res 3db9bb7d023f81eea154c0aceec4610b.md",
+      "lines": 177,
+      "sha256": "e74c26de003019d47926bf2c8edacf5a415f4b4ab0c3f7e019e4a1bdb5af528a",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 20 — Build, Packaging, Release, Updates, Depend 3db9bb7d023f81e78381d9774582bcb7.md",
+      "lines": 63,
+      "sha256": "52195fe822107967f3c28ce39c0699e57ab7b3911572be6399e162a2a822cce3",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 21 — Architecture Governance, ADRs, Compatibili 3db9bb7d023f81729bace22cfa3aa2e4.md",
+      "lines": 206,
+      "sha256": "7a2bf9517f584441b2da7a4226ee1d0ca750f5a124173715945bd47d01528c1e",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 22 — Cargo Workspace, Crate Topology, Dependenc 3db9bb7d023f8137949cc85cc5313746.md",
+      "lines": 262,
+      "sha256": "ddc761efa05156057fa44a14c10c731843e9e2bf68a102141ece0bd63bb9b3c9",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 23 — Preferences, Configuration Layers, Workspa 3db9bb7d023f81a0a63df217a214509c.md",
+      "lines": 295,
+      "sha256": "85dd2bbad732362597cc614b0a72f4a4cf9c8689edfbf64bec5af3b0d6e5762b",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 24 — Application, Document Session, Multi-Windo 3db9bb7d023f8150a1a4dee7fefb025e.md",
+      "lines": 325,
+      "sha256": "a2047fbc519d728cfa098b8b5d87297c1c9137b53a40e259b6e78e1ebc6453f9",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 25 — Property & Parameter Schema Registry, Gene 3db9bb7d023f81918b0cf4b468f588b0.md",
+      "lines": 370,
+      "sha256": "ba0838415ed7b469ddac1508f7fd9e3babe7a3a4d1263189a6e43e3e15ecc885",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 26 — Open ADR Registry, Deferred Decisions & Re 3db9bb7d023f8166a751e3d1a8390b78.md",
+      "lines": 66,
+      "sha256": "2fec2926bc188907d5e18805566bc9b04177f6c3808f3a0631c0a8e562f7f67a",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 27 — UI-Agnostic Core, Ports Adapters, Presenta 3db9bb7d023f81968082fd246f9ff668.md",
+      "lines": 187,
+      "sha256": "e430b140be425d483e5449a2a7cf0c689d19f928c1f20c7d6b7dcb5e48852cce",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 28 — Plugin SDK, Safe Extension Contract, Capab 3db9bb7d023f812b924ffac8a8a3c41d.md",
+      "lines": 307,
+      "sha256": "4fc67dc465965fd707555ad74bf3165ff0b330d2ee33cca248013ac1b1d7efa4",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 29 — MCP API Usability, Agent Contracts, Safety 3db9bb7d023f8193a933c547bdf2aafe.md",
+      "lines": 231,
+      "sha256": "22334c4dea3ec9e0b7339f2fde436135985226f8b834693c2df9f087abf32117",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 3 — Actions, Commands, Transactions, Undo Redo  3db9bb7d023f81dc83e0ef56938b2932.md",
+      "lines": 197,
+      "sha256": "01527ec61660041eb599aca21d2b875cfe1a99e39975ffeed463f4804508d370",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 30 — Plugin Scripting Runtime ADR Lua vs Python 3db9bb7d023f8129853cc7461081cf62.md",
+      "lines": 204,
+      "sha256": "2c767b3b53ea7b6763b256de1b0cadc0df8a1e7802d276982d82d32b3a77a227",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 31 — Edição Não-Destrutiva EffectChain ADR pt-BR.md",
+      "lines": 88,
+      "sha256": "cb8aae2a83c5bba6293f6aafe8a3d518bfe2b37244c3333d98b42dfda8b67410",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 31 — Non-Destructive Editing EffectChain ADR.md",
+      "lines": 96,
+      "sha256": "d18086796f6d945e2eb82a4cda5fd574fbedb6e3c60ed9a2b275ec06baf4fd5f",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 32 — Coordinate Spaces, World Geometry and Migration ADR pt-BR.md",
+      "lines": 164,
+      "sha256": "37743df900035d93b8cdec7fb68b85505b1e016c46b6906e7f9b8ae9b8eb8012",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 4 — Evaluation Graph, Derived Data, Invalidatio 3db9bb7d023f81a09fe5d8251424e0c7.md",
+      "lines": 155,
+      "sha256": "1632b54e5620096e35a89c946a8ba90ea813441dce90a6aeb8813ea4d7b6d948",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 5 — Vector Geometry Engine Numeric Policy, Path 3db9bb7d023f8151889eddb7e9c44952.md",
+      "lines": 150,
+      "sha256": "243fb0739fd30252411658a074ad49929473afa43d154d95aefce75604b819bc",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 6 — Raster Engine Tiles, Brushes, Masks, Select 3db9bb7d023f81dcbd6ecddfbe80a52a.md",
+      "lines": 165,
+      "sha256": "463617ac6893e33c9ef5dd922badd847191bc14c3f4e775ef37e424ca86e2fdd",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 7 — Render Scene, Vello wgpu Compositor & GPU R 3db9bb7d023f81c2bc3ec3d1a5b74cc2.md",
+      "lines": 208,
+      "sha256": "056ea699cc9462bb928607b94f6a409f17522abae752a5b5a179efc04e3919bf",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 8 — Typography, Text Editing & Layout Engine 3db9bb7d023f81c3a4e5ebdeac49ae50.md",
+      "lines": 221,
+      "sha256": "7c8f0181a906388b78be7ca38b510409fa229029c132e429f62ca9cdb4ab28ab",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 9 — Color Management, ICC, CMYK, Spot & Proofin 3db9bb7d023f811d9572d1978cb88e34.md",
+      "lines": 211,
+      "sha256": "2f2b5a708712c0f937803139c7b62a4a927b4184d453f32950f9987efb2d2b39",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/09 — Architecture & Implementation Atlas 3db9bb7d023f810991aff0b9836407e0.md",
+      "lines": 90,
+      "sha256": "39f31558959d2e5076841b41985c78583970702258a59b8b6eb60bfec6a302f6",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 1 — Selection, Transform, Arrange, Align, Distr 3db9bb7d023f811c84f5f42ffac2657b.md",
+      "lines": 96,
+      "sha256": "81b9cdcfc3c25e9fa33ac9f9a136a5e429591c5fac175fa732a45ac2bb46e207",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 10 — Photo Masks, Adjustments, Live Filters, Ch 3db9bb7d023f8152a4b2c6ac15387c33.md",
+      "lines": 117,
+      "sha256": "b9d9007121c6c3c4b92f13124768722c117eb64d85868ee2f3ab2c80d8217ebf",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 11 — Variable Data Data Merge Engine Sources, B 3db9bb7d023f81f4a6edc078f3bd753f.md",
+      "lines": 138,
+      "sha256": "5b56c0f044cb101fa38d887a29c0891088a1a69fca41974a27f6a24254ca02b1",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 12 — Design ↔ Photo Interoperability, Conversio 3db9bb7d023f81c6bcffd0dfd1592f06.md",
+      "lines": 113,
+      "sha256": "1a80bc7975ab661a272790e9134e70c5f5d38963753aade8a3068ed6b5181348",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 13 — Functional Gauntlet, Edge-Case Matrix & To 3db9bb7d023f81588376c87f618f6b39.md",
+      "lines": 150,
+      "sha256": "2d44571cae2e46d5fc240e1ab5812c39a6d27a7ab6f1c29730ba83550bd602ec",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 2 — Pen, Pencil, Nodes, Path Editing, Corners,  3db9bb7d023f81a0b12fdcf67e5f7739.md",
+      "lines": 106,
+      "sha256": "00f10c65bfa3ac39e4efaa6c9458ca7aacbfb9cd1621b3313814bffb105dc9e3",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 3 — Shapes, Boolean Operations, Shape Builder,  3db9bb7d023f81fc8255d10257faf3ba.md",
+      "lines": 89,
+      "sha256": "e8ea57524480c9a23f372046e705d4c652006d5eaad788ab4475429ac8c96f74",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 4 — Fill, Stroke, Gradients, Transparency, Appe 3db9bb7d023f8102a4c7d1befb3cc5c2.md",
+      "lines": 111,
+      "sha256": "a8e0e08c504c192f177a9ccb12efdf5a2c2a032a38eb83bab7d9c656a753ac6f",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 5 — Layers, Groups, Clips, Masks, Symbols, Styl 3db9bb7d023f818584c0d305fd9576b8.md",
+      "lines": 105,
+      "sha256": "f4b09e6f87d180b5d0ea49df7c367816507199e66ff4baa5d60dd57a22345918",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 6 — Typography Tools, Artistic Text, Text Frame 3db9bb7d023f8168aad1f32e4f616d33.md",
+      "lines": 107,
+      "sha256": "ba4aff4b94b595dced7e4de3e43ff6668f55468f7b65b482b4662e611fde142f",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 7 — Surfaces, Artboards, Pages, Guides, Margins 3db9bb7d023f816cb69bfdea52a402f4.md",
+      "lines": 97,
+      "sha256": "02111efeaa7de17465608519c3b7e79715337aeb4b7afc8b1c8dba151994d590",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 8 — Perspective, Projective Transform, Perspect 3db9bb7d023f813b9b86ef370e5c50cd.md",
+      "lines": 91,
+      "sha256": "13d65b50e2a67c230f662d6ebc1881f67b13b7b24e04edd2652f5686107cca05",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 9 — Photo Selection, Brush, Eraser, Crop, Gradi 3db9bb7d023f81148d80deee6c0293a1.md",
+      "lines": 105,
+      "sha256": "0d9bd6bc835994eb6c022f1f48f51b1eb07de747204595184d89a48f4bf3625e",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/10 — Functional Engine Atlas 3db9bb7d023f81a2b96dc9446aca0a77.md",
+      "lines": 42,
+      "sha256": "df5e00dbb1832ab27d8b2bba965ce5fea74a4a25d93b06e5f48f74ebfcc05222",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/11 — Naming, Brand & Identity Migration Audit 3db9bb7d023f8101bbf2f52337cbde26.md",
+      "lines": 106,
+      "sha256": "e663319487cad8276c1bfa213e1b57aa09fd9f1c20b9690ae124df9bd1e39c57",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/12 1 — Source of Truth, Canonical Documentation, L 3db9bb7d023f81b08c9fd60fe7dc97bb.md",
+      "lines": 81,
+      "sha256": "b343a484c0b960cb34a4b31b9a977fcddd9c4223df0570e5652bbe1b241b5868",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/12 10 — Prumo CLI Workflow, Goals Waves, Implement 3dc9bb7d023f81ba8bbfd27c9cb81baf.md",
+      "lines": 222,
+      "sha256": "6fa65a12f6dbff71063aba495bab81041cdd505bf268d7e2d5001b61a563192e",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/12 2 — Code Agent Operating Protocol, Microcontext 3db9bb7d023f81eba360d7f459ebac35.md",
+      "lines": 142,
+      "sha256": "c361a1bc265aa6176063c4babb64decaac1824afe993dd50f3a55d4b4045ade7",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/12 3 — Living Documentation Pipeline VitePress, i1 3db9bb7d023f8168a7b6e4d378b02d12.md",
+      "lines": 164,
+      "sha256": "ae1ddb42e612898975879db47d9d280736e8cc27388ec73d0660a9408352e181",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/12 4 — Implementation Plan Template, Definition of 3db9bb7d023f819687aae98591d81fcb.md",
+      "lines": 117,
+      "sha256": "26d0e0010ca162383113b30515384516556f22b3b58658b5bebb921ce41f4a1c",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/12 5 — API Documentation Standard for Core, Plugin 3db9bb7d023f81ae9b64f4236b9f7a03.md",
+      "lines": 110,
+      "sha256": "2bfd9fa0752488c303611d729e0049f657e8fec8f6c385af8125e8c8a16118ff",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/12 6 — Documentation Quality Gauntlet, Translation 3db9bb7d023f816f97acdec5a8a82f79.md",
+      "lines": 84,
+      "sha256": "1d58323601005dadad56492da282f8badaf506485ef60a179d33971b89555eb6",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/12 7 — Repository, Contribution, Review & Document 3db9bb7d023f8166a88fdc1a5fa53e03.md",
+      "lines": 92,
+      "sha256": "94f4059f71bfebea9b7f725bb971d72844c8b535c28573fbb36c578c24b7b2d2",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/12 8 — Requirement Status, Scope Taxonomy, Backlog 3db9bb7d023f81a0b529c767560d3f7f.md",
+      "lines": 49,
+      "sha256": "d8f04ce64b23e356bda3b9017b4d29cd9afd1a24fbcef6355189104c7fa526be",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/12 9 — Change Impact Matrix What Agents Must Updat 3db9bb7d023f81ceaf86dbf91a4bd2bf.md",
+      "lines": 108,
+      "sha256": "756764c51c8c638e236bb1c023978264e4c57db7a29215a7051ff87ddd6dc52d",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/12 — Code Agent Implementation Handbook & Living D 3db9bb7d023f81049058df8d98185faa.md",
+      "lines": 139,
+      "sha256": "8bb7c27f833f5242cb708f8a2e4ec7d626810c9c0f9f6b7348fc6e857fed2f93",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/13 — Full Notebook Page-by-Page Audit & Conformanc 3db9bb7d023f810fb6fdf8aa804ef74e.md",
+      "lines": 340,
+      "sha256": "df03c6e78bd1ea49df44f0b7942062eae0a90b4f9bc6695e9ab9f05397bf4cb9",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/14 1 — Test Architecture, Conformance Matrix & Reg 3df9bb7d023f81708697efc517887807.md",
+      "lines": 72,
+      "sha256": "fe1a32e45c30dfed2f4af1869610142f63714eeae10f21c68c1f4f1f3d5c1845",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/14 2 — Performance Contract, Hardware Tiers, Bench 3df9bb7d023f812e8de5e0c0328093ee.md",
+      "lines": 75,
+      "sha256": "46f61e6d443ba6d9fa5cd36fedeac9649c5d16b24be3e79b4e2a57163e42fd63",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/14 3 — Golden Project, Fixture & Reproduction Corp 3df9bb7d023f81e7894fd7bc8dbe5141.md",
+      "lines": 64,
+      "sha256": "f21009afaac415044eb147c76607724b904b1400b505857bf9c002ff4f6caeb2",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/14 4 — Capability Detach, Feature Isolation & Depe 3df9bb7d023f819c8cc0efa23f7a2a0e.md",
+      "lines": 65,
+      "sha256": "b3344cd252a2f55e88ceac3939e5649fcd824a0cc8a526e8b86cf07b843114e0",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/14 5 — Security Verification, Fuzzing & Hostile-In 3df9bb7d023f8141850fdbebb6adbd67.md",
+      "lines": 52,
+      "sha256": "1e6ef6264d4b32b634ec4416bb5676f1b1d8d61b8d928aa345bdf644e272d809",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/14 6 — Native Format Migration, Corruption, Atomic 3df9bb7d023f811fa42ef99f802cda98.md",
+      "lines": 52,
+      "sha256": "85c13cb11ff5d399d302f86c1c0d4f941779b550ccca3361919ae026d8817422",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/14 7 — UI UX Evidence Integration, Semantic Golden 3df9bb7d023f81219888de43696f641d.md",
+      "lines": 74,
+      "sha256": "907e9aad872b636ff822d7592f208472f11f59f86b7867bd52380c8e33120290",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/14 8 — AgentOps, cargo xtask, CI Commands, Evidenc 3df9bb7d023f814daef3ebc28510d779.md",
+      "lines": 74,
+      "sha256": "f1cd08a5f02f1c3fd1e228e4ece25194613de95ed50d41f18e39f39852c84de9",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/14 — Implementation Evidence, Verification & Agent 3df9bb7d023f81a78feedf6410de5065.md",
+      "lines": 91,
+      "sha256": "23052eaec88fb1ea8084e4cdfdd8e1e514411483fee172a316f9a0b0edaadda5",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/15 A — Identity Namespace, PTND Format, Naming Mig 3e29bb7d023f816c91d5c2c78c82bad4.md",
+      "lines": 43,
+      "sha256": "9d3bfee97700a03f22aa48e65262de9637ea3a66ec5e93aa84f10a80b84436c6",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/15 B — Slint Primary UI Architecture, Component Bo 3e29bb7d023f816db021f7e14acfee45.md",
+      "lines": 45,
+      "sha256": "fa25124e8351a8e1e0913e315c027a11c285a711d9c8c93397c8411d7700d11b",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/15 C — Total Assurance Adoption Surface Coverage,  3e29bb7d023f81e4a3bdcc43da794f59.md",
+      "lines": 33,
+      "sha256": "b35d3bfb05b6f44ff5abd490dcfaca91a6ddb46023b64a032b5dfeba85bf3909",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/15 D — Performance, Security, Reliability & Long-S 3e29bb7d023f8179a446f5ad776380d9.md",
+      "lines": 37,
+      "sha256": "88e47ce8147ed72bba68a43e568c77a53edca3ae88413317d6da06a43da2f236",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/15 E — Documentation Refactor Ledger, Authority Mi 3e29bb7d023f81d7b6f9ef79fe634443.md",
+      "lines": 25,
+      "sha256": "bc7904f79da42ca6bbc56b12183135d7a2aff1cda8bcf44138365347aa714afd",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/15 F — Master Slint UI Implementation & Conformanc 3e29bb7d023f8145a710d72d4b5adb2f.md",
+      "lines": 926,
+      "sha256": "9af11e026521895cdd7ba2c3514a0fc2478ee334394d431807b085750b97672f",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/15 G — Canonical Surface Registry Seed Menus, Tool 3e29bb7d023f81a2a5cdc0658fd8a602.md",
+      "lines": 303,
+      "sha256": "002974e9e51cc9b9eb37499a53ae4cd433ffdad042c9923eddd719d79dba2ccd",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/15 H — Performance, Memory, GPU, Security & Reliab 3e29bb7d023f81409ceaf8cf13c69f80.md",
+      "lines": 223,
+      "sha256": "6ac06b76ab4656bc830444473662545c36cfa3d07d414729c890e8d2588baaec",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/15 — Petunia Design Studio Rebrand, Slint Migratio 3e29bb7d023f8105b05de5d6e6c83ade.md",
+      "lines": 84,
+      "sha256": "d8d93c9c149b1ee4883e1daa3bd0aff4da1b0f37ff2641026c011b9a2fed9cb2",
+      "kind": "markdown"
+    },
+    {
+      "path": "petunia-design-studio/Petunia Design Studio 3db9bb7d023f811192aff85b2efa8698.md",
+      "lines": 151,
+      "sha256": "0362365f9f07ef156669c4eceef767a4d78c96cf7a7e07d3b200175c9f902386",
+      "kind": "markdown"
+    }
+  ]
+}

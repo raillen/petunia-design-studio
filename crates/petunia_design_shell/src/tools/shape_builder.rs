@@ -550,18 +550,15 @@ fn subtract_region(
         let Some(rect) = path.bounding_box() else {
             continue;
         };
-        cmds.push(Command::SetShape {
+        cmds.push(Command::SetPath {
             id: *id,
-            shape: Some(ShapeKind::Path(path)),
-        });
-        cmds.push(Command::SetBounds {
-            id: *id,
-            bounds: Some([
+            path,
+            bounds: [
                 rect.x0,
                 rect.y0,
                 rect.width().max(1.0),
                 rect.height().max(1.0),
-            ]),
+            ],
             rotation: source.rotation,
         });
     }

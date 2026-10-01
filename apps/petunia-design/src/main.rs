@@ -97,16 +97,16 @@ fn seed_starter_shapes(shell: &mut PetuniaShell) {
             id: id1,
             name: "Rectangle A".to_string(),
         },
+        Command::SetBounds {
+            id: id1,
+            bounds: Some([260.0, 180.0, 220.0, 160.0]),
+            rotation: 0.0,
+        },
         Command::SetShape {
             id: id1,
             shape: Some(petunia_design_document::ShapeKind::Rectangle {
                 corner_radii: [12.0, 12.0, 12.0, 12.0],
             }),
-        },
-        Command::SetBounds {
-            id: id1,
-            bounds: Some([260.0, 180.0, 220.0, 160.0]),
-            rotation: 0.0,
         },
         Command::SetFill {
             id: id1,
@@ -117,14 +117,14 @@ fn seed_starter_shapes(shell: &mut PetuniaShell) {
             id: id2,
             name: "Circle B".to_string(),
         },
-        Command::SetShape {
-            id: id2,
-            shape: Some(petunia_design_document::ShapeKind::Ellipse),
-        },
         Command::SetBounds {
             id: id2,
             bounds: Some([380.0, 240.0, 200.0, 200.0]),
             rotation: 0.0,
+        },
+        Command::SetShape {
+            id: id2,
+            shape: Some(petunia_design_document::ShapeKind::Ellipse),
         },
         Command::SetFill {
             id: id2,
@@ -602,17 +602,12 @@ fn dispatch_workspace_at(
                     petunia_design_document::GuideOrientation::Vertical => doc_pt.x,
                 };
                 if let Some(surf_id) = surf_id {
-                    let guide_id = (std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_millis())
-                        .unwrap_or(0)
-                        % 1_000_000) as u32;
-                    let guide = petunia_design_document::Guide::new(guide_id, orient, pos);
                     let _ = shell.write().bridge.submit_all(
                         "Add guide",
-                        vec![petunia_design_application::Command::AddGuide {
+                        vec![petunia_design_application::Command::CreateGuide {
                             surface: surf_id,
-                            guide,
+                            orientation: orient,
+                            position: pos,
                         }],
                     );
                 }
@@ -1764,6 +1759,12 @@ mod workspace_tests {
                         id: rect_id,
                         bounds: Some([10.0, 10.0, 100.0, 100.0]),
                         rotation: 0.0,
+                    },
+                    petunia_design_application::Command::SetShape {
+                        id: rect_id,
+                        shape: Some(petunia_design_document::ShapeKind::Rectangle {
+                            corner_radii: [0.0; 4],
+                        }),
                     },
                 ],
             )

@@ -2,6 +2,8 @@
 
 C4-style view of Petunia Design Studio: contexts, containers, components and the code-level mutation path.
 
+Current persistence and publication contract: [ADR-002](/developers/adr/ADR-002-local-path-and-integrity), with [generated source/test reference](/implementation/contracts.json). The [execution ledger](/developers/implementation-progress) distinguishes implemented corrections from pending milestones.
+
 ## Level 1 — System context
 
 ```mermaid
@@ -15,13 +17,13 @@ flowchart TB
   PETUNIA <--> FILES
 ```
 
-Humans drive the Slint shell; agents and scripts drive the identical capability surface through MCP, CLI and Lua — no parallel privileged API.
+Humans drive the Freya/Skia shell; agents and scripts drive the identical capability surface through MCP, CLI and Lua — no parallel privileged API.
 
 ## Level 2 — Containers
 
 ```mermaid
 flowchart TB
-  APP[Slint desktop app<br/>petunia-design]
+  APP[Freya/Skia desktop app<br/>petunia-design]
   CLI[Headless CLI<br/>petunia-design-cli]
   CORE[Domain + services<br/>16 crates]
   STORE[(.ptnd package<br/>atomic ZIP)]
@@ -36,7 +38,7 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  subgraph GUI ["GUI side (Slint/Freya)"]
+  subgraph GUI ["GUI side (Freya/Skia)"]
     VW[ViewportCamera<br/>0.1% – 25600%]
     PAN[Panels<br/>Layers · Properties<br/>History · DataMerge]
     TM[ToolManager<br/>35 ToolKinds]

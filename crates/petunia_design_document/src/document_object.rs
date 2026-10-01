@@ -165,8 +165,13 @@ pub enum ShapeKind {
     Rectangle { corner_radii: [f64; 4] },
     /// Elliptical shape.
     Ellipse,
-    /// Explicit arbitrary vector path with Bézier verbs.
+    /// Legacy/input path in parent coordinates. Writers normalize it to `LocalPath`.
     Path(petunia_design_geometry::GPath),
+    /// Editable local geometry; placement and resizing never rewrite these points.
+    LocalPath {
+        path: std::sync::Arc<petunia_design_geometry::GPath>,
+        reference_size: [f64; 2],
+    },
     /// Regular polygon with N sides.
     Polygon { sides: u32 },
     /// Star polygon with N points and inner radius ratio.
@@ -188,6 +193,38 @@ pub enum ShapeKind {
         #[serde(default)]
         data: Option<Vec<u8>>,
     },
+}
+
+impl ShapeKind {
+    /// Whether this descriptor holds editable Bézier geometry.
+    #[must_use]
+    pub fn is_path(&self) -> bool {
+        matches!(self, Self::Path(_) | Self::LocalPath { .. })
+    }
+
+    pub(crate) fn into_local(
+        self,
+        bounds: Option<[f64; 4]>,
+    ) -> Result<Self, petunia_design_foundation::PetuniaError> {
+        if let Self::Path(path) = self {
+            let b = bounds.ok_or_else(|| {
+                petunia_design_foundation::PetuniaError::invalid_input("path requires bounds")
+            })?;
+            if !b.iter().all(|v| v.is_finite()) || b[2] <= 0.0 || b[3] <= 0.0 || !path.is_finite() {
+                return Err(petunia_design_foundation::PetuniaError::invalid_input(
+                    "path requires finite geometry and positive bounds",
+                ));
+            }
+            Ok(Self::LocalPath {
+                path: std::sync::Arc::new(
+                    path.transformed(petunia_design_geometry::GAffine::translate(-b[0], -b[1])),
+                ),
+                reference_size: [b[2], b[3]],
+            })
+        } else {
+            Ok(self)
+        }
+    }
 }
 
 impl DocumentObject {
@@ -250,6 +287,22 @@ impl DocumentObject {
                 Ok(petunia_design_geometry::GPath::ellipse(center, rx, ry))
             }
             Some(ShapeKind::Path(_)) => Err(crate::GeometryFrameError::AmbiguousPath(self.id)),
+            Some(ShapeKind::LocalPath {
+                path,
+                reference_size,
+            }) => {
+                if !path.is_finite() || !reference_size.iter().all(|v| v.is_finite() && *v > 0.0) {
+                    return Err(crate::GeometryFrameError::NonFinite(self.id));
+                }
+                let result = path.transformed(petunia_design_geometry::GAffine::scale(
+                    b[2] / reference_size[0],
+                    b[3] / reference_size[1],
+                ));
+                if !result.is_finite() {
+                    return Err(crate::GeometryFrameError::NonFinite(self.id));
+                }
+                Ok(result)
+            }
             Some(ShapeKind::Polygon { sides }) => {
                 let radius = b[2].min(b[3]) / 2.0;
                 let center = petunia_design_geometry::GPoint::new(b[2] / 2.0, b[3] / 2.0);
@@ -281,28 +334,39 @@ impl DocumentObject {
 
     fn validate_local_modifiers(&self) -> Result<(), crate::GeometryFrameError> {
         for item in self.modifiers.iter().filter(|item| item.enabled) {
+            let crate::ModifierSpace::Local { reference_size } = item.space else {
+                return Err(crate::GeometryFrameError::AmbiguousModifier(
+                    self.id,
+                    "parent-frame",
+                ));
+            };
+            if !reference_size.iter().all(|v| v.is_finite() && *v > 0.0) {
+                return Err(crate::GeometryFrameError::NonFinite(self.id));
+            }
             match &item.kind {
                 crate::modifiers::ModifierKind::ContourOffset { distance, .. } => {
                     if !distance.is_finite() {
                         return Err(crate::GeometryFrameError::NonFinite(self.id));
                     }
                 }
-                crate::modifiers::ModifierKind::TransparentGradient { .. } => {
-                    return Err(crate::GeometryFrameError::AmbiguousModifier(
-                        self.id,
-                        "TransparentGradient",
-                    ));
+                crate::modifiers::ModifierKind::TransparentGradient { start, end, stops } => {
+                    if !start.iter().chain(end).all(|v| v.is_finite())
+                        || stops
+                            .iter()
+                            .any(|s| !s.offset.is_finite() || !s.opacity.is_finite())
+                    {
+                        return Err(crate::GeometryFrameError::NonFinite(self.id));
+                    }
                 }
-                crate::modifiers::ModifierKind::Perspective { .. } => {
-                    return Err(crate::GeometryFrameError::AmbiguousModifier(
-                        self.id,
-                        "Perspective",
-                    ));
+                crate::modifiers::ModifierKind::Perspective { quad } => {
+                    if !quad.iter().flatten().all(|v| v.is_finite()) {
+                        return Err(crate::GeometryFrameError::NonFinite(self.id));
+                    }
                 }
-                crate::modifiers::ModifierKind::CropRect { .. } => {
-                    return Err(crate::GeometryFrameError::AmbiguousModifier(
-                        self.id, "CropRect",
-                    ));
+                crate::modifiers::ModifierKind::CropRect { rect } => {
+                    if !rect.iter().all(|v| v.is_finite()) || rect[2] <= 0.0 || rect[3] <= 0.0 {
+                        return Err(crate::GeometryFrameError::InvalidBounds(self.id));
+                    }
                 }
             }
         }
@@ -315,12 +379,9 @@ impl DocumentObject {
     ) -> Result<petunia_design_geometry::GPath, crate::GeometryFrameError> {
         self.validate_local_modifiers()?;
         let base = self.base_path_local()?;
-        let path = crate::modifiers::evaluate_modifiers(&base, &self.modifiers);
-        if path.is_finite() {
-            Ok(path)
-        } else {
-            Err(crate::GeometryFrameError::NonFinite(self.id))
-        }
+        let [_, _, w, h] = self.bounds.unwrap_or([0.0; 4]);
+        crate::modifiers::evaluate_modifiers_local(&base, &self.modifiers, [w, h])
+            .ok_or(crate::GeometryFrameError::NonFinite(self.id))
     }
 
     /// Returns evaluated local bounds when the local outline has geometry.
@@ -350,6 +411,12 @@ impl DocumentObject {
                 petunia_design_geometry::GPath::ellipse(center, rx, ry)
             }
             Some(ShapeKind::Path(path)) => path.clone(),
+            Some(ShapeKind::LocalPath { .. }) => self
+                .base_path_local()
+                .map(|path| {
+                    path.transformed(petunia_design_geometry::GAffine::translate(b[0], b[1]))
+                })
+                .unwrap_or_default(),
             Some(ShapeKind::Polygon { sides }) => {
                 let radius = b[2].min(b[3]) / 2.0;
                 let center =
@@ -377,7 +444,18 @@ impl DocumentObject {
     /// migrate. New world-scoped readers must use the explicit resolver.
     #[must_use]
     pub fn evaluated_path(&self) -> petunia_design_geometry::GPath {
-        crate::modifiers::evaluate_modifiers(&self.to_path(), &self.modifiers)
+        if self.modifiers.is_empty()
+            || self
+                .modifiers
+                .iter()
+                .any(|m| m.space == crate::ModifierSpace::Parent)
+        {
+            return crate::modifiers::evaluate_modifiers(&self.to_path(), &self.modifiers);
+        }
+        let [x, y, _, _] = self.bounds.unwrap_or([0.0; 4]);
+        self.evaluated_path_local()
+            .map(|path| path.transformed(petunia_design_geometry::GAffine::translate(x, y)))
+            .unwrap_or_default()
     }
 
     /// Bounds of the evaluated outline, falling back to stored base bounds.
@@ -392,17 +470,50 @@ impl DocumentObject {
         }
     }
 
+    /// Samples the editable mask in current local coordinates.
+    pub fn opacity_at_local(
+        &self,
+        point: petunia_design_geometry::GPoint,
+    ) -> Result<f64, crate::GeometryFrameError> {
+        if !point.x.is_finite() || !point.y.is_finite() {
+            return Err(crate::GeometryFrameError::NonFinite(self.id));
+        }
+        if self.modifiers.is_empty() {
+            return Ok(self.opacity);
+        }
+        self.validate_local_modifiers()?;
+        let [_, _, w, h] = self
+            .bounds
+            .ok_or(crate::GeometryFrameError::MissingBounds(self.id))?;
+        crate::modifiers::evaluate_opacity_local(&self.modifiers, point, [w, h])
+            .map(|mask| self.opacity * mask)
+            .ok_or(crate::GeometryFrameError::NonFinite(self.id))
+    }
+
     /// Effective opacity for export/preview: base opacity times the live
     /// transparency mask sampled at the bounds center. Full mask rendering
     /// stays future work; this documented approximation keeps export honest.
     #[must_use]
     pub fn sampled_opacity(&self) -> f64 {
-        let center = self
-            .bounds
-            .map(|[x, y, w, h]| petunia_design_geometry::GPoint::new(x + w / 2.0, y + h / 2.0))
-            .unwrap_or(petunia_design_geometry::GPoint::ORIGIN);
-        (self.opacity * crate::modifiers::evaluate_opacity_at(&self.modifiers, center))
-            .clamp(0.0, 1.0)
+        let [x, y, w, h] = self.bounds.unwrap_or([0.0; 4]);
+        let mask = if self
+            .modifiers
+            .iter()
+            .any(|m| m.space == crate::ModifierSpace::Parent)
+        {
+            crate::modifiers::evaluate_opacity_at(
+                &self.modifiers,
+                petunia_design_geometry::GPoint::new(x + w / 2.0, y + h / 2.0),
+            )
+        } else {
+            crate::modifiers::evaluate_opacity_local(
+                &self.modifiers,
+                petunia_design_geometry::GPoint::new(w / 2.0, h / 2.0),
+                [w, h],
+            )
+            .unwrap_or(0.0)
+        };
+        (self.opacity * mask).clamp(0.0, 1.0)
     }
 
     /// Hit-tests whether a document point lies within this object's shape or bounds.
@@ -432,8 +543,8 @@ impl DocumentObject {
                 let dy = (point.y - cy) / ry.max(1e-6);
                 return dx * dx + dy * dy <= 1.0;
             }
-            if let Some(ShapeKind::Path(path)) = &self.shape {
-                return path.contains_point(point, 0.5);
+            if self.shape.as_ref().is_some_and(ShapeKind::is_path) {
+                return self.to_path().contains_point(point, 0.5);
             }
             true
         } else {

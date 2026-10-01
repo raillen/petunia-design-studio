@@ -5352,14 +5352,14 @@ fn symbol_preset_item(
                                         id: obj_id,
                                         name: name.to_string(),
                                     },
-                                    Command::SetShape {
-                                        id: obj_id,
-                                        shape: Some(shape_clone.clone()),
-                                    },
                                     Command::SetBounds {
                                         id: obj_id,
                                         bounds: Some(bounds),
                                         rotation: 0.0,
+                                    },
+                                    Command::SetShape {
+                                        id: obj_id,
+                                        shape: Some(shape_clone.clone()),
                                     },
                                     Command::SetFill {
                                         id: obj_id,
@@ -5706,16 +5706,16 @@ mod tests {
                     id: obj_id,
                     name: "Rect1".to_string(),
                 },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([10.0, 10.0, 100.0, 100.0]),
+                    rotation: 0.0,
+                },
                 Command::SetShape {
                     id: obj_id,
                     shape: Some(ShapeKind::Rectangle {
                         corner_radii: [0.0; 4],
                     }),
-                },
-                Command::SetBounds {
-                    id: obj_id,
-                    bounds: Some([10.0, 10.0, 100.0, 100.0]),
-                    rotation: 0.0,
                 },
                 Command::SetFill {
                     id: obj_id,
@@ -5770,16 +5770,16 @@ mod tests {
                     id: obj_id,
                     name: "TonalRect".to_string(),
                 },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([0.0, 0.0, 100.0, 100.0]),
+                    rotation: 0.0,
+                },
                 Command::SetShape {
                     id: obj_id,
                     shape: Some(ShapeKind::Rectangle {
                         corner_radii: [0.0; 4],
                     }),
-                },
-                Command::SetBounds {
-                    id: obj_id,
-                    bounds: Some([0.0, 0.0, 100.0, 100.0]),
-                    rotation: 0.0,
                 },
             ],
         );
@@ -5937,13 +5937,18 @@ mod tests {
         assert!(midtones > shadows && midtones > highlights);
 
         // 2. Add Red object
-        let _ = shell.bridge.submit_all(
+        let result = shell.bridge.submit_all(
             "Add Red shape",
             vec![
                 Command::CreateObject {
                     surface: surf_id,
                     id: obj_id,
                     name: "RedRect".to_string(),
+                },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([0.0, 0.0, 100.0, 100.0]),
+                    rotation: 0.0,
                 },
                 Command::SetShape {
                     id: obj_id,
@@ -5957,6 +5962,7 @@ mod tests {
                 },
             ],
         );
+        result.expect("red histogram fixture must be a valid document");
 
         let session = shell.bridge.session().unwrap();
         let surf = session.surface(surf_id).unwrap();
@@ -6040,6 +6046,11 @@ mod tests {
                     surface: surf_id,
                     id: img_id,
                     name: "SampleImage".to_string(),
+                },
+                Command::SetBounds {
+                    id: img_id,
+                    bounds: Some([0.0, 0.0, 2.0, 2.0]),
+                    rotation: 0.0,
                 },
                 Command::SetShape {
                     id: img_id,
@@ -6135,16 +6146,16 @@ mod tests {
                     id: obj_id,
                     name: "FXRect".to_string(),
                 },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([0.0, 0.0, 100.0, 100.0]),
+                    rotation: 0.0,
+                },
                 Command::SetShape {
                     id: obj_id,
                     shape: Some(ShapeKind::Rectangle {
                         corner_radii: [0.0; 4],
                     }),
-                },
-                Command::SetBounds {
-                    id: obj_id,
-                    bounds: Some([0.0, 0.0, 100.0, 100.0]),
-                    rotation: 0.0,
                 },
             ],
         );
@@ -6305,16 +6316,16 @@ mod tests {
                     id: obj_id,
                     name: "RectMod".to_string(),
                 },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([50.0, 50.0, 100.0, 80.0]),
+                    rotation: 0.0,
+                },
                 Command::SetShape {
                     id: obj_id,
                     shape: Some(ShapeKind::Rectangle {
                         corner_radii: [0.0; 4],
                     }),
-                },
-                Command::SetBounds {
-                    id: obj_id,
-                    bounds: Some([50.0, 50.0, 100.0, 80.0]),
-                    rotation: 0.0,
                 },
             ],
         );
@@ -6353,6 +6364,7 @@ mod tests {
             vec![Command::SetModifiers {
                 id: obj_id,
                 modifiers: vec![petunia_design_document::ModifierItem {
+                    space: petunia_design_document::ModifierSpace::Parent,
                     id: 1,
                     kind: petunia_design_document::ModifierKind::ContourOffset {
                         distance: 8.0,
@@ -6383,6 +6395,7 @@ mod tests {
                 id: obj_id,
                 modifiers: vec![
                     petunia_design_document::ModifierItem {
+                        space: petunia_design_document::ModifierSpace::Parent,
                         id: 2,
                         kind: petunia_design_document::ModifierKind::CropRect {
                             rect: [50.0, 50.0, 80.0, 60.0],
@@ -6390,6 +6403,7 @@ mod tests {
                         enabled: false,
                     },
                     petunia_design_document::ModifierItem {
+                        space: petunia_design_document::ModifierSpace::Parent,
                         id: 1,
                         kind: petunia_design_document::ModifierKind::ContourOffset {
                             distance: 8.0,
@@ -6428,7 +6442,7 @@ mod tests {
                 petunia_design_document::ModifierKind::ContourOffset { .. }
             )));
             // Shape is now a Path (converted to curves)
-            assert!(matches!(obj.shape, Some(ShapeKind::Path { .. })));
+            assert!(matches!(obj.shape, Some(ShapeKind::LocalPath { .. })));
         }
     }
 
@@ -6521,16 +6535,16 @@ mod tests {
                     id: obj_id,
                     name: "Retângulo Básico".to_string(),
                 },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([50.0, 50.0, 250.0, 200.0]),
+                    rotation: 0.0,
+                },
                 Command::SetShape {
                     id: obj_id,
                     shape: Some(ShapeKind::Rectangle {
                         corner_radii: [0.0; 4],
                     }),
-                },
-                Command::SetBounds {
-                    id: obj_id,
-                    bounds: Some([50.0, 50.0, 250.0, 200.0]),
-                    rotation: 0.0,
                 },
                 Command::SetFill {
                     id: obj_id,

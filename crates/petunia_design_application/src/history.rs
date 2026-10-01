@@ -5,8 +5,20 @@ use petunia_design_foundation::PetuniaError;
 
 use crate::commands::{self, CommandRequest};
 
+#[derive(Default)]
+struct PayloadSize(usize);
+impl std::io::Write for PayloadSize {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0 = self.0.saturating_add(bytes.len());
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 /// Bounded undo stack. Redo is cleared on every new execution.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct History {
     /// Executed entries, oldest first.
     undo: Vec<ChangeSet>,
@@ -14,16 +26,35 @@ pub struct History {
     redo: Vec<ChangeSet>,
     /// Maximum retained undo entries.
     limit: usize,
+    undo_states: Vec<(u64, u64, usize)>,
+    redo_states: Vec<(u64, u64, usize)>,
+    state: u64,
+    next_state: u64,
+    retained_bytes: usize,
+    byte_limit: usize,
+}
+
+impl Default for History {
+    fn default() -> Self {
+        Self::new(1000)
+    }
 }
 
 impl History {
-    /// Creates history with a retention limit (0 means unbounded for MVP).
+    /// Creates bounded history. Zero selects the default 1000-entry limit.
+    /// The payload budget is an encoded-size estimate, not a process RSS cap.
     #[must_use]
     pub fn new(limit: usize) -> Self {
         Self {
             undo: Vec::new(),
             redo: Vec::new(),
-            limit,
+            limit: if limit == 0 { 1000 } else { limit },
+            undo_states: Vec::new(),
+            redo_states: Vec::new(),
+            state: 0,
+            next_state: 1,
+            retained_bytes: 0,
+            byte_limit: 512 * 1024 * 1024,
         }
     }
 
@@ -36,25 +67,54 @@ impl History {
         document: &mut Document,
         request: &CommandRequest,
     ) -> Result<ChangeSet, PetuniaError> {
-        let changes = commands::execute(document, request)?;
+        let mut next = document.clone();
+        let changes = commands::execute(&mut next, request)?;
         if changes.is_empty() {
             return Ok(changes);
         }
-        self.record(changes.clone());
+        next.validate()?;
+        self.record(changes.clone())?;
+        *document = next;
         Ok(changes)
     }
 
     /// Records an externally built change set (e.g. `Transaction::commit`).
     /// NoOps are ignored; redo is cleared only for real commits.
-    pub fn record(&mut self, changes: ChangeSet) {
+    pub fn record(&mut self, changes: ChangeSet) -> Result<(), PetuniaError> {
         if changes.is_empty() {
-            return;
+            return Ok(());
         }
-        if self.limit > 0 && self.undo.len() >= self.limit {
-            self.undo.remove(0);
+        let mut size = PayloadSize::default();
+        serde_json::to_writer(&mut size, &changes)
+            .map_err(|e| PetuniaError::invalid_input(format!("history payload: {e}")))?;
+        let bytes = size.0;
+        if bytes > self.byte_limit {
+            return Err(PetuniaError::invalid_input(
+                "edit exceeds history payload budget; document was not changed",
+            ));
         }
-        self.undo.push(changes);
+        for (_, _, size) in self.redo_states.drain(..) {
+            self.retained_bytes = self.retained_bytes.saturating_sub(size);
+        }
         self.redo.clear();
+        while !self.undo.is_empty()
+            && (self.undo.len() >= self.limit
+                || self.retained_bytes.saturating_add(bytes) > self.byte_limit)
+        {
+            self.undo.remove(0);
+            let (_, _, size) = self.undo_states.remove(0);
+            self.retained_bytes = self.retained_bytes.saturating_sub(size);
+        }
+        let before = self.state;
+        self.state = self.next_state;
+        self.next_state = self
+            .next_state
+            .checked_add(1)
+            .expect("history state space exhausted");
+        self.undo.push(changes);
+        self.undo_states.push((before, self.state, bytes));
+        self.retained_bytes = self.retained_bytes.saturating_add(bytes);
+        Ok(())
     }
 
     /// Executes a command and reports whether it committed (F-22).
@@ -73,21 +133,35 @@ impl History {
 
     /// Undoes the most recent entry. Returns false when history is empty.
     pub fn undo(&mut self, document: &mut Document) -> Result<bool, PetuniaError> {
-        let Some(changes) = self.undo.pop() else {
+        let Some(changes) = self.undo.last() else {
             return Ok(false);
         };
-        DocumentMutator::new(document).revert(&changes)?;
+        let mut next = document.clone();
+        DocumentMutator::new(&mut next).revert(changes)?;
+        next.validate()?;
+        *document = next;
+        let changes = self.undo.pop().expect("entry checked above");
+        let states = self.undo_states.pop().expect("history metadata is paired");
+        self.state = states.0;
         self.redo.push(changes);
+        self.redo_states.push(states);
         Ok(true)
     }
 
     /// Redoes the most recently undone entry. Returns false when empty.
     pub fn redo(&mut self, document: &mut Document) -> Result<bool, PetuniaError> {
-        let Some(changes) = self.redo.pop() else {
+        let Some(changes) = self.redo.last() else {
             return Ok(false);
         };
-        Replayer::replay(document, &changes)?;
+        let mut next = document.clone();
+        Replayer::replay(&mut next, changes)?;
+        next.validate()?;
+        *document = next;
+        let changes = self.redo.pop().expect("entry checked above");
+        let states = self.redo_states.pop().expect("history metadata is paired");
+        self.state = states.1;
         self.undo.push(changes);
+        self.undo_states.push(states);
         Ok(true)
     }
 
@@ -125,6 +199,27 @@ impl History {
     #[must_use]
     pub fn redo_entries(&self) -> &[ChangeSet] {
         &self.redo
+    }
+
+    /// Stable identity of document content across undo and redo.
+    #[must_use]
+    pub fn state_id(&self) -> u64 {
+        self.state
+    }
+
+    /// Approximate retained encoded payload bytes across both stacks.
+    #[must_use]
+    pub fn retained_bytes(&self) -> usize {
+        self.retained_bytes
+    }
+
+    /// Configurable retention budget; oversized edits fail before publication.
+    #[must_use]
+    pub fn with_budget(limit: usize, byte_limit: usize) -> Self {
+        Self {
+            byte_limit,
+            ..Self::new(limit)
+        }
     }
 }
 
@@ -235,6 +330,9 @@ impl Replayer {
                 }
                 Change::SurfaceBackgroundChanged { id, next, .. } => {
                     mutator.set_surface_background(id, next)?;
+                }
+                Change::SurfaceExportEnabledChanged { id, next, .. } => {
+                    mutator.set_surface_export_enabled(id, next)?;
                 }
                 Change::SurfaceGuideAdded { surface, guide } => {
                     mutator.add_surface_guide(surface, guide)?;

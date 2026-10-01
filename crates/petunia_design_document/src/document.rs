@@ -133,10 +133,27 @@ impl Surface {
 }
 
 /// Canonical document: owns surfaces; objects live inside surfaces.
+///
+/// Published objects and surfaces are read-only outside the document crate.
+/// All edits must produce a ChangeSet through DocumentMutator.
+///
+/// ```compile_fail
+/// use petunia_design_document::Document;
+/// use petunia_design_foundation::ObjectId;
+/// let mut doc = Document::new();
+/// doc.find_object_mut(ObjectId::new(1));
+/// ```
+///
+/// ```compile_fail
+/// use petunia_design_document::Document;
+/// use petunia_design_foundation::SurfaceId;
+/// let mut doc = Document::new();
+/// doc.surface_mut(SurfaceId::new(1));
+/// ```
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Document {
     /// Schema version of this payload.
-    pub schema_version: u32,
+    pub(crate) schema_version: u32,
     /// Surfaces in document order. Crate-visible (A4): read via `surfaces()`,
     /// mutate only through `DocumentMutator`.
     pub(crate) surfaces: Vec<Surface>,
@@ -151,6 +168,107 @@ pub struct Document {
 }
 
 impl Document {
+    /// Converts a tool's world-space parameter input to the selected object's
+    /// current local frame, including rotation and ancestor placement.
+    pub fn modifier_from_world(
+        &self,
+        id: ObjectId,
+        mut item: crate::ModifierItem,
+    ) -> Result<crate::ModifierItem, PetuniaError> {
+        if item.space != crate::ModifierSpace::Parent {
+            return Err(PetuniaError::invalid_input(
+                "world input must not carry an already-local frame",
+            ));
+        }
+        let object = self
+            .find_object(id)
+            .ok_or_else(|| PetuniaError::not_found("modifier target missing"))?;
+        let [_, _, w, h] = object
+            .bounds
+            .ok_or_else(|| PetuniaError::invalid_input("modifier requires bounds"))?;
+        let inverse = self
+            .world_transform_checked(id)
+            .map_err(|e| PetuniaError::invalid_input(e.to_string()))?
+            .inverse()
+            .ok_or_else(|| PetuniaError::invalid_input("modifier transform is singular"))?;
+        let project = |p: &mut [f64; 2]| {
+            let local = inverse.apply(petunia_design_geometry::GPoint::new(p[0], p[1]));
+            *p = [local.x, local.y];
+        };
+        match &mut item.kind {
+            crate::ModifierKind::TransparentGradient { start, end, .. } => {
+                project(start);
+                project(end);
+            }
+            crate::ModifierKind::Perspective { quad } => {
+                for p in quad {
+                    project(p);
+                }
+            }
+            crate::ModifierKind::CropRect {
+                rect: [x, y, cw, ch],
+            } => {
+                if ![*x, *y, *cw, *ch].iter().all(|v| v.is_finite()) || *cw <= 0.0 || *ch <= 0.0 {
+                    return Err(PetuniaError::invalid_input(
+                        "world crop requires finite positive dimensions",
+                    ));
+                }
+                // A world rectangle must remain an axis-aligned rectangle in
+                // local space. An enclosing AABB would silently crop extra art.
+                let corners = [
+                    [*x, *y],
+                    [*x + *cw, *y],
+                    [*x + *cw, *y + *ch],
+                    [*x, *y + *ch],
+                ];
+                let local = corners.map(|mut p| {
+                    project(&mut p);
+                    p
+                });
+                let axis_aligned = local.windows(2).all(|pair| {
+                    (pair[0][0] - pair[1][0]).abs() < 1e-8 || (pair[0][1] - pair[1][1]).abs() < 1e-8
+                });
+                if !axis_aligned {
+                    return Err(PetuniaError::invalid_input(
+                        "rotated world crop requires a polygon mask",
+                    ));
+                }
+                *x = local.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
+                *y = local.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
+                *cw = local.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max) - *x;
+                *ch = local.iter().map(|p| p[1]).fold(f64::NEG_INFINITY, f64::max) - *y;
+            }
+            crate::ModifierKind::ContourOffset { .. } => {}
+        }
+        item.space = crate::ModifierSpace::Local {
+            reference_size: [w, h],
+        };
+        Ok(item)
+    }
+
+    /// Object opacity at a world-space point. Ancestor/group compositing is
+    /// separate; this evaluates the object's editable transparency chain.
+    pub fn opacity_at_world(
+        &self,
+        id: ObjectId,
+        point: petunia_design_geometry::GPoint,
+    ) -> Result<f64, crate::GeometryFrameError> {
+        let object = self
+            .find_object(id)
+            .ok_or(crate::GeometryFrameError::MissingObject(id))?;
+        let inverse = self
+            .world_transform_checked(id)?
+            .inverse()
+            .ok_or(crate::GeometryFrameError::NonFinite(id))?;
+        object.opacity_at_local(inverse.apply(point))
+    }
+
+    /// Version of the normalized native payload; only migration changes it.
+    #[must_use]
+    pub fn schema_version(&self) -> u32 {
+        self.schema_version
+    }
+
     /// Creates an empty document at the current native schema version.
     #[must_use]
     pub fn new() -> Self {
@@ -169,14 +287,6 @@ impl Document {
         id: crate::variable_data::DataSourceId,
     ) -> Option<&crate::variable_data::DataSourceDefinition> {
         self.data_sources.iter().find(|ds| ds.id == id)
-    }
-
-    /// Finds a data source mutably by stable ID.
-    pub fn data_source_mut(
-        &mut self,
-        id: crate::variable_data::DataSourceId,
-    ) -> Option<&mut crate::variable_data::DataSourceDefinition> {
-        self.data_sources.iter_mut().find(|ds| ds.id == id)
     }
 
     /// Finds a data binding by stable ID.
@@ -215,7 +325,7 @@ impl Document {
     }
 
     /// Finds a mutable surface by stable ID.
-    pub fn surface_mut(&mut self, id: SurfaceId) -> Result<&mut Surface, PetuniaError> {
+    pub(crate) fn surface_mut(&mut self, id: SurfaceId) -> Result<&mut Surface, PetuniaError> {
         self.surfaces
             .iter_mut()
             .find(|s| s.id == id)
@@ -232,7 +342,7 @@ impl Document {
     }
 
     /// Finds a mutable object anywhere in the document by stable ID.
-    pub fn find_object_mut(&mut self, id: ObjectId) -> Option<&mut DocumentObject> {
+    pub(crate) fn find_object_mut(&mut self, id: ObjectId) -> Option<&mut DocumentObject> {
         self.surfaces
             .iter_mut()
             .flat_map(|s| s.objects.iter_mut())
@@ -257,7 +367,11 @@ impl Document {
             return true;
         }
         let mut curr = Some(candidate);
+        let mut visited = std::collections::HashSet::new();
         while let Some(c) = curr {
+            if !visited.insert(c) {
+                break;
+            }
             if let Some(obj) = self.find_object(c) {
                 if let Some(p) = obj.parent {
                     if p == ancestor {
@@ -421,19 +535,42 @@ impl Document {
     pub fn from_json(text: &str) -> Result<Self, PetuniaError> {
         let mut doc: Self = serde_json::from_str(text)
             .map_err(|e| PetuniaError::io(format!("parse document: {e}")))?;
-        if doc.schema_version != NATIVE_SCHEMA_VERSION {
+        if !(1..=NATIVE_SCHEMA_VERSION).contains(&doc.schema_version) {
             return Err(PetuniaError::invalid_input(format!(
                 "unsupported schema {}, expected {}",
                 doc.schema_version, NATIVE_SCHEMA_VERSION
             )));
         }
+        for surface in &mut doc.surfaces {
+            for object in &mut surface.objects {
+                if doc.schema_version >= 3
+                    && object
+                        .modifiers
+                        .iter()
+                        .any(|m| m.space == crate::ModifierSpace::Parent)
+                {
+                    return Err(PetuniaError::invalid_input(
+                        "schema 3 requires explicit local modifier frames",
+                    ));
+                }
+                if let Some(shape) = object.shape.take() {
+                    object.shape = Some(shape.into_local(object.bounds)?);
+                }
+                object.modifiers = std::mem::take(&mut object.modifiers)
+                    .into_iter()
+                    .map(|modifier| modifier.into_local(object.bounds))
+                    .collect::<Result<_, _>>()?;
+            }
+        }
+        doc.schema_version = NATIVE_SCHEMA_VERSION;
         doc.normalize_legacy_namespaces();
+        doc.validate()?;
         Ok(doc)
     }
 
     /// Rewrites every persisted legacy `aubrieta.*` token to `ptnd.*` (15.A).
     /// Idempotent; safe to call on an already-current document.
-    pub fn normalize_legacy_namespaces(&mut self) {
+    fn normalize_legacy_namespaces(&mut self) {
         use petunia_design_foundation::normalized;
 
         let fix = |slot: &mut Option<String>| {
@@ -658,7 +795,7 @@ mod tests {
     }
 
     #[test]
-    fn ambiguous_legacy_modifier_requires_migration() {
+    fn parent_space_modifier_is_reframed_for_local_evaluation() {
         let mut object = shape_object(
             ObjectId::new(2),
             [0.0, 0.0, 100.0, 100.0],
@@ -673,12 +810,21 @@ mod tests {
                 quad: [[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0]],
             },
         ));
+        object.modifiers = object
+            .modifiers
+            .into_iter()
+            .map(|m| m.into_local(object.bounds).unwrap())
+            .collect();
+        assert_eq!(
+            object.evaluated_path_local().unwrap(),
+            object.base_path_local().unwrap()
+        );
+        if let crate::ModifierKind::Perspective { quad } = &mut object.modifiers[0].kind {
+            quad[0][0] = f64::NAN;
+        }
         assert!(matches!(
             object.evaluated_path_local(),
-            Err(crate::GeometryFrameError::AmbiguousModifier(
-                _,
-                "Perspective"
-            ))
+            Err(crate::GeometryFrameError::NonFinite(_))
         ));
     }
 }

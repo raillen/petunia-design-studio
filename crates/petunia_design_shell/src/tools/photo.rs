@@ -319,10 +319,40 @@ impl PhotoTool {
         }
         let mut cmds = Vec::new();
         for id in bridge.selection().selected_ids.clone() {
-            cmds.push(petunia_design_application::Command::SetCropRect {
-                id,
-                rect: [x, y, w, h],
+            let mut modifiers = bridge.modifiers(id);
+            let index = modifiers.iter().position(|m| {
+                matches!(
+                    m.kind,
+                    petunia_design_document::ModifierKind::CropRect { .. }
+                )
             });
+            let modifier_id = match index {
+                Some(i) => modifiers[i].id,
+                None => modifiers
+                    .iter()
+                    .map(|m| m.id)
+                    .max()
+                    .unwrap_or(0)
+                    .checked_add(1)
+                    .ok_or_else(|| PetuniaError::invalid_input("modifier IDs exhausted"))?,
+            };
+            let document = bridge
+                .session()
+                .ok_or_else(|| PetuniaError::invalid_input("no session"))?
+                .document();
+            let item = document.modifier_from_world(
+                id,
+                petunia_design_document::ModifierItem::enabled(
+                    modifier_id,
+                    petunia_design_document::ModifierKind::CropRect { rect: [x, y, w, h] },
+                ),
+            )?;
+            if let Some(index) = index {
+                modifiers[index] = item;
+            } else {
+                modifiers.push(item);
+            }
+            cmds.push(petunia_design_application::Command::SetModifiers { id, modifiers });
         }
         if cmds.is_empty() {
             return Ok(ChangeSet::empty());

@@ -16,6 +16,8 @@ use crate::history::History;
 /// One interactive gesture staged off-document.
 #[derive(Debug)]
 pub struct Transaction {
+    /// Snapshot compared at commit, protecting intervening command writes.
+    baseline: Document,
     /// Working copy receiving staged commands.
     working: Document,
     /// Combined staged changes in application order.
@@ -29,6 +31,7 @@ impl Transaction {
     #[must_use]
     pub fn begin(document: &Document, label: impl Into<String>) -> Self {
         Self {
+            baseline: document.clone(),
             working: document.clone(),
             staged: ChangeSet::empty(),
             label: label.into(),
@@ -38,7 +41,14 @@ impl Transaction {
     /// Stages one command on the working copy, accumulating its changes.
     /// Returns the command's incremental `ChangeSet` for overlay preview.
     pub fn update(&mut self, request: &CommandRequest) -> Result<ChangeSet, PetuniaError> {
-        let delta = commands::execute(&mut self.working, request)?;
+        let delta = if request.command.is_atomic_primitive() {
+            commands::execute(&mut self.working, request)?
+        } else {
+            let mut next = self.working.clone();
+            let delta = commands::execute(&mut next, request)?;
+            self.working = next;
+            delta
+        };
         self.staged.extend(delta.clone());
         Ok(delta)
     }
@@ -70,12 +80,23 @@ impl Transaction {
     /// Commits atomically: replaces the live document with the working copy
     /// and records one combined entry. Empty transactions are a NoOp and
     /// leave history untouched.
-    pub fn commit(self, document: &mut Document, history: &mut History) {
+    pub fn commit(
+        self,
+        document: &mut Document,
+        history: &mut History,
+    ) -> Result<(), PetuniaError> {
         if self.staged.is_empty() {
-            return;
+            return Ok(());
         }
+        if *document != self.baseline {
+            return Err(PetuniaError::invalid_input(
+                "transaction conflict: document changed during preview",
+            ));
+        }
+        self.working.validate()?;
+        history.record(self.staged)?;
         *document = self.working;
-        history.record(self.staged);
+        Ok(())
     }
 
     /// Cancels: discards the working copy. The live document and history are
@@ -115,7 +136,7 @@ mod tests {
         assert!(doc.find_object(obj).is_none());
         assert!(tx.preview().find_object(obj).is_some());
         let mut history = History::new(100);
-        tx.commit(&mut doc, &mut history);
+        tx.commit(&mut doc, &mut history).unwrap();
         assert!(doc.find_object(obj).is_some());
         assert_eq!(history.undo_len(), 1);
     }
@@ -143,7 +164,7 @@ mod tests {
         let (mut doc, _gen, _surface) = test_doc();
         let tx = Transaction::begin(&doc, "Empty");
         let mut history = History::new(100);
-        tx.commit(&mut doc, &mut history);
+        tx.commit(&mut doc, &mut history).unwrap();
         assert_eq!(history.undo_len(), 0);
     }
 }
