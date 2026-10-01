@@ -269,7 +269,49 @@ impl Default for RasterExportOptions {
     }
 }
 
-/// Encodes an in-memory `RawRasterImage` to compressed file bytes with degradation analysis.
+/// Encodes straight RGBA8/sRGB with explicit PNG physical resolution metadata.
+/// Pixel dimensions are chosen by the renderer; this function does not resample.
+pub fn export_png_rgba8_at_dpi(image: &RawRasterImage, dpi: f64) -> Result<Vec<u8>, PetuniaError> {
+    if image.format != PixelFormat::Rgba8 || image.width == 0 || image.height == 0 {
+        return Err(PetuniaError::invalid_input(
+            "PNG density export requires nonempty straight RGBA8",
+        ));
+    }
+    let bytes = (image.width as usize)
+        .checked_mul(image.height as usize)
+        .and_then(|v| v.checked_mul(4));
+    if bytes != Some(image.data.len()) {
+        return Err(PetuniaError::invalid_input("invalid PNG pixel data length"));
+    }
+    let ppm = (dpi / 0.0254).round();
+    if !dpi.is_finite() || dpi <= 0.0 || ppm < 1.0 || ppm > f64::from(u32::MAX) {
+        return Err(PetuniaError::invalid_input(
+            "DPI is outside PNG physical-resolution range",
+        ));
+    }
+    let mut bytes = Vec::new();
+    let mut encoder = png::Encoder::new(&mut bytes, image.width, image.height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
+    encoder.set_pixel_dims(Some(png::PixelDimensions {
+        xppu: ppm as u32,
+        yppu: ppm as u32,
+        unit: png::Unit::Meter,
+    }));
+    let mut writer = encoder
+        .write_header()
+        .map_err(|e| PetuniaError::io(format!("PNG header: {e}")))?;
+    writer
+        .write_image_data(&image.data)
+        .map_err(|e| PetuniaError::io(format!("PNG pixels: {e}")))?;
+    writer
+        .finish()
+        .map_err(|e| PetuniaError::io(format!("PNG finish: {e}")))?;
+    Ok(bytes)
+}
+
+/// Encodes an in-memory image with explicit degradation analysis.
 pub fn export_raster(
     image: &RawRasterImage,
     options: &RasterExportOptions,

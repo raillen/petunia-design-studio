@@ -7,6 +7,7 @@
 
 mod actions;
 pub mod appearance_service;
+pub mod background_render;
 pub mod boolean_service;
 mod capabilities;
 mod commands;

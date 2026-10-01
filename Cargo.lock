@@ -3300,6 +3300,7 @@ dependencies = [
  "petunia_design_foundation",
  "petunia_design_geometry",
  "petunia_design_io",
+ "petunia_design_jobs",
  "petunia_design_render",
  "rstar",
  "serde",
@@ -3387,6 +3388,7 @@ dependencies = [
  "petunia_design_foundation",
  "petunia_design_geometry",
  "petunia_design_raster",
+ "png",
  "proptest",
  "serde",
  "serde_json",
@@ -3448,9 +3450,11 @@ dependencies = [
  "petunia_design_document",
  "petunia_design_foundation",
  "petunia_design_geometry",
+ "petunia_design_jobs",
  "proptest",
  "serde",
  "thiserror 2.0.20",
+ "tiny-skia",
 ]
 
 [[package]]

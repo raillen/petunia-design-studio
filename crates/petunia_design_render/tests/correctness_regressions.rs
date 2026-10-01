@@ -16,6 +16,7 @@ fn object_opacity_is_applied_exactly_once() {
     mutator.add_surface(SurfaceId::new(1), "page").unwrap();
     mutator.add_object(SurfaceId::new(1), object).unwrap();
     let pixels =
-        SoftwarePixelCompositor::render_surface_rgba8(&document.surfaces()[0], 40, 40, [0; 4]);
+        SoftwarePixelCompositor::render_surface_rgba8(&document.surfaces()[0], 40, 40, [0; 4])
+            .unwrap();
     assert_eq!(pixels.get_pixel(15, 15).unwrap(), [255, 0, 0, 128]);
 }

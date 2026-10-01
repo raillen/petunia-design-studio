@@ -1,58 +1,18 @@
 {
-  "scope": "Implementation wave; full roadmap remains open",
+  "scope": "Draft MVP render/worker continuation; current implementation unvalidated",
   "baseline": "73447647a34f5b4be209415c36e6965c5f71b9b9",
   "rust": "1.98.1",
   "date": "2026-10-01",
-  "checks": [
-    {
-      "command": "cargo xtask verify",
-      "exit_code": 0,
-      "log": "mvp-modifier-frames/verify-final-evidence.log.txt",
-      "log_sha256": "aab28937b194841a1743a58266b59476273cbb3075e2e1d422adea275cdacde0",
-      "passed": 661,
-      "failed": 0,
-      "ignored": 0
-    },
-    {
-      "command": "cargo xtask conformance",
-      "exit_code": 0,
-      "log": "mvp-modifier-frames/conformance-final.log.txt",
-      "log_sha256": "c6010f1e21273f637db1b1e041e2f199649c33a240e3123fd0b925c5a68b2ce0",
-      "scope": "Headless CLI smoke; not faithful-render/product acceptance"
-    },
-    {
-      "command": "cargo xtask migrations",
-      "exit_code": 0,
-      "log": "mvp-modifier-frames/migrations-final.log.txt",
-      "log_sha256": "4a0fe71e25558b3e002b3318dca01f9b599c6bd4d079d2a7f34744aa6e03a337",
-      "passed": 22,
-      "failed": 0,
-      "ignored": 0
-    },
-    {
-      "command": "node scripts/check-i18n.js",
-      "exit_code": 0,
-      "log": "mvp-modifier-frames/i18n-final.log.txt",
-      "log_sha256": "8281f8292d2ecbed78e8b745b0a245fe5792ff832b09b9224099caba2336f9fd",
-      "pages_per_language": 23
-    },
-    {
-      "command": "node scripts/generate-implementation-reference.js --check",
-      "exit_code": 0
-    },
-    {
-      "command": "pnpm --dir docs run build",
-      "exit_code": 0,
-      "log": "mvp-modifier-frames/docs-build.log.txt",
-      "log_sha256": "3f0d622bc9d2572bfab73358cbde1f63b10a1c254654c42dcda3093344f863a2",
-      "strict_dead_links": true,
-      "warnings": [
-        "Vite bundle chunk exceeds 500 kB (non-failing)"
-      ]
-    }
+  "new_focused_tests": 94,
+  "pending_checks": [
+    "cargo xtask verify",
+    "cargo xtask conformance",
+    "cargo xtask migrations",
+    "node scripts/check-i18n.js",
+    "node scripts/generate-implementation-reference.js --check",
+    "pnpm --dir docs run build",
+    "MVP visual/performance corpus and Linux user-task acceptance"
   ],
-  "new_focused_tests": 57,
-  "pending_checks": [],
   "open_release_gates": [
     "M0 completion",
     "shared scene and faithful rendering",
@@ -151,6 +111,118 @@
   ],
   "native_schema": 3,
   "wave": "MVP continuation: modifier frames, atomic bake and guide identity",
-  "new_tests_this_wave": 15,
-  "additional_integration_regressions": 1
+  "new_tests_this_wave": 37,
+  "additional_integration_regressions": 1,
+  "foundation_checks": {
+    "applies_to_commit": "9fb1dc22c25cc4261168ec0df3f5a5b00b644264",
+    "checks": [
+      {
+        "command": "cargo xtask verify",
+        "exit_code": 0,
+        "log": "mvp-modifier-frames/verify-final-evidence.log.txt",
+        "log_sha256": "aab28937b194841a1743a58266b59476273cbb3075e2e1d422adea275cdacde0",
+        "passed": 661,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "command": "cargo xtask conformance",
+        "exit_code": 0,
+        "log": "mvp-modifier-frames/conformance-final.log.txt",
+        "log_sha256": "c6010f1e21273f637db1b1e041e2f199649c33a240e3123fd0b925c5a68b2ce0",
+        "scope": "Headless CLI smoke; not faithful-render/product acceptance"
+      },
+      {
+        "command": "cargo xtask migrations",
+        "exit_code": 0,
+        "log": "mvp-modifier-frames/migrations-final.log.txt",
+        "log_sha256": "4a0fe71e25558b3e002b3318dca01f9b599c6bd4d079d2a7f34744aa6e03a337",
+        "passed": 22,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "command": "node scripts/check-i18n.js",
+        "exit_code": 0,
+        "log": "mvp-modifier-frames/i18n-final.log.txt",
+        "log_sha256": "8281f8292d2ecbed78e8b745b0a245fe5792ff832b09b9224099caba2336f9fd",
+        "pages_per_language": 23
+      },
+      {
+        "command": "node scripts/generate-implementation-reference.js --check",
+        "exit_code": 0
+      },
+      {
+        "command": "pnpm --dir docs run build",
+        "exit_code": 0,
+        "log": "mvp-modifier-frames/docs-build.log.txt",
+        "log_sha256": "3f0d622bc9d2572bfab73358cbde1f63b10a1c254654c42dcda3093344f863a2",
+        "strict_dead_links": true,
+        "warnings": [
+          "Vite bundle chunk exceeds 500 kB (non-failing)"
+        ]
+      }
+    ],
+    "new_focused_tests": 57,
+    "new_tests_this_wave": 15
+  },
+  "checks": [
+    {
+      "command": "cargo xtask verify",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    },
+    {
+      "command": "cargo xtask conformance",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    },
+    {
+      "command": "cargo xtask migrations",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    },
+    {
+      "command": "node scripts/check-i18n.js",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    },
+    {
+      "command": "node scripts/generate-implementation-reference.js --check",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    },
+    {
+      "command": "pnpm --dir docs run build",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    },
+    {
+      "command": "MVP visual/performance corpus and Linux user-task acceptance",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    }
+  ],
+  "validation_policy": {
+    "status": "deferred",
+    "requested_by": "user",
+    "resume_when": "all MVP features implemented",
+    "draft_ci": "continuation commits use [skip ci]; final gates required before ready for review"
+  },
+  "new_regression_sources_unrun": [
+    "crates/petunia_design_render/tests/vector_rendering.rs",
+    "crates/petunia_design_jobs/tests/executor.rs",
+    "crates/petunia_design_application/tests/background_render.rs",
+    "crates/petunia_design_document/tests/prepared_curves.rs",
+    "crates/petunia_design_document/tests/shared_image_sources.rs",
+    "crates/petunia_design_io/tests/png_density.rs"
+  ],
+  "new_tests_prepared_current_wave": 37
 }

@@ -8,13 +8,17 @@
 
 pub mod blend;
 pub mod composition;
+mod cpu_renderer;
 pub mod pixel_compositor;
+mod render_scene;
 mod scene;
 pub mod surface_planner;
 
 pub use blend::BlendMode;
 pub use composition::{EffectiveContext, IsolationGroup};
+pub use cpu_renderer::{CpuRenderer, RenderLimits, RenderRequest};
 pub use pixel_compositor::{PixelBufferRgba16, PixelBufferRgba8, SoftwarePixelCompositor};
+pub use render_scene::{RenderError, RenderNode, RenderScene, RenderSurface};
 pub use scene::{HeadlessSummaryBackend, RenderBackend, Scene, SceneFragment};
 pub use surface_planner::{
     IntermediateSurfacePlanner, PlannedSurface, SurfaceAllocationError, SurfaceFormat,

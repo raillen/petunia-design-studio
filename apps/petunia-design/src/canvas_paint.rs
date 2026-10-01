@@ -456,7 +456,14 @@ fn paint_object(
     } else if let Some(petunia_design_document::ShapeKind::Image { path, data }) =
         object.shape.as_deref()
     {
-        paint_image_object(canvas, object, path, data.as_deref(), camera, opacity);
+        paint_image_object(
+            canvas,
+            object,
+            path,
+            data.as_ref().map(|bytes| bytes.as_slice()),
+            camera,
+            opacity,
+        );
     }
 }
 

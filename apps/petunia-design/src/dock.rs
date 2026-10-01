@@ -6056,7 +6056,7 @@ mod tests {
                     id: img_id,
                     shape: Some(ShapeKind::Image {
                         path: "sample.png".to_string(),
-                        data: Some(png_bytes),
+                        data: Some(std::sync::Arc::new(png_bytes)),
                     }),
                 },
             ],

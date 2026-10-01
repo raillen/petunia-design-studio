@@ -64,6 +64,17 @@ fn run() -> Result<(), String> {
             id: object,
             name: "Rect".to_string(),
         }),
+        CommandRequest::new(Command::SetBounds {
+            id: object,
+            bounds: Some([0.0, 0.0, 64.0, 64.0]),
+            rotation: 0.0,
+        }),
+        CommandRequest::new(Command::SetShape {
+            id: object,
+            shape: Some(petunia_design_document::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            }),
+        }),
         CommandRequest::new(Command::SetFill {
             id: object,
             fill: Some("ptnd.red/500".to_string()),
@@ -361,7 +372,8 @@ fn run() -> Result<(), String> {
         128,
         128,
         [255, 255, 255, 255],
-    );
+    )
+    .map_err(|error| format!("pixel render: {error}"))?;
     assert_eq!(pixel_buf.width, 128);
     assert_eq!(pixel_buf.height, 128);
 

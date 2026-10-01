@@ -97,3 +97,7 @@ Publication integrity includes finite/ranged effect and adjustment chains, uniqu
 ## Modifier-frame contract — schema 3
 
 Milestone Required: ADR-003 (`docs/developers/adr/ADR-003-local-modifier-frames.md`, synchronized pt-BR mirror) supersedes ADR-002 modifier frames/schema version. Persist local reference sizes; migrate schemas 1/2 explicitly; preserve source and parameters on placement edits. Geometry and opacity evaluate in the reference frame. Bake is atomic and preserves world placement/masks; empty crop stays empty. World-space tool conversion and unique guide creation use domain contracts. Shared scene/spatial render, pixel resources and full MVP/V1 remain open.
+
+## MVP render/worker contract continuation — 2026-10-01
+
+Scope: Milestone Required. ADR-004 (`docs/developers/adr/ADR-004-render-snapshots-and-workers.md`, synchronized pt-BR mirror) introduces immutable RenderScene/RenderSurface snapshots, GUI-free antialiased CPU coverage and isolation/mask/effect composition, direct PNG region/DPI output, prepared tonal curves, old/new scene damage and bounded cancellable workers with revision-tagged results. It does not change native schema 3. GUI/glyph/image/tile integration and M0/M2/M3/M4 acceptance remain open. New implementation is UNVALIDATED: the user deferred all tests/gates until every MVP feature has been implemented; historical foundation checks must not qualify the new PR head.

@@ -3,9 +3,8 @@
 //! Provides 8-bit and 16-bit RGBA pixel buffers and compositing algorithms
 //! that execute headlessly without a display server or GPU device.
 
-use std::collections::HashMap;
-
 use crate::blend::BlendMode;
+use crate::{CpuRenderer, RenderError, RenderRequest, RenderSurface};
 use petunia_design_document::{Change, ChangeSet, Surface};
 use petunia_design_geometry::GRect;
 
@@ -309,212 +308,95 @@ impl PixelBufferRgba16 {
 pub struct SoftwarePixelCompositor;
 
 impl SoftwarePixelCompositor {
-    /// Renders a surface's objects into an 8-bit RGBA pixel buffer (F-03/F-04).
-    /// Consumes the canonical document state: `visible`, `bounds`,
-    /// `effective_appearance()` (fills, opacity, blend), `is_clip_mask` /
-    /// `clip_mask_id` clipping, and effect `bounds_inflation`.
-    /// Mask boundary objects (`is_clip_mask`) are not painted themselves;
-    /// content referencing them via `clip_mask_id` is clipped to the mask
-    /// bounds. Objects without bounds are skipped.
-    #[must_use]
+    /// Renders canonical vector geometry with explicit capability errors.
     pub fn render_surface_rgba8(
         surface: &Surface,
         width: u32,
         height: u32,
         background: [u8; 4],
-    ) -> PixelBufferRgba8 {
-        let mut buffer = PixelBufferRgba8::with_fill(width, height, background);
-        let viewport = GRect::new(0.0, 0.0, width as f64, height as f64);
-        Self::render_surface_dirty_rgba8(surface, &mut buffer, viewport, None);
-        buffer
+    ) -> Result<PixelBufferRgba8, RenderError> {
+        let scene = RenderSurface::extract(surface)?;
+        CpuRenderer::default().render(
+            &scene,
+            RenderRequest {
+                viewport: GRect::new(0.0, 0.0, f64::from(width), f64::from(height)),
+                width,
+                height,
+                background,
+            },
+        )
     }
 
-    /// Incrementally renders objects into an existing 8-bit RGBA pixel buffer,
-    /// constrained to `dirty_rect`.
-    ///
-    /// If `background` is provided, pixels inside `dirty_rect` are cleared
-    /// before redrawing.
-    ///
-    /// Visual elements outside `dirty_rect` are culled with zero pixel iterations.
-    /// Clip mask relationships are pre-indexed to O(1) per object.
+    /// Repaints a device-aligned region over its existing backdrop, preserving
+    /// entry/object blend modes and all pixels outside the dirty rectangle.
+    /// Failure leaves the caller's buffer unchanged.
     pub fn render_surface_dirty_rgba8(
         surface: &Surface,
         buffer: &mut PixelBufferRgba8,
         dirty_rect: GRect,
         background: Option<[u8; 4]>,
-    ) {
-        if !dirty_rect.is_finite()
-            || dirty_rect.x0 >= dirty_rect.x1
-            || dirty_rect.y0 >= dirty_rect.y1
-        {
-            return;
+    ) -> Result<(), RenderError> {
+        if !dirty_rect.is_finite() || dirty_rect.width() <= 0.0 || dirty_rect.height() <= 0.0 {
+            return Err(RenderError::Invalid("invalid dirty rectangle".into()));
         }
-
-        let buffer_rect = GRect::new(0.0, 0.0, buffer.width as f64, buffer.height as f64);
-        let dirty_rect = match dirty_rect.intersection(buffer_rect) {
-            Some(r) => r,
-            None => return,
+        let size = (buffer.width as usize)
+            .checked_mul(buffer.height as usize)
+            .and_then(|v| v.checked_mul(4));
+        if size != Some(buffer.data.len()) {
+            return Err(RenderError::Invalid(
+                "invalid destination pixel buffer".into(),
+            ));
+        }
+        let viewport = GRect::new(0.0, 0.0, f64::from(buffer.width), f64::from(buffer.height));
+        let Some(region) = dirty_rect.intersection(viewport) else {
+            return Ok(());
         };
-
-        if let Some(bg) = background {
-            buffer.clear_rect(dirty_rect, bg);
+        let left = region.x0.floor() as u32;
+        let top = region.y0.floor() as u32;
+        let right = region.x1.ceil() as u32;
+        let bottom = region.y1.ceil() as u32;
+        let width = right - left;
+        let height = bottom - top;
+        if u64::from(width) * u64::from(height) > crate::RenderLimits::default().max_output_pixels {
+            return Err(RenderError::Limit("dirty output pixel count"));
         }
-
-        // Pre-index clip masks for O(1) lookup across the render loop (eliminating O(N^2) scan).
-        let mut mask_map = HashMap::new();
-        for obj in surface.objects().iter() {
-            if obj.is_clip_mask {
-                if let Some(mb) = obj.bounds {
-                    mask_map.insert(
-                        obj.id,
-                        GRect::new(mb[0], mb[1], mb[0] + mb[2], mb[1] + mb[3]),
-                    );
-                }
+        let scene = RenderSurface::extract(surface)?;
+        let mut backdrop = PixelBufferRgba8::with_fill(width, height, background.unwrap_or([0; 4]));
+        if background.is_none() {
+            for row in 0..height {
+                let start = ((top + row) as usize * buffer.width as usize + left as usize) * 4;
+                let target = row as usize * width as usize * 4;
+                backdrop.data[target..target + width as usize * 4]
+                    .copy_from_slice(&buffer.data[start..start + width as usize * 4]);
             }
         }
-
-        for obj in surface.objects().iter() {
-            if !obj.visible {
-                continue;
-            }
-            // Mask boundaries define clips; they are not painted (10.5).
-            if obj.is_clip_mask {
-                continue;
-            }
-            let bounds = match obj.bounds {
-                Some(b) => b,
-                None => continue,
-            };
-            // Resolve clip from the referenced mask object, if any.
-            let mut clip: Option<GRect> = None;
-            if let Some(mask_id) = obj.clip_mask_id {
-                match mask_map.get(&mask_id) {
-                    Some(&mask_rect) => {
-                        clip = Some(mask_rect);
-                    }
-                    None => continue,
-                }
-            }
-            let eff = obj.effective_appearance();
-            // Opacity: stack opacity x primary entry opacity (10.4 order).
-            let entry_opacity = eff
-                .primary_fill()
-                .map(|f| f.opacity)
-                .or_else(|| eff.primary_stroke().map(|s| s.opacity))
-                .unwrap_or(1.0);
-            let opacity = (eff.opacity * entry_opacity).clamp(0.0, 1.0) as f32;
-            if opacity <= 0.0 {
-                continue;
-            }
-            // Blend: primary entry blend, falling back to stack blend.
-            let doc_blend = eff
-                .primary_fill()
-                .map(|f| f.blend_mode)
-                .or_else(|| eff.primary_stroke().map(|s| s.blend_mode))
-                .unwrap_or(eff.blend_mode);
-            let blend_mode = BlendMode::from(doc_blend);
-            // Fill color: primary fill paint sampled at center; when there is
-            // no fill but a stroke exists, preview with the stroke color.
-            let fill_color: Option<[u8; 4]> = eff
-                .primary_fill()
-                .and_then(|f| paint_to_rgba8(&f.paint, 0.5, 1.0))
-                .or_else(|| {
-                    eff.primary_stroke()
-                        .and_then(|s| paint_to_rgba8(&s.paint, 0.5, 1.0))
-                })
-                .or_else(|| obj.fill.as_deref().map(|t| token_to_rgba8(t, 1.0)));
-            let fill_color = match fill_color {
-                Some(c) => c,
-                None => continue,
-            };
-            // Effect inflation expands the painted rect (F-12).
-            let inflation = eff.bounds_inflation();
-            let rect = GRect::new(
-                bounds[0] - inflation,
-                bounds[1] - inflation,
-                bounds[0] + bounds[2] + inflation,
-                bounds[1] + bounds[3] + inflation,
-            );
-
-            // Compute total visual envelope including drop shadows for culling
-            let mut visual_envelope = rect;
-            for effect in eff.effects.iter().filter(|e| e.visible) {
-                if let petunia_design_document::EffectKind::DropShadow { offset, .. } = &effect.kind
-                {
-                    let shadow_rect = GRect::new(
-                        bounds[0] + offset[0] - inflation,
-                        bounds[1] + offset[1] - inflation,
-                        bounds[0] + bounds[2] + offset[0] + inflation,
-                        bounds[1] + bounds[3] + offset[1] + inflation,
-                    );
-                    if let Some(u) = visual_envelope.union(shadow_rect) {
-                        visual_envelope = u;
-                    }
-                }
-            }
-
-            // Viewport & dirty-rect culling: if clip is active, intersect with it
-            if let Some(c) = clip {
-                visual_envelope = match visual_envelope.intersection(c) {
-                    Some(inter) => inter,
-                    None => continue,
-                };
-            }
-
-            // Early-out if the object's visual footprint is disjoint from the dirty rectangle
-            if visual_envelope.intersection(dirty_rect).is_none() {
-                continue;
-            }
-
-            // Constrain painting within the dirty rectangle and any mask clip
-            let effective_clip = match clip {
-                Some(c) => match c.intersection(dirty_rect) {
-                    Some(inter) => inter,
-                    None => continue,
-                },
-                None => dirty_rect,
-            };
-
-            // Drop shadows paint first (behind the object) as offset fills
-            // (F-12). Blur radius is approximated by the inflated footprint:
-            // the headless CPU compositor has no kernel-blur pass, so soft
-            // edges degrade to solid-offset silhouettes. GaussianBlur and
-            // InnerShadow consume `bounds_inflation` for planning but have no
-            // pixel pass here by contract (documented approximation).
-            for effect in eff.effects.iter().filter(|e| e.visible) {
-                if let petunia_design_document::EffectKind::DropShadow {
-                    offset,
-                    color,
-                    opacity: shadow_opacity,
-                    ..
-                } = &effect.kind
-                {
-                    let shadow_rect = GRect::new(
-                        bounds[0] + offset[0],
-                        bounds[1] + offset[1],
-                        bounds[0] + bounds[2] + offset[0],
-                        bounds[1] + bounds[3] + offset[1],
-                    );
-                    let shadow_color = token_to_rgba8(
-                        color,
-                        (*shadow_opacity as f32).clamp(0.0, 1.0) * eff.opacity as f32,
-                    );
-                    buffer.fill_rect(
-                        shadow_rect,
-                        shadow_color,
-                        blend_mode,
-                        opacity,
-                        Some(effective_clip),
-                    );
-                }
-            }
-
-            buffer.fill_rect(rect, fill_color, blend_mode, opacity, Some(effective_clip));
+        let rendered = CpuRenderer::default().render_over(
+            &scene,
+            RenderRequest {
+                viewport: GRect::new(
+                    f64::from(left),
+                    f64::from(top),
+                    f64::from(right),
+                    f64::from(bottom),
+                ),
+                width,
+                height,
+                background: [0; 4],
+            },
+            Some(&backdrop),
+        )?;
+        for row in 0..height {
+            let target = ((top + row) as usize * buffer.width as usize + left as usize) * 4;
+            let start = row as usize * width as usize * 4;
+            buffer.data[target..target + width as usize * 4]
+                .copy_from_slice(&rendered.data[start..start + width as usize * 4]);
         }
+        Ok(())
     }
 
-    /// Calculates the tightest axis-aligned dirty rectangle affected by a [`ChangeSet`].
-    /// Returns `None` if the changeset is empty or had no visible impact on this surface.
+    /// Legacy approximate damage for flat, unrotated bounds-only consumers.
+    /// New consumers must retain snapshots and use [`RenderSurface::damage_to`]
+    /// for world transforms, deleted effects and mask/group dependencies.
     #[must_use]
     pub fn dirty_rect_for_changeset(surface: &Surface, changeset: &ChangeSet) -> Option<GRect> {
         let mut dirty: Option<GRect> = None;
@@ -621,35 +503,10 @@ impl SoftwarePixelCompositor {
     }
 }
 
-/// Converts a `Paint` to premultiplied-by-opacity RGBA8 via center sampling.
-fn paint_to_rgba8(paint: &petunia_design_document::Paint, t: f64, opacity: f32) -> Option<[u8; 4]> {
-    match paint {
-        petunia_design_document::Paint::None => None,
-        petunia_design_document::Paint::Solid(token) => Some(token_to_rgba8(token, opacity)),
-        petunia_design_document::Paint::LinearGradient(g) => {
-            let (rgb, a) = g.sample_rgba(t)?;
-            Some([
-                (rgb[0].clamp(0.0, 1.0) * 255.0).round() as u8,
-                (rgb[1].clamp(0.0, 1.0) * 255.0).round() as u8,
-                (rgb[2].clamp(0.0, 1.0) * 255.0).round() as u8,
-                (a.clamp(0.0, 1.0) * opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
-            ])
-        }
-        petunia_design_document::Paint::RadialGradient(g) => {
-            let (rgb, a) = g.sample_rgba(t)?;
-            Some([
-                (rgb[0].clamp(0.0, 1.0) * 255.0).round() as u8,
-                (rgb[1].clamp(0.0, 1.0) * 255.0).round() as u8,
-                (rgb[2].clamp(0.0, 1.0) * 255.0).round() as u8,
-                (a.clamp(0.0, 1.0) * opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
-            ])
-        }
-    }
-}
-
 /// Token/literal to RGBA8 with explicit opacity factor.
 /// Resolves via `petunia_design_document::resolve_color_to_rgb` (F-05) so all
 /// documented literals work; unknown tokens fall back to mid-gray.
+#[cfg(test)]
 fn token_to_rgba8(token: &str, opacity: f32) -> [u8; 4] {
     let rgb = petunia_design_document::resolve_color_to_rgb(token);
     let a = (opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
@@ -704,10 +561,14 @@ mod tests {
         let mut obj = DocumentObject::new(gen.next_object(), "Box");
         obj.fill = Some("ptnd.red/500".to_string());
         obj.bounds = Some([0.0, 0.0, 64.0, 64.0]);
+        obj.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+            corner_radii: [0.0; 4],
+        });
         let surface = Surface::with_objects(surface_id, "TestPage", vec![obj]);
 
         let buf =
-            SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255]);
+            SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255])
+                .unwrap();
         assert_eq!(buf.width, 100);
         assert_eq!(buf.height, 100);
         let px = buf.get_pixel(10, 10).unwrap();
@@ -723,20 +584,30 @@ mod tests {
         let mut box_obj = DocumentObject::new(gen.next_object(), "Box");
         box_obj.fill = Some("ptnd.blue/500".to_string());
         box_obj.bounds = Some([10.0, 10.0, 20.0, 20.0]);
+        box_obj.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+            corner_radii: [0.0; 4],
+        });
         // Hidden box must not paint.
         let mut hidden = DocumentObject::new(gen.next_object(), "Hidden");
         hidden.fill = Some("ptnd.red/500".to_string());
         hidden.bounds = Some([10.0, 10.0, 20.0, 20.0]);
+        hidden.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+            corner_radii: [0.0; 4],
+        });
         hidden.visible = false;
         // Fully transparent box elsewhere must not paint.
         let mut ghost = DocumentObject::new(gen.next_object(), "Ghost");
         ghost.fill = Some("ptnd.red/500".to_string());
         ghost.bounds = Some([60.0, 60.0, 20.0, 20.0]);
+        ghost.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+            corner_radii: [0.0; 4],
+        });
         ghost.opacity = 0.0;
         let surface = Surface::with_objects(surface_id, "Clip", vec![box_obj, hidden, ghost]);
 
         let buf =
-            SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255]);
+            SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255])
+                .unwrap();
         let expected_blue = token_to_rgba8("ptnd.blue/500", 1.0);
         assert_eq!(buf.get_pixel(15, 15).unwrap(), expected_blue);
         // Ghost area stays background.
@@ -751,15 +622,22 @@ mod tests {
         let mut mask = DocumentObject::new(mask_id, "Mask");
         mask.fill = Some("ptnd.red/500".to_string());
         mask.bounds = Some([10.0, 10.0, 20.0, 20.0]);
+        mask.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+            corner_radii: [0.0; 4],
+        });
         mask.is_clip_mask = true;
         let mut content = DocumentObject::new(gen.next_object(), "Content");
         content.fill = Some("ptnd.blue/500".to_string());
         content.bounds = Some([0.0, 0.0, 100.0, 100.0]);
+        content.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+            corner_radii: [0.0; 4],
+        });
         content.clip_mask_id = Some(mask_id);
         let surface = Surface::with_objects(surface_id, "Mask", vec![mask, content]);
 
         let buf =
-            SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255]);
+            SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255])
+                .unwrap();
         let expected_blue = token_to_rgba8("ptnd.blue/500", 1.0);
         // Inside mask bounds: content paints.
         assert_eq!(buf.get_pixel(15, 15).unwrap(), expected_blue);
@@ -774,10 +652,16 @@ mod tests {
         let mut obj1 = DocumentObject::new(gen.next_object(), "Box1");
         obj1.fill = Some("ptnd.red/500".to_string());
         obj1.bounds = Some([10.0, 10.0, 20.0, 20.0]);
+        obj1.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+            corner_radii: [0.0; 4],
+        });
 
         let mut obj2 = DocumentObject::new(gen.next_object(), "Box2");
         obj2.fill = Some("ptnd.blue/500".to_string());
         obj2.bounds = Some([60.0, 60.0, 20.0, 20.0]);
+        obj2.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+            corner_radii: [0.0; 4],
+        });
 
         let surface = Surface::with_objects(surface_id, "DirtyTest", vec![obj1, obj2]);
 
@@ -793,7 +677,8 @@ mod tests {
             &mut buf,
             dirty_rect,
             Some(white),
-        );
+        )
+        .unwrap();
 
         let red = token_to_rgba8("ptnd.red/500", 1.0);
         // Inside dirty rect at Box1: red
@@ -816,6 +701,9 @@ mod tests {
             let mut off = DocumentObject::new(gen.next_object(), format!("Offscreen_{i}"));
             off.fill = Some("ptnd.red/500".to_string());
             off.bounds = Some([1000.0 + (i as f64 * 50.0), 1000.0, 40.0, 40.0]);
+            off.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            });
             objects.push(off);
         }
 
@@ -823,12 +711,16 @@ mod tests {
         let mut on = DocumentObject::new(gen.next_object(), "Visible");
         on.fill = Some("ptnd.blue/500".to_string());
         on.bounds = Some([10.0, 10.0, 30.0, 30.0]);
+        on.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+            corner_radii: [0.0; 4],
+        });
         objects.push(on);
 
         let surface = Surface::with_objects(surface_id, "CullTest", objects);
 
         let buf =
-            SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255]);
+            SoftwarePixelCompositor::render_surface_rgba8(&surface, 100, 100, [255, 255, 255, 255])
+                .unwrap();
         let blue = token_to_rgba8("ptnd.blue/500", 1.0);
         assert_eq!(buf.get_pixel(20, 20).unwrap(), blue);
         assert_eq!(buf.get_pixel(0, 0).unwrap(), [255, 255, 255, 255]);
@@ -841,6 +733,9 @@ mod tests {
         let obj_id = gen.next_object();
         let mut obj = DocumentObject::new(obj_id, "Box");
         obj.bounds = Some([20.0, 20.0, 30.0, 40.0]);
+        obj.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+            corner_radii: [0.0; 4],
+        });
         let surface = Surface::with_objects(surface_id, "ChangeSetTest", vec![obj]);
 
         // Changeset with bounds change
@@ -876,6 +771,9 @@ mod tests {
         let mask_id = gen.next_object();
         let mut mask = DocumentObject::new(mask_id, "Mask");
         mask.bounds = Some([10.0, 10.0, 50.0, 50.0]);
+        mask.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+            corner_radii: [0.0; 4],
+        });
         mask.is_clip_mask = true;
 
         let mut objects = vec![mask];
@@ -886,10 +784,16 @@ mod tests {
             obj.fill = Some("ptnd.blue/500".to_string());
             if i % 2 == 0 {
                 obj.bounds = Some([10.0, 10.0, 50.0, 50.0]);
+                obj.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+                    corner_radii: [0.0; 4],
+                });
                 obj.clip_mask_id = Some(mask_id);
             } else {
                 // Offscreen
                 obj.bounds = Some([2000.0 + (i as f64 * 10.0), 2000.0, 20.0, 20.0]);
+                obj.shape = Some(petunia_design_document::ShapeKind::Rectangle {
+                    corner_radii: [0.0; 4],
+                });
             }
             objects.push(obj);
         }
@@ -897,7 +801,8 @@ mod tests {
         let surface = Surface::with_objects(surface_id, "PerfTest", objects);
 
         let buf =
-            SoftwarePixelCompositor::render_surface_rgba8(&surface, 200, 200, [255, 255, 255, 255]);
+            SoftwarePixelCompositor::render_surface_rgba8(&surface, 200, 200, [255, 255, 255, 255])
+                .unwrap();
         let blue = token_to_rgba8("ptnd.blue/500", 1.0);
         assert_eq!(buf.get_pixel(25, 25).unwrap(), blue);
         assert_eq!(buf.get_pixel(100, 100).unwrap(), [255, 255, 255, 255]);

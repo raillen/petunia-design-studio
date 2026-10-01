@@ -514,7 +514,7 @@ impl DocumentSession {
                         bounds[2] = imported.width as f64;
                         bounds[3] = imported.height as f64;
                     }
-                    data = Some(bytes);
+                    data = Some(std::sync::Arc::new(bytes));
                 }
                 let shape = petunia_design_document::ShapeKind::Image { path, data };
                 let cmd = CommandRequest::new(Command::CreateShapeObject {

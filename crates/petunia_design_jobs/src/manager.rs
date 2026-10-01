@@ -45,10 +45,16 @@ struct JobRecord {
 }
 
 /// Thread-safe in-memory manager for background jobs.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct JobManager {
     next_id: Arc<AtomicU64>,
     jobs: Arc<Mutex<Vec<JobRecord>>>,
+}
+
+impl Default for JobManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl JobManager {
@@ -63,19 +69,39 @@ impl JobManager {
 
     /// Spawns and tracks a new job, returning its unique id and cancellation token.
     pub fn spawn_job(&self, label: impl Into<String>) -> (u64, CancellationToken) {
+        self.register(label.into(), JobState::Running)
+    }
+
+    pub(crate) fn enqueue_job(&self, label: String) -> (u64, CancellationToken) {
+        self.register(label, JobState::Queued)
+    }
+
+    fn register(&self, label: String, state: JobState) -> (u64, CancellationToken) {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let token = CancellationToken::new();
         let record = JobRecord {
             id,
-            label: label.into(),
+            label,
             percent: 0,
-            state: JobState::Running,
+            state,
             token: token.clone(),
         };
         if let Ok(mut lock) = self.jobs.lock() {
             lock.push(record);
         }
         (id, token)
+    }
+
+    pub(crate) fn start_job(&self, id: u64) -> bool {
+        if let Ok(mut jobs) = self.jobs.lock() {
+            if let Some(job) = jobs.iter_mut().find(|job| job.id == id) {
+                if job.state == JobState::Queued && !job.token.is_cancelled() {
+                    job.state = JobState::Running;
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Updates progress for a given job.
@@ -93,7 +119,11 @@ impl JobManager {
     pub fn complete_job(&self, id: u64) {
         if let Ok(mut lock) = self.jobs.lock() {
             if let Some(job) = lock.iter_mut().find(|j| j.id == id) {
-                if job.state != JobState::Running || job.token.is_cancelled() {
+                if job.state != JobState::Running {
+                    return;
+                }
+                if job.token.is_cancelled() {
+                    job.state = JobState::Cancelled;
                     return;
                 }
                 job.state = JobState::Completed;
