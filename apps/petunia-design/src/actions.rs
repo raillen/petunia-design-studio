@@ -27,7 +27,10 @@ fn needs_typed_value(action_id: &str, payload: &serde_json::Value) -> bool {
 fn needs_destination(action_id: &str) -> bool {
     matches!(
         action_id,
-        "ptnd.action.file.open" | "ptnd.action.file.save_as" | "ptnd.action.file.export"
+        "ptnd.action.file.open"
+            | "ptnd.action.file.save_as"
+            | "ptnd.action.file.export"
+            | "ptnd.action.file.place"
     )
 }
 

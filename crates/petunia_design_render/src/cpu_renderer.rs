@@ -1,7 +1,13 @@
 //! Headless antialiased vector backend, premultiplied internally, straight RGBA
 //! at the API boundary. Isolation follows Porter–Duff/W3C composition.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use petunia_design_raster::{
+    EncodedImage, ImageAssetError, ImageCache, ImageContentKey, PreparedImage,
+};
 
 use petunia_design_document::{
     ContainerRole, EffectKind, GradientStop, MaskMode, Paint, ShapeKind, StrokeAlignment,
@@ -75,16 +81,30 @@ impl RenderRequest {
     }
 }
 
-/// Stateless CPU backend. Content without a faithful adapter returns a reason.
-#[derive(Debug, Default)]
+/// CPU backend with shared immutable image derivatives. Content without a faithful adapter returns a reason.
+#[derive(Debug)]
 pub struct CpuRenderer {
     limits: RenderLimits,
+    images: Arc<ImageCache>,
 }
 
+impl Default for CpuRenderer {
+    fn default() -> Self {
+        Self::new(RenderLimits::default())
+    }
+}
 impl CpuRenderer {
     /// Creates a backend with caller-supplied limits.
     pub fn new(limits: RenderLimits) -> Self {
-        Self { limits }
+        Self {
+            limits,
+            images: ImageCache::shared(),
+        }
+    }
+
+    /// Supplies an isolated or application-owned cache with explicit quotas.
+    pub fn with_image_cache(limits: RenderLimits, images: Arc<ImageCache>) -> Self {
+        Self { limits, images }
     }
 
     /// Renders one immutable snapshot, never accessing a GUI or live document.
@@ -154,6 +174,8 @@ impl CpuRenderer {
             world_to_device: GAffine::scale(sx, sy).after(GAffine::translate(-v.x0, -v.y0)),
             scale: sx.max(sy),
             cancellation,
+            images: &self.images,
+            prepared: RefCell::new(HashMap::new()),
         };
         context.check_cancelled()?;
         // Capability preflight covers visible content, even if it is outside the
@@ -241,6 +263,10 @@ struct Context<'a> {
     world_to_device: GAffine,
     scale: f64,
     cancellation: Option<&'a CancellationToken>,
+    images: &'a ImageCache,
+    // Pin each admitted resource once through the complete render. Active
+    // snapshots cannot evade cache residency limits by evicting their entries.
+    prepared: RefCell<HashMap<ImageContentKey, Arc<PreparedImage>>>,
 }
 
 impl Context<'_> {
@@ -322,9 +348,24 @@ impl Context<'_> {
         {
             return Err(unsupported("geometry modifiers on composed groups"));
         }
-        match node.source.shape {
+        match &node.source.shape {
             Some(ShapeKind::Text { .. }) => return Err(unsupported("shared shaped glyph runs")),
-            Some(ShapeKind::Image { .. }) => return Err(unsupported("decoded image resource")),
+            Some(ShapeKind::Image { data, .. }) => {
+                if node.source.modifiers.iter().any(|m| {
+                    m.enabled
+                        && !matches!(
+                            m.kind,
+                            petunia_design_document::ModifierKind::CropRect { .. }
+                                | petunia_design_document::ModifierKind::TransparentGradient { .. }
+                        )
+                }) {
+                    return Err(unsupported("image perspective/contour sampling"));
+                }
+                let source = data
+                    .as_deref()
+                    .ok_or_else(|| unsupported("embedded image source"))?;
+                self.prepare_image(id, source)?;
+            }
             _ => {}
         }
         let app = node.source.effective_appearance();
@@ -374,6 +415,36 @@ impl Context<'_> {
             self.preflight(*child, depth + 1)?;
         }
         Ok(())
+    }
+
+    fn prepare_image(
+        &self,
+        id: ObjectId,
+        source: &EncodedImage,
+    ) -> Result<Arc<PreparedImage>, RenderError> {
+        self.check_cancelled()?;
+        if let Some(image) = self.prepared.borrow().get(&source.content_key()) {
+            return Ok(image.clone());
+        }
+        let image = self
+            .images
+            .prepare(source, &|| {
+                self.cancellation
+                    .is_some_and(CancellationToken::is_cancelled)
+            })
+            .map_err(|error| match error {
+                ImageAssetError::Cancelled => RenderError::Cancelled,
+                ImageAssetError::Limit(reason) => RenderError::Limit(reason),
+                ImageAssetError::Invalid(reason) => RenderError::Invalid(reason),
+                ImageAssetError::Unsupported(feature) => RenderError::Unsupported {
+                    object: id,
+                    feature,
+                },
+            })?;
+        self.prepared
+            .borrow_mut()
+            .insert(source.content_key(), image.clone());
+        Ok(image)
     }
 
     fn check_sigma(&self, sigma: f64) -> Result<(), RenderError> {
@@ -448,6 +519,53 @@ impl Context<'_> {
             .after(node.world);
         if let Some(path) = sk_path(&node.geometry)? {
             let transform = sk_transform(local_to_layer)?;
+            if let Some(ShapeKind::Image {
+                data: Some(source), ..
+            }) = &node.source.shape
+            {
+                let image = self.prepare_image(id, source)?;
+                let [_, _, w, h] = node
+                    .source
+                    .bounds
+                    .ok_or_else(|| RenderError::Invalid("image has no local frame".into()))?;
+                let pixels_to_local =
+                    GAffine::scale(w / f64::from(image.width()), h / f64::from(image.height()));
+                let pixels_to_device = self
+                    .world_to_device
+                    .after(node.world)
+                    .after(pixels_to_local);
+                let [a, b, c, d, _, _] = pixels_to_device.coeffs;
+                let trace = a * a + b * b + c * c + d * d;
+                let delta = (a * a + b * b - c * c - d * d).hypot(2.0 * (a * c + b * d));
+                let scale = ((trace + delta) * 0.5).sqrt();
+                if !scale.is_finite() || scale <= 0.0 {
+                    return Err(RenderError::Limit("image sampling transform"));
+                }
+                let level = &image.levels()[image.level_for_scale(scale)];
+                let pixmap = sk::PixmapRef::from_bytes(
+                    level.premultiplied_rgba8(),
+                    level.width(),
+                    level.height(),
+                )
+                .ok_or_else(|| RenderError::Invalid("invalid prepared image".into()))?;
+                let paint = sk::Paint {
+                    shader: sk::Pattern::new(
+                        pixmap,
+                        sk::SpreadMode::Pad,
+                        sk::FilterQuality::Bilinear,
+                        1.0,
+                        sk_transform(GAffine::scale(
+                            w / f64::from(level.width()),
+                            h / f64::from(level.height()),
+                        ))?,
+                    ),
+                    anti_alias: true,
+                    ..sk::Paint::default()
+                };
+                layer
+                    .pixmap
+                    .fill_path(&path, &paint, sk::FillRule::EvenOdd, transform, None);
+            }
             let [px, py, _, _] = node.source.bounds.unwrap_or([0.0; 4]);
             // Existing color paints are parent-frame descriptors. Convert to
             // local explicitly; do not confuse them with local modifier frames.
@@ -585,7 +703,7 @@ impl Context<'_> {
                     return Err(RenderError::Unsupported {
                         object: id,
                         feature: "effect pixel kernel",
-                    })
+                    });
                 }
             }
         }

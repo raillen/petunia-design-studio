@@ -484,6 +484,14 @@
     {
       "path": "docs/pt/developers/adr/ADR-004-render-snapshots-and-workers.md",
       "role": "canonical"
+    },
+    {
+      "path": "docs/developers/adr/ADR-005-immutable-image-assets.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/pt/developers/adr/ADR-005-immutable-image-assets.md",
+      "role": "canonical"
     }
   ],
   "current_version": "0.6.0"

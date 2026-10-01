@@ -10,9 +10,11 @@ petunia_design_document = { path = "../petunia_design_document" }
 petunia_design_geometry = { path = "../petunia_design_geometry" }
 petunia_design_color = { path = "../petunia_design_color" }
 petunia_design_jobs = { path = "../petunia_design_jobs" }
+petunia_design_raster = { path = "../petunia_design_raster" }
 serde.workspace = true
 thiserror.workspace = true
 tiny-skia = { version = "0.11.4", default-features = false, features = ["std", "simd"] }
 
 [dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
 proptest = "1"

@@ -4596,28 +4596,25 @@ pub fn compute_histogram_bins(
         let mut sampled = Vec::new();
         if let Some(petunia_design_document::ShapeKind::Image { data, .. }) = &obj.shape {
             if let Some(bytes) = data.as_deref() {
-                if let Ok(raw_img) = petunia_design_io::import_raster(bytes, 32 * 1024 * 1024) {
-                    if raw_img.format == petunia_design_io::PixelFormat::Rgba8
-                        && !raw_img.data.is_empty()
-                    {
-                        let total_pixels = (raw_img.width * raw_img.height) as usize;
-                        let stride = (total_pixels / 500).max(1);
-                        for i in (0..total_pixels).step_by(stride) {
-                            let idx = i * 4;
-                            if idx + 3 < raw_img.data.len() {
-                                let pr = raw_img.data[idx] as f64;
-                                let pg = raw_img.data[idx + 1] as f64;
-                                let pb = raw_img.data[idx + 2] as f64;
-                                let pa = raw_img.data[idx + 3] as f64 / 255.0;
-                                if pa > 0.05 {
-                                    sampled.push((pr, pg, pb));
-                                }
-                            }
-                        }
-                        if !sampled.is_empty() {
-                            is_raster_sample = true;
+                if let Ok(image) =
+                    petunia_design_raster::ImageCache::shared().prepare(bytes, &|| false)
+                {
+                    // This panel is a sampled RGBA8 display histogram, including
+                    // 16-bit sources. Originals retain their precision unchanged.
+                    let level = &image.levels()[0];
+                    let total = level.premultiplied_rgba8().len() / 4;
+                    let stride = total.div_ceil(500).max(1);
+                    for pixel in level.premultiplied_rgba8().chunks_exact(4).step_by(stride) {
+                        if pixel[3] > 12 {
+                            let unassociate = 255.0 / f64::from(pixel[3]);
+                            sampled.push((
+                                f64::from(pixel[0]) * unassociate,
+                                f64::from(pixel[1]) * unassociate,
+                                f64::from(pixel[2]) * unassociate,
+                            ));
                         }
                     }
+                    is_raster_sample = !sampled.is_empty();
                 }
             }
         }
@@ -5186,7 +5183,7 @@ impl Component for AssetsTab {
             .iter()
             .filter(|o| matches!(o.shape.as_deref(), Some(ShapeKind::Image { .. })))
             .collect();
-        let mut shell_for_place = ui.shell;
+        let mut place_image_open = ui.place_image_open;
 
         ScrollView::new().child(
             rect()
@@ -5197,10 +5194,7 @@ impl Component for AssetsTab {
                 .child(
                     Button::new()
                         .on_press(move |_| {
-                            run_action_token(
-                                &mut shell_for_place.write(),
-                                "ptnd.action.file.place",
-                            );
+                            place_image_open.set(true);
                         })
                         .child(
                             rect()
@@ -6056,7 +6050,9 @@ mod tests {
                     id: img_id,
                     shape: Some(ShapeKind::Image {
                         path: "sample.png".to_string(),
-                        data: Some(std::sync::Arc::new(png_bytes)),
+                        data: Some(std::sync::Arc::new(
+                            petunia_design_raster::EncodedImage::new(png_bytes).unwrap(),
+                        )),
                     }),
                 },
             ],

@@ -299,6 +299,7 @@ pub struct UiShell {
     pub text_edit_content: State<String>,
     pub new_doc_open: State<bool>,
     pub export_open: State<bool>,
+    pub place_image_open: State<bool>,
     pub confirm_close_open: State<bool>,
     /// Tab the close confirmation applies to. `None` means "quit": the
     /// confirmation is about every open document, not one tab.
@@ -337,6 +338,7 @@ impl PartialEq for UiShell {
             && self.text_edit_content == other.text_edit_content
             && self.new_doc_open == other.new_doc_open
             && self.export_open == other.export_open
+            && self.place_image_open == other.place_image_open
             && self.confirm_close_open == other.confirm_close_open
             && self.pending_close == other.pending_close
             && self.offset_prompt_open == other.offset_prompt_open
@@ -380,6 +382,7 @@ impl UiShell {
         text_edit_content: State<String>,
         new_doc_open: State<bool>,
         export_open: State<bool>,
+        place_image_open: State<bool>,
         confirm_close_open: State<bool>,
         pending_close: State<Option<usize>>,
         offset_prompt_open: State<bool>,
@@ -414,6 +417,7 @@ impl UiShell {
             text_edit_content,
             new_doc_open,
             export_open,
+            place_image_open,
             confirm_close_open,
             pending_close,
             offset_prompt_open,
@@ -486,6 +490,7 @@ impl UiShell {
         let text_edit_content = use_state(String::new);
         let new_doc_open = use_state(|| false);
         let export_open = use_state(|| false);
+        let place_image_open = use_state(|| false);
         let confirm_close_open = use_state(|| false);
         let pending_close = use_state(|| None);
         let offset_prompt_open = use_state(|| false);
@@ -519,6 +524,7 @@ impl UiShell {
             text_edit_content,
             new_doc_open,
             export_open,
+            place_image_open,
             confirm_close_open,
             pending_close,
             offset_prompt_open,

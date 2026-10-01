@@ -1754,6 +1754,7 @@ fn menu_item(ui: UiShell, item: &MenuItemPresentation) -> impl IntoElement {
     let mut customize_open = ui.customize_open;
     let mut new_doc_open = ui.new_doc_open;
     let mut export_open = ui.export_open;
+    let mut place_image_open = ui.place_image_open;
     let mut confirm_close_open = ui.confirm_close_open;
     let mut pending_close = ui.pending_close;
     let mut offset_prompt_open = ui.offset_prompt_open;
@@ -1790,6 +1791,9 @@ fn menu_item(ui: UiShell, item: &MenuItemPresentation) -> impl IntoElement {
                 }
                 if action_id == "ptnd.action.file.export" {
                     export_open.set(true);
+                }
+                if action_id == "ptnd.action.file.place" {
+                    place_image_open.set(true);
                 }
                 if action_id == "ptnd.action.object.offset_path" {
                     offset_prompt_open.set(true);

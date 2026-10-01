@@ -6,9 +6,15 @@
 //! 8-bit and 16-bit depths are V1 architectural requirements.
 
 pub mod brush;
+pub mod image_assets;
+mod image_cache;
 pub mod pixel;
 pub mod tile;
 
 pub use brush::{BlendMode, BrushDab, BrushInputSample};
+pub use image_assets::{
+    decode_image, DecodedImage, EncodedImage, ImageAssetError, ImageContentKey, ImageDecodeLimits,
+};
+pub use image_cache::{ImageCache, ImageCacheLimits, ImageCacheStats, ImageLevel, PreparedImage};
 pub use pixel::{AlphaMode, BitDepth, PixelFormat};
 pub use tile::{Tile, TileCoord, TileMap, TileState, TILE_SIZE};

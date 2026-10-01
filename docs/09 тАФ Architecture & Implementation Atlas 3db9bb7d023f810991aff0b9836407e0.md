@@ -101,3 +101,8 @@ Milestone Required: ADR-003 (`docs/developers/adr/ADR-003-local-modifier-frames.
 ## MVP render/worker contract continuation — 2026-10-01
 
 Scope: Milestone Required. ADR-004 (`docs/developers/adr/ADR-004-render-snapshots-and-workers.md`, synchronized pt-BR mirror) introduces immutable RenderScene/RenderSurface snapshots, GUI-free antialiased CPU coverage and isolation/mask/effect composition, direct PNG region/DPI output, prepared tonal curves, old/new scene damage and bounded cancellable workers with revision-tagged results. It does not change native schema 3. GUI/glyph/image/tile integration and M0/M2/M3/M4 acceptance remain open. New implementation is UNVALIDATED: the user deferred all tests/gates until every MVP feature has been implemented; historical foundation checks must not qualify the new PR head.
+
+
+## MVP image continuation — 2026-10-01
+
+Scope: Milestone Required. ADR-005 (`docs/developers/adr/ADR-005-immutable-image-assets.md`, synchronized pt-BR mirror) adds immutable encoded sources/content keys without a schema bump; bounded common codec admission preserving gray RGBA16 and EXIF; shared LRU/pinned-owner accounting and linear-light area pyramids; CPU image composition; atomic placement; a localized import path/error dialog; and bounded Skia uploads with rotation/opacity. ICC/CMYK/HDR and unavailable color/warp capabilities return reasons. Async cold GUI preparation, full scene presentation, binary resources, persistent tiles, glyph caches and M0/M2/M3/M4 acceptance remain open. New implementation is UNVALIDATED; the user's deferred-gate policy still applies.

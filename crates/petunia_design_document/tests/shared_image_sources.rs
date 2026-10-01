@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 #[test]
 fn cloning_image_descriptor_shares_its_source_without_changing_wire_bytes() {
-    let source = Arc::new(vec![1, 2, 3, 4]);
+    let source = Arc::new(petunia_design_raster::EncodedImage::new(vec![1, 2, 3, 4]).unwrap());
     let shape = ShapeKind::Image {
         path: "source.png".into(),
         data: Some(source.clone()),

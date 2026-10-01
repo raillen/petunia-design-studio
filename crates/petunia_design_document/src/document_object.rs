@@ -193,7 +193,7 @@ pub enum ShapeKind {
         /// Immutable encoded source shared by snapshots, history and duplication.
         /// The serialized byte-array representation is unchanged.
         #[serde(default)]
-        data: Option<std::sync::Arc<Vec<u8>>>,
+        data: Option<std::sync::Arc<petunia_design_raster::EncodedImage>>,
     },
 }
 

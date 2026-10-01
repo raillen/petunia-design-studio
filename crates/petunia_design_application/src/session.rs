@@ -489,34 +489,37 @@ impl DocumentSession {
                 let active_surface = self.active_surface().ok_or_else(|| {
                     PetuniaError::invalid_input("no active surface to place image")
                 })?;
-                let path_buf = request_path(&request.payload)
-                    .or_else(|_| {
-                        request
-                            .payload
-                            .as_str()
-                            .filter(|s| !s.trim().is_empty())
-                            .map(std::path::PathBuf::from)
-                            .ok_or_else(|| PetuniaError::invalid_input("no path"))
-                    })
-                    .unwrap_or_else(|_| std::path::PathBuf::from("sample_image.png"));
+                let path_buf = request_path(&request.payload).or_else(|_| {
+                    request
+                        .payload
+                        .as_str()
+                        .filter(|s| !s.trim().is_empty())
+                        .map(std::path::PathBuf::from)
+                        .ok_or_else(|| PetuniaError::invalid_input("place image requires a path"))
+                })?;
+                // Admission and decoding precede IDs, commands and selection changes.
+                // A failed import leaves the document and undo history untouched.
+                let source = std::sync::Arc::new(petunia_design_io::read_encoded_image(&path_buf)?);
+                let image = petunia_design_raster::ImageCache::shared()
+                    .prepare(&source, &|| false)
+                    .map_err(|e| PetuniaError::invalid_input(e.to_string()))?;
+                let bounds = [
+                    100.0,
+                    100.0,
+                    f64::from(image.width()),
+                    f64::from(image.height()),
+                ];
                 let path = path_buf.to_string_lossy().to_string();
-                let id = self.next_object_id();
                 let name = path_buf
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("Image")
                     .to_string();
-                let mut bounds = [100.0, 100.0, 300.0, 200.0];
-                let mut data = None;
-                if let Ok(bytes) = std::fs::read(&path_buf) {
-                    if let Ok(imported) = petunia_design_io::import_raster(&bytes, 32 * 1024 * 1024)
-                    {
-                        bounds[2] = imported.width as f64;
-                        bounds[3] = imported.height as f64;
-                    }
-                    data = Some(std::sync::Arc::new(bytes));
-                }
-                let shape = petunia_design_document::ShapeKind::Image { path, data };
+                let id = self.next_object_id();
+                let shape = petunia_design_document::ShapeKind::Image {
+                    path,
+                    data: Some(source),
+                };
                 let cmd = CommandRequest::new(Command::CreateShapeObject {
                     surface: active_surface,
                     id,

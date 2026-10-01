@@ -50,7 +50,7 @@ use crate::chrome::{
 };
 use crate::dialogs::{
     CommandPalette, ConfirmCloseDialog, CustomizeDialog, ExportDialog, NewDocumentDialog,
-    OffsetPathDialog, OverwriteConflictDialog,
+    OffsetPathDialog, OverwriteConflictDialog, PlaceImageDialog,
 };
 use crate::ui_state::{ToolRailState, UiShell};
 
@@ -199,6 +199,7 @@ fn app() -> impl IntoElement {
         .child(CustomizeDialog(ui.clone()))
         .child(NewDocumentDialog(ui.clone()))
         .child(ExportDialog(ui.clone()))
+        .child(PlaceImageDialog(ui.clone()))
         .child(ConfirmCloseDialog(ui.clone()))
         .child(OffsetPathDialog(ui.clone()))
         .child(OverwriteConflictDialog(ui.clone()))
@@ -1284,26 +1285,13 @@ mod workspace_tests {
     }
 
     #[test]
-    fn place_image_action_creates_image_object_in_document() {
+    fn place_image_menu_token_requests_path_without_creating_a_placeholder() {
         let mut shell = PetuniaShell::new(800., 600.);
         shell.new_document("ImageTest").expect("document opens");
-        let action_res = actions::run_action_token(&mut shell, "ptnd.action.file.place#null");
-        assert_eq!(action_res, Some("ptnd.action.file.place".to_string()));
-
-        let session = shell.bridge.session().unwrap();
-        let surface_id = session.active_surface().unwrap();
-        let surface = session.surface(surface_id).unwrap();
-        assert!(
-            !surface.objects().is_empty(),
-            "image object should be created"
-        );
-        let last_object = surface.objects().last().unwrap();
-        match &last_object.shape {
-            Some(petunia_design_document::ShapeKind::Image { path, .. }) => {
-                assert!(path.contains("sample_image.png") || !path.is_empty());
-            }
-            other => panic!("expected ShapeKind::Image, got {:?}", other),
-        }
+        let before = shell.bridge.session().unwrap().document().clone();
+        let action = actions::run_action_token(&mut shell, "ptnd.action.file.place#null");
+        assert_eq!(action.as_deref(), Some("ptnd.action.file.place"));
+        assert_eq!(shell.bridge.session().unwrap().document(), &before);
     }
 
     #[test]
@@ -1564,6 +1552,7 @@ mod workspace_tests {
                     .child(CommandPalette(ui.clone()))
                     .child(NewDocumentDialog(ui.clone()))
                     .child(ExportDialog(ui.clone()))
+                    .child(PlaceImageDialog(ui.clone()))
                     .child(CustomizeDialog(ui.clone()))
                     .child(ConfirmCloseDialog(ui.clone()))
                     .child(OffsetPathDialog(ui.clone()))
@@ -1589,6 +1578,11 @@ mod workspace_tests {
         ui.new_doc_open.set(true);
         runner.sync_and_update();
         ui.new_doc_open.set(false);
+        runner.sync_and_update();
+
+        ui.place_image_open.set(true);
+        runner.sync_and_update();
+        ui.place_image_open.set(false);
         runner.sync_and_update();
 
         // Toggle ExportDialog open and close

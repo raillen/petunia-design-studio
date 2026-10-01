@@ -11,8 +11,9 @@
 
 use freya::prelude::*;
 use freya_engine::prelude::{
-    AlphaType, BlurStyle, Canvas as SkiaCanvas, Color, ColorType, Data, Font, Image, ImageInfo,
-    MaskFilter, Paint, PaintStyle, Path, PathBuilder, Point, Rect as SkRect,
+    AlphaType, BlurStyle, Canvas as SkiaCanvas, Color, ColorSpace, ColorType, Data, FilterMode,
+    Font, Image, ImageInfo, MaskFilter, Matrix, Paint, PaintStyle, Path, PathBuilder, Point,
+    Rect as SkRect,
 };
 use petunia_design_geometry::{GPath, GPoint, PathVerb};
 
@@ -456,14 +457,7 @@ fn paint_object(
     } else if let Some(petunia_design_document::ShapeKind::Image { path, data }) =
         object.shape.as_deref()
     {
-        paint_image_object(
-            canvas,
-            object,
-            path,
-            data.as_ref().map(|bytes| bytes.as_slice()),
-            camera,
-            opacity,
-        );
+        paint_image_object(canvas, object, path, data.as_deref(), camera, opacity);
     }
 }
 
@@ -1350,60 +1344,141 @@ fn paint_handle(
     }
 }
 
-/// Paints a placed raster image object.
+/// Thread-local Skia uploads. GPU/toolkit handles never enter domain crates.
+/// Only short-lived paint calls clone a handle; retained uploads are bounded.
+#[derive(Default)]
+struct ImageUploads {
+    entries: Vec<(petunia_design_raster::ImageContentKey, usize, Image, usize)>,
+    bytes: usize,
+}
+impl ImageUploads {
+    #[allow(deprecated)]
+    fn get(&mut self, image: &petunia_design_raster::PreparedImage, lod: usize) -> Option<Image> {
+        let key = image.content_key();
+        if let Some(index) = self.entries.iter().position(|e| e.0 == key && e.1 == lod) {
+            let entry = self.entries.remove(index);
+            let handle = entry.2.clone();
+            self.entries.push(entry);
+            return Some(handle);
+        }
+        const MAX_BYTES: usize = 64 * 1024 * 1024;
+        const MAX_ENTRIES: usize = 128;
+        let level = image.levels().get(lod)?;
+        let bytes = level.premultiplied_rgba8().len();
+        if bytes > MAX_BYTES {
+            return None;
+        }
+        while self.bytes + bytes > MAX_BYTES || self.entries.len() >= MAX_ENTRIES {
+            let evicted = self.entries.remove(0);
+            self.bytes -= evicted.3;
+        }
+        let info = ImageInfo::new(
+            (level.width() as i32, level.height() as i32),
+            ColorType::RGBA8888,
+            AlphaType::Premul,
+            ColorSpace::new_srgb(),
+        );
+        let handle = Image::from_raster_data(
+            &info,
+            Data::new_copy(level.premultiplied_rgba8()),
+            level.width() as usize * 4,
+        )?;
+        self.bytes += bytes;
+        self.entries.push((key, lod, handle.clone(), bytes));
+        Some(handle)
+    }
+}
+thread_local! {
+    static IMAGE_UPLOADS: std::cell::RefCell<ImageUploads> = std::cell::RefCell::new(ImageUploads::default());
+}
+
+/// Displays embedded originals through the shared bounded decoder. Painting
+/// never opens a file and never asks Skia to decode a compressed source again.
 fn paint_image_object(
     canvas: &SkiaCanvas,
     object: &CanvasObjectProjection,
     path: &str,
-    data: Option<&[u8]>,
+    data: Option<&petunia_design_raster::EncodedImage>,
     camera: &ViewportCamera,
-    _opacity: f32,
+    opacity: f32,
 ) {
-    let screen_origin =
-        camera.doc_to_screen(GPoint::new(object.frame_origin[0], object.frame_origin[1]));
-    let w = (object.size[0] * camera.zoom).max(10.0) as f32;
-    let h = (object.size[1] * camera.zoom).max(10.0) as f32;
-    let dst = SkRect::new(
-        screen_origin.x as f32,
-        screen_origin.y as f32,
-        screen_origin.x as f32 + w,
-        screen_origin.y as f32 + h,
-    );
-
-    let decoded = if let Some(bytes) = data {
-        Image::from_encoded(Data::new_copy(bytes))
-    } else if let Ok(bytes) = std::fs::read(path) {
-        Image::from_encoded(Data::new_copy(&bytes))
-    } else {
-        None
-    };
-
-    if let Some(img) = decoded {
-        canvas.draw_image_rect(&img, None, dst, &Paint::default());
+    let [a, b, c, d, tx, ty] = object.world_transform.coeffs;
+    let zoom = camera.zoom;
+    let coefficients = [
+        a * zoom,
+        c * zoom,
+        tx * zoom + camera.pan_x,
+        b * zoom,
+        d * zoom,
+        ty * zoom + camera.pan_y,
+    ];
+    if !coefficients
+        .iter()
+        .all(|v| v.is_finite() && v.abs() <= f64::from(f32::MAX))
+        || !object
+            .size
+            .iter()
+            .all(|v| v.is_finite() && *v > 0.0 && *v <= f64::from(f32::MAX))
+    {
+        return;
+    }
+    let prepared = data.and_then(|source| {
+        petunia_design_raster::ImageCache::shared()
+            .prepare(source, &|| false)
+            .ok()
+    });
+    let handle = prepared.as_ref().and_then(|image| {
+        let sa = a * zoom * object.size[0] / f64::from(image.width());
+        let sb = b * zoom * object.size[0] / f64::from(image.width());
+        let sc = c * zoom * object.size[1] / f64::from(image.height());
+        let sd = d * zoom * object.size[1] / f64::from(image.height());
+        let scale = ((sa * sa
+            + sb * sb
+            + sc * sc
+            + sd * sd
+            + (sa * sa + sb * sb - sc * sc - sd * sd).hypot(2.0 * (sa * sc + sb * sd)))
+            * 0.5)
+            .sqrt();
+        IMAGE_UPLOADS.with(|cache| cache.borrow_mut().get(image, image.level_for_scale(scale)))
+    });
+    let dst = SkRect::new(0.0, 0.0, object.size[0] as f32, object.size[1] as f32);
+    canvas.save();
+    canvas.concat(&Matrix::new_all(
+        coefficients[0] as f32,
+        coefficients[1] as f32,
+        coefficients[2] as f32,
+        coefficients[3] as f32,
+        coefficients[4] as f32,
+        coefficients[5] as f32,
+        0.0,
+        0.0,
+        1.0,
+    ));
+    if let Some(img) = handle {
+        let mut paint = Paint::default();
+        paint.set_alpha_f(opacity.clamp(0.0, 1.0));
+        paint.set_anti_alias(true);
+        canvas.draw_image_rect_with_sampling_options(&img, None, dst, FilterMode::Linear, &paint);
     } else {
         let mut bg = Paint::default();
         bg.set_color(Color::from_rgb(0xEB, 0xEE, 0xF5));
-        bg.set_style(PaintStyle::Fill);
+        bg.set_alpha_f(opacity.clamp(0.0, 1.0));
         canvas.draw_rect(dst, &bg);
-
-        let border = outline_paint(Color::from_rgb(0x9C, 0xA3, 0xAF), 1.0);
-        canvas.draw_rect(dst, &border);
-
         let mut font = Font::default();
-        font.set_size(11.0);
-        let mut text_paint = Paint::default();
-        text_paint.set_color(Color::from_rgb(0x37, 0x41, 0x51));
+        font.set_size((11.0 / zoom) as f32);
+        let mut text = Paint::default();
+        text.set_color(Color::from_rgb(0x37, 0x41, 0x51));
         canvas.draw_str(
             format!("🖼 {}", path),
-            Point::new(screen_origin.x as f32 + 8.0, screen_origin.y as f32 + 20.0),
+            Point::new((8.0 / zoom) as f32, (20.0 / zoom) as f32),
             &font,
-            &text_paint,
+            &text,
         );
     }
-
     if object.active {
-        canvas.draw_rect(dst, &outline_paint(ACCENT, 1.5));
+        canvas.draw_rect(dst, &outline_paint(ACCENT, (1.5 / zoom) as f32));
     }
+    canvas.restore();
 }
 
 /// Paints horizontal and vertical graduated rulers (ptnd.surface.canvas.rulers)

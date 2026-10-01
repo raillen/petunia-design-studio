@@ -231,18 +231,18 @@ fn extract_node(
     }
     match &object.shape {
         Some(petunia_design_document::ShapeKind::Polygon { sides }) if *sides > 100_000 => {
-            return Err(RenderError::Limit("polygon sides"))
+            return Err(RenderError::Limit("polygon sides"));
         }
         Some(petunia_design_document::ShapeKind::Star { points, .. }) if *points > 50_000 => {
-            return Err(RenderError::Limit("star points"))
+            return Err(RenderError::Limit("star points"));
         }
         Some(petunia_design_document::ShapeKind::LocalPath { path, .. })
             if path.verbs.len() > 1_000_000 =>
         {
-            return Err(RenderError::Limit("source path verb count"))
+            return Err(RenderError::Limit("source path verb count"));
         }
         Some(petunia_design_document::ShapeKind::Path(path)) if path.verbs.len() > 1_000_000 => {
-            return Err(RenderError::Limit("source path verb count"))
+            return Err(RenderError::Limit("source path verb count"));
         }
         _ => {}
     }
@@ -250,13 +250,30 @@ fn extract_node(
     if !world.coeffs.iter().all(|v| v.is_finite()) || world.inverse().is_none() {
         return Err(RenderError::Invalid(format!("invalid transform of {id}")));
     }
-    let geometry = if object.shape.is_some() {
+    let mut geometry = if object.shape.is_some() {
         object
             .evaluated_path_local()
             .map_err(|e| RenderError::Invalid(e.to_string()))?
     } else {
         GPath::new()
     };
+    if matches!(
+        object.shape,
+        Some(petunia_design_document::ShapeKind::Image { .. })
+    ) {
+        // This is image coverage, not a vector conversion or a baked crop.
+        // The original sampling frame remains the full placed-image rectangle.
+        let [_, _, w, h] = object
+            .bounds
+            .ok_or_else(|| RenderError::Invalid("image has no local frame".into()))?;
+        let rectangle = GPath::rect(GRect::new(0.0, 0.0, w, h), 0.0, 0.0);
+        geometry = petunia_design_document::modifiers::evaluate_modifiers_local(
+            &rectangle,
+            &object.modifiers,
+            [w, h],
+        )
+        .ok_or_else(|| RenderError::Invalid("invalid image coverage".into()))?;
+    }
     let appearance = object.effective_appearance();
     let stroke_reach = appearance
         .strokes
@@ -275,8 +292,14 @@ fn extract_node(
         .transformed(world)
         .bounding_box()
         .map(|b| expand(b, stroke_reach));
-    // Text/image capability admission is handled by the backend; retain their footprint.
-    if geometry.is_empty() && object.shape.is_some() {
+    // Text capability admission is handled by the backend; retain its footprint.
+    // An empty image crop stays empty instead of restoring the original frame.
+    if geometry.is_empty()
+        && matches!(
+            object.shape,
+            Some(petunia_design_document::ShapeKind::Text { .. })
+        )
+    {
         if let Some([_, _, w, h]) = object.bounds {
             bounds = GPath::rect(GRect::new(0.0, 0.0, w, h), 0.0, 0.0)
                 .transformed(world)
