@@ -1,8 +1,5 @@
 use crate::pdf::{DegradationItem, FidelityGrade};
-use image::{
-    codecs::jpeg::JpegEncoder, codecs::png::PngEncoder, ExtendedColorType, ImageEncoder,
-    ImageReader,
-};
+use image::{codecs::jpeg::JpegEncoder, codecs::png::PngEncoder, ExtendedColorType, ImageEncoder};
 use petunia_design_foundation::PetuniaError;
 use petunia_design_raster::{PixelFormat, Tile, TileCoord, TILE_SIZE};
 use serde::{Deserialize, Serialize};
@@ -95,7 +92,7 @@ pub struct RawRasterImage {
     pub height: u32,
     /// Pixel format (Rgba8 or Rgba16).
     pub format: PixelFormat,
-    /// Raw byte payload (4 bytes per pixel for Rgba8, 8 bytes per pixel for Rgba16).
+    /// Straight-alpha bytes; 16-bit samples are little-endian on every platform.
     pub data: Vec<u8>,
 }
 
@@ -138,7 +135,7 @@ impl RawRasterImage {
 
         let mut byte_data = Vec::with_capacity(data.len() * 2);
         for &sample in data {
-            byte_data.extend_from_slice(&sample.to_ne_bytes());
+            byte_data.extend_from_slice(&sample.to_le_bytes());
         }
 
         Ok(Self {
@@ -152,11 +149,43 @@ impl RawRasterImage {
     /// Creates a RawRasterImage directly from an `petunia_design_raster::Tile`.
     #[must_use]
     pub fn from_tile(tile: &Tile) -> Self {
+        let mut data = tile.data.clone();
+        if tile.alpha_mode == petunia_design_raster::AlphaMode::Premultiplied {
+            match tile.format {
+                PixelFormat::Rgba8 => {
+                    for pixel in data.chunks_exact_mut(4) {
+                        let alpha = u32::from(pixel[3]);
+                        for channel in &mut pixel[..3] {
+                            *channel = if alpha == 0 {
+                                0
+                            } else {
+                                ((u32::from(*channel) * 255 + alpha / 2) / alpha).min(255) as u8
+                            };
+                        }
+                    }
+                }
+                PixelFormat::Rgba16 => {
+                    for pixel in data.chunks_exact_mut(8) {
+                        let alpha = u32::from(u16::from_le_bytes([pixel[6], pixel[7]]));
+                        for channel in pixel[..6].chunks_exact_mut(2) {
+                            let sample = u32::from(u16::from_le_bytes([channel[0], channel[1]]));
+                            let value = if alpha == 0 {
+                                0
+                            } else {
+                                ((sample * 65535 + alpha / 2) / alpha).min(65535) as u16
+                            };
+                            channel.copy_from_slice(&value.to_le_bytes());
+                        }
+                    }
+                }
+                PixelFormat::Gray8 | PixelFormat::Gray16 => {}
+            }
+        }
         Self {
             width: TILE_SIZE as u32,
             height: TILE_SIZE as u32,
             format: tile.format,
-            data: tile.data.clone(),
+            data,
         }
     }
 
@@ -184,8 +213,8 @@ impl RawRasterImage {
         match self.format {
             PixelFormat::Rgba16 => {
                 let mut out = Vec::with_capacity(self.data.len() / 2);
-                for chunk in self.data.chunks_exact(2) {
-                    out.push(u16::from_ne_bytes([chunk[0], chunk[1]]));
+                for chunk in self.data.as_chunks::<2>().0 {
+                    out.push(u16::from_le_bytes([chunk[0], chunk[1]]));
                 }
                 out
             }
@@ -199,8 +228,8 @@ impl RawRasterImage {
             }
             PixelFormat::Gray16 => {
                 let mut out = Vec::with_capacity(self.data.len() * 2);
-                for chunk in self.data.chunks_exact(2) {
-                    let g = u16::from_ne_bytes([chunk[0], chunk[1]]);
+                for chunk in self.data.as_chunks::<2>().0 {
+                    let g = u16::from_le_bytes([chunk[0], chunk[1]]);
                     out.extend_from_slice(&[g, g, g, 65535]);
                 }
                 out
@@ -223,8 +252,8 @@ impl RawRasterImage {
             PixelFormat::Rgba8 => self.data.clone(),
             PixelFormat::Rgba16 => {
                 let mut out = Vec::with_capacity(self.data.len() / 2);
-                for chunk in self.data.chunks_exact(2) {
-                    let val = u16::from_ne_bytes([chunk[0], chunk[1]]);
+                for chunk in self.data.as_chunks::<2>().0 {
+                    let val = u16::from_le_bytes([chunk[0], chunk[1]]);
                     out.push((val >> 8) as u8);
                 }
                 out
@@ -238,8 +267,8 @@ impl RawRasterImage {
             }
             PixelFormat::Gray16 => {
                 let mut out = Vec::with_capacity(self.data.len() * 2);
-                for chunk in self.data.chunks_exact(2) {
-                    let g = (u16::from_ne_bytes([chunk[0], chunk[1]]) >> 8) as u8;
+                for chunk in self.data.as_chunks::<2>().0 {
+                    let g = (u16::from_le_bytes([chunk[0], chunk[1]]) >> 8) as u8;
                     out.extend_from_slice(&[g, g, g, 255]);
                 }
                 out
@@ -269,7 +298,49 @@ impl Default for RasterExportOptions {
     }
 }
 
-/// Encodes an in-memory `RawRasterImage` to compressed file bytes with degradation analysis.
+/// Encodes straight RGBA8/sRGB with explicit PNG physical resolution metadata.
+/// Pixel dimensions are chosen by the renderer; this function does not resample.
+pub fn export_png_rgba8_at_dpi(image: &RawRasterImage, dpi: f64) -> Result<Vec<u8>, PetuniaError> {
+    if image.format != PixelFormat::Rgba8 || image.width == 0 || image.height == 0 {
+        return Err(PetuniaError::invalid_input(
+            "PNG density export requires nonempty straight RGBA8",
+        ));
+    }
+    let bytes = (image.width as usize)
+        .checked_mul(image.height as usize)
+        .and_then(|v| v.checked_mul(4));
+    if bytes != Some(image.data.len()) {
+        return Err(PetuniaError::invalid_input("invalid PNG pixel data length"));
+    }
+    let ppm = (dpi / 0.0254).round();
+    if !dpi.is_finite() || dpi <= 0.0 || ppm < 1.0 || ppm > f64::from(u32::MAX) {
+        return Err(PetuniaError::invalid_input(
+            "DPI is outside PNG physical-resolution range",
+        ));
+    }
+    let mut bytes = Vec::new();
+    let mut encoder = png::Encoder::new(&mut bytes, image.width, image.height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
+    encoder.set_pixel_dims(Some(png::PixelDimensions {
+        xppu: ppm as u32,
+        yppu: ppm as u32,
+        unit: png::Unit::Meter,
+    }));
+    let mut writer = encoder
+        .write_header()
+        .map_err(|e| PetuniaError::io(format!("PNG header: {e}")))?;
+    writer
+        .write_image_data(&image.data)
+        .map_err(|e| PetuniaError::io(format!("PNG pixels: {e}")))?;
+    writer
+        .finish()
+        .map_err(|e| PetuniaError::io(format!("PNG finish: {e}")))?;
+    Ok(bytes)
+}
+
+/// Encodes an in-memory image with explicit degradation analysis.
 pub fn export_raster(
     image: &RawRasterImage,
     options: &RasterExportOptions,
@@ -318,6 +389,18 @@ pub fn export_raster(
                 PixelFormat::Gray16 => (ExtendedColorType::L16, image.data.as_slice()),
                 PixelFormat::Gray8 => (ExtendedColorType::L8, image.data.as_slice()),
             };
+            let native_bytes;
+            let byte_slice = if cfg!(target_endian = "big")
+                && matches!(image.format, PixelFormat::Rgba16 | PixelFormat::Gray16)
+            {
+                native_bytes = byte_slice
+                    .chunks_exact(2)
+                    .flat_map(|p| u16::from_le_bytes([p[0], p[1]]).to_ne_bytes())
+                    .collect::<Vec<_>>();
+                native_bytes.as_slice()
+            } else {
+                byte_slice
+            };
             encoder
                 .write_image(byte_slice, image.width, image.height, color_type)
                 .map_err(|e| PetuniaError::io(format!("PNG encoding error: {e}")))?;
@@ -329,7 +412,7 @@ pub fn export_raster(
             // JPEG requires RGB8 (no alpha)
             let rgba8 = image.to_rgba8();
             let mut rgb8 = Vec::with_capacity((image.width as usize) * (image.height as usize) * 3);
-            for chunk in rgba8.chunks_exact(4) {
+            for chunk in rgba8.as_chunks::<4>().0 {
                 rgb8.push(chunk[0]);
                 rgb8.push(chunk[1]);
                 rgb8.push(chunk[2]);
@@ -391,62 +474,74 @@ pub fn export_raster(
     Ok((out, degradations))
 }
 
-/// Imports and decodes compressed raster bytes into a `RawRasterImage`.
+/// Reads one encoded source with a quota before allocating or decoding it.
+/// A raced file growth is bounded by `take`; the renderer never calls this API.
+pub fn read_encoded_image(
+    path: &std::path::Path,
+) -> Result<petunia_design_raster::EncodedImage, PetuniaError> {
+    use std::io::Read;
+    let file = std::fs::File::open(path)
+        .map_err(|e| PetuniaError::io(format!("Cannot read image: {e}")))?;
+    let metadata = file
+        .metadata()
+        .map_err(|e| PetuniaError::io(format!("Cannot inspect image: {e}")))?;
+    if !metadata.is_file() || metadata.len() > petunia_design_raster::EncodedImage::MAX_BYTES as u64
+    {
+        return Err(PetuniaError::invalid_input(
+            "Image must be a regular file within the encoded-source quota",
+        ));
+    }
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(metadata.len() as usize)
+        .map_err(|_| {
+            PetuniaError::invalid_input("Image source allocation exceeds available memory")
+        })?;
+    let bound = petunia_design_raster::EncodedImage::MAX_BYTES + 1;
+    let mut bounded = file.take(bound as u64);
+    let mut chunk = [0; 32 * 1024];
+    loop {
+        let count = match bounded.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(count) => count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(PetuniaError::io(format!("Cannot read image: {error}"))),
+        };
+        let needed = bytes.len() + count;
+        if needed > bytes.capacity() {
+            let target = needed.max(bytes.capacity().saturating_mul(2).min(bound));
+            bytes.try_reserve_exact(target - bytes.len()).map_err(|_| {
+                PetuniaError::invalid_input("Image source allocation exceeds available memory")
+            })?;
+        }
+        bytes.extend_from_slice(&chunk[..count]);
+    }
+    petunia_design_raster::EncodedImage::new(bytes)
+        .map_err(|e| PetuniaError::invalid_input(e.to_string()))
+}
+
+/// Imports untagged RGB/gray PNG/JPEG/TIFF/WebP with codec admission before
+/// pixel decoding. Tagged ICC images require a CMM; this raw API has no profile
+/// field and cannot silently discard that color contract.
 pub fn import_raster(bytes: &[u8], max_bytes: usize) -> Result<RawRasterImage, PetuniaError> {
-    if bytes.len() > max_bytes {
-        return Err(PetuniaError::invalid_input(format!(
-            "Input file size {} exceeds security budget {}",
-            bytes.len(),
-            max_bytes
-        )));
+    let mut limits = petunia_design_raster::ImageDecodeLimits::default();
+    limits.max_encoded_bytes = limits.max_encoded_bytes.min(max_bytes);
+    limits.max_decoded_bytes = limits
+        .max_decoded_bytes
+        .min((max_bytes as u64).saturating_mul(4));
+    let decoded = petunia_design_raster::decode_image(bytes, limits)
+        .map_err(|e| PetuniaError::invalid_input(e.to_string()))?;
+    if decoded.icc_profile.is_some() {
+        return Err(PetuniaError::invalid_input(
+            "ICC image conversion requires a color-management module",
+        ));
     }
-
-    let format = RasterFormat::from_magic(bytes).ok_or_else(|| {
-        PetuniaError::invalid_input("Unknown or unsupported raster image magic header")
-    })?;
-
-    let cursor = Cursor::new(bytes);
-    let reader = ImageReader::new(cursor)
-        .with_guessed_format()
-        .map_err(|e| PetuniaError::io(format!("Failed to determine image reader format: {e}")))?;
-
-    let dynamic_img = reader
-        .decode()
-        .map_err(|e| PetuniaError::io(format!("Failed to decode {format:?} image: {e}")))?;
-
-    let width = dynamic_img.width();
-    let height = dynamic_img.height();
-
-    // Check total memory allocation limit
-    let pixel_count = (width as usize).saturating_mul(height as usize);
-    if pixel_count.saturating_mul(8) > max_bytes.saturating_mul(4) {
-        return Err(PetuniaError::invalid_input(format!(
-            "Decoded dimensions {width}x{height} exceed memory limit"
-        )));
-    }
-
-    // Preserve 16-bit depth if available
-    match dynamic_img {
-        image::DynamicImage::ImageRgba16(img) => {
-            let raw_samples = img.into_raw();
-            RawRasterImage::from_rgba16(width, height, &raw_samples)
-        }
-        image::DynamicImage::ImageRgb16(img) => {
-            let raw_samples = img.into_raw();
-            let mut rgba16 = Vec::with_capacity(pixel_count * 4);
-            for chunk in raw_samples.chunks_exact(3) {
-                rgba16.push(chunk[0]);
-                rgba16.push(chunk[1]);
-                rgba16.push(chunk[2]);
-                rgba16.push(65535);
-            }
-            RawRasterImage::from_rgba16(width, height, &rgba16)
-        }
-        other => {
-            let rgba8 = other.into_rgba8();
-            RawRasterImage::from_rgba8(width, height, rgba8.into_raw())
-        }
-    }
+    Ok(RawRasterImage {
+        width: decoded.width,
+        height: decoded.height,
+        format: decoded.format,
+        data: decoded.data,
+    })
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@
 
 mod actions;
 pub mod appearance_service;
+pub mod background_render;
 pub mod boolean_service;
 mod capabilities;
 mod commands;
@@ -19,6 +20,7 @@ mod history;
 pub mod interaction;
 pub mod menus;
 pub mod ports;
+pub mod preview;
 pub mod selection_mask;
 pub mod session;
 pub mod spatial_index;

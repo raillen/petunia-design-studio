@@ -8,6 +8,7 @@
 mod actions;
 mod appearance;
 mod canvas_paint;
+mod canvas_preview;
 mod chrome;
 mod dialogs;
 mod dock;
@@ -50,7 +51,7 @@ use crate::chrome::{
 };
 use crate::dialogs::{
     CommandPalette, ConfirmCloseDialog, CustomizeDialog, ExportDialog, NewDocumentDialog,
-    OffsetPathDialog, OverwriteConflictDialog,
+    OffsetPathDialog, OverwriteConflictDialog, PlaceImageDialog,
 };
 use crate::ui_state::{ToolRailState, UiShell};
 
@@ -97,16 +98,16 @@ fn seed_starter_shapes(shell: &mut PetuniaShell) {
             id: id1,
             name: "Rectangle A".to_string(),
         },
+        Command::SetBounds {
+            id: id1,
+            bounds: Some([260.0, 180.0, 220.0, 160.0]),
+            rotation: 0.0,
+        },
         Command::SetShape {
             id: id1,
             shape: Some(petunia_design_document::ShapeKind::Rectangle {
                 corner_radii: [12.0, 12.0, 12.0, 12.0],
             }),
-        },
-        Command::SetBounds {
-            id: id1,
-            bounds: Some([260.0, 180.0, 220.0, 160.0]),
-            rotation: 0.0,
         },
         Command::SetFill {
             id: id1,
@@ -117,14 +118,14 @@ fn seed_starter_shapes(shell: &mut PetuniaShell) {
             id: id2,
             name: "Circle B".to_string(),
         },
-        Command::SetShape {
-            id: id2,
-            shape: Some(petunia_design_document::ShapeKind::Ellipse),
-        },
         Command::SetBounds {
             id: id2,
             bounds: Some([380.0, 240.0, 200.0, 200.0]),
             rotation: 0.0,
+        },
+        Command::SetShape {
+            id: id2,
+            shape: Some(petunia_design_document::ShapeKind::Ellipse),
         },
         Command::SetFill {
             id: id2,
@@ -199,6 +200,7 @@ fn app() -> impl IntoElement {
         .child(CustomizeDialog(ui.clone()))
         .child(NewDocumentDialog(ui.clone()))
         .child(ExportDialog(ui.clone()))
+        .child(PlaceImageDialog(ui.clone()))
         .child(ConfirmCloseDialog(ui.clone()))
         .child(OffsetPathDialog(ui.clone()))
         .child(OverwriteConflictDialog(ui.clone()))
@@ -253,6 +255,11 @@ impl Component for Workspace {
         let mut is_pointer_down = use_state(|| false);
         let a11y_id = use_a11y();
         let snapshot = shell.read().canvas_snapshot();
+        let (preview, preview_error) = canvas_preview::use_canvas_preview(
+            &snapshot,
+            *self.0.channel_view.read(),
+            *self.0.soft_proof.read(),
+        );
         let cursor_icon = map_cursor_affordance(snapshot.overlays.cursor);
         let in_flight_guide = *ruler_drag.read();
 
@@ -381,6 +388,7 @@ impl Component for Workspace {
                     in_flight_guide,
                     *self.0.soft_proof.read(),
                     *self.0.channel_view.read(),
+                    preview,
                 )
                 .on_pointer_down({
                     move |event| {
@@ -494,6 +502,17 @@ impl Component for Workspace {
                 }),
             );
 
+        if let Some(error) = preview_error {
+            let prefix = {
+                let shell = shell.read();
+                shell.bridge.localization().text(
+                    "ptnd.text.canvas.preview_unavailable",
+                    shell.bridge.locale(),
+                )
+            };
+            workspace_container = workspace_container
+                .child(label().text(format!("{prefix}: {error}")).font_size(12.0));
+        }
         if let Some(editor) = active_text_editor {
             workspace_container = workspace_container.child(editor);
         }
@@ -602,17 +621,12 @@ fn dispatch_workspace_at(
                     petunia_design_document::GuideOrientation::Vertical => doc_pt.x,
                 };
                 if let Some(surf_id) = surf_id {
-                    let guide_id = (std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_millis())
-                        .unwrap_or(0)
-                        % 1_000_000) as u32;
-                    let guide = petunia_design_document::Guide::new(guide_id, orient, pos);
                     let _ = shell.write().bridge.submit_all(
                         "Add guide",
-                        vec![petunia_design_application::Command::AddGuide {
+                        vec![petunia_design_application::Command::CreateGuide {
                             surface: surf_id,
-                            guide,
+                            orientation: orient,
+                            position: pos,
                         }],
                     );
                 }
@@ -1289,26 +1303,13 @@ mod workspace_tests {
     }
 
     #[test]
-    fn place_image_action_creates_image_object_in_document() {
+    fn place_image_menu_token_requests_path_without_creating_a_placeholder() {
         let mut shell = PetuniaShell::new(800., 600.);
         shell.new_document("ImageTest").expect("document opens");
-        let action_res = actions::run_action_token(&mut shell, "ptnd.action.file.place#null");
-        assert_eq!(action_res, Some("ptnd.action.file.place".to_string()));
-
-        let session = shell.bridge.session().unwrap();
-        let surface_id = session.active_surface().unwrap();
-        let surface = session.surface(surface_id).unwrap();
-        assert!(
-            !surface.objects().is_empty(),
-            "image object should be created"
-        );
-        let last_object = surface.objects().last().unwrap();
-        match &last_object.shape {
-            Some(petunia_design_document::ShapeKind::Image { path, .. }) => {
-                assert!(path.contains("sample_image.png") || !path.is_empty());
-            }
-            other => panic!("expected ShapeKind::Image, got {:?}", other),
-        }
+        let before = shell.bridge.session().unwrap().document().clone();
+        let action = actions::run_action_token(&mut shell, "ptnd.action.file.place#null");
+        assert_eq!(action.as_deref(), Some("ptnd.action.file.place"));
+        assert_eq!(shell.bridge.session().unwrap().document(), &before);
     }
 
     #[test]
@@ -1569,6 +1570,7 @@ mod workspace_tests {
                     .child(CommandPalette(ui.clone()))
                     .child(NewDocumentDialog(ui.clone()))
                     .child(ExportDialog(ui.clone()))
+                    .child(PlaceImageDialog(ui.clone()))
                     .child(CustomizeDialog(ui.clone()))
                     .child(ConfirmCloseDialog(ui.clone()))
                     .child(OffsetPathDialog(ui.clone()))
@@ -1594,6 +1596,11 @@ mod workspace_tests {
         ui.new_doc_open.set(true);
         runner.sync_and_update();
         ui.new_doc_open.set(false);
+        runner.sync_and_update();
+
+        ui.place_image_open.set(true);
+        runner.sync_and_update();
+        ui.place_image_open.set(false);
         runner.sync_and_update();
 
         // Toggle ExportDialog open and close
@@ -1764,6 +1771,12 @@ mod workspace_tests {
                         id: rect_id,
                         bounds: Some([10.0, 10.0, 100.0, 100.0]),
                         rotation: 0.0,
+                    },
+                    petunia_design_application::Command::SetShape {
+                        id: rect_id,
+                        shape: Some(petunia_design_document::ShapeKind::Rectangle {
+                            corner_radii: [0.0; 4],
+                        }),
                     },
                 ],
             )

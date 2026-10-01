@@ -2,12 +2,15 @@
 
 Build on Petunia: architecture, local builds, testing strategy and the ADR record. Everything here is automation-first — if a workflow cannot run headless, it is a bug.
 
+Current implementation status and remaining release gates: [execution ledger](/developers/implementation-progress), governed by [ADR-002](/developers/adr/ADR-002-local-path-and-integrity).
+
 ## Start here
 
 | I want to… | Go to |
 | ---------- | ----- |
 | Understand crates, boundaries and the mutation pipeline | [Architecture](/developers/architecture) |
 | Compile, run and test locally | [Build & test](/developers/build-test) |
+| Review the 2026-09-30 baseline and release proposal | [Technical audit](/developers/audit-2026-09-30) · [MVP / V1 / future roadmap](/developers/implementation-roadmap-2026-09-30) |
 | Learn why EffectChain exists | [ADR-001](/developers/adr/ADR-001-effect-chain) |
 | Browse all decisions | [ADR index](/developers/adr/) |
 | Open a PR or translate docs | [Guidelines](/contributing/guidelines) · [Translations](/contributing/translations) |
@@ -38,7 +41,7 @@ flowchart TB
   end
   subgraph Shell ["Shell (GUI only)"]
     SH[shell<br/>bridge · viewport · panels]
-    UI[petunia-design<br/>Slint app]
+    UI[petunia-design<br/>Freya/Skia app]
   end
   Domain --> Services
   Services --> Automation

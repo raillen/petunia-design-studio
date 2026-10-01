@@ -460,6 +460,42 @@
     {
       "path": "petunia-design-studio/09 31 — Edição Não-Destrutiva EffectChain ADR pt-BR.md",
       "role": "canonical"
+    },
+    {
+      "path": "docs/developers/adr/ADR-002-local-path-and-integrity.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/pt/developers/adr/ADR-002-local-path-and-integrity.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/developers/adr/ADR-003-local-modifier-frames.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/pt/developers/adr/ADR-003-local-modifier-frames.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/developers/adr/ADR-004-render-snapshots-and-workers.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/pt/developers/adr/ADR-004-render-snapshots-and-workers.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/developers/adr/ADR-005-immutable-image-assets.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/pt/developers/adr/ADR-005-immutable-image-assets.md",
+      "role": "canonical"
+    },
+    {
+      "path": "docs/developers/adr/ADR-006-shaped-text-and-canvas-preview.md",
+      "role": "canonical"
     }
   ],
   "current_version": "0.6.0"

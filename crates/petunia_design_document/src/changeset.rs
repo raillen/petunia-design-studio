@@ -151,6 +151,12 @@ pub enum Change {
         previous: Option<String>,
         next: Option<String>,
     },
+    /// A surface's inclusion in batch export changed.
+    SurfaceExportEnabledChanged {
+        id: SurfaceId,
+        previous: bool,
+        next: bool,
+    },
     /// A layout guide was added to a surface.
     SurfaceGuideAdded {
         surface: SurfaceId,

@@ -64,7 +64,7 @@ pub enum Command {
     /// Paste a detached object snapshot onto a surface under a new identity.
     PasteObject {
         surface: SurfaceId,
-        object: DocumentObject,
+        object: Box<DocumentObject>,
         id: ObjectId,
         offset: [f64; 2],
     },
@@ -202,7 +202,15 @@ pub enum Command {
         surface: SurfaceId,
         background: Option<String>,
     },
+    /// Sets whether a surface is included in batch exports.
+    SetSurfaceExportEnabled { surface: SurfaceId, enabled: bool },
     /// Adds a layout guide to a surface.
+    CreateGuide {
+        surface: SurfaceId,
+        orientation: petunia_design_document::GuideOrientation,
+        position: f64,
+    },
+    /// Adds a guide with explicit identity for import/replay.
     AddGuide {
         surface: SurfaceId,
         guide: petunia_design_document::Guide,
@@ -251,6 +259,13 @@ pub enum Command {
     SetShape {
         id: ObjectId,
         shape: Option<petunia_design_document::ShapeKind>,
+    },
+    /// Replace a parent-space path and its placement as one atomic edit.
+    SetPath {
+        id: ObjectId,
+        path: petunia_design_geometry::GPath,
+        bounds: [f64; 4],
+        rotation: f64,
     },
     /// Executes a vector boolean operation on two objects.
     ApplyBoolean {
@@ -310,6 +325,26 @@ pub enum Command {
     },
     /// Slices or splits a path object at a specific point (10.2).
     SlicePath { id: ObjectId, point: [f64; 2] },
+}
+
+impl Command {
+    /// Audited primitives whose mutators reject input before changing storage.
+    /// New/compound commands default to protected snapshot staging.
+    pub(crate) fn is_atomic_primitive(&self) -> bool {
+        matches!(
+            self,
+            Self::CreateSurface { .. }
+                | Self::CreateObject { .. }
+                | Self::SetBounds { .. }
+                | Self::SetShape { .. }
+                | Self::SetFill { .. }
+                | Self::SetVisibility { .. }
+                | Self::SetLocked { .. }
+                | Self::SetOpacity { .. }
+                | Self::SetStroke { .. }
+                | Self::RenameObject { .. }
+        )
+    }
 }
 
 /// Validated command ready for execution.
@@ -399,7 +434,7 @@ pub fn execute(
             id,
             offset,
         } => {
-            let mut copy = object.clone();
+            let mut copy = object.as_ref().clone();
             copy.id = *id;
             copy.parent = None;
             copy.children.clear();
@@ -519,7 +554,15 @@ pub fn execute(
             surface,
             background,
         } => mutator.set_surface_background(*surface, background.clone()),
+        Command::SetSurfaceExportEnabled { surface, enabled } => {
+            mutator.set_surface_export_enabled(*surface, *enabled)
+        }
         Command::AddGuide { surface, guide } => mutator.add_surface_guide(*surface, guide.clone()),
+        Command::CreateGuide {
+            surface,
+            orientation,
+            position,
+        } => mutator.create_surface_guide(*surface, *orientation, *position),
         Command::RemoveGuide { surface, guide_id } => {
             mutator.remove_surface_guide(*surface, *guide_id)
         }
@@ -573,6 +616,12 @@ pub fn execute(
             mutator.add_object(*surface, obj)
         }
         Command::SetShape { id, shape } => mutator.set_shape(*id, shape.clone()),
+        Command::SetPath {
+            id,
+            path,
+            bounds,
+            rotation,
+        } => mutator.set_path(*id, path.clone(), *bounds, *rotation),
         Command::ApplyBoolean {
             surface,
             target_id,

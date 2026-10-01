@@ -2,6 +2,10 @@
 
 Visão estilo C4 do Petunia Design Studio: contextos, contêineres, componentes e o caminho de mutação no nível do código.
 
+Contrato atual de persistência/publicação: [ADR-002](/pt/developers/adr/ADR-002-local-path-and-integrity), com [referência gerada de fontes/testes](/implementation/contracts.json). O [registro de execução](/pt/developers/implementation-progress) distingue correções implementadas de milestones pendentes.
+
+Renderização/apresentação compartilhadas: [ADR-006](/pt/developers/adr/ADR-006-shaped-text-and-canvas-preview) conecta contornos de glifos e workers com fontes imutáveis ao canvas. Saída de pixels não validada; edição/estilos de texto, tiles e aceitação completa seguem abertos.
+
 ## Nível 1 — Contexto do sistema
 
 ```mermaid
@@ -15,13 +19,13 @@ flowchart TB
   PETUNIA <--> FILES
 ```
 
-Humanos dirigem a shell Slint; agentes e scripts dirigem a mesma superfície de capacidades via MCP, CLI e Lua — sem API privilegiada paralela.
+Humanos dirigem a shell Freya/Skia; agentes e scripts dirigem a mesma superfície de capacidades via MCP, CLI e Lua — sem API privilegiada paralela.
 
 ## Nível 2 — Contêineres
 
 ```mermaid
 flowchart TB
-  APP[App desktop Slint<br/>petunia-design]
+  APP[App desktop Freya/Skia<br/>petunia-design]
   CLI[CLI headless<br/>petunia-design-cli]
   CORE[Domínio + serviços<br/>16 crates]
   STORE[(Pacote .ptnd<br/>ZIP atômico)]
@@ -36,7 +40,7 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  subgraph GUI ["Lado GUI (Slint/Freya)"]
+  subgraph GUI ["Lado GUI (Freya/Skia)"]
     VW[ViewportCamera<br/>0,1% – 25600%]
     PAN[Painéis<br/>Camadas · Propriedades<br/>Histórico · DataMerge]
     TM[ToolManager<br/>35 ToolKinds]

@@ -5,7 +5,7 @@
 
 use std::time::Instant;
 
-use petunia_design_document::{ChangeSet, ShapeKind};
+use petunia_design_document::ChangeSet;
 use petunia_design_foundation::{ObjectId, PetuniaError};
 use petunia_design_geometry::{GPath, GPoint, GRect, PathVerb};
 
@@ -487,17 +487,12 @@ impl PenTool {
         let changes = if let Some(target) = self.continuing_object {
             let continued = bridge.submit_all(
                 "Continue path",
-                vec![
-                    petunia_design_application::Command::SetShape {
-                        id: target,
-                        shape: Some(ShapeKind::Path(path)),
-                    },
-                    petunia_design_application::Command::SetBounds {
-                        id: target,
-                        bounds: Some(bounds),
-                        rotation: 0.0,
-                    },
-                ],
+                vec![petunia_design_application::Command::SetPath {
+                    id: target,
+                    path,
+                    bounds,
+                    rotation: 0.0,
+                }],
             )?;
             bridge.set_selection(vec![target]);
             continued
@@ -669,13 +664,14 @@ fn find_open_endpoint(
         if !obj.visible || obj.locked {
             continue;
         }
-        let ShapeKind::Path(path) = obj.shape.as_ref()? else {
+        if !obj.shape.as_ref()?.is_path() {
             continue;
-        };
+        }
+        let path = obj.to_path();
         if path.verbs.contains(&PathVerb::Close) {
             continue;
         }
-        let loaded = path_to_anchors(path)?;
+        let loaded = path_to_anchors(&path)?;
         let (Some(first), Some(last)) = (loaded.first(), loaded.last()) else {
             continue;
         };

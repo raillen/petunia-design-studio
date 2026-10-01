@@ -13,7 +13,8 @@ pub mod pdf;
 mod svg;
 
 pub use image_io::{
-    export_raster, import_raster, RasterExportOptions, RasterFormat, RawRasterImage,
+    export_png_rgba8_at_dpi, export_raster, import_raster, read_encoded_image, RasterExportOptions,
+    RasterFormat, RawRasterImage,
 };
 pub use package::{
     has_native_extension, open_package, save_package, with_native_extension, OpenedPackage,

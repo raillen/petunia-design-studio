@@ -1,0 +1,39 @@
+# ADR-004: Immutable vector render snapshots and bounded workers
+
+**Status:** Accepted contract; implementation awaiting validation  
+**Date:** 2026-10-01  
+**Scope:** Milestone Required (MVP)
+
+**Image extension:** [ADR-005](/developers/adr/ADR-005-immutable-image-assets) supplies the bounded decoded-image/cache and CPU composition adapters previously unavailable here. Image statements below describe the original ADR-004 wave; glyph runs, async GUI scene presentation and tile workers remain pending.
+
+**Text/presentation extension:** [ADR-006](/developers/adr/ADR-006-shaped-text-and-canvas-preview) adds prepared shaped outlines and shared CPU canvas presentation. The pending statements below record this ADR’s original wave; current remaining scope/evidence is in the execution ledger.
+
+## Context
+
+The previous CPU compositor painted object bounds, sampled a single gradient color and approximated shadows by rectangles. Flat traversal lost ancestor transforms and group isolation. PNG export allocated a buffer extending from the pasteboard origin to a surface and then cropped it; negative origins lost artwork and large positive origins multiplied memory use. The job manager recorded lifecycle states without executing work.
+
+## Decision
+
+`RenderScene`/`RenderSurface`/`RenderNode` are immutable, rebuildable snapshots with stable identities, local evaluated geometry, ancestor-composed world transforms, canonical child ordering and visual bounds. The existing `Scene` remains a legacy headless inventory summary, not an artwork representation. Source paths remain editable. Encoded image sources are shared through immutable Arc buffers, preserving the existing native byte-array wire format and avoiding copies during snapshots/history/duplication; this does not provide binary resource packaging or decoded-image caching. No snapshot or worker receives a mutable document or a GUI toolkit type.
+
+The CPU reference backend uses the already locked, GUI-independent `tiny-skia` 0.11.4 rasterizer, rather than another custom coverage algorithm. Inspection of its path painter, masks, shaders and stroker informed the adapter. Vector fills use even-odd coverage, matching the current geometry/hit-test policy. Stroke caps, joins, dash patterns and center/inside/outside alignment use actual paths; inside/outside alignment requires every contour to be closed. Entry paints retain their existing parent-coordinate descriptors, explicitly pulled into the node-local frame. Persistent local color-paint reference frames still require a separate migration; local modifier frames do not implicitly migrate paints.
+
+Nodes and groups compose on transparent intermediates, then receive overall opacity and spatial transparency exactly once. All sixteen document blend modes map to the backend. Vector masks rasterize their paths; alpha masks sample rendered alpha; luminance masks use linear sRGB luminance multiplied by alpha. Clip groups require exactly one designated mask. Current containers are isolated; a future pass-through capability must have an explicit document contract.
+
+Pixels remain premultiplied during coverage, blending, masking and convolution. API outputs are straight RGBA8. Basic color previews, gradient interpolation and blending use encoded sRGB; tonal adjustments honor the existing normalized linear-RGB contract by decoding and encoding sRGB around evaluation. This is not ICC color management or a CMYK proof.
+
+Gaussian blur is a separable normalized kernel truncated at three standard deviations, with transparent samples beyond source extent. Existing radius fields are interpreted as sigma in document points. Each axis scales independently to device pixels. Drop shadows tint and blur the current composed silhouette and retain the original above it. Ordered effect reach accumulates. Intermediates cover intersecting visual bounds plus a convolution halo, so viewport/dirty-region cropping does not discard the source contributing to soft edges. Prepared Fritsch–Carlson curves calculate tangents once and perform allocation-free binary segment sampling; there is no per-pixel tangent construction or transfer-table approximation.
+
+`RenderLimits` defaults to 16,777,216 output pixels, 256 MiB of simultaneously reserved raster intermediates/output/scratch, sigma at most 128 device pixels and composition depth at most 128. Allocations use checked sizes and fallible reservations. Snapshot admission additionally limits object count, hierarchy depth and individual source path/parametric complexity. This is not a complete hostile-document memory/CPU quota system: source/compiled geometry, appearance data and total execution work need further budgets, and decoded/font caches remain pending.
+
+`RenderRequest` maps an explicit world region directly to output dimensions. Surface export uses points-to-pixels at DPI/72, independent of surface origin, and defaults to 72 DPI for compatibility. PNG records sRGB and pHYs physical-density metadata (rounded to integer pixels per metre), uses this backend and fails with a capability reason before writing unsupported artwork. Text glyph runs, decoded image resources, geometry modifiers on composed groups, inner shadow, sharpen and noise remain unavailable in this backend. The compatibility compositor now returns `Result`; callers must handle errors. No bounding rectangle substitutes for a missing shape.
+
+`RenderSurface::damage_to` retains old and new visual bounds, including removed effects, and propagates mask/ancestor dependencies. Root reorder damage is conservative. The older ChangeSet-only helper remains approximate and is explicitly unsuitable for hierarchical/effected rendering. Dirty rendering stages all pixels before copying them into the destination and composites over the original backdrop when no replacement background is requested.
+
+`JobExecutor` owns a fixed number of threads, a bounded pending queue, cooperative tokens, progress and one result slot per owner. Panics fail their job without terminating a worker. Results carry their source revision; owners reject stale results before presentation/publication. Dropping a handle cancels its work. Dropping the executor signals cancellation without blocking the UI; explicit shutdown-and-join is for teardown with cooperative tasks. Cancellation is checked between render nodes and pixel/convolution rows; a bounded library path call cannot be interrupted mid-call. `schedule_surface_render` connects application scheduling to immutable scenes. UI presentation, decoded-image/font caches and persistent tile workers still need integration.
+
+## Consequences and evidence
+
+The new snapshot/backend/worker paths are implementation in progress, **not a passed MVP gate**. The user explicitly requested executing tests and validations only after all MVP features are implemented. Regression sources are included without execution; build, Clippy, boundary checks, corpus comparisons, docs gates and Linux/product acceptance remain pending. Earlier 661 passing tests describe the foundation commit only. Draft implementation commits skip automatic CI during this phase; final gates must run before the PR becomes ready for review.
+
+The architecture follows [W3C Compositing and Blending](https://www.w3.org/TR/compositing-1/) and the Porter–Duff compositing model ([1984 paper DOI](https://doi.org/10.1145/800031.808606)); these are algorithm references, not new independent acceptance evidence. The existing curve algorithm is Fritsch–Carlson monotone cubic interpolation ([1980 paper DOI](https://doi.org/10.1137/0717021)). This continuation inspected the repository and locally installed rasterizer source; it does not claim new complete readings of those papers or benchmark/visual equivalence to competing applications.

@@ -3300,6 +3300,8 @@ dependencies = [
  "petunia_design_foundation",
  "petunia_design_geometry",
  "petunia_design_io",
+ "petunia_design_jobs",
+ "petunia_design_raster",
  "petunia_design_render",
  "rstar",
  "serde",
@@ -3324,6 +3326,7 @@ version = "0.1.0"
 dependencies = [
  "petunia_design_foundation",
  "petunia_design_geometry",
+ "petunia_design_raster",
  "proptest",
  "serde",
  "serde_json",
@@ -3387,9 +3390,11 @@ dependencies = [
  "petunia_design_foundation",
  "petunia_design_geometry",
  "petunia_design_raster",
+ "png",
  "proptest",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.20",
  "zip",
 ]
@@ -3433,23 +3438,31 @@ dependencies = [
 name = "petunia_design_raster"
 version = "0.1.0"
 dependencies = [
+ "image",
  "petunia_design_foundation",
  "petunia_design_geometry",
  "serde",
  "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
 name = "petunia_design_render"
 version = "0.1.0"
 dependencies = [
+ "image",
  "petunia_design_color",
  "petunia_design_document",
  "petunia_design_foundation",
  "petunia_design_geometry",
+ "petunia_design_jobs",
+ "petunia_design_raster",
+ "petunia_design_text",
  "proptest",
  "serde",
  "thiserror 2.0.20",
+ "tiny-skia",
 ]
 
 [[package]]
@@ -3502,11 +3515,14 @@ name = "petunia_design_text"
 version = "0.1.0"
 dependencies = [
  "cosmic-text",
+ "fontdb",
  "petunia_design_color",
  "petunia_design_foundation",
  "petunia_design_geometry",
  "serde",
  "serde_json",
+ "thiserror 2.0.20",
+ "ttf-parser",
 ]
 
 [[package]]

@@ -80,7 +80,8 @@ impl Default for GeometryTolerance {
 
 /// Applies `op` to `subject` and `clip`, returning result contours.
 /// Empty inputs follow set-theory identity (union keeps the other side,
-/// intersection/difference with an empty side is empty, xor keeps the other).
+/// intersection with either empty side is empty; A minus empty keeps A,
+/// empty minus A is empty; xor keeps the other).
 pub fn boolean_op(subject: &BooleanInput, clip: &BooleanInput, op: BooleanOp) -> Vec<Vec<GPoint>> {
     boolean_op_with_fill(subject, clip, op, FillRule::NonZero)
 }
@@ -102,26 +103,36 @@ pub fn boolean_op_with_fill(
     op: BooleanOp,
     fill_rule: FillRule,
 ) -> Vec<Vec<GPoint>> {
+    let subject_empty = subject.contours.iter().all(|contour| contour.len() < 3);
+    let clip_empty = clip.contours.iter().all(|contour| contour.len() < 3);
+    let valid_contours = |input: &BooleanInput| {
+        input
+            .contours
+            .iter()
+            .filter(|contour| contour.len() >= 3)
+            .cloned()
+            .collect()
+    };
     match op {
-        BooleanOp::Union => {
-            if subject.contours.is_empty() {
-                return clip.contours.clone();
+        BooleanOp::Union | BooleanOp::Xor => {
+            if subject_empty {
+                return valid_contours(clip);
             }
-            if clip.contours.is_empty() {
-                return subject.contours.clone();
-            }
-        }
-        BooleanOp::Xor => {
-            if subject.contours.is_empty() {
-                return clip.contours.clone();
-            }
-            if clip.contours.is_empty() {
-                return subject.contours.clone();
+            if clip_empty {
+                return valid_contours(subject);
             }
         }
-        BooleanOp::Intersection | BooleanOp::Difference => {
-            if subject.contours.is_empty() || clip.contours.is_empty() {
+        BooleanOp::Intersection => {
+            if subject_empty || clip_empty {
                 return Vec::new();
+            }
+        }
+        BooleanOp::Difference => {
+            if subject_empty {
+                return Vec::new();
+            }
+            if clip_empty {
+                return valid_contours(subject);
             }
         }
     }

@@ -64,6 +64,17 @@ fn run() -> Result<(), String> {
             id: object,
             name: "Rect".to_string(),
         }),
+        CommandRequest::new(Command::SetBounds {
+            id: object,
+            bounds: Some([0.0, 0.0, 64.0, 64.0]),
+            rotation: 0.0,
+        }),
+        CommandRequest::new(Command::SetShape {
+            id: object,
+            shape: Some(petunia_design_document::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            }),
+        }),
         CommandRequest::new(Command::SetFill {
             id: object,
             fill: Some("ptnd.red/500".to_string()),
@@ -186,7 +197,7 @@ fn run() -> Result<(), String> {
         color: [1.0, 0.2, 0.1, 1.0],
         blend_mode: BlendMode::Normal,
     };
-    dab.stamp_onto(&mut tile_map);
+    dab.stamp_onto(&mut tile_map).map_err(|e| e.to_string())?;
     tile_map.commit();
     let raster_bounds = tile_map.bounds().ok_or("raster bounds")?;
     assert_eq!(tile_map.resident_tile_count(), 1);
@@ -361,7 +372,8 @@ fn run() -> Result<(), String> {
         128,
         128,
         [255, 255, 255, 255],
-    );
+    )
+    .map_err(|error| format!("pixel render: {error}"))?;
     assert_eq!(pixel_buf.width, 128);
     assert_eq!(pixel_buf.height, 128);
 

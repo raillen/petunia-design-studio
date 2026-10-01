@@ -2,12 +2,15 @@
 
 Construa sobre o Petunia: arquitetura, compilações locais, estratégia de testes e o registro de ADRs. Tudo aqui é automação primeiro — se um fluxo não roda headless, é bug.
 
+Status de implementação e gates pendentes de release: [registro de execução](/pt/developers/implementation-progress), regido pelo [ADR-002](/pt/developers/adr/ADR-002-local-path-and-integrity).
+
 ## Comece aqui
 
 | Quero… | Vá para |
 | ------ | ------- |
 | Entender crates, fronteiras e o pipeline de mutação | [Arquitetura](/pt/developers/architecture) |
 | Compilar, rodar e testar localmente | [Compilar e testar](/pt/developers/build-test) |
+| Revisar a baseline de 30/09/2026 e o plano de versões | [Dossiê técnico](/pt/developers/audit-2026-09-30) · [Plano MVP / V1 / futuras](/pt/developers/implementation-roadmap-2026-09-30) |
 | Entender por que a EffectChain existe | [ADR-001](/pt/developers/adr/ADR-001-effect-chain) |
 | Ver todas as decisões | [Índice de ADRs](/pt/developers/adr/) |
 | Abrir um PR ou traduzir docs | [Diretrizes](/pt/contributing/guidelines) · [Traduções](/pt/contributing/translations) |
@@ -38,7 +41,7 @@ flowchart TB
   end
   subgraph Shell ["Shell (só GUI)"]
     SH[shell<br/>ponte · viewport · painéis]
-    UI[petunia-design<br/>app Slint]
+    UI[petunia-design<br/>app Freya/Skia]
   end
   Domain --> Services
   Services --> Automation

@@ -1,0 +1,4 @@
+check-i18n: 23 canonical page(s), locale(s): pt
+  [pt] OK — 23/23 mirrored, zero drift
+check-i18n: PASSED — zero drift.
+

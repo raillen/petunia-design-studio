@@ -15,6 +15,7 @@ pub mod modifiers;
 mod mutator;
 pub mod shape_factory;
 pub mod surface_metadata;
+mod validation;
 pub mod variable_data;
 
 pub use adjustments::{
@@ -34,7 +35,7 @@ pub use document_object::{
 };
 pub use hierarchy::{ContainerRole, HierarchyValidation, MaskMode};
 pub use modifiers::{
-    evaluate_modifiers, evaluate_opacity_at, ModifierItem, ModifierKind, OpacityStop,
+    evaluate_modifiers, evaluate_opacity_at, ModifierItem, ModifierKind, ModifierSpace, OpacityStop,
 };
 pub use mutator::DocumentMutator;
 pub use surface_metadata::{Bleed, Guide, GuideOrientation, Margins};

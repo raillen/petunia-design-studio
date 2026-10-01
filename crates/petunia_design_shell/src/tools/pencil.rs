@@ -335,17 +335,12 @@ impl PencilTool {
             .unwrap_or([merged[0].x, merged[0].y, 10.0, 10.0]);
         let changes = bridge.submit_all(
             "Sculpt path",
-            vec![
-                petunia_design_application::Command::SetShape {
-                    id: target,
-                    shape: Some(ShapeKind::Path(path)),
-                },
-                petunia_design_application::Command::SetBounds {
-                    id: target,
-                    bounds: Some(bounds),
-                    rotation: 0.0,
-                },
-            ],
+            vec![petunia_design_application::Command::SetPath {
+                id: target,
+                path,
+                bounds,
+                rotation: 0.0,
+            }],
         )?;
         bridge.set_selection(vec![target]);
         Ok(changes)
@@ -501,9 +496,10 @@ fn find_sculpt_target(
         if !obj.visible || obj.locked {
             continue;
         }
-        let Some(ShapeKind::Path(path)) = obj.shape.as_ref() else {
+        if !obj.shape.as_ref().is_some_and(ShapeKind::is_path) {
             continue;
-        };
+        }
+        let path = obj.to_path();
         if path.verbs.contains(&PathVerb::Close) {
             continue;
         }

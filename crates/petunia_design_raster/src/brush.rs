@@ -31,6 +31,8 @@ pub enum BlendMode {
     Normal,
     Multiply,
     Screen,
+    /// Erases destination coverage independently of the source color.
+    DestinationOut,
 }
 
 impl BlendMode {
@@ -39,6 +41,14 @@ impl BlendMode {
     pub fn blend(self, src: [f32; 4], dst: [f32; 4]) -> [f32; 4] {
         let sa = src[3];
         let da = dst[3];
+        if self == Self::DestinationOut {
+            let alpha = da * (1.0 - sa.clamp(0.0, 1.0));
+            return if alpha <= 0.0 {
+                [0.0; 4]
+            } else {
+                [dst[0], dst[1], dst[2], alpha]
+            };
+        }
         let out_a = sa + da * (1.0 - sa);
         if out_a <= 0.0 {
             return [0.0, 0.0, 0.0, 0.0];
@@ -49,8 +59,9 @@ impl BlendMode {
                 Self::Normal => sc,
                 Self::Multiply => sc * dc,
                 Self::Screen => 1.0 - (1.0 - sc) * (1.0 - dc),
+                Self::DestinationOut => unreachable!("handled before color blending"),
             };
-            (blended * sa + dc * da * (1.0 - sa)) / out_a
+            ((1.0 - da) * sa * sc + (1.0 - sa) * da * dc + sa * da * blended) / out_a
         };
 
         [
@@ -108,16 +119,52 @@ impl BrushDab {
             hardness: DEFAULT_DAB_HARDNESS,
             opacity: 1.0,
             color: ERASER_COLOR,
-            blend_mode: BlendMode::Normal,
+            blend_mode: BlendMode::DestinationOut,
         }
     }
 }
 
 impl BrushDab {
     /// Stamping kernel: rasterizes dab coverage directly onto the tile map.
-    pub fn stamp_onto(&self, tile_map: &mut TileMap) {
+    pub fn stamp_onto(
+        &self,
+        tile_map: &mut TileMap,
+    ) -> Result<(), petunia_design_foundation::PetuniaError> {
+        use petunia_design_foundation::PetuniaError;
+        if ![self.center_x, self.center_y, self.radius]
+            .iter()
+            .all(|v| v.is_finite())
+            || !self.opacity.is_finite()
+            || !self.hardness.is_finite()
+            || !self.color.iter().all(|v| v.is_finite())
+        {
+            return Err(PetuniaError::invalid_input(
+                "brush parameters must be finite",
+            ));
+        }
         if self.radius <= 0.0 || self.opacity <= 0.0 {
-            return;
+            return Ok(());
+        }
+
+        // Bound work before integer conversion or allocation. Large strokes
+        // must be tiled by the job scheduler, rather than blocking this kernel.
+        const MAX_DAB_PIXELS: f64 = 4_194_304.0;
+        let span = (2.0 * self.radius + 3.0).ceil();
+        if span * span > MAX_DAB_PIXELS {
+            return Err(PetuniaError::invalid_input(
+                "brush dab exceeds synchronous work budget",
+            ));
+        }
+        let min_coord = f64::from(i32::MIN) * crate::TILE_SIZE as f64;
+        let max_coord = (f64::from(i32::MAX) + 1.0) * crate::TILE_SIZE as f64 - 1.0;
+        if self.center_x - self.radius < min_coord
+            || self.center_y - self.radius < min_coord
+            || self.center_x + self.radius > max_coord
+            || self.center_y + self.radius > max_coord
+        {
+            return Err(PetuniaError::invalid_input(
+                "brush coordinates exceed tile address range",
+            ));
         }
 
         let min_x = (self.center_x - self.radius).floor() as i64;
@@ -151,7 +198,12 @@ impl BrushDab {
                     fade as f32
                 };
 
-                let dab_alpha = self.color[3] * self.opacity * alpha_factor;
+                let coverage = self.opacity * alpha_factor;
+                let dab_alpha = if self.blend_mode == BlendMode::DestinationOut {
+                    coverage
+                } else {
+                    self.color[3] * coverage
+                };
                 if dab_alpha <= 0.0 {
                     continue;
                 }
@@ -163,6 +215,7 @@ impl BrushDab {
                 tile_map.set_pixel(px, py, out_color);
             }
         }
+        Ok(())
     }
 }
 
@@ -183,7 +236,7 @@ mod tests {
             color: [1.0, 0.0, 0.0, 1.0], // solid red
             blend_mode: BlendMode::Normal,
         };
-        dab.stamp_onto(&mut map);
+        dab.stamp_onto(&mut map).unwrap();
 
         let center = map.get_pixel(64, 64);
         assert!((center[0] - 1.0).abs() < 0.01);

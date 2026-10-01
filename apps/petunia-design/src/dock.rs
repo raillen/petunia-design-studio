@@ -4596,28 +4596,25 @@ pub fn compute_histogram_bins(
         let mut sampled = Vec::new();
         if let Some(petunia_design_document::ShapeKind::Image { data, .. }) = &obj.shape {
             if let Some(bytes) = data.as_deref() {
-                if let Ok(raw_img) = petunia_design_io::import_raster(bytes, 32 * 1024 * 1024) {
-                    if raw_img.format == petunia_design_io::PixelFormat::Rgba8
-                        && !raw_img.data.is_empty()
-                    {
-                        let total_pixels = (raw_img.width * raw_img.height) as usize;
-                        let stride = (total_pixels / 500).max(1);
-                        for i in (0..total_pixels).step_by(stride) {
-                            let idx = i * 4;
-                            if idx + 3 < raw_img.data.len() {
-                                let pr = raw_img.data[idx] as f64;
-                                let pg = raw_img.data[idx + 1] as f64;
-                                let pb = raw_img.data[idx + 2] as f64;
-                                let pa = raw_img.data[idx + 3] as f64 / 255.0;
-                                if pa > 0.05 {
-                                    sampled.push((pr, pg, pb));
-                                }
-                            }
-                        }
-                        if !sampled.is_empty() {
-                            is_raster_sample = true;
+                if let Ok(image) =
+                    petunia_design_raster::ImageCache::shared().prepare(bytes, &|| false)
+                {
+                    // This panel is a sampled RGBA8 display histogram, including
+                    // 16-bit sources. Originals retain their precision unchanged.
+                    let level = &image.levels()[0];
+                    let total = level.premultiplied_rgba8().len() / 4;
+                    let stride = total.div_ceil(500).max(1);
+                    for pixel in level.premultiplied_rgba8().chunks_exact(4).step_by(stride) {
+                        if pixel[3] > 12 {
+                            let unassociate = 255.0 / f64::from(pixel[3]);
+                            sampled.push((
+                                f64::from(pixel[0]) * unassociate,
+                                f64::from(pixel[1]) * unassociate,
+                                f64::from(pixel[2]) * unassociate,
+                            ));
                         }
                     }
+                    is_raster_sample = !sampled.is_empty();
                 }
             }
         }
@@ -5186,7 +5183,7 @@ impl Component for AssetsTab {
             .iter()
             .filter(|o| matches!(o.shape.as_deref(), Some(ShapeKind::Image { .. })))
             .collect();
-        let mut shell_for_place = ui.shell;
+        let mut place_image_open = ui.place_image_open;
 
         ScrollView::new().child(
             rect()
@@ -5197,10 +5194,7 @@ impl Component for AssetsTab {
                 .child(
                     Button::new()
                         .on_press(move |_| {
-                            run_action_token(
-                                &mut shell_for_place.write(),
-                                "ptnd.action.file.place",
-                            );
+                            place_image_open.set(true);
                         })
                         .child(
                             rect()
@@ -5352,14 +5346,14 @@ fn symbol_preset_item(
                                         id: obj_id,
                                         name: name.to_string(),
                                     },
-                                    Command::SetShape {
-                                        id: obj_id,
-                                        shape: Some(shape_clone.clone()),
-                                    },
                                     Command::SetBounds {
                                         id: obj_id,
                                         bounds: Some(bounds),
                                         rotation: 0.0,
+                                    },
+                                    Command::SetShape {
+                                        id: obj_id,
+                                        shape: Some(shape_clone.clone()),
                                     },
                                     Command::SetFill {
                                         id: obj_id,
@@ -5706,16 +5700,16 @@ mod tests {
                     id: obj_id,
                     name: "Rect1".to_string(),
                 },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([10.0, 10.0, 100.0, 100.0]),
+                    rotation: 0.0,
+                },
                 Command::SetShape {
                     id: obj_id,
                     shape: Some(ShapeKind::Rectangle {
                         corner_radii: [0.0; 4],
                     }),
-                },
-                Command::SetBounds {
-                    id: obj_id,
-                    bounds: Some([10.0, 10.0, 100.0, 100.0]),
-                    rotation: 0.0,
                 },
                 Command::SetFill {
                     id: obj_id,
@@ -5770,16 +5764,16 @@ mod tests {
                     id: obj_id,
                     name: "TonalRect".to_string(),
                 },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([0.0, 0.0, 100.0, 100.0]),
+                    rotation: 0.0,
+                },
                 Command::SetShape {
                     id: obj_id,
                     shape: Some(ShapeKind::Rectangle {
                         corner_radii: [0.0; 4],
                     }),
-                },
-                Command::SetBounds {
-                    id: obj_id,
-                    bounds: Some([0.0, 0.0, 100.0, 100.0]),
-                    rotation: 0.0,
                 },
             ],
         );
@@ -5937,13 +5931,18 @@ mod tests {
         assert!(midtones > shadows && midtones > highlights);
 
         // 2. Add Red object
-        let _ = shell.bridge.submit_all(
+        let result = shell.bridge.submit_all(
             "Add Red shape",
             vec![
                 Command::CreateObject {
                     surface: surf_id,
                     id: obj_id,
                     name: "RedRect".to_string(),
+                },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([0.0, 0.0, 100.0, 100.0]),
+                    rotation: 0.0,
                 },
                 Command::SetShape {
                     id: obj_id,
@@ -5957,6 +5956,7 @@ mod tests {
                 },
             ],
         );
+        result.expect("red histogram fixture must be a valid document");
 
         let session = shell.bridge.session().unwrap();
         let surf = session.surface(surf_id).unwrap();
@@ -6041,11 +6041,18 @@ mod tests {
                     id: img_id,
                     name: "SampleImage".to_string(),
                 },
+                Command::SetBounds {
+                    id: img_id,
+                    bounds: Some([0.0, 0.0, 2.0, 2.0]),
+                    rotation: 0.0,
+                },
                 Command::SetShape {
                     id: img_id,
                     shape: Some(ShapeKind::Image {
                         path: "sample.png".to_string(),
-                        data: Some(png_bytes),
+                        data: Some(std::sync::Arc::new(
+                            petunia_design_raster::EncodedImage::new(png_bytes).unwrap(),
+                        )),
                     }),
                 },
             ],
@@ -6135,16 +6142,16 @@ mod tests {
                     id: obj_id,
                     name: "FXRect".to_string(),
                 },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([0.0, 0.0, 100.0, 100.0]),
+                    rotation: 0.0,
+                },
                 Command::SetShape {
                     id: obj_id,
                     shape: Some(ShapeKind::Rectangle {
                         corner_radii: [0.0; 4],
                     }),
-                },
-                Command::SetBounds {
-                    id: obj_id,
-                    bounds: Some([0.0, 0.0, 100.0, 100.0]),
-                    rotation: 0.0,
                 },
             ],
         );
@@ -6305,16 +6312,16 @@ mod tests {
                     id: obj_id,
                     name: "RectMod".to_string(),
                 },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([50.0, 50.0, 100.0, 80.0]),
+                    rotation: 0.0,
+                },
                 Command::SetShape {
                     id: obj_id,
                     shape: Some(ShapeKind::Rectangle {
                         corner_radii: [0.0; 4],
                     }),
-                },
-                Command::SetBounds {
-                    id: obj_id,
-                    bounds: Some([50.0, 50.0, 100.0, 80.0]),
-                    rotation: 0.0,
                 },
             ],
         );
@@ -6353,6 +6360,7 @@ mod tests {
             vec![Command::SetModifiers {
                 id: obj_id,
                 modifiers: vec![petunia_design_document::ModifierItem {
+                    space: petunia_design_document::ModifierSpace::Parent,
                     id: 1,
                     kind: petunia_design_document::ModifierKind::ContourOffset {
                         distance: 8.0,
@@ -6383,6 +6391,7 @@ mod tests {
                 id: obj_id,
                 modifiers: vec![
                     petunia_design_document::ModifierItem {
+                        space: petunia_design_document::ModifierSpace::Parent,
                         id: 2,
                         kind: petunia_design_document::ModifierKind::CropRect {
                             rect: [50.0, 50.0, 80.0, 60.0],
@@ -6390,6 +6399,7 @@ mod tests {
                         enabled: false,
                     },
                     petunia_design_document::ModifierItem {
+                        space: petunia_design_document::ModifierSpace::Parent,
                         id: 1,
                         kind: petunia_design_document::ModifierKind::ContourOffset {
                             distance: 8.0,
@@ -6428,7 +6438,7 @@ mod tests {
                 petunia_design_document::ModifierKind::ContourOffset { .. }
             )));
             // Shape is now a Path (converted to curves)
-            assert!(matches!(obj.shape, Some(ShapeKind::Path { .. })));
+            assert!(matches!(obj.shape, Some(ShapeKind::LocalPath { .. })));
         }
     }
 
@@ -6521,16 +6531,16 @@ mod tests {
                     id: obj_id,
                     name: "Retângulo Básico".to_string(),
                 },
+                Command::SetBounds {
+                    id: obj_id,
+                    bounds: Some([50.0, 50.0, 250.0, 200.0]),
+                    rotation: 0.0,
+                },
                 Command::SetShape {
                     id: obj_id,
                     shape: Some(ShapeKind::Rectangle {
                         corner_radii: [0.0; 4],
                     }),
-                },
-                Command::SetBounds {
-                    id: obj_id,
-                    bounds: Some([50.0, 50.0, 250.0, 200.0]),
-                    rotation: 0.0,
                 },
                 Command::SetFill {
                     id: obj_id,

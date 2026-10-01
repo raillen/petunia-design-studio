@@ -34,7 +34,7 @@ impl RTreeObject for IndexedObj {
 /// Revision-keyed R-tree over one surface.
 #[derive(Clone, Debug, Default)]
 pub struct SpatialIndex {
-    revision: u64,
+    revision: Option<u64>,
     entries: usize,
     tree: RTree<IndexedObj>,
 }
@@ -62,7 +62,7 @@ impl SpatialIndex {
     pub fn clear(&mut self) {
         self.tree = RTree::new();
         self.entries = 0;
-        self.revision = u64::MAX;
+        self.revision = None;
     }
 }
 
@@ -72,7 +72,7 @@ impl crate::session::DocumentSession {
     fn with_spatial<T>(&self, query: impl FnOnce(&RTree<IndexedObj>) -> T) -> T {
         {
             let index = self.spatial.borrow();
-            if index.revision == self.current_revision() {
+            if index.revision == Some(self.current_revision()) {
                 return query(&index.tree);
             }
         }
@@ -85,7 +85,7 @@ impl crate::session::DocumentSession {
         let mut cell = self.spatial.borrow_mut();
         cell.tree = RTree::new();
         cell.entries = 0;
-        cell.revision = self.current_revision();
+        cell.revision = Some(self.current_revision());
         let surfaces: Vec<&petunia_design_document::Surface> =
             if let Some(surface_id) = self.active_surface() {
                 if let Ok(s) = self.surface(surface_id) {

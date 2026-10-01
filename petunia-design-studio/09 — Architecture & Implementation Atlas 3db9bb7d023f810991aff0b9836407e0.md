@@ -88,3 +88,21 @@ The earlier notebook described intent well but lacked implementation-level contr
 [09.29 — MCP API Usability, Agent Contracts, Safety, Discovery & Deterministic Automation](09%2029%20%E2%80%94%20MCP%20API%20Usability,%20Agent%20Contracts,%20Safety%203db9bb7d023f8193a933c547bdf2aafe.md)
 
 [09.30 — Plugin Scripting Runtime ADR: Lua vs Python vs JavaScript](09%2030%20%E2%80%94%20Plugin%20Scripting%20Runtime%20ADR%20Lua%20vs%20Python%203db9bb7d023f8129853cc7461081cf62.md)
+## Current implementation contract — 2026-10-01
+
+Milestone Required: ADR-002 (`docs/developers/adr/ADR-002-local-path-and-integrity.md`, synchronized pt-BR mirror) governs native schema 2, local path reference sizing, explicit parent input migration, integrity validation, atomic publication, bounded history and package writes. Generated references live in `docs/public/implementation/contracts.json`; execution evidence/status in `docs/developers/implementation-progress.md`. These implemented contracts supersede older coordinate/transaction descriptions on conflict. Runtime is Freya/Skia as pinned in Cargo.lock. Full M0/MVP/V1 and historical GUI authority reconciliation remain open.
+
+Publication integrity includes finite/ranged effect and adjustment chains, unique local entry IDs, checked ID exhaustion, read-only external document access and reversible `SetSurfaceExportEnabled`. Surface placement/layout setters reject invalid inputs before mutation. Raw serde input still requires explicit validation at trust boundaries. The snapshot benchmark accepts explicit workloads and emits structured percentiles; it does not measure full painted frames.
+
+## Modifier-frame contract — schema 3
+
+Milestone Required: ADR-003 (`docs/developers/adr/ADR-003-local-modifier-frames.md`, synchronized pt-BR mirror) supersedes ADR-002 modifier frames/schema version. Persist local reference sizes; migrate schemas 1/2 explicitly; preserve source and parameters on placement edits. Geometry and opacity evaluate in the reference frame. Bake is atomic and preserves world placement/masks; empty crop stays empty. World-space tool conversion and unique guide creation use domain contracts. Shared scene/spatial render, pixel resources and full MVP/V1 remain open.
+
+## MVP render/worker contract continuation — 2026-10-01
+
+Scope: Milestone Required. ADR-004 (`docs/developers/adr/ADR-004-render-snapshots-and-workers.md`, synchronized pt-BR mirror) introduces immutable RenderScene/RenderSurface snapshots, GUI-free antialiased CPU coverage and isolation/mask/effect composition, direct PNG region/DPI output, prepared tonal curves, old/new scene damage and bounded cancellable workers with revision-tagged results. It does not change native schema 3. GUI/glyph/image/tile integration and M0/M2/M3/M4 acceptance remain open. New implementation is UNVALIDATED: the user deferred all tests/gates until every MVP feature has been implemented; historical foundation checks must not qualify the new PR head.
+
+
+## MVP text/canvas continuation — 2026-10-01
+
+Scope: Milestone Required. ADR-006 (`docs/developers/adr/ADR-006-shaped-text-and-canvas-preview.md`, synchronized pt-BR mirror) adds advanced uniform-style shaped TTF/CFF outlines, bounded prepared-text caching/nonzero glyph coverage and editable source preservation. Canvas artwork now comes from shared CPU composition in bounded workers, with immutable source identity and complete latest-request publication checks across tabs/cameras/channels; GUI retains one upload and interactive overlays. Indexed job metadata keeps 256 terminal records and canceled queued work releases admission immediately. Flat/default-font artwork painting and per-image uploads were removed. This supersedes prior pending canvas/glyph-preparation descriptions, without completing M1/M2 or changing schema 3. Text-on-path/color/variable adapters, editing/IME/styles/hit-testing, import admission workers, total budgets, persistent bitmap/resources/COW/recovery and Linux/product acceptance remain open; ICC/CMYK/PDF remain V1 Required. All new source is UNVALIDATED under the user's deferred-gate policy; 34 regression cases are prepared, not executed.

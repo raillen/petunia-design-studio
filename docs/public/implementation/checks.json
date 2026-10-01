@@ -1,0 +1,286 @@
+{
+  "scope": "Draft MVP shared CPU canvas/shaped-text continuation; current implementation unvalidated",
+  "baseline": "73447647a34f5b4be209415c36e6965c5f71b9b9",
+  "rust": "1.98.1",
+  "date": "2026-10-01",
+  "new_focused_tests": 163,
+  "pending_checks": [
+    "cargo xtask verify",
+    "cargo xtask conformance",
+    "cargo xtask migrations",
+    "node scripts/check-i18n.js",
+    "node scripts/generate-implementation-reference.js --check",
+    "pnpm --dir docs run build",
+    "MVP visual/performance corpus and Linux user-task acceptance"
+  ],
+  "open_release_gates": [
+    "M0 completion",
+    "shared scene and faithful rendering",
+    "persistent bitmap layers",
+    "MVP user tasks/Linux hardware/accessibility",
+    "ICC/CMYK",
+    "professional PDF/X-4/print",
+    "V1 release",
+    "future admission/research"
+  ],
+  "new_compile_fail_doctests": 2,
+  "environment": {
+    "rust": "1.98.1",
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_PROFILE_DEV_DEBUG": "1",
+    "CARGO_PROFILE_TEST_DEBUG": "1",
+    "CARGO_BUILD_JOBS": "4",
+    "headless": true
+  },
+  "independent_pdf_parser": "Poppler pdfinfo; pdf_pages tests are included in workspace verification",
+  "cloud_config": {
+    "status": "saved",
+    "changed_fields": [
+      "install_script",
+      "start_skill"
+    ],
+    "network_and_credentials_preserved": true
+  },
+  "previous_wave_checks": [
+    {
+      "command": "cargo xtask verify",
+      "exit_code": 0,
+      "passed": 646,
+      "failed": 0,
+      "ignored": 0,
+      "log": "verify.log.txt",
+      "log_sha256": "7f0521bae83b1d0c5aa90d25a9ce41ebc0b11d5be15c0b374b365e6268a0bf29"
+    },
+    {
+      "command": "cargo xtask conformance",
+      "exit_code": 0,
+      "log": "conformance.log.txt",
+      "log_sha256": "7835d6c3294e1ae398b0e9a7933172fb33cb0ba18b4cd223d9a546a14eccf237",
+      "scope": "Headless CLI subsystem smoke; does not establish render/tool fidelity"
+    },
+    {
+      "command": "cargo xtask migrations",
+      "exit_code": 0,
+      "passed": 10,
+      "failed": 0,
+      "ignored": 0,
+      "log": "migrations.log.txt",
+      "log_sha256": "f9805e0d40e4137dbc03273c1bc391d6172d37bac4ac9153660eef0364fdb98c"
+    },
+    {
+      "command": "node scripts/check-i18n.js",
+      "exit_code": 0,
+      "pages_per_language": 22,
+      "log": "i18n.log.txt",
+      "log_sha256": "2d7c5b610ed5985340cff67f357d878862bdd9b663e450c7dc9b6b57f132ed72"
+    },
+    {
+      "command": "node scripts/generate-implementation-reference.js --check",
+      "exit_code": 0
+    },
+    {
+      "command": "bash /workspace/.petunia-tools/install.sh",
+      "exit_code": 0,
+      "log": "/workspace/.petunia-cache/implementation-installer-final.log",
+      "log_sha256": "322ec1f63b54505a1785690201db6afbc350b0c328d85e9fa0615f6bfd6cad29",
+      "scope": "Toolchain/rootless dependency installation; later source validation is recorded by verify"
+    },
+    {
+      "command": "cargo run --locked --release -p petunia_design_testkit --bin canvas-benchmark -- --objects 500,2000 --iterations 5 --warmup 2 --json",
+      "exit_code": 0,
+      "log": "snapshot-smoke.json",
+      "log_sha256": "41a39b7b0054d7d0a968b9ed707c999ac00bd5d40d77d7759fc06e3fa36bcd0a",
+      "scope": "Argument/output smoke only; 5 samples do not establish performance percentiles or FPS"
+    },
+    {
+      "command": "pnpm --dir docs run build",
+      "exit_code": 0,
+      "log": "docs-build.log.txt",
+      "log_sha256": "168e775ef1f70af038d812b88f055116c6971d1731a7139a48cce9ac97676a8c",
+      "strict_dead_links": true,
+      "warnings": [
+        "Vite bundle chunk exceeds 500 kB (non-failing)"
+      ]
+    },
+    {
+      "command": "HTTP GET local VitePress preview (port 4174): EN/PT execution ledger and checks.json",
+      "exit_code": 0,
+      "http_status": 200,
+      "final_evidence_present": true
+    }
+  ],
+  "native_schema": 3,
+  "wave": "MVP continuation: shaped outlines, latest-request worker canvas and bounded job history",
+  "new_tests_this_wave": 37,
+  "additional_integration_regressions": 1,
+  "foundation_checks": {
+    "applies_to_commit": "9fb1dc22c25cc4261168ec0df3f5a5b00b644264",
+    "checks": [
+      {
+        "command": "cargo xtask verify",
+        "exit_code": 0,
+        "log": "mvp-modifier-frames/verify-final-evidence.log.txt",
+        "log_sha256": "aab28937b194841a1743a58266b59476273cbb3075e2e1d422adea275cdacde0",
+        "passed": 661,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "command": "cargo xtask conformance",
+        "exit_code": 0,
+        "log": "mvp-modifier-frames/conformance-final.log.txt",
+        "log_sha256": "c6010f1e21273f637db1b1e041e2f199649c33a240e3123fd0b925c5a68b2ce0",
+        "scope": "Headless CLI smoke; not faithful-render/product acceptance"
+      },
+      {
+        "command": "cargo xtask migrations",
+        "exit_code": 0,
+        "log": "mvp-modifier-frames/migrations-final.log.txt",
+        "log_sha256": "4a0fe71e25558b3e002b3318dca01f9b599c6bd4d079d2a7f34744aa6e03a337",
+        "passed": 22,
+        "failed": 0,
+        "ignored": 0
+      },
+      {
+        "command": "node scripts/check-i18n.js",
+        "exit_code": 0,
+        "log": "mvp-modifier-frames/i18n-final.log.txt",
+        "log_sha256": "8281f8292d2ecbed78e8b745b0a245fe5792ff832b09b9224099caba2336f9fd",
+        "pages_per_language": 23
+      },
+      {
+        "command": "node scripts/generate-implementation-reference.js --check",
+        "exit_code": 0
+      },
+      {
+        "command": "pnpm --dir docs run build",
+        "exit_code": 0,
+        "log": "mvp-modifier-frames/docs-build.log.txt",
+        "log_sha256": "3f0d622bc9d2572bfab73358cbde1f63b10a1c254654c42dcda3093344f863a2",
+        "strict_dead_links": true,
+        "warnings": [
+          "Vite bundle chunk exceeds 500 kB (non-failing)"
+        ]
+      }
+    ],
+    "new_focused_tests": 57,
+    "new_tests_this_wave": 15
+  },
+  "checks": [
+    {
+      "command": "cargo xtask verify",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    },
+    {
+      "command": "cargo xtask conformance",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    },
+    {
+      "command": "cargo xtask migrations",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    },
+    {
+      "command": "node scripts/check-i18n.js",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    },
+    {
+      "command": "node scripts/generate-implementation-reference.js --check",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    },
+    {
+      "command": "pnpm --dir docs run build",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    },
+    {
+      "command": "MVP visual/performance corpus and Linux user-task acceptance",
+      "status": "not_run",
+      "reason": "User requested validation after all MVP features are implemented",
+      "exit_code": null
+    }
+  ],
+  "validation_policy": {
+    "status": "deferred",
+    "requested_by": "user",
+    "resume_when": "all MVP features implemented",
+    "draft_ci": "continuation commits use [skip ci]; final gates required before ready for review"
+  },
+  "new_regression_sources_unrun": [
+    "crates/petunia_design_render/tests/vector_rendering.rs",
+    "crates/petunia_design_jobs/tests/executor.rs",
+    "crates/petunia_design_application/tests/background_render.rs",
+    "crates/petunia_design_document/tests/prepared_curves.rs",
+    "crates/petunia_design_document/tests/shared_image_sources.rs",
+    "crates/petunia_design_io/tests/png_density.rs",
+    "crates/petunia_design_raster/tests/image_assets.rs",
+    "crates/petunia_design_render/tests/image_rendering.rs",
+    "crates/petunia_design_application/tests/image_placement.rs",
+    "crates/petunia_design_io/tests/image_admission.rs",
+    "crates/petunia_design_text/tests/outlines.rs",
+    "crates/petunia_design_render/tests/text_rendering.rs",
+    "crates/petunia_design_application/tests/preview.rs",
+    "crates/petunia_design_jobs/tests/lifecycle.rs",
+    "crates/petunia_design_jobs/tests/executor.rs",
+    "crates/petunia_design_shell/tests/bridge_test.rs",
+    "crates/petunia_design_geometry/tests/contour_orientation.rs"
+  ],
+  "new_tests_prepared_current_wave": 34,
+  "previous_unvalidated_continuation": {
+    "commit": "d40cd0ef427ae1ba4a1ba5a923cfee175c0836c4",
+    "new_tests_prepared": 37,
+    "status": "not_run"
+  },
+  "current_wave_prepared_source_counts": {
+    "crates/petunia_design_text/tests/outlines.rs": 10,
+    "crates/petunia_design_render/tests/text_rendering.rs": 8,
+    "crates/petunia_design_application/tests/preview.rs": 8,
+    "crates/petunia_design_jobs/tests/lifecycle.rs": 2,
+    "crates/petunia_design_jobs/tests/executor.rs": 1,
+    "crates/petunia_design_shell/tests/bridge_test.rs": 2,
+    "crates/petunia_design_geometry/tests/contour_orientation.rs": 3
+  },
+  "image_quotas": {
+    "encoded_source_mib": 32,
+    "dimension": 32768,
+    "pixels": 16777216,
+    "decoded_mib": 128,
+    "decode_prepare_working_mib": 512,
+    "icc_extracted_mib": 4,
+    "cache_resident_mib": 128,
+    "cache_entries": 256,
+    "skia_upload_mib": 64,
+    "skia_upload_entries": 1,
+    "codec_private_allocation_accounting": "best_effort",
+    "gui_cold_preparation": "canvas scene preparation/rendering in worker; import admission/histogram cold preparation still synchronous"
+  },
+  "previous_image_continuation": {
+    "commit": "09da8d626536523234f495b16a854012b59b9888",
+    "new_tests_prepared": 35,
+    "status": "not_run"
+  },
+  "text_preview_quotas": {
+    "text_cache_mib": 64,
+    "text_entries": 128,
+    "text_source_kib": 64,
+    "glyphs_per_flow": 65536,
+    "outline_verbs_per_flow": 1000000,
+    "workers": 2,
+    "pending_jobs": 2,
+    "terminal_job_history": 256,
+    "job_label_bytes": 1024,
+    "output_pixels": 16777216,
+    "font_database_private_shaping_accounting": "best_effort",
+    "whole_process_RSS_cap": false
+  }
+}

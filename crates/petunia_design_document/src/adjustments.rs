@@ -238,104 +238,109 @@ impl AdjustmentKind {
     }
 }
 
-/// Evaluates a 2D spline curve at input `x` in [0.0, 1.0] using Monotone Cubic Hermite interpolation.
+/// Prepared Fritsch–Carlson monotone cubic curve. Tangents are calculated once,
+/// and sampling allocates nothing. Keep this alongside an immutable render job.
+#[derive(Clone, Debug)]
+pub struct PreparedCurve {
+    points: Vec<[f64; 2]>,
+    tangents: Vec<f64>,
+}
+
+impl PreparedCurve {
+    /// Accepts finite, ordered normalized controls, including equal abscissae
+    /// handled by the existing degenerate-segment policy.
+    pub fn new(points: &[[f64; 2]]) -> Result<Self, petunia_design_foundation::PetuniaError> {
+        if points.len() > 4096
+            || points
+                .iter()
+                .flatten()
+                .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+            || points.windows(2).any(|w| w[1][0] < w[0][0])
+        {
+            return Err(petunia_design_foundation::PetuniaError::invalid_input(
+                "curve controls must be finite, normalized and ordered (maximum 4096)",
+            ));
+        }
+        let mut tangents = Vec::new();
+        if points.len() > 2 {
+            let deltas: Vec<_> = points
+                .windows(2)
+                .map(|w| {
+                    let h = w[1][0] - w[0][0];
+                    if h.abs() > 1e-6 {
+                        (w[1][1] - w[0][1]) / h
+                    } else {
+                        0.0
+                    }
+                })
+                .collect();
+            tangents.push(deltas[0]);
+            for w in deltas.windows(2) {
+                tangents.push((w[0] + w[1]) * 0.5);
+            }
+            tangents.push(deltas[deltas.len() - 1]);
+            for (i, delta) in deltas.iter().enumerate() {
+                if delta.abs() < 1e-6 {
+                    tangents[i] = 0.0;
+                    tangents[i + 1] = 0.0;
+                } else {
+                    let alpha = tangents[i] / delta;
+                    let beta = tangents[i + 1] / delta;
+                    let dist = alpha * alpha + beta * beta;
+                    if dist > 9.0 {
+                        let tau = 3.0 / dist.sqrt();
+                        tangents[i] = tau * alpha * delta;
+                        tangents[i + 1] = tau * beta * delta;
+                    }
+                }
+            }
+        }
+        Ok(Self {
+            points: points.to_vec(),
+            tangents,
+        })
+    }
+
+    /// Samples a prepared curve with a binary segment lookup, without allocation.
+    #[must_use]
+    pub fn sample(&self, x: f32) -> f32 {
+        let points = &self.points;
+        if points.is_empty() {
+            return x;
+        }
+        if points.len() == 1 {
+            return points[0][1] as f32;
+        }
+        let x = f64::from(x).clamp(0.0, 1.0);
+        if x <= points[0][0] {
+            return points[0][1] as f32;
+        }
+        if x >= points[points.len() - 1][0] {
+            return points[points.len() - 1][1] as f32;
+        }
+        let i = points.partition_point(|p| p[0] < x).saturating_sub(1);
+        let h = points[i + 1][0] - points[i][0];
+        if h.abs() < 1e-6 {
+            return points[i][1] as f32;
+        }
+        let t = (x - points[i][0]) / h;
+        if points.len() == 2 {
+            return (points[i][1] + t * (points[i + 1][1] - points[i][1])).clamp(0.0, 1.0) as f32;
+        }
+        let t2 = t * t;
+        let t3 = t2 * t;
+        ((2.0 * t3 - 3.0 * t2 + 1.0) * points[i][1]
+            + (t3 - 2.0 * t2 + t) * h * self.tangents[i]
+            + (-2.0 * t3 + 3.0 * t2) * points[i + 1][1]
+            + (t3 - t2) * h * self.tangents[i + 1])
+            .clamp(0.0, 1.0) as f32
+    }
+}
+
+/// Convenience one-shot sampling. Pixel loops must retain a PreparedCurve.
 #[must_use]
 pub fn evaluate_curve(points: &[[f64; 2]], x: f32) -> f32 {
-    if points.is_empty() {
-        return x;
-    }
-    if points.len() == 1 {
-        return points[0][1].clamp(0.0, 1.0) as f32;
-    }
-    let x_f64 = (x as f64).clamp(0.0, 1.0);
-
-    // If before first point, extrapolate/clamp to first point Y
-    if x_f64 <= points[0][0] {
-        return points[0][1].clamp(0.0, 1.0) as f32;
-    }
-    // If after last point, clamp to last point Y
-    if x_f64 >= points[points.len() - 1][0] {
-        return points[points.len() - 1][1].clamp(0.0, 1.0) as f32;
-    }
-
-    // 2-point curve is purely linear
-    if points.len() == 2 {
-        let p0 = points[0];
-        let p1 = points[1];
-        let span = p1[0] - p0[0];
-        if span.abs() < 1e-6 {
-            return p0[1].clamp(0.0, 1.0) as f32;
-        }
-        let t = (x_f64 - p0[0]) / span;
-        let y = p0[1] + t * (p1[1] - p0[1]);
-        return y.clamp(0.0, 1.0) as f32;
-    }
-
-    let n = points.len();
-    // Calculate secants
-    let mut deltas = Vec::with_capacity(n - 1);
-    let mut hs = Vec::with_capacity(n - 1);
-    for w in points.windows(2) {
-        let h = w[1][0] - w[0][0];
-        let delta = if h.abs() > 1e-6 {
-            (w[1][1] - w[0][1]) / h
-        } else {
-            0.0
-        };
-        hs.push(h);
-        deltas.push(delta);
-    }
-
-    // Initial tangents (Fritsch-Carlson)
-    let mut d = Vec::with_capacity(n);
-    d.push(deltas[0]);
-    for i in 1..n - 1 {
-        d.push((deltas[i - 1] + deltas[i]) * 0.5);
-    }
-    d.push(deltas[n - 2]);
-
-    // Monotonicity enforcement
-    for i in 0..n - 1 {
-        if deltas[i].abs() < 1e-6 {
-            d[i] = 0.0;
-            d[i + 1] = 0.0;
-        } else {
-            let alpha = d[i] / deltas[i];
-            let beta = d[i + 1] / deltas[i];
-            let dist_sq = alpha * alpha + beta * beta;
-            if dist_sq > 9.0 {
-                let tau = 3.0 / dist_sq.sqrt();
-                d[i] = tau * alpha * deltas[i];
-                d[i + 1] = tau * beta * deltas[i];
-            }
-        }
-    }
-
-    // Locate segment and evaluate cubic Hermite
-    for i in 0..n - 1 {
-        let x0 = points[i][0];
-        let x1 = points[i + 1][0];
-        if x_f64 >= x0 && x_f64 <= x1 {
-            let h = hs[i];
-            if h.abs() < 1e-6 {
-                return points[i][1].clamp(0.0, 1.0) as f32;
-            }
-            let t = (x_f64 - x0) / h;
-            let t2 = t * t;
-            let t3 = t2 * t;
-
-            let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
-            let h10 = t3 - 2.0 * t2 + t;
-            let h01 = -2.0 * t3 + 3.0 * t2;
-            let h11 = t3 - t2;
-
-            let y =
-                h00 * points[i][1] + h10 * h * d[i] + h01 * points[i + 1][1] + h11 * h * d[i + 1];
-            return y.clamp(0.0, 1.0) as f32;
-        }
-    }
-
-    x
+    PreparedCurve::new(points).map_or(x, |curve| curve.sample(x))
 }
 
 /// Converts RGB [0..1] to HSL [0..360, 0..1, 0..1].

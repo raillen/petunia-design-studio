@@ -490,7 +490,8 @@ impl NodeTool {
         if let Some(session) = bridge.session() {
             for &id in &session.selection.selected_ids.clone() {
                 if let Some(obj) = session.find_object(id) {
-                    if let Some(ShapeKind::Path(path)) = &obj.shape {
+                    if obj.shape.as_ref().is_some_and(ShapeKind::is_path) {
+                        let path = obj.to_path();
                         for (idx, verb) in path.verbs.iter().enumerate() {
                             if let Some(pt) = endpoint_of(verb) {
                                 if doc_rect.contains(pt) {
@@ -516,7 +517,8 @@ impl NodeTool {
     fn select_all_nodes(&mut self, bridge: &PetuniaDesignGuiBridge, id: ObjectId) {
         if let Some(session) = bridge.session() {
             if let Some(obj) = session.find_object(id) {
-                if let Some(ShapeKind::Path(path)) = &obj.shape {
+                if obj.shape.as_ref().is_some_and(ShapeKind::is_path) {
+                    let path = obj.to_path();
                     self.selected = path
                         .verbs
                         .iter()
@@ -538,9 +540,10 @@ impl NodeTool {
         let session = bridge.session()?;
         for &(id, idx) in &self.selected {
             let obj = session.find_object(id)?;
-            let Some(ShapeKind::Path(path)) = &obj.shape else {
+            if !obj.shape.as_ref().is_some_and(ShapeKind::is_path) {
                 continue;
-            };
+            }
+            let path = obj.to_path();
             let (handle_in, handle_out) = handles_of(&path.verbs, idx);
             if let Some(h) = handle_in {
                 if h.distance_to(pt) <= tol {
@@ -589,9 +592,10 @@ impl NodeTool {
             let Some(obj) = session.find_object(id) else {
                 continue;
             };
-            let Some(ShapeKind::Path(path)) = &obj.shape else {
+            if !obj.shape.as_ref().is_some_and(ShapeKind::is_path) {
                 continue;
-            };
+            }
+            let path = obj.to_path();
 
             let verbs = self.current_verbs(id, &path.verbs);
 
@@ -1150,7 +1154,7 @@ fn needs_convert(bridge: &PetuniaDesignGuiBridge, id: ObjectId) -> bool {
     bridge
         .session()
         .and_then(|s| s.find_object(id))
-        .is_some_and(|obj| !matches!(obj.shape, Some(ShapeKind::Path(_))))
+        .is_some_and(|obj| !obj.shape.as_ref().is_some_and(ShapeKind::is_path))
 }
 
 /// Snapshots current paths for the selected nodes' objects.
@@ -1206,20 +1210,22 @@ fn commit_paths(
             .session()
             .and_then(|s| s.find_object(id))
             .map_or(0.0, |o| o.rotation);
-        cmds.push(Command::SetShape {
-            id,
-            shape: Some(ShapeKind::Path(path.clone())),
-        });
         if let Some(rect) = path.bounding_box() {
-            cmds.push(Command::SetBounds {
+            cmds.push(Command::SetPath {
                 id,
-                bounds: Some([
+                bounds: [
                     rect.x0,
                     rect.y0,
                     rect.width().max(1.0),
                     rect.height().max(1.0),
-                ]),
+                ],
+                path,
                 rotation,
+            });
+        } else {
+            cmds.push(Command::SetShape {
+                id,
+                shape: Some(ShapeKind::Path(path)),
             });
         }
     }
@@ -1325,11 +1331,11 @@ fn prev_endpoint_idx(
 ) -> Option<usize> {
     let session = bridge.session()?;
     let obj = session.find_object(id)?;
-    let shape = obj.shape.as_ref()?;
-    let verbs = match shape {
-        ShapeKind::Path(p) => &p.verbs,
-        _ => return None,
-    };
+    if !obj.shape.as_ref()?.is_path() {
+        return None;
+    }
+    let path = obj.to_path();
+    let verbs = &path.verbs;
     (0..verb_idx)
         .rev()
         .find(|i| endpoint_of(&verbs[*i]).is_some())

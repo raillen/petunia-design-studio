@@ -82,8 +82,8 @@ fn global() -> &'static Mutex<FontSystem> {
 pub struct TypeSystem;
 
 impl TypeSystem {
-    fn lock() -> MutexGuard<'static, FontSystem> {
-        global().lock().expect("text FontSystem mutex is poisoned")
+    pub(crate) fn lock() -> MutexGuard<'static, FontSystem> {
+        global().lock().unwrap_or_else(|error| error.into_inner())
     }
 
     /// Shapes one line of text and returns per-glyph metrics.

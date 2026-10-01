@@ -749,3 +749,38 @@ fn closing_a_dirty_background_tab_needs_confirmation() {
         "closing a background tab must not change the active one"
     );
 }
+
+#[test]
+fn preview_source_is_shared_across_selection_and_camera_changes() {
+    let (mut shell, id) = snapshot_cache_fixture();
+    let first = shell.canvas_snapshot().preview_source.unwrap();
+    shell.bridge.set_selection(vec![id]);
+    let selected = shell.canvas_snapshot().preview_source.unwrap();
+    assert!(Arc::ptr_eq(&first, &selected));
+    let mut camera = shell.view_camera();
+    camera.pan(20.0, 30.0);
+    shell.set_view_camera(camera);
+    let panned = shell.canvas_snapshot().preview_source.unwrap();
+    assert!(Arc::ptr_eq(&first, &panned));
+}
+#[test]
+fn preview_source_changes_on_revision_and_session_replacement() {
+    let (mut shell, id) = snapshot_cache_fixture();
+    let first = shell.canvas_snapshot().preview_source.unwrap();
+    shell
+        .bridge
+        .submit_all(
+            "Nudge",
+            vec![Command::SetBounds {
+                id,
+                bounds: Some([20.0, 30.0, 40.0, 30.0]),
+                rotation: 0.0,
+            }],
+        )
+        .unwrap();
+    let edited = shell.canvas_snapshot().preview_source.unwrap();
+    assert_ne!(first.id(), edited.id());
+    shell.new_document("Other").unwrap();
+    let other = shell.canvas_snapshot().preview_source.unwrap();
+    assert_ne!(edited.id(), other.id());
+}

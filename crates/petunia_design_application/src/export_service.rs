@@ -9,7 +9,7 @@
 //! The three V1 targets map to the engines that already own them:
 //! - PDF → [`petunia_design_io::pdf`] (vector, preflight report included);
 //! - SVG → [`petunia_design_io::svg`] (vector, W3C envelope);
-//! - PNG → [`petunia_design_render::SoftwarePixelCompositor`] rasterized per
+//! - PNG → [`petunia_design_render::CpuRenderer`] rasterized per
 //!   surface, encoded by [`petunia_design_io::image_io`].
 //!
 //! Export never mutates the document and never enters history.
@@ -19,10 +19,10 @@ use std::path::{Path, PathBuf};
 use petunia_design_document::{Document, Surface};
 use petunia_design_foundation::{PetuniaError, SurfaceId};
 use petunia_design_io::{
-    export_document_pdf, export_document_svg, export_raster, PdfExportOptions, RasterExportOptions,
-    RasterFormat, RawRasterImage,
+    export_document_pdf, export_document_svg, export_png_rgba8_at_dpi, PdfExportOptions,
+    RawRasterImage,
 };
-use petunia_design_render::{PixelBufferRgba8, SoftwarePixelCompositor};
+use petunia_design_render::{CpuRenderer, RenderRequest, RenderSurface};
 use serde::{Deserialize, Serialize};
 
 /// Artifact formats the V1 export action can produce.
@@ -82,6 +82,13 @@ pub struct ExportRequest {
     pub path: PathBuf,
     /// Surface to rasterize. `None` uses the active surface, then the first.
     pub surface: Option<SurfaceId>,
+    /// Raster density in pixels/inch. Document geometry uses 72 points/inch.
+    #[serde(default = "default_dpi")]
+    pub dpi: f64,
+}
+
+fn default_dpi() -> f64 {
+    72.0
 }
 
 impl ExportRequest {
@@ -93,6 +100,7 @@ impl ExportRequest {
             format,
             path,
             surface: None,
+            dpi: default_dpi(),
         }
     }
 
@@ -100,6 +108,13 @@ impl ExportRequest {
     #[must_use]
     pub fn on_surface(mut self, surface: SurfaceId) -> Self {
         self.surface = Some(surface);
+        self
+    }
+
+    /// Chooses raster output density; invalid values fail before allocation.
+    #[must_use]
+    pub fn at_dpi(mut self, dpi: f64) -> Self {
+        self.dpi = dpi;
         self
     }
 
@@ -138,6 +153,17 @@ impl ExportRequest {
             .and_then(serde_json::Value::as_u64)
             .map(SurfaceId::new)
             .or(active_surface);
+        let dpi = match payload.get("dpi") {
+            Some(value) => value
+                .as_f64()
+                .ok_or_else(|| PetuniaError::invalid_input("export DPI must be numeric"))?,
+            None => default_dpi(),
+        };
+        if !dpi.is_finite() || dpi <= 0.0 {
+            return Err(PetuniaError::invalid_input(
+                "export DPI must be finite and positive",
+            ));
+        }
         Ok(Self {
             format,
             path: with_format_suffix(path, format),
@@ -146,6 +172,7 @@ impl ExportRequest {
             } else {
                 None
             },
+            dpi,
         })
     }
 }
@@ -197,7 +224,7 @@ pub fn export_document(
         }
         ExportFormat::Png => {
             let surface = resolve_surface(document, request.surface)?;
-            let (bytes, items) = render_surface_png(surface)?;
+            let (bytes, items) = render_surface_png(surface, request.dpi)?;
             degradations.extend(items.into_iter().map(|item| item.code));
             (bytes, 1)
         }
@@ -245,73 +272,22 @@ fn resolve_surface(
         .ok_or_else(|| PetuniaError::invalid_input("nothing to export: no surface to rasterize"))
 }
 
-/// Rasterizes one surface and encodes it as PNG.
-///
-/// Surface geometry is in pasteboard coordinates, while the CPU compositor
-/// maps document coordinates straight into the buffer. A surface that does not
-/// start at the origin would therefore render off-buffer, so the buffer is
-/// sized to cover the surface *and* its offset, then cropped back to the
-/// surface rectangle. No scaling: V1 exports at 1:1 pixels per point.
+/// Renders exactly the artboard region and encodes straight RGBA as PNG.
+/// Negative/far-away origins do not affect allocation size. Unsupported content
+/// fails before writing a destination file.
 fn render_surface_png(
     surface: &Surface,
+    dpi: f64,
 ) -> Result<(Vec<u8>, Vec<petunia_design_io::DegradationItem>), PetuniaError> {
-    let [origin_x, origin_y, width, height] = surface.bounds();
-    if width <= 0.0 || height <= 0.0 {
-        return Err(PetuniaError::invalid_input(format!(
-            "surface `{}` has non-positive dimensions ({width}x{height})",
-            surface.id
-        )));
-    }
-    let full_width = (origin_x.max(0.0) + width).ceil().max(1.0) as u32;
-    let full_height = (origin_y.max(0.0) + height).ceil().max(1.0) as u32;
-    let full = SoftwarePixelCompositor::render_surface_rgba8(
-        surface,
-        full_width,
-        full_height,
-        [0, 0, 0, 0],
-    );
-    let cropped = crop_surface_rect(&full, [origin_x, origin_y, width, height]);
-    let raw = RawRasterImage::from_rgba8(cropped.width, cropped.height, cropped.data)?;
-    export_raster(
-        &raw,
-        &RasterExportOptions {
-            format: RasterFormat::Png,
-            jpeg_quality: 90,
-            allow_degradations: true,
-        },
-    )
-}
-
-/// Copies the `[x, y, w, h]` rectangle out of a rasterized document buffer.
-fn crop_surface_rect(buffer: &PixelBufferRgba8, rect: [f64; 4]) -> PixelBufferRgba8 {
-    let [x, y, width, height] = rect;
-    let left = x.floor().max(0.0) as u32;
-    let top = y.floor().max(0.0) as u32;
-    let crop_width = (width.round() as u32).max(1);
-    let crop_height = (height.round() as u32).max(1);
-    if left == 0 && top == 0 && crop_width == buffer.width && crop_height == buffer.height {
-        return buffer.clone();
-    }
-    let mut data = vec![0u8; (crop_width as usize) * (crop_height as usize) * 4];
-    for row in 0..crop_height {
-        let source_y = top + row;
-        if source_y >= buffer.height {
-            break;
-        }
-        let source_start = ((source_y as usize) * (buffer.width as usize) + left as usize) * 4;
-        let source_end = source_start + (crop_width as usize) * 4;
-        if source_end > buffer.data.len() {
-            continue;
-        }
-        let target_start = (row as usize) * (crop_width as usize) * 4;
-        data[target_start..target_start + (crop_width as usize) * 4]
-            .copy_from_slice(&buffer.data[source_start..source_end]);
-    }
-    PixelBufferRgba8 {
-        width: crop_width,
-        height: crop_height,
-        data,
-    }
+    let scene = RenderSurface::extract(surface)
+        .map_err(|error| PetuniaError::invalid_input(error.to_string()))?;
+    let request = RenderRequest::for_surface(&scene, dpi)
+        .map_err(|error| PetuniaError::invalid_input(error.to_string()))?;
+    let rendered = CpuRenderer::default()
+        .render(&scene, request)
+        .map_err(|error| PetuniaError::invalid_input(error.to_string()))?;
+    let raw = RawRasterImage::from_rgba8(rendered.width, rendered.height, rendered.data)?;
+    Ok((export_png_rgba8_at_dpi(&raw, dpi)?, Vec::new()))
 }
 
 #[cfg(test)]
@@ -413,14 +389,11 @@ mod tests {
         // an empty canvas: the square must leave non-transparent pixels.
         let document = document_with_square();
         let surface = &document.surfaces()[0];
-        let [origin_x, origin_y, width, height] = surface.bounds();
-        let full = SoftwarePixelCompositor::render_surface_rgba8(
-            surface,
-            (origin_x + width).ceil() as u32,
-            (origin_y + height).ceil() as u32,
-            [0, 0, 0, 0],
-        );
-        let rendered = crop_surface_rect(&full, surface.bounds());
+        let scene = RenderSurface::extract(surface).expect("valid scene");
+        let request = RenderRequest::for_surface(&scene, 72.0).expect("valid region");
+        let rendered = CpuRenderer::default()
+            .render(&scene, request)
+            .expect("vector rendering");
         assert!(
             rendered
                 .data

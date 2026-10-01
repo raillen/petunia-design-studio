@@ -1,0 +1,25 @@
+   Compiling petunia-audit-probes v0.1.0 (/workspace/petunia-audit-probes)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.26s
+     Running `/workspace/.petunia-cache/target/debug/petunia-audit-probes`
+PROBE-01 reproduced: eraser leaves opaque red pixel unchanged
+PROBE-02 reproduced: raster Multiply on transparent black becomes black; render reference remains red
+PROBE-03 reproduced: A minus empty returns empty instead of A (also empty contour result length=0)
+PROBE-04 reproduced: cached bounds move to x=100 but cached flattened polygons retain x=10
+PROBE-05 reproduced: Transaction commit replaces document and drops intervening mutation
+PROBE-06 reproduced: RDP loses excursion when first and last points coincide
+PROBE-07 reproduced: SWOP and FOGRA39 proof produce identical heuristic outputs
+PROBE-08 reproduced: explicit Path reaches canvas projection with no drawable outline
+PROBE-09 reproduced: document decoder accepts self-parent cycle (checked world transform rejects later)
+PROBE-10 exported 800x600 surface using default PDF settings; inspect audit-probe.pdf page dimensions
+PROBE-11 reproduced: malformed Unicode color token panics rather than returning a diagnostic
+PROBE-12 reproduced: restored revision-zero document returns no R-tree hit candidates
+PROBE-13 reproduced: software export paints bounding rectangle outside triangle
+PROBE-14 reproduced: disjoint clipping intersection becomes None (also used for no clipping)
+PROBE-15 reproduced: PDF exports surface marked export_enabled=false
+PROBE-16 reproduced: 50% object opacity produces alpha=64 (about 25%)
+PROBE-17 reproduced: positive offset drops one of two disconnected components
+CHECK-18 passed: distant finite knife segment does not cut the rectangle
+PROBE-19 reproduced: valid compact SVG path rejected by whitespace-only parser
+Reproduced 17 behavioral defects/contract gaps; PDF dimensions recorded separately.
+BENCH build=debug rectangles=500 visible=500 snapshot_miss_ms=16.484 warm_mean_us=125.605
+BENCH build=debug rectangles=2000 visible=2000 snapshot_miss_ms=142.331 warm_mean_us=429.638

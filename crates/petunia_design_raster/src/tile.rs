@@ -25,11 +25,11 @@ impl TileCoord {
 
     /// Derives the tile coordinate containing a continuous pixel location.
     #[must_use]
-    pub fn from_pixel(px: i64, py: i64) -> Self {
+    pub fn from_pixel(px: i64, py: i64) -> Option<Self> {
         let size = TILE_SIZE as i64;
-        let tx = px.div_euclid(size) as i32;
-        let ty = py.div_euclid(size) as i32;
-        Self::new(tx, ty)
+        let tx = i32::try_from(px.div_euclid(size)).ok()?;
+        let ty = i32::try_from(py.div_euclid(size)).ok()?;
+        Some(Self::new(tx, ty))
     }
 
     /// Pixel bounding box of this tile in layer space.
@@ -74,7 +74,8 @@ impl Tile {
         }
     }
 
-    /// Reads a pixel as normalized RGBA `[0.0, 1.0]`.
+    /// Reads straight RGBA `[0.0, 1.0]`, converting the storage alpha mode.
+    /// Sixteen-bit channels use canonical little-endian bytes.
     #[must_use]
     pub fn get_pixel_normalized(&self, lx: usize, ly: usize) -> [f32; 4] {
         if lx >= TILE_SIZE || ly >= TILE_SIZE {
@@ -86,7 +87,7 @@ impl Tile {
             return [0.0, 0.0, 0.0, 0.0];
         }
 
-        match self.format {
+        let mut color = match self.format {
             PixelFormat::Rgba8 => {
                 let r = f32::from(self.data[offset]) / 255.0;
                 let g = f32::from(self.data[offset + 1]) / 255.0;
@@ -95,10 +96,10 @@ impl Tile {
                 [r, g, b, a]
             }
             PixelFormat::Rgba16 => {
-                let r_raw = u16::from_ne_bytes([self.data[offset], self.data[offset + 1]]);
-                let g_raw = u16::from_ne_bytes([self.data[offset + 2], self.data[offset + 3]]);
-                let b_raw = u16::from_ne_bytes([self.data[offset + 4], self.data[offset + 5]]);
-                let a_raw = u16::from_ne_bytes([self.data[offset + 6], self.data[offset + 7]]);
+                let r_raw = u16::from_le_bytes([self.data[offset], self.data[offset + 1]]);
+                let g_raw = u16::from_le_bytes([self.data[offset + 2], self.data[offset + 3]]);
+                let b_raw = u16::from_le_bytes([self.data[offset + 4], self.data[offset + 5]]);
+                let a_raw = u16::from_le_bytes([self.data[offset + 6], self.data[offset + 7]]);
                 [
                     f32::from(r_raw) / 65535.0,
                     f32::from(g_raw) / 65535.0,
@@ -111,14 +112,23 @@ impl Tile {
                 [v, v, v, 1.0]
             }
             PixelFormat::Gray16 => {
-                let v_raw = u16::from_ne_bytes([self.data[offset], self.data[offset + 1]]);
+                let v_raw = u16::from_le_bytes([self.data[offset], self.data[offset + 1]]);
                 let v = f32::from(v_raw) / 65535.0;
                 [v, v, v, 1.0]
             }
+        };
+        if self.alpha_mode == AlphaMode::Premultiplied && self.format.channels() == 4 {
+            if color[3] == 0.0 {
+                return [0.0; 4];
+            }
+            for channel in 0..3 {
+                color[channel] = (color[channel] / color[3]).clamp(0.0, 1.0);
+            }
         }
+        color
     }
 
-    /// Sets a pixel with normalized RGBA `[0.0, 1.0]`.
+    /// Writes straight RGBA, converting to the declared storage alpha mode.
     pub fn set_pixel_normalized(&mut self, lx: usize, ly: usize, color: [f32; 4]) {
         if lx >= TILE_SIZE || ly >= TILE_SIZE {
             return;
@@ -129,6 +139,18 @@ impl Tile {
             return;
         }
 
+        let mut color = color.map(|v| {
+            if v.is_finite() {
+                v.clamp(0.0, 1.0)
+            } else {
+                0.0
+            }
+        });
+        if self.alpha_mode == AlphaMode::Premultiplied && self.format.channels() == 4 {
+            for channel in 0..3 {
+                color[channel] *= color[3];
+            }
+        }
         self.state = TileState::ResidentWorkingDirty;
 
         match self.format {
@@ -143,17 +165,17 @@ impl Tile {
                 let g = (color[1].clamp(0.0, 1.0) * 65535.0).round() as u16;
                 let b = (color[2].clamp(0.0, 1.0) * 65535.0).round() as u16;
                 let a = (color[3].clamp(0.0, 1.0) * 65535.0).round() as u16;
-                self.data[offset..offset + 2].copy_from_slice(&r.to_ne_bytes());
-                self.data[offset + 2..offset + 4].copy_from_slice(&g.to_ne_bytes());
-                self.data[offset + 4..offset + 6].copy_from_slice(&b.to_ne_bytes());
-                self.data[offset + 6..offset + 8].copy_from_slice(&a.to_ne_bytes());
+                self.data[offset..offset + 2].copy_from_slice(&r.to_le_bytes());
+                self.data[offset + 2..offset + 4].copy_from_slice(&g.to_le_bytes());
+                self.data[offset + 4..offset + 6].copy_from_slice(&b.to_le_bytes());
+                self.data[offset + 6..offset + 8].copy_from_slice(&a.to_le_bytes());
             }
             PixelFormat::Gray8 => {
                 self.data[offset] = (color[0].clamp(0.0, 1.0) * 255.0).round() as u8;
             }
             PixelFormat::Gray16 => {
                 let v = (color[0].clamp(0.0, 1.0) * 65535.0).round() as u16;
-                self.data[offset..offset + 2].copy_from_slice(&v.to_ne_bytes());
+                self.data[offset..offset + 2].copy_from_slice(&v.to_le_bytes());
             }
         }
     }
@@ -202,7 +224,9 @@ impl TileMap {
     /// Reads a global pixel coordinate. Returns transparent if tile is absent.
     #[must_use]
     pub fn get_pixel(&self, px: i64, py: i64) -> [f32; 4] {
-        let coord = TileCoord::from_pixel(px, py);
+        let Some(coord) = TileCoord::from_pixel(px, py) else {
+            return [0.0; 4];
+        };
         let Some(tile) = self.tiles.get(&coord) else {
             return [0.0, 0.0, 0.0, 0.0];
         };
@@ -213,13 +237,16 @@ impl TileMap {
     }
 
     /// Writes a pixel at global layer coordinates, allocating tile if absent.
-    pub fn set_pixel(&mut self, px: i64, py: i64, color: [f32; 4]) {
-        let coord = TileCoord::from_pixel(px, py);
+    pub fn set_pixel(&mut self, px: i64, py: i64, color: [f32; 4]) -> bool {
+        let Some(coord) = TileCoord::from_pixel(px, py) else {
+            return false;
+        };
         let size = TILE_SIZE as i64;
         let lx = px.rem_euclid(size) as usize;
         let ly = py.rem_euclid(size) as usize;
         let tile = self.get_or_create_tile(coord);
         tile.set_pixel_normalized(lx, ly, color);
+        true
     }
 
     /// Computes the bounding box enclosing all resident non-empty tiles.

@@ -10,9 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.98.1
           components: rustfmt, clippy
+      - name: Linux native rendering dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config poppler-utils libfontconfig1-dev libfreetype6-dev libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxinerama-dev libwayland-dev libxkbcommon-dev
       - name: Fast deterministic gate
         run: cargo xtask verify
 
@@ -33,5 +36,7 @@ jobs:
         run: pnpm --dir docs install --frozen-lockfile
       - name: i18n parity (zero drift, SPEC-001)
         run: node scripts/check-i18n.js
+      - name: Implementation contract reference matches source
+        run: node scripts/generate-implementation-reference.js --check
       - name: VitePress build (ignoreDeadLinks false)
         run: pnpm --dir docs run build

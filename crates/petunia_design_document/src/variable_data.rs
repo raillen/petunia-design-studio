@@ -242,8 +242,7 @@ pub enum TargetProperty {
 }
 
 /// Declarative, pure value formatters without side-effects or scripting (10.11).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum ValueFormatter {
     /// No transformation.
     #[default]
@@ -265,6 +264,56 @@ pub enum ValueFormatter {
     Prefix(String),
     /// Append a literal suffix.
     Suffix(String),
+}
+
+// Internally tagged tuple variants cannot be serialized by serde. Named wire
+// fields preserve the schema-1 unit/Currency layout and support all formatters.
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum FormatterWire {
+    None,
+    Uppercase,
+    Lowercase,
+    Currency { symbol: String, decimals: usize },
+    NumberDecimals { value: usize },
+    Prefix { value: String },
+    Suffix { value: String },
+}
+
+impl Serialize for ValueFormatter {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let wire = match self {
+            Self::None => FormatterWire::None,
+            Self::Uppercase => FormatterWire::Uppercase,
+            Self::Lowercase => FormatterWire::Lowercase,
+            Self::Currency { symbol, decimals } => FormatterWire::Currency {
+                symbol: symbol.clone(),
+                decimals: *decimals,
+            },
+            Self::NumberDecimals(value) => FormatterWire::NumberDecimals { value: *value },
+            Self::Prefix(value) => FormatterWire::Prefix {
+                value: value.clone(),
+            },
+            Self::Suffix(value) => FormatterWire::Suffix {
+                value: value.clone(),
+            },
+        };
+        wire.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ValueFormatter {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(match FormatterWire::deserialize(deserializer)? {
+            FormatterWire::None => Self::None,
+            FormatterWire::Uppercase => Self::Uppercase,
+            FormatterWire::Lowercase => Self::Lowercase,
+            FormatterWire::Currency { symbol, decimals } => Self::Currency { symbol, decimals },
+            FormatterWire::NumberDecimals { value } => Self::NumberDecimals(value),
+            FormatterWire::Prefix { value } => Self::Prefix(value),
+            FormatterWire::Suffix { value } => Self::Suffix(value),
+        })
+    }
 }
 
 /// Policy for handling missing/null values during merge.

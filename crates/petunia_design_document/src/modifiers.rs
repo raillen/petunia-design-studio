@@ -11,8 +11,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use petunia_design_foundation::PetuniaError;
 use petunia_design_geometry::{
-    clip_path_to_rect, offset_path, warp_path_to_quad, GPath, GPoint, OffsetCap, OffsetJoin,
+    clip_path_to_rect, offset_path, warp_path_to_quad, GAffine, GPath, GPoint, OffsetCap,
+    OffsetJoin,
 };
 
 fn default_true() -> bool {
@@ -82,10 +84,22 @@ pub enum ModifierKind {
     },
     /// Live rectangular crop (nondestructive vector crop, 08.24).
     /// Intersects the outline with `rect` (`[x, y, w, h]`); empty results
-    /// keep the previous outline instead of destroying it.
+    /// produce an empty evaluated outline while preserving the editable source.
     CropRect {
         /// Crop rectangle in document points.
         rect: [f64; 4],
+    },
+}
+
+/// Parameter frame. Parent is only a legacy/input descriptor; publication
+/// stores Local with the placement size at the time the parameters were set.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ModifierSpace {
+    #[default]
+    Parent,
+    Local {
+        reference_size: [f64; 2],
     },
 }
 
@@ -96,6 +110,8 @@ pub struct ModifierItem {
     pub id: u32,
     /// The typed modifier definition.
     pub kind: ModifierKind,
+    #[serde(default)]
+    pub space: ModifierSpace,
     /// Disabled entries are skipped by evaluation (kept for re-enable).
     #[serde(default = "default_true")]
     pub enabled: bool,
@@ -108,14 +124,227 @@ impl ModifierItem {
         Self {
             id,
             kind,
+            space: ModifierSpace::Parent,
             enabled: true,
         }
     }
+
+    /// Normalizes an explicit parent-input frame once, including disabled
+    /// entries. Moving/rotating/resizing thereafter never rewrites parameters.
+    pub fn into_local(mut self, bounds: Option<[f64; 4]>) -> Result<Self, PetuniaError> {
+        if self.space == ModifierSpace::Parent {
+            let [x, y, w, h] =
+                bounds.ok_or_else(|| PetuniaError::invalid_input("modifier requires bounds"))?;
+            if ![x, y, w, h].iter().all(|v| v.is_finite()) || w <= 0.0 || h <= 0.0 {
+                return Err(PetuniaError::invalid_input(
+                    "modifier requires finite positive bounds",
+                ));
+            }
+            match &mut self.kind {
+                ModifierKind::TransparentGradient { start, end, .. } => {
+                    for point in [start, end] {
+                        point[0] -= x;
+                        point[1] -= y;
+                    }
+                }
+                ModifierKind::Perspective { quad } => {
+                    for point in quad {
+                        point[0] -= x;
+                        point[1] -= y;
+                    }
+                }
+                ModifierKind::CropRect { rect } => {
+                    rect[0] -= x;
+                    rect[1] -= y;
+                }
+                ModifierKind::ContourOffset { .. } => {}
+            }
+            self.space = ModifierSpace::Local {
+                reference_size: [w, h],
+            };
+        }
+        Ok(self)
+    }
+
+    /// Current local point projection, for overlays and opacity sampling.
+    pub fn project_point(&self, point: [f64; 2], size: [f64; 2]) -> Option<GPoint> {
+        let ModifierSpace::Local { reference_size } = self.space else {
+            return None;
+        };
+        if !reference_size
+            .iter()
+            .chain(size.iter())
+            .all(|v| v.is_finite() && *v > 0.0)
+        {
+            return None;
+        }
+        let p = GPoint::new(
+            point[0] * size[0] / reference_size[0],
+            point[1] * size[1] / reference_size[1],
+        );
+        (p.x.is_finite() && p.y.is_finite()).then_some(p)
+    }
+
+    /// Explicit baking changes the source origin/size. Rebase the surviving
+    /// entries while preserving their previous per-axis scale and appearance.
+    pub(crate) fn rebase_local(
+        mut self,
+        delta: [f64; 2],
+        old_size: [f64; 2],
+        new_size: [f64; 2],
+    ) -> Result<Self, PetuniaError> {
+        let ModifierSpace::Local { reference_size } = self.space else {
+            return Err(PetuniaError::invalid_input(
+                "bake requires a local modifier frame",
+            ));
+        };
+        let scale = [
+            old_size[0] / reference_size[0],
+            old_size[1] / reference_size[1],
+        ];
+        let shift = [delta[0] / scale[0], delta[1] / scale[1]];
+        let reference_size = [new_size[0] / scale[0], new_size[1] / scale[1]];
+        if !reference_size.iter().all(|v| v.is_finite() && *v > 0.0)
+            || !shift.iter().all(|v| v.is_finite())
+        {
+            return Err(PetuniaError::invalid_input("modifier rebase overflow"));
+        }
+        match &mut self.kind {
+            ModifierKind::TransparentGradient { start, end, .. } => {
+                for p in [start, end] {
+                    p[0] += shift[0];
+                    p[1] += shift[1];
+                }
+            }
+            ModifierKind::Perspective { quad } => {
+                for p in quad {
+                    p[0] += shift[0];
+                    p[1] += shift[1];
+                }
+            }
+            ModifierKind::CropRect { rect } => {
+                rect[0] += shift[0];
+                rect[1] += shift[1];
+            }
+            ModifierKind::ContourOffset { .. } => {}
+        }
+        self.space = ModifierSpace::Local { reference_size };
+        Ok(self)
+    }
+}
+
+/// Evaluates geometry in each entry's reference frame, then returns to the
+/// current local frame. Nonuniform resize scales the resulting outline,
+/// including contour distance in both axes, without inventing one scale.
+pub fn evaluate_modifiers_local(
+    base: &GPath,
+    modifiers: &[ModifierItem],
+    size: [f64; 2],
+) -> Option<GPath> {
+    let mut current = base.clone();
+    for item in modifiers.iter().filter(|m| m.enabled) {
+        if matches!(item.kind, ModifierKind::TransparentGradient { .. }) {
+            continue;
+        }
+        let ModifierSpace::Local { reference_size } = item.space else {
+            return None;
+        };
+        let sx = size[0] / reference_size[0];
+        let sy = size[1] / reference_size[1];
+        if ![sx, sy].iter().all(|v| v.is_finite() && *v > 0.0) {
+            return None;
+        }
+        let input = current.transformed(GAffine::scale(1.0 / sx, 1.0 / sy));
+        if !input.is_finite() {
+            return None;
+        }
+        // Keep flattening error <= 0.25 current local points.
+        let tolerance = 0.25 / sx.max(sy);
+        current = apply_geometry_modifier(input, &item.kind, tolerance)
+            .transformed(GAffine::scale(sx, sy));
+        if !current.is_finite() {
+            return None;
+        }
+    }
+    Some(current)
+}
+
+fn apply_geometry_modifier(current: GPath, kind: &ModifierKind, tolerance: f64) -> GPath {
+    match kind {
+        ModifierKind::ContourOffset {
+            distance,
+            join,
+            cap,
+        } => offset_path(&current, *distance, *join, *cap).unwrap_or(current),
+        ModifierKind::TransparentGradient { .. } => current,
+        ModifierKind::Perspective { quad } => {
+            warp_path_to_quad(&current, quad.map(|[x, y]| GPoint::new(x, y)), tolerance)
+                .unwrap_or(current)
+        }
+        ModifierKind::CropRect { rect: [x, y, w, h] } => clip_path_to_rect(
+            &current,
+            petunia_design_geometry::GRect::new(*x, *y, x + w, y + h),
+            tolerance,
+        )
+        .unwrap_or_default(),
+    }
+}
+
+/// Samples in current local coordinates. No allocation or stop sorting per
+/// sample; stored source stop order is preserved for subsequent editing.
+pub fn evaluate_opacity_local(
+    modifiers: &[ModifierItem],
+    point: GPoint,
+    size: [f64; 2],
+) -> Option<f64> {
+    let mut mask = 1.0;
+    for item in modifiers.iter().filter(|m| m.enabled) {
+        if let ModifierKind::TransparentGradient { start, end, stops } = &item.kind {
+            let ModifierSpace::Local { reference_size } = item.space else {
+                return None;
+            };
+            if !reference_size
+                .iter()
+                .chain(size.iter())
+                .all(|v| v.is_finite() && *v > 0.0)
+            {
+                return None;
+            }
+            // Pull the sample back, rather than projecting onto a resized
+            // vector: Euclidean projection does not commute with anisotropic scale.
+            let p = GPoint::new(
+                point.x / size[0] * reference_size[0],
+                point.y / size[1] * reference_size[1],
+            );
+            if !p.x.is_finite() || !p.y.is_finite() {
+                return None;
+            }
+            mask *= sample_vector(
+                GPoint::new(start[0], start[1]),
+                GPoint::new(end[0], end[1]),
+                stops,
+                p,
+            );
+        }
+    }
+    mask.is_finite().then(|| mask.clamp(0.0, 1.0))
+}
+
+fn sample_vector(a: GPoint, b: GPoint, stops: &[OpacityStop], point: GPoint) -> f64 {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let len = dx.hypot(dy);
+    if len <= 1e-12 {
+        return sample_opacity_stops(stops, 0.0);
+    }
+    let t = (((point.x - a.x) / len) * (dx / len) + ((point.y - a.y) / len) * (dy / len))
+        .clamp(0.0, 1.0);
+    sample_opacity_stops(stops, t)
 }
 
 /// Folds an ordered modifier chain over a base path.
 /// Unknown/disabled entries are skipped; a collapsing step keeps the
-/// previous result instead of destroying it.
+/// previous result for invalid warps/offsets; an empty crop remains empty.
 #[must_use]
 pub fn evaluate_modifiers(base: &GPath, modifiers: &[ModifierItem]) -> GPath {
     let mut current = base.clone();
@@ -123,32 +352,7 @@ pub fn evaluate_modifiers(base: &GPath, modifiers: &[ModifierItem]) -> GPath {
         if !item.enabled {
             continue;
         }
-        match &item.kind {
-            ModifierKind::ContourOffset {
-                distance,
-                join,
-                cap,
-            } => {
-                if let Some(offset) = offset_path(&current, *distance, *join, *cap) {
-                    current = offset;
-                }
-            }
-            // Transparency lives in the opacity domain, not geometry.
-            ModifierKind::TransparentGradient { .. } => {}
-            ModifierKind::Perspective { quad } => {
-                let corners = quad.map(|[x, y]| GPoint::new(x, y));
-                if let Some(warped) = warp_path_to_quad(&current, corners, 0.25) {
-                    current = warped;
-                }
-            }
-            ModifierKind::CropRect { rect } => {
-                let [x, y, w, h] = *rect;
-                let clip = petunia_design_geometry::GRect::new(x, y, x + w, y + h);
-                if let Some(clipped) = clip_path_to_rect(&current, clip, 0.25) {
-                    current = clipped;
-                }
-            }
-        }
+        current = apply_geometry_modifier(current, &item.kind, 0.25);
     }
     current
 }
@@ -165,11 +369,7 @@ pub fn evaluate_opacity_at(modifiers: &[ModifierItem], point: GPoint) -> f64 {
         if let ModifierKind::TransparentGradient { start, end, stops } = &item.kind {
             let a = GPoint::new(start[0], start[1]);
             let b = GPoint::new(end[0], end[1]);
-            let abx = b.x - a.x;
-            let aby = b.y - a.y;
-            let len2 = (abx * abx + aby * aby).max(1e-12);
-            let t = (((point.x - a.x) * abx + (point.y - a.y) * aby) / len2).clamp(0.0, 1.0);
-            mask *= sample_opacity_stops(stops, t);
+            mask *= sample_vector(a, b, stops, point);
         }
     }
     mask.clamp(0.0, 1.0)
@@ -180,25 +380,27 @@ fn sample_opacity_stops(stops: &[OpacityStop], t: f64) -> f64 {
     if stops.is_empty() {
         return 1.0;
     }
-    let mut order: Vec<usize> = (0..stops.len()).collect();
-    order.sort_by(|a, b| {
-        stops[*a]
-            .offset
-            .partial_cmp(&stops[*b].offset)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    if t <= stops[order[0]].offset {
-        return stops[order[0]].opacity;
-    }
-    for w in order.windows(2) {
-        let (s0, s1) = (&stops[w[0]], &stops[w[1]]);
-        if t <= s1.offset {
-            let range = (s1.offset - s0.offset).max(1e-9);
-            let f = (t - s0.offset) / range;
-            return s0.opacity + (s1.opacity - s0.opacity) * f;
+    let mut left: Option<&OpacityStop> = None;
+    let mut right: Option<&OpacityStop> = None;
+    for stop in stops {
+        if stop.offset == t {
+            return stop.opacity;
+        }
+        if stop.offset < t && left.is_none_or(|prev| stop.offset >= prev.offset) {
+            left = Some(stop);
+        }
+        if stop.offset > t && right.is_none_or(|next| stop.offset < next.offset) {
+            right = Some(stop);
         }
     }
-    stops[order[order.len() - 1]].opacity
+    match (left, right) {
+        (Some(a), Some(b)) => {
+            a.opacity + (b.opacity - a.opacity) * ((t - a.offset) / (b.offset - a.offset))
+        }
+        (Some(a), None) => a.opacity,
+        (None, Some(b)) => b.opacity,
+        _ => 1.0,
+    }
 }
 
 #[cfg(test)]
@@ -265,6 +467,7 @@ mod tests {
                 cap: OffsetCap::None,
             },
             enabled: false,
+            space: ModifierSpace::Parent,
         };
         assert_eq!(
             evaluate_modifiers(&rect(), &[item]).verbs.len(),
@@ -407,7 +610,7 @@ mod tests {
     }
 
     #[test]
-    fn crop_outside_keeps_previous_outline() {
+    fn crop_outside_produces_empty_outline() {
         let item = ModifierItem::enabled(
             1,
             ModifierKind::CropRect {
@@ -415,7 +618,7 @@ mod tests {
             },
         );
         let out = evaluate_modifiers(&rect(), &[item]);
-        assert_eq!(out.verbs.len(), rect().verbs.len());
+        assert!(out.is_empty());
     }
 
     #[test]

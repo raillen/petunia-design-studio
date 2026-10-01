@@ -126,7 +126,7 @@ pub fn resolve_color_to_rgb(token: &str) -> [f32; 3] {
         None => token.trim(),
     };
     if let Some(hex) = t.strip_prefix('#') {
-        if hex.len() == 6 {
+        if hex.len() == 6 && hex.is_ascii() {
             if let (Ok(r), Ok(g), Ok(b)) = (
                 u8::from_str_radix(&hex[0..2], 16),
                 u8::from_str_radix(&hex[2..4], 16),

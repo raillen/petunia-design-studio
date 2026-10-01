@@ -1228,7 +1228,7 @@ fn pen_continues_existing_open_path_from_endpoint() {
         .document()
         .find_object(target)
         .unwrap();
-    let verbs = match obj.shape.as_ref().unwrap() {
+    let verbs = match &petunia_design_document::ShapeKind::Path(obj.to_path()) {
         petunia_design_document::ShapeKind::Path(path) => path.verbs.len(),
         _ => panic!("expected path"),
     };
@@ -1340,7 +1340,7 @@ fn path_verbs(
         .document()
         .find_object(id)
         .unwrap();
-    match obj.shape.as_ref().unwrap() {
+    match &petunia_design_document::ShapeKind::Path(obj.to_path()) {
         petunia_design_document::ShapeKind::Path(path) => path.verbs.clone(),
         _ => panic!("expected path"),
     }
@@ -1553,12 +1553,6 @@ fn node_test_path(
     let bounds = path
         .bounding_box()
         .map(|r| [r.x0, r.y0, r.width().max(1.0), r.height().max(1.0)]);
-    bridge
-        .submit_command(CommandRequest::new(Command::SetShape {
-            id,
-            shape: Some(petunia_design_document::ShapeKind::Path(path)),
-        }))
-        .unwrap();
     if let Some(bounds) = bounds {
         bridge
             .submit_command(CommandRequest::new(Command::SetBounds {
@@ -1568,6 +1562,12 @@ fn node_test_path(
             }))
             .unwrap();
     }
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Path(path)),
+        }))
+        .unwrap();
     bridge.clear_selection();
     id
 }
@@ -1592,7 +1592,7 @@ fn node_endpoints(
         .document()
         .find_object(id)
         .unwrap();
-    match obj.shape.as_ref().unwrap() {
+    match &petunia_design_document::ShapeKind::Path(obj.to_path()) {
         petunia_design_document::ShapeKind::Path(path) => path
             .verbs
             .iter()
@@ -1765,7 +1765,7 @@ fn node_handle_drag_keeps_symmetric_mirror() {
         .document()
         .find_object(id)
         .unwrap();
-    match obj.shape.as_ref().unwrap() {
+    match &petunia_design_document::ShapeKind::Path(obj.to_path()) {
         petunia_design_document::ShapeKind::Path(path) => {
             assert_eq!(
                 path.verbs[1],
@@ -1839,7 +1839,7 @@ fn node_convert_smooth_then_symmetric() {
         .document()
         .find_object(id)
         .unwrap();
-    match obj.shape.as_ref().unwrap() {
+    match &petunia_design_document::ShapeKind::Path(obj.to_path()) {
         petunia_design_document::ShapeKind::Path(path) => {
             // In-handle is verb 1's second control; out-handle is verb 2's
             // first control (cubic) or shared control (quad upgrade).
@@ -2065,18 +2065,18 @@ fn corner_test_rect(
         }))
         .unwrap();
     bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some(bounds),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    bridge
         .submit_command(CommandRequest::new(Command::SetShape {
             id,
             shape: Some(petunia_design_document::ShapeKind::Rectangle {
                 corner_radii: [0.0; 4],
             }),
-        }))
-        .unwrap();
-    bridge
-        .submit_command(CommandRequest::new(Command::SetBounds {
-            id,
-            bounds: Some(bounds),
-            rotation: 0.0,
         }))
         .unwrap();
     bridge.clear_selection();
@@ -2289,7 +2289,7 @@ fn contour_bake_commits_geometry_explicitly() {
         .unwrap();
     assert!(matches!(
         obj.shape,
-        Some(petunia_design_document::ShapeKind::Path(_))
+        Some(petunia_design_document::ShapeKind::LocalPath { .. })
     ));
     assert!(bridge.modifiers(id).is_empty());
     let bounds = obj.bounds.unwrap();
@@ -2311,16 +2311,16 @@ fn corner_tool_leaves_non_rectangles_alone() {
         }))
         .unwrap();
     bridge
-        .submit_command(CommandRequest::new(Command::SetShape {
-            id,
-            shape: Some(petunia_design_document::ShapeKind::Ellipse),
-        }))
-        .unwrap();
-    bridge
         .submit_command(CommandRequest::new(Command::SetBounds {
             id,
             bounds: Some([0.0, 0.0, 100.0, 60.0]),
             rotation: 0.0,
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Ellipse),
         }))
         .unwrap();
     bridge.set_selection(vec![id]);
@@ -2544,18 +2544,18 @@ fn knife_converts_parametric_in_batch() {
         }))
         .unwrap();
     bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some([0.0, 0.0, 100.0, 60.0]),
+            rotation: 0.0,
+        }))
+        .unwrap();
+    bridge
         .submit_command(CommandRequest::new(Command::SetShape {
             id,
             shape: Some(petunia_design_document::ShapeKind::Rectangle {
                 corner_radii: [0.0; 4],
             }),
-        }))
-        .unwrap();
-    bridge
-        .submit_command(CommandRequest::new(Command::SetBounds {
-            id,
-            bounds: Some([0.0, 0.0, 100.0, 60.0]),
-            rotation: 0.0,
         }))
         .unwrap();
     let camera = ViewportCamera::new(1000.0, 1000.0);
@@ -2624,6 +2624,14 @@ fn gradient_test_object(
         }))
         .unwrap();
     bridge.set_fill(id, Some(fill.to_string())).unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            }),
+        }))
+        .unwrap();
     bridge.clear_selection();
     bridge.set_selection(vec![id]);
     id
@@ -3964,7 +3972,7 @@ fn builder_click_exclusive_part_subtracts_other() {
         .document()
         .find_object(region)
         .unwrap();
-    match obj.shape.as_ref().unwrap() {
+    match &petunia_design_document::ShapeKind::Path(obj.to_path()) {
         petunia_design_document::ShapeKind::Path(path) => {
             assert!(path.verbs.len() > 5, "L-shape needs vertices");
         }
@@ -4316,12 +4324,6 @@ fn smartfill_flood_bounded_by_open_strokes() {
         path.push(V::MoveTo(GPoint::new(x0, y0))).unwrap();
         path.push(V::LineTo(GPoint::new(x1, y1))).unwrap();
         bridge
-            .submit_command(CommandRequest::new(Command::SetShape {
-                id,
-                shape: Some(petunia_design_document::ShapeKind::Path(path)),
-            }))
-            .unwrap();
-        bridge
             .submit_command(CommandRequest::new(Command::SetBounds {
                 id,
                 bounds: Some([
@@ -4331,6 +4333,12 @@ fn smartfill_flood_bounded_by_open_strokes() {
                     (y1 - y0).abs().max(10.0),
                 ]),
                 rotation: 0.0,
+            }))
+            .unwrap();
+        bridge
+            .submit_command(CommandRequest::new(Command::SetShape {
+                id,
+                shape: Some(petunia_design_document::ShapeKind::Path(path)),
             }))
             .unwrap();
         bridge
@@ -4608,16 +4616,16 @@ fn text_path_line(
     path.push(V::MoveTo(GPoint::new(0.0, 0.0))).unwrap();
     path.push(V::LineTo(GPoint::new(200.0, 0.0))).unwrap();
     bridge
-        .submit_command(CommandRequest::new(Command::SetShape {
-            id,
-            shape: Some(petunia_design_document::ShapeKind::Path(path)),
-        }))
-        .unwrap();
-    bridge
         .submit_command(CommandRequest::new(Command::SetBounds {
             id,
             bounds: Some([0.0, 0.0, 200.0, 1.0]),
             rotation: 0.0,
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Path(path)),
         }))
         .unwrap();
     bridge.clear_selection();
@@ -4701,7 +4709,7 @@ fn text_click_on_path_attaches_with_span_to_end() {
         .unwrap();
     assert!(matches!(
         target_obj.shape,
-        Some(petunia_design_document::ShapeKind::Path(_))
+        Some(petunia_design_document::ShapeKind::LocalPath { .. })
     ));
 }
 
@@ -5492,6 +5500,61 @@ fn perspective_second_drag_replaces_quad() {
 }
 
 #[test]
+fn perspective_drag_on_rotated_object_preserves_untouched_world_corners() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Rotated warp").unwrap();
+    let camera = ViewportCamera::new(1000.0, 1000.0);
+    let mut snap = SnapEngine::new();
+    let mut gen = IdGenerator::new();
+    let id = perspective_test_rect(&mut bridge, &mut gen);
+    bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some([150.0, -50.0, 100.0, 100.0]),
+            rotation: 0.7,
+        }))
+        .unwrap();
+    let before = bridge.session().unwrap().document().clone();
+    let world = before.world_transform_checked(id).unwrap();
+    let corners = [
+        GPoint::new(0.0, 0.0),
+        GPoint::new(100.0, 0.0),
+        GPoint::new(100.0, 100.0),
+        GPoint::new(0.0, 100.0),
+    ]
+    .map(|p| world.apply(p));
+    let mut tool = PerspectiveTool::new();
+    let overlays = tool.overlays(&bridge, &camera);
+    for (handle, point) in overlays.handles.iter().zip(corners) {
+        assert!(handle.doc_point.distance_to(point) < 1e-6);
+    }
+    let moved = GPoint::new(corners[0].x + 15.0, corners[0].y + 10.0);
+    for (phase, point) in [(PointerPhase::Down, corners[0]), (PointerPhase::Up, moved)] {
+        tool.on_pointer_event(
+            &NormalizedPointerEvent::new(
+                phase,
+                PointerButton::Primary,
+                point,
+                camera.doc_to_screen(point),
+                SemanticModifiers::default(),
+            ),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    }
+    let overlays = tool.overlays(&bridge, &camera);
+    assert_eq!(overlays.handles.len(), 4);
+    assert!(overlays.handles[0].doc_point.distance_to(moved) < 1e-6);
+    for (handle, point) in overlays.handles[1..].iter().zip(corners[1..].iter()) {
+        assert!(handle.doc_point.distance_to(*point) < 1e-6);
+    }
+    bridge.undo().unwrap();
+    assert_eq!(bridge.session().unwrap().document(), &before);
+}
+
+#[test]
 fn vector_crop_clips_with_one_undo() {
     let mut bridge = PetuniaDesignGuiBridge::new();
     bridge.new_document("Vector Crop").expect("doc");
@@ -5692,7 +5755,7 @@ fn bake_geometry_commits_warp_and_crop_keeping_transparency() {
         .unwrap();
     assert!(matches!(
         obj.shape,
-        Some(petunia_design_document::ShapeKind::Path(_))
+        Some(petunia_design_document::ShapeKind::LocalPath { .. })
     ));
     // Only the transparency entry survives.
     let mods = bridge.modifiers(id);
@@ -5722,6 +5785,14 @@ fn cache_test_box(
             id,
             bounds: Some(bounds),
             rotation: 0.0,
+        }))
+        .unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::SetShape {
+            id,
+            shape: Some(petunia_design_document::ShapeKind::Rectangle {
+                corner_radii: [0.0; 4],
+            }),
         }))
         .unwrap();
     bridge.clear_selection();
@@ -5810,18 +5881,18 @@ fn spatial_index_uses_rotated_world_aabb_for_select() {
         }))
         .unwrap();
     bridge
+        .submit_command(CommandRequest::new(Command::SetBounds {
+            id,
+            bounds: Some([100.0, 100.0, 80.0, 20.0]),
+            rotation: std::f64::consts::FRAC_PI_2,
+        }))
+        .unwrap();
+    bridge
         .submit_command(CommandRequest::new(Command::SetShape {
             id,
             shape: Some(petunia_design_document::ShapeKind::Rectangle {
                 corner_radii: [0.0; 4],
             }),
-        }))
-        .unwrap();
-    bridge
-        .submit_command(CommandRequest::new(Command::SetBounds {
-            id,
-            bounds: Some([100.0, 100.0, 80.0, 20.0]),
-            rotation: std::f64::consts::FRAC_PI_2,
         }))
         .unwrap();
 

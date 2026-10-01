@@ -47,6 +47,21 @@ impl GPath {
         Self { verbs: Vec::new() }
     }
 
+    /// Signed area of closed contours, including exact Bézier integrals.
+    /// Open contours need closure for region area. Oppositely directed counters
+    /// subtract; this does not resolve fill rules.
+    #[must_use]
+    pub fn signed_area(&self) -> f64 {
+        kurbo_adapter::signed_area(self)
+    }
+
+    /// Reverses every contour, preserving Bézier curves and open/closed status.
+    /// All winding signs flip together, so nonzero coverage is preserved.
+    #[must_use]
+    pub fn reversed_contours(&self) -> Self {
+        kurbo_adapter::reversed_contours(self)
+    }
+
     /// True when there are no verbs.
     #[must_use]
     pub fn is_empty(&self) -> bool {
@@ -622,6 +637,31 @@ mod kurbo_adapter {
             }
         }
         bez
+    }
+
+    pub(super) fn signed_area(path: &GPath) -> f64 {
+        to_kurbo(path).area()
+    }
+    pub(super) fn reversed_contours(path: &GPath) -> GPath {
+        GPath {
+            verbs: to_kurbo(path)
+                .reverse_subpaths()
+                .iter()
+                .map(|element| match element {
+                    PathEl::MoveTo(p) => PathVerb::MoveTo(GPoint::new(p.x, p.y)),
+                    PathEl::LineTo(p) => PathVerb::LineTo(GPoint::new(p.x, p.y)),
+                    PathEl::QuadTo(c, p) => {
+                        PathVerb::QuadTo(GPoint::new(c.x, c.y), GPoint::new(p.x, p.y))
+                    }
+                    PathEl::CurveTo(a, b, p) => PathVerb::CubicTo(
+                        GPoint::new(a.x, a.y),
+                        GPoint::new(b.x, b.y),
+                        GPoint::new(p.x, p.y),
+                    ),
+                    PathEl::ClosePath => PathVerb::Close,
+                })
+                .collect(),
+        }
     }
 
     pub(super) fn bounding_box(path: &GPath) -> Option<GRect> {

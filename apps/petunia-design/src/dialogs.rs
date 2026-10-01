@@ -88,6 +88,7 @@ fn palette_row(
     let mut customize_open = ui.customize_open;
     let mut new_doc_open = ui.new_doc_open;
     let mut export_open = ui.export_open;
+    let mut place_image_open = ui.place_image_open;
     let mut confirm_close_open = ui.confirm_close_open;
     let mut pending_close = ui.pending_close;
     let mut offset_prompt_open = ui.offset_prompt_open;
@@ -105,6 +106,9 @@ fn palette_row(
                     }
                     if action_id == "ptnd.action.file.export" {
                         export_open.set(true);
+                    }
+                    if action_id == "ptnd.action.file.place" {
+                        place_image_open.set(true);
                     }
                     if action_id == "ptnd.action.object.offset_path" {
                         offset_prompt_open.set(true);
@@ -1902,6 +1906,112 @@ impl Component for OverwriteConflictDialog {
                                     })
                                     .child(label().text("Substituir / Overwrite").font_size(11.)),
                             ),
+                    ),
+            )
+    }
+}
+
+/// Places one original through the action/command lane. Failures remain visible
+/// in the dialog; no placeholder or undo entry is created for rejected sources.
+#[derive(Clone, PartialEq)]
+pub struct PlaceImageDialog(pub UiShell);
+
+impl Component for PlaceImageDialog {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        let path = use_state(String::new);
+        let error = use_state(|| None::<String>);
+        if !*ui.place_image_open.read() {
+            return rect().width(Size::px(0.)).height(Size::px(0.));
+        }
+        let mut open = ui.place_image_open;
+        let mut close_open = open;
+        let mut shell = ui.shell;
+        let mut path_state = path;
+        let mut error_state = error;
+        let mut close_error = error;
+        let error_text = error.read().clone();
+        let failure_label = localized_dialog_text(ui, "ptnd.text.image.place_failed");
+        rect()
+            .position(Position::new_absolute().top(100.))
+            .width(Size::fill())
+            .cross_align(Alignment::Center)
+            .child(
+                Popup::new()
+                    .on_close_request(move |_| {
+                        close_error.set(None);
+                        close_open.set(false);
+                    })
+                    .child(PopupTitle::new(localized_dialog_text(
+                        ui,
+                        "ptnd.text.file.place",
+                    )))
+                    .child(
+                        PopupContent::new().child(
+                            rect()
+                                .direction(Direction::Vertical)
+                                .width(Size::px(480.))
+                                .spacing(theme::SPACE_2)
+                                .child(
+                                    label()
+                                        .text(localized_dialog_text(ui, "ptnd.text.image.formats"))
+                                        .color(theme::TEXT_SECONDARY),
+                                )
+                                .child(Input::new(path).placeholder(localized_dialog_text(
+                                    ui,
+                                    "ptnd.text.image.source_path",
+                                )))
+                                .children(
+                                    error_text
+                                        .into_iter()
+                                        .map(|message| label().text(message).color(PROMPT_ERROR)),
+                                )
+                                .child(
+                                    rect()
+                                        .direction(Direction::Horizontal)
+                                        .main_align(Alignment::End)
+                                        .spacing(theme::SPACE_1)
+                                        .child(
+                                            Button::new()
+                                                .on_press(move |_| {
+                                                    error_state.set(None);
+                                                    open.set(false);
+                                                })
+                                                .child(localized_dialog_text(
+                                                    ui,
+                                                    "ptnd.text.image.cancel",
+                                                )),
+                                        )
+                                        .child(
+                                            Button::new()
+                                                .on_press(move |_| {
+                                                    let chosen =
+                                                        path_state.read().trim().to_string();
+                                                    let result = shell
+                                                        .write()
+                                                        .bridge
+                                                        .dispatch_action(ActionRequest::new(
+                                                            ActionId::new("ptnd.action.file.place"),
+                                                            serde_json::json!({"path": chosen}),
+                                                        ));
+                                                    match result {
+                                                        Ok(_) => {
+                                                            path_state.set(String::new());
+                                                            error_state.set(None);
+                                                            open.set(false);
+                                                        }
+                                                        Err(reason) => error_state.set(Some(
+                                                            format!("{failure_label}: {reason}"),
+                                                        )),
+                                                    }
+                                                })
+                                                .child(localized_dialog_text(
+                                                    ui,
+                                                    "ptnd.text.image.place",
+                                                )),
+                                        ),
+                                ),
+                        ),
                     ),
             )
     }

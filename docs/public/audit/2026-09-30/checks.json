@@ -1,0 +1,174 @@
+{
+  "baseline": "73447647a34f5b4be209415c36e6965c5f71b9b9",
+  "started": "2026-09-30",
+  "documentation_completed": "2026-10-01",
+  "environment": {
+    "os": "Linux headless",
+    "cpu_quota": 4,
+    "memory_gib": 32,
+    "rust": "1.98.1"
+  },
+  "headless_tests": {
+    "passed": 555,
+    "failed": 1,
+    "ignored": 0
+  },
+  "desktop_tests": {
+    "passed": 45,
+    "failed": 0,
+    "ignored": 0
+  },
+  "checks": [
+    {
+      "name": "workspace check",
+      "command": "cargo check --locked --workspace",
+      "result": "passed",
+      "log_path": "/workspace/.petunia-cache/workspace-check.log",
+      "log_sha256": "e2ba96a33df984f4686aedd30692a7a159d8778455b61e9c02d0569060d9dd06"
+    },
+    {
+      "name": "format",
+      "command": "cargo fmt --all --check",
+      "result": "passed",
+      "log_path": "/workspace/.petunia-cache/fmt.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "conformance",
+      "command": "cargo xtask conformance",
+      "result": "passed",
+      "log_path": "/workspace/.petunia-cache/conformance.log",
+      "log_sha256": "46259d33ee28e3a8b95075dd2a4679fc3f1f9ad99c6c16d258d4b5e1f9ae7fd1"
+    },
+    {
+      "name": "verify",
+      "command": "cargo xtask verify",
+      "result": "failed_strict_clippy",
+      "log_path": "/workspace/.petunia-cache/verify.log",
+      "log_sha256": "50e8d104e10aced25a294030e6c5dbb1ab3604a168a9701641a3ff1fc6d01a28"
+    },
+    {
+      "name": "headless tests",
+      "command": "cargo test --locked --workspace --exclude petunia-design --no-fail-fast",
+      "result": "failed_one_debug_timing_assertion",
+      "log_path": "/workspace/.petunia-cache/headless-complete.log",
+      "log_sha256": "5d911a0565f2acede9fb842e91700707a2a55d680838099639875a51ae8aa1af"
+    },
+    {
+      "name": "desktop tests",
+      "command": "cargo test --locked -p petunia-design --bin petunia-design --test click_smoke",
+      "result": "passed",
+      "log_path": "/workspace/.petunia-cache/desktop-tests.log",
+      "log_sha256": "56ad827107b63509a6bc618e15709796a4e878db6f82c2ab527d6add0184ec38"
+    },
+    {
+      "name": "release timing test",
+      "command": "cargo test --locked -p petunia_design_render --release compositor_performance_with_many_objects_and_masks",
+      "result": "passed",
+      "log_path": "/workspace/.petunia-cache/render-release.log",
+      "log_sha256": "a5fc53da88327d55a27b462fb48824108d4acb581047f2067e8f6b8953a512bc"
+    },
+    {
+      "name": "clippy inventory",
+      "command": "cargo clippy --locked --workspace --all-targets --message-format=json",
+      "result": "completed_with_warnings",
+      "log_path": "/workspace/.petunia-cache/audit-clippy.jsonl",
+      "log_sha256": "bc03c4f46e8aa903edbf3e5fc9c7bb55a0f461558f9284012280de4fa51c0157"
+    }
+  ],
+  "clippy_unique_warnings": [
+    {
+      "path": "crates/petunia_design_render/src/pixel_compositor.rs",
+      "line": 113,
+      "code": "clippy::chunks_exact_to_as_chunks",
+      "message": "using `chunks_exact_mut` with a constant chunk size"
+    },
+    {
+      "path": "crates/petunia_design_render/src/pixel_compositor.rs",
+      "line": 159,
+      "code": "clippy::chunks_exact_to_as_chunks",
+      "message": "using `chunks_exact_mut` with a constant chunk size"
+    },
+    {
+      "path": "crates/petunia_design_io/src/image_io.rs",
+      "line": 187,
+      "code": "clippy::chunks_exact_to_as_chunks",
+      "message": "using `chunks_exact` with a constant chunk size"
+    },
+    {
+      "path": "crates/petunia_design_io/src/image_io.rs",
+      "line": 202,
+      "code": "clippy::chunks_exact_to_as_chunks",
+      "message": "using `chunks_exact` with a constant chunk size"
+    },
+    {
+      "path": "crates/petunia_design_io/src/image_io.rs",
+      "line": 226,
+      "code": "clippy::chunks_exact_to_as_chunks",
+      "message": "using `chunks_exact` with a constant chunk size"
+    },
+    {
+      "path": "crates/petunia_design_io/src/image_io.rs",
+      "line": 241,
+      "code": "clippy::chunks_exact_to_as_chunks",
+      "message": "using `chunks_exact` with a constant chunk size"
+    },
+    {
+      "path": "crates/petunia_design_io/src/image_io.rs",
+      "line": 332,
+      "code": "clippy::chunks_exact_to_as_chunks",
+      "message": "using `chunks_exact` with a constant chunk size"
+    },
+    {
+      "path": "crates/petunia_design_io/src/image_io.rs",
+      "line": 437,
+      "code": "clippy::chunks_exact_to_as_chunks",
+      "message": "using `chunks_exact` with a constant chunk size"
+    },
+    {
+      "path": "crates/petunia_design_application/src/commands.rs",
+      "line": 8,
+      "code": "clippy::large_enum_variant",
+      "message": "large size difference between variants"
+    },
+    {
+      "path": "apps/petunia-design/src/canvas_paint.rs",
+      "line": 60,
+      "code": "clippy::chunks_exact_to_as_chunks",
+      "message": "using `chunks_exact_mut` with a constant chunk size"
+    }
+  ],
+  "architecture": {
+    "result": "passed",
+    "command": "cargo xtask architecture"
+  },
+  "probes": {
+    "reproduced_behavioral_gaps": 17,
+    "pdf_dimensions_independently_checked": true,
+    "positive_control": "CHECK-18 distant knife segment does not cut rectangle"
+  },
+  "limitations": [
+    "No real GUI/GPU/tablet/IME/AT-SPI/print/RIP test",
+    "Inventory and transversal scan do not establish full semantic or formal review of every line",
+    "Paper/product sites restricted; consulted-source scope documented"
+  ],
+  "audit_artifact_validation": {
+    "portable_runner": "passed: 17 behavioral probes plus PDF page dimensions and CHECK-18",
+    "json": "parsed",
+    "findings": "37 source anchors checked; identical IDs in EN/PT",
+    "i18n": "20/20 canonical pages mirrored",
+    "docs": "build passed with strict dead-link checks; existing bundle-size advisory",
+    "scope": "only documentation and standalone evidence added; no application/manifests/locks edited"
+  },
+  "artifact_sha256": {
+    "probes.rs.txt": "d38e08a69844728f2a7a1bd4a2ec0e26be752859637a692dccf8f374cff6ab99",
+    "probes.rs": "d38e08a69844728f2a7a1bd4a2ec0e26be752859637a692dccf8f374cff6ab99",
+    "findings.json": "4b36306e98f85ce46b141ac187d2e2e7b81ac4eacd1decc0aa037a1e797f88e4",
+    "pdfinfo.txt": "db724abb28a5a237edbb674191bd2862165a87be039a25ddb4048661c0a7c8ca",
+    "run-probes.sh.txt": "2cc7e2b8dda355b6a36f78dc2f8710a9d6ac2c887a9cdf71dda97712fc4854d4",
+    "probes-debug.txt": "e72fe6be9075b750c73aac6a5af6e3a68a9544e5644cdc0117f81d733e77f1e0",
+    "run-probes.sh": "2cc7e2b8dda355b6a36f78dc2f8710a9d6ac2c887a9cdf71dda97712fc4854d4",
+    "probes-release.txt": "f75e190ddccf84d1bd9f6b7122fce1411e0e62f1134dd9f6bef6a7121c3d948b",
+    "inventory.json": "68d7483c1b07117228b907a82844b88625829c50a3bdb3c1d48f91a4fe025ecc"
+  }
+}

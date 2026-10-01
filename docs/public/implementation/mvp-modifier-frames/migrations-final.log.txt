@@ -1,0 +1,45 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running `/workspace/.petunia-cache/target/debug/xtask migrations`
+   Compiling petunia_design_document v0.1.0 (/workspace/petunia-design-studio/crates/petunia_design_document)
+   Compiling petunia_design_io v0.1.0 (/workspace/petunia-design-studio/crates/petunia_design_io)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.18s
+     Running tests/modifier_frames.rs (/workspace/.petunia-cache/target/debug/deps/modifier_frames-84e691cc7234cae5)
+
+running 11 tests
+test contour_distance_scales_in_both_axes_without_rewriting_parameters ... ok
+test bake_preserves_rotated_world_outline_and_spatial_transparency ... ok
+test crop_and_diagonal_opacity_follow_movement_and_nonuniform_resize ... ok
+test contour_bake_does_not_apply_following_crop_twice_or_consume_it ... ok
+test disabled_modifiers_follow_placement_when_reenabled ... ok
+test empty_crop_hides_geometry_preserves_source_and_bakes_as_empty ... ok
+test opacity_sampling_preserves_unsorted_duplicate_stop_order ... ok
+test selective_bake_after_warp_fails_and_preserves_editable_chain ... ok
+test world_parameter_input_and_opacity_respect_rotated_ancestors ... ok
+test invalid_replacement_and_unmarked_current_schema_fail_without_publication ... ok
+test schema_one_and_two_migrate_parent_parameters_without_changing_source ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/path_frame_regressions.rs (/workspace/.petunia-cache/target/debug/deps/path_frame_regressions-bd03c7ff1373ccab)
+
+running 6 tests
+test atomic_path_edit_updates_both_frames_and_undo_restores_source ... ok
+test deleting_a_path_detaches_text_and_bindings_and_undo_restores_references ... ok
+test moving_and_resizing_preserve_source_points_and_revert_exactly ... ok
+test path_source_is_shared_by_snapshots_and_replacement_does_not_modify_them ... ok
+test legacy_schema_migrates_without_changing_world_geometry ... ok
+test malformed_ids_frames_references_and_cycles_are_rejected ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/package_integrity.rs (/workspace/.petunia-cache/target/debug/deps/package_integrity-4ad1db746986b2ae)
+
+running 5 tests
+test invalid_save_preserves_previous_file ... ok
+test schema_one_package_opens_and_is_written_as_schema_three ... ok
+test compressed_oversized_manifest_and_schema_mismatch_are_rejected ... ok
+test concurrent_saves_publish_a_complete_package_without_temporary_collisions ... ok
+test schema_two_modifier_package_migrates_and_preserves_editable_parameters ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

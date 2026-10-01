@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use petunia_design_application::preview::PreviewSource;
 use petunia_design_document::ShapeKind;
 use petunia_design_foundation::{ObjectId, SurfaceId};
 use petunia_design_geometry::{GAffine, GPath, GPoint};
@@ -50,6 +51,8 @@ pub struct CanvasObjectProjection {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CanvasSnapshot {
     pub revision: u64,
+    /// Immutable worker source shared independently of selection/camera.
+    pub preview_source: Option<Arc<PreviewSource>>,
     pub camera: ViewportCamera,
     pub overlays: CanvasOverlays,
     pub surface: Option<SurfaceView>,
@@ -63,6 +66,7 @@ pub struct CanvasSnapshot {
 #[derive(Clone, Debug, Default)]
 pub struct SnapshotCache {
     entry: Option<SnapshotCacheEntry>,
+    preview: Option<Arc<PreviewSource>>,
 }
 
 #[derive(Clone, Debug)]
@@ -89,6 +93,7 @@ impl SnapshotCache {
     /// every stable id — was replaced).
     pub fn clear(&mut self) {
         self.entry = None;
+        self.preview = None;
     }
 
     /// Returns the cached scene when the key matches, else `None`.
@@ -128,6 +133,7 @@ impl PetuniaShell {
                 revision: 0,
                 camera,
                 overlays,
+                preview_source: None,
                 surface: None,
                 objects: Vec::new(),
             };
@@ -139,6 +145,7 @@ impl PetuniaShell {
                 revision,
                 camera,
                 overlays,
+                preview_source: None,
                 surface: None,
                 objects: Vec::new(),
             };
@@ -148,9 +155,19 @@ impl PetuniaShell {
                 revision,
                 camera,
                 overlays,
+                preview_source: None,
                 surface: None,
                 objects: Vec::new(),
             };
+        };
+        let preview_source = {
+            let mut cache = self.bridge.snapshot_cache_mut();
+            if cache.preview.as_ref().is_none_or(|source| {
+                source.revision() != revision || source.surface_id() != surface_id
+            }) {
+                cache.preview = Some(PreviewSource::capture(surface, revision));
+            }
+            cache.preview.clone()
         };
         // Cache hit: filter the stored full-scene projections by the current
         // viewport and clone only the visible ones. Every shared payload
@@ -172,6 +189,7 @@ impl PetuniaShell {
                 revision,
                 camera,
                 overlays,
+                preview_source,
                 surface: Some(hit.surface_view.clone()),
                 objects,
             };
@@ -256,6 +274,7 @@ impl PetuniaShell {
             revision,
             camera,
             overlays,
+            preview_source,
             surface: Some(surface_view),
             objects,
         }

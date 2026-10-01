@@ -10,6 +10,8 @@ petunia_design_geometry = { path = "../petunia_design_geometry" }
 petunia_design_document = { path = "../petunia_design_document" }
 petunia_design_io = { path = "../petunia_design_io" }
 petunia_design_render = { path = "../petunia_design_render" }
+petunia_design_raster = { path = "../petunia_design_raster" }
+petunia_design_jobs = { path = "../petunia_design_jobs" }
 rstar = "0.12"
 serde.workspace = true
 serde_json.workspace = true
