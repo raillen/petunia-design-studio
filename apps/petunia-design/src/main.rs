@@ -12,7 +12,15 @@ mod canvas_preview;
 mod chrome;
 mod dialogs;
 mod dock;
+mod export_preview;
+mod file_dialogs;
+mod file_jobs;
+mod file_workflows;
+mod object_edit_dialog;
+mod object_edits;
+mod recovery;
 mod theme;
+mod typography;
 mod ui_state;
 
 use freya::prelude::*;
@@ -53,7 +61,7 @@ use crate::dialogs::{
     CommandPalette, ConfirmCloseDialog, CustomizeDialog, ExportDialog, NewDocumentDialog,
     OffsetPathDialog, OverwriteConflictDialog, PlaceImageDialog,
 };
-use crate::ui_state::{ToolRailState, UiShell};
+use crate::ui_state::UiShell;
 
 const WINDOW_WIDTH: f64 = 1280.;
 const WINDOW_HEIGHT: f64 = 800.;
@@ -78,64 +86,6 @@ fn main() {
 
 /// Seeds two overlapping demo shapes on the default artboard for instant testing of
 /// Shape Builder, Gradient, Node, and Select tools without manual setup.
-fn seed_starter_shapes(shell: &mut PetuniaShell) {
-    use petunia_design_application::Command;
-    let Some(surface_id) = shell.bridge.active_surface() else {
-        return;
-    };
-    let id1 = match shell.bridge.next_object_id() {
-        Ok(id) => id,
-        Err(_) => return,
-    };
-    let id2 = match shell.bridge.next_object_id() {
-        Ok(id) => id,
-        Err(_) => return,
-    };
-
-    let cmds = vec![
-        Command::CreateObject {
-            surface: surface_id,
-            id: id1,
-            name: "Rectangle A".to_string(),
-        },
-        Command::SetBounds {
-            id: id1,
-            bounds: Some([260.0, 180.0, 220.0, 160.0]),
-            rotation: 0.0,
-        },
-        Command::SetShape {
-            id: id1,
-            shape: Some(petunia_design_document::ShapeKind::Rectangle {
-                corner_radii: [12.0, 12.0, 12.0, 12.0],
-            }),
-        },
-        Command::SetFill {
-            id: id1,
-            fill: Some("ptnd.blue/500".to_string()),
-        },
-        Command::CreateObject {
-            surface: surface_id,
-            id: id2,
-            name: "Circle B".to_string(),
-        },
-        Command::SetBounds {
-            id: id2,
-            bounds: Some([380.0, 240.0, 200.0, 200.0]),
-            rotation: 0.0,
-        },
-        Command::SetShape {
-            id: id2,
-            shape: Some(petunia_design_document::ShapeKind::Ellipse),
-        },
-        Command::SetFill {
-            id: id2,
-            fill: Some("ptnd.purple/500".to_string()),
-        },
-    ];
-    let _ = shell.bridge.submit_all("Seed starter shapes", cmds);
-    shell.bridge.clear_selection();
-}
-
 fn app() -> impl IntoElement {
     use_init_theme(theme::petunia_theme);
 
@@ -144,22 +94,16 @@ fn app() -> impl IntoElement {
         shell
             .new_document(DEFAULT_DOCUMENT_TITLE)
             .expect("a fresh document opens");
-        seed_starter_shapes(&mut shell);
         shell
     });
     let ui = UiShell::fresh(shell);
+    file_jobs::use_file_jobs(ui.clone());
     let root_a11y_id = use_a11y();
     let keyboard_shell = ui.shell;
     let modifiers = ui.modifiers;
-    let palette_open = ui.palette_open;
-    let palette_query = ui.palette_query;
-    let tool_rail = ui.tool_rail;
     let active_tool = ui.active_tool;
-    let customize_open = ui.customize_open;
     let temporary_tool = ui.temporary_tool;
     let suspended_tool = ui.suspended_tool;
-    let new_doc_open = ui.new_doc_open;
-    let export_open = ui.export_open;
 
     rect()
         .direction(Direction::Vertical)
@@ -201,28 +145,20 @@ fn app() -> impl IntoElement {
         .child(NewDocumentDialog(ui.clone()))
         .child(ExportDialog(ui.clone()))
         .child(PlaceImageDialog(ui.clone()))
+        .child(file_dialogs::FileDialog(ui.clone()))
+        .child(recovery::RecoveryDialog(ui.clone()))
+        .child(object_edit_dialog::ObjectEditDialog(ui.clone()))
+        .child(typography::TypographyDialog(ui.clone()))
         .child(ConfirmCloseDialog(ui.clone()))
         .child(OffsetPathDialog(ui.clone()))
         .child(OverwriteConflictDialog(ui.clone()))
         .child(TooltipOverlay(ui.clone()))
         .on_global_key_down({
-            let shell = keyboard_shell;
+            let keyboard_ui = ui.clone();
             let mut modifiers = modifiers;
             move |event: Event<KeyboardEventData>| {
                 modifiers.set(semantic_modifiers(event.modifiers));
-                dispatch_workspace_key(
-                    shell,
-                    palette_open,
-                    palette_query,
-                    tool_rail,
-                    active_tool,
-                    customize_open,
-                    new_doc_open,
-                    export_open,
-                    temporary_tool,
-                    suspended_tool,
-                    &event,
-                );
+                dispatch_workspace_key(&keyboard_ui, &event);
             }
         })
         .on_global_key_up({
@@ -248,12 +184,21 @@ struct Workspace(UiShell);
 impl Component for Workspace {
     fn render(&self) -> impl IntoElement {
         let mut shell = self.0.shell;
+        recovery::use_recovery(&self.0);
         let modifiers = self.0.modifiers;
         let mut gesture_tick = use_state(|| 0u64);
         let ruler_drag = use_state(|| None::<(petunia_design_document::GuideOrientation, f64)>);
         let middle_pan_last = use_state(|| None::<GPoint>);
         let mut is_pointer_down = use_state(|| false);
         let a11y_id = use_a11y();
+        use_future(move || async move {
+            loop {
+                timer(std::time::Duration::from_millis(16)).await;
+                if shell.peek().tools.has_pending_jobs() {
+                    let _ = shell.write().poll_tool_jobs();
+                }
+            }
+        });
         let snapshot = shell.read().canvas_snapshot();
         let (preview, preview_error) = canvas_preview::use_canvas_preview(
             &snapshot,
@@ -272,22 +217,12 @@ impl Component for Workspace {
         });
 
         let active_text_editor = if let Some(text_obj) = active_text_object {
-            let (content, font_size) = match text_obj.shape.as_deref() {
-                Some(petunia_design_document::ShapeKind::Text {
-                    content, font_size, ..
-                }) => (content.clone(), *font_size),
-                _ => (String::new(), 16.0),
-            };
             let screen_origin = snapshot.camera.doc_to_screen(GPoint::new(
                 text_obj.frame_origin[0],
                 text_obj.frame_origin[1],
             ));
             let text_obj_id = text_obj.id;
-            let mut text_edit_content = self.0.text_edit_content;
-            if text_edit_content.peek().is_empty() && !content.is_empty() {
-                text_edit_content.set(content.clone());
-            }
-            let mut shell_for_commit = shell;
+            let edit_ui = self.0.clone();
             Some(
                 rect()
                     .position(
@@ -307,31 +242,16 @@ impl Component for Workspace {
                     .cross_align(Alignment::Center)
                     .spacing(4.)
                     .child(
-                        rect()
-                            .width(Size::px(220.))
-                            .child(Input::new(text_edit_content).placeholder("Texto...")),
-                    )
-                    .child(
                         Button::new()
-                            .on_press(move |_| {
-                                let current_text = text_edit_content.peek().clone();
-                                let shape = petunia_design_document::ShapeKind::Text {
-                                    content: current_text,
-                                    font_family: "Inter".to_string(),
-                                    font_size,
-                                    line_height: 1.2,
-                                    letter_spacing: 0.0,
-                                    on_path: None,
-                                };
-                                let _ = shell_for_commit.write().bridge.submit_all(
-                                    "Update text in-canvas",
-                                    vec![petunia_design_application::Command::SetShape {
-                                        id: text_obj_id,
-                                        shape: Some(shape),
-                                    }],
+                            .on_press(move |event: Event<PressEventData>| {
+                                event.stop_propagation();
+                                object_edit_dialog::request(
+                                    &edit_ui,
+                                    text_obj_id,
+                                    object_edits::EditKind::Text,
                                 );
                             })
-                            .child(label().text("Aplicar").font_size(11.)),
+                            .child(label().text(self.0.text("edit_text")).font_size(11.)),
                     ),
             )
         } else {
@@ -502,7 +422,9 @@ impl Component for Workspace {
                 }),
             );
 
-        if let Some(error) = preview_error {
+        if let Some(error) =
+            preview_error.or_else(|| shell.read().tools.feedback().map(str::to_owned))
+        {
             let prefix = {
                 let shell = shell.read();
                 shell.bridge.localization().text(
@@ -541,7 +463,7 @@ fn dispatch_workspace_pointer(
     } else {
         PointerButton::Primary
     };
-    dispatch_workspace_at(
+    dispatch_workspace_with_pressure(
         shell,
         modifiers,
         gesture_tick,
@@ -550,6 +472,10 @@ fn dispatch_workspace_pointer(
         phase,
         button,
         GPoint::new(location.x, location.y),
+        match event.data() {
+            PointerEventData::Touch(touch) => normalized_pressure(touch.force),
+            PointerEventData::Mouse(_) => 1.0,
+        },
     );
 }
 
@@ -558,8 +484,51 @@ fn dispatch_workspace_pointer(
 // Grouping them would only move the arity into a struct literal at each of
 // the five call sites, so the arity is allowed here.
 // (clippy::too_many_arguments: Freya event-plumbing boundary)
+fn normalized_pressure(force: Option<Force>) -> f64 {
+    let pressure = match force {
+        Some(Force::Normalized(value)) => value,
+        Some(Force::Calibrated {
+            force,
+            max_possible_force,
+            ..
+        }) if max_possible_force.is_finite() && max_possible_force > 0.0 => {
+            force / max_possible_force
+        }
+        _ => 1.0,
+    };
+    if pressure.is_finite() {
+        pressure.clamp(0.0, 1.0)
+    } else {
+        1.0
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn dispatch_workspace_at(
+    shell: State<PetuniaShell>,
+    modifiers: State<SemanticModifiers>,
+    gesture_tick: State<u64>,
+    ruler_drag: State<Option<(petunia_design_document::GuideOrientation, f64)>>,
+    middle_pan_last: State<Option<GPoint>>,
+    phase: PointerPhase,
+    button: PointerButton,
+    screen: GPoint,
+) {
+    dispatch_workspace_with_pressure(
+        shell,
+        modifiers,
+        gesture_tick,
+        ruler_drag,
+        middle_pan_last,
+        phase,
+        button,
+        screen,
+        1.0,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn dispatch_workspace_with_pressure(
     mut shell: State<PetuniaShell>,
     modifiers: State<SemanticModifiers>,
     mut gesture_tick: State<u64>,
@@ -568,6 +537,7 @@ fn dispatch_workspace_at(
     phase: PointerPhase,
     button: PointerButton,
     screen: GPoint,
+    pressure: f64,
 ) {
     // 1. Middle mouse button pan navigation
     if button == PointerButton::Middle {
@@ -666,7 +636,8 @@ fn dispatch_workspace_at(
 
     // 3. Normal canvas tool event dispatch
     let document = camera.screen_to_doc(screen);
-    let event = NormalizedPointerEvent::new(phase, button, screen, document, *modifiers.read());
+    let mut event = NormalizedPointerEvent::new(phase, button, screen, document, *modifiers.read());
+    event.pressure = pressure;
     let _ = shell.write().handle_pointer_event(&event);
     let next = *gesture_tick.peek() + 1;
     gesture_tick.set(next);
@@ -694,25 +665,21 @@ fn semantic_modifiers(modifiers: Modifiers) -> SemanticModifiers {
     }
 }
 
-// The workspace key fan-out carries one `State` handle per overlay concern
-// straight from the component scope into the global key handler. The handles
-// mirror `UiShell` fields one-to-one; grouping them would only move the arity
-// into a struct literal at the call site, so the arity is allowed here.
-// (clippy::too_many_arguments: Freya event-plumbing boundary)
-#[allow(clippy::too_many_arguments)]
-fn dispatch_workspace_key(
-    mut shell: State<PetuniaShell>,
-    mut palette_open: State<bool>,
-    mut palette_query: State<String>,
-    mut tool_rail: State<ToolRailState>,
-    mut active_tool: State<ToolKind>,
-    mut customize_open: State<bool>,
-    mut new_doc_open: State<bool>,
-    mut export_open: State<bool>,
-    mut temporary_tool: State<Option<ToolKind>>,
-    mut suspended_tool: State<Option<ToolKind>>,
-    event: &Event<KeyboardEventData>,
-) {
+// All workspace shortcuts share the same UI action adapter as menus.
+fn dispatch_workspace_key(ui: &UiShell, event: &Event<KeyboardEventData>) {
+    // Popups own typing and shortcuts. Delete, Space and letters must never
+    // edit the canvas behind an open file or configuration dialog.
+    if ui.has_modal() || *ui.palette_open.peek() {
+        return;
+    }
+    let mut shell = ui.shell;
+    let mut palette_open = ui.palette_open;
+    let mut palette_query = ui.palette_query;
+    let mut tool_rail = ui.tool_rail;
+    let mut active_tool = ui.active_tool;
+    let mut customize_open = ui.customize_open;
+    let mut temporary_tool = ui.temporary_tool;
+    let mut suspended_tool = ui.suspended_tool;
     if let Some(key) = shortcut_key(event) {
         let has_command_modifier = event.modifiers.contains(Modifiers::CONTROL)
             || event.modifiers.contains(Modifiers::META)
@@ -755,13 +722,7 @@ fn dispatch_workspace_key(
     if token == petunia_design_application::ActionId::EDIT_PREFERENCES {
         customize_open.set(true);
     }
-    if token == "ptnd.action.file.new" {
-        new_doc_open.set(true);
-    }
-    if token == "ptnd.action.file.export" {
-        export_open.set(true);
-    }
-    let _ = run_action_id(&mut shell.write(), token);
+    let _ = crate::actions::run_ui_id(ui, token);
 }
 
 fn workspace_shortcut(event: &Event<KeyboardEventData>) -> Option<&'static str> {
@@ -769,6 +730,15 @@ fn workspace_shortcut(event: &Event<KeyboardEventData>) -> Option<&'static str> 
         event.modifiers.contains(Modifiers::CONTROL) || event.modifiers.contains(Modifiers::META);
     if control {
         return match &event.key {
+            Key::Character(key) if key.eq_ignore_ascii_case("o") => Some("ptnd.action.file.open"),
+            Key::Character(key) if key.eq_ignore_ascii_case("s") => {
+                Some(if event.modifiers.contains(Modifiers::SHIFT) {
+                    "ptnd.action.file.save_as"
+                } else {
+                    "ptnd.action.file.save"
+                })
+            }
+            Key::Character(key) if key.eq_ignore_ascii_case("w") => Some("ptnd.action.file.close"),
             Key::Character(key) if key.eq_ignore_ascii_case("n") => Some("ptnd.action.file.new"),
             Key::Character(key) if key.eq_ignore_ascii_case("e") => Some("ptnd.action.file.export"),
             Key::Character(key) if key.eq_ignore_ascii_case("z") => {
@@ -837,7 +807,7 @@ struct StatusBar(UiShell);
 
 impl Component for StatusBar {
     fn render(&self) -> impl IntoElement {
-        let shell_ref = self.0.shell.peek();
+        let shell_ref = self.0.shell.read();
         let title = shell_ref.bridge.session().map_or_else(
             || DEFAULT_DOCUMENT_TITLE.to_string(),
             |s| s.title().to_string(),
@@ -885,9 +855,30 @@ impl Component for StatusBar {
             .child(rect().width(Size::fill()))
             .child(
                 label()
-                    .text(hint)
-                    .color(theme::TEXT_TERTIARY)
+                    .text(
+                        self.0
+                            .file_error
+                            .read()
+                            .clone()
+                            .or_else(|| self.0.file_notice.read().clone())
+                            .unwrap_or(hint),
+                    )
+                    .color(theme::TEXT_SECONDARY)
                     .font_size(theme::CAPTION_SIZE),
+            )
+            .maybe_child(
+                (self.0.file_notice.read().is_some() || self.0.file_error.read().is_some()).then(
+                    || {
+                        let mut notice = self.0.file_notice;
+                        let mut error = self.0.file_error;
+                        Button::new()
+                            .on_press(move |_| {
+                                notice.set(None);
+                                error.set(None);
+                            })
+                            .child(self.0.text("dismiss"))
+                    },
+                ),
             )
             .child(
                 rect()
@@ -997,7 +988,6 @@ mod workspace_tests {
                 let shell = use_state(|| {
                     let mut shell = PetuniaShell::new(800., 600.);
                     shell.new_document("Test").expect("document opens");
-                    seed_starter_shapes(&mut shell);
                     shell.set_active_tool(ToolKind::Select);
                     shell
                 });
@@ -1111,7 +1101,6 @@ mod workspace_tests {
                 let shell = use_state(|| {
                     let mut shell = PetuniaShell::new(800., 600.);
                     shell.new_document("Test").expect("document opens");
-                    seed_starter_shapes(&mut shell);
                     shell.set_active_tool(ToolKind::Select);
                     shell
                 });
@@ -1204,7 +1193,6 @@ mod workspace_tests {
     fn group_and_ungroup_actions_work_on_selection() {
         let mut shell = PetuniaShell::new(800., 600.);
         shell.new_document("Test").expect("document opens");
-        seed_starter_shapes(&mut shell);
 
         // Select all objects
         let _ = run_action_id(&mut shell, "ptnd.action.edit.select_all");
@@ -1233,7 +1221,7 @@ mod workspace_tests {
         );
         tile.set_pixel_normalized(10, 10, [1.0, 0.0, 0.0, 1.0]);
         let rgba8 = match tile.format {
-            PixelFormat::Rgba8 => tile.data.clone(),
+            PixelFormat::Rgba8 => tile.data.as_ref().clone(),
             _ => vec![],
         };
         assert_eq!(rgba8.len(), TILE_SIZE * TILE_SIZE * 4);
@@ -1571,6 +1559,10 @@ mod workspace_tests {
                     .child(NewDocumentDialog(ui.clone()))
                     .child(ExportDialog(ui.clone()))
                     .child(PlaceImageDialog(ui.clone()))
+                    .child(file_dialogs::FileDialog(ui.clone()))
+                    .child(recovery::RecoveryDialog(ui.clone()))
+                    .child(object_edit_dialog::ObjectEditDialog(ui.clone()))
+                    .child(typography::TypographyDialog(ui.clone()))
                     .child(CustomizeDialog(ui.clone()))
                     .child(ConfirmCloseDialog(ui.clone()))
                     .child(OffsetPathDialog(ui.clone()))
@@ -1795,5 +1787,431 @@ mod workspace_tests {
             overlays.cursor,
             petunia_design_shell::canvas::CursorAffordance::Crosshair
         );
+    }
+}
+
+#[cfg(test)]
+mod workflow_ui_tests {
+    use super::*;
+    use freya_testing::prelude::*;
+    use std::{cell::RefCell, rc::Rc};
+
+    fn mount() -> (TestingRunner, UiShell) {
+        let seen = Rc::new(RefCell::new(None::<UiShell>));
+        let observed = seen.clone();
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                use_init_theme(theme::petunia_theme);
+                let shell = use_state(|| {
+                    let mut s = PetuniaShell::new(1280., 800.);
+                    s.new_document("Original").unwrap();
+                    s
+                });
+                let ui = UiShell::fresh(shell);
+                observed.replace(Some(ui.clone()));
+                let keyboard_ui = ui.clone();
+                rect()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .child(NewDocumentDialog(ui.clone()))
+                    .child(ExportDialog(ui.clone()))
+                    .child(file_dialogs::FileDialog(ui.clone()))
+                    .child(recovery::RecoveryDialog(ui.clone()))
+                    .child(object_edit_dialog::ObjectEditDialog(ui.clone()))
+                    .child(typography::TypographyDialog(ui.clone()))
+                    .child(ConfirmCloseDialog(ui.clone()))
+                    .on_global_key_down(move |event: Event<KeyboardEventData>| {
+                        dispatch_workspace_key(&keyboard_ui, &event)
+                    })
+            },
+            (1280., 800.).into(),
+            |_| {},
+            1.,
+        );
+        runner.sync_and_update();
+        let ui = seen.borrow().clone().unwrap();
+        (runner, ui)
+    }
+    fn click(runner: &mut TestingRunner, text: &str) {
+        let node = runner
+            .find_many(|node, element| {
+                Label::try_downcast(element)
+                    .filter(|label| label.text == text)
+                    .map(|_| node)
+            })
+            .pop()
+            .unwrap_or_else(|| panic!("Missing visible label: {text}"));
+        let area = node.layout().area;
+        runner.click_cursor((
+            f64::from(area.min_x() + area.width() / 2.),
+            f64::from(area.min_y() + area.height() / 2.),
+        ));
+        runner.sync_and_update();
+    }
+    fn capture_if_requested(runner: &mut TestingRunner, name: &str) {
+        if let Some(directory) = std::env::var_os("PETUNIA_UI_EVIDENCE_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            runner.render_to_file(directory.join(format!("{name}.png")));
+        }
+    }
+    #[test]
+    fn new_menu_prompt_and_cancel_create_no_tab() {
+        let (mut runner, ui) = mount();
+        let mut shell = ui.shell;
+        let token = "ptnd.action.file.new#null";
+        let action = actions::run_action_token(&mut shell.write(), token).unwrap();
+        assert_eq!(shell.peek().bridge.sessions().len(), 1);
+        assert!(file_workflows::route_file_action(&ui, &action));
+        runner.sync_and_update();
+        runner.press_key(Key::Named(NamedKey::Escape));
+        assert!(!*ui.new_doc_open.peek());
+        assert_eq!(shell.peek().bridge.sessions().len(), 1);
+    }
+    #[test]
+    fn confirming_new_creates_exactly_one_configured_tab() {
+        let (mut runner, ui) = mount();
+        file_workflows::route_file_action(&ui, "ptnd.action.file.new");
+        runner.sync_and_update();
+        capture_if_requested(&mut runner, "new-document");
+        click(&mut runner, &ui.text("create"));
+        assert!(!*ui.new_doc_open.peek());
+        let shell = ui.shell.peek();
+        assert_eq!(shell.bridge.sessions().len(), 2);
+        let session = shell.bridge.session().unwrap();
+        let surface = session.surface(session.active_surface().unwrap()).unwrap();
+        assert_eq!(surface.dimensions, [1920., 1080.]);
+    }
+    #[test]
+    fn save_without_destination_opens_prompt_and_cancel_preserves_document() {
+        let (mut runner, ui) = mount();
+        file_workflows::route_file_action(&ui, "ptnd.action.file.save");
+        runner.sync_and_update();
+        assert!(ui.file_prompt.peek().is_some());
+        assert!(ui.shell.peek().bridge.session().unwrap().path().is_none());
+        runner.press_key(Key::Named(NamedKey::Escape));
+        assert!(ui.file_prompt.peek().is_none());
+        assert_eq!(ui.shell.peek().bridge.sessions().len(), 1);
+    }
+    #[test]
+    fn open_failure_is_visible_and_preserves_existing_tab() {
+        let (mut runner, ui) = mount();
+        file_workflows::route_file_action(&ui, "ptnd.action.file.open");
+        runner.sync_and_update();
+        capture_if_requested(&mut runner, "open-document");
+        click(&mut runner, &ui.text("open"));
+        assert!(ui.file_error.peek().is_some());
+        assert!(ui.file_prompt.peek().is_some());
+        assert_eq!(ui.shell.peek().bridge.sessions().len(), 1);
+    }
+    #[test]
+    fn typing_tool_shortcuts_inside_file_dialog_leaves_canvas_tool_unchanged() {
+        let (mut runner, ui) = mount();
+        file_workflows::route_file_action(&ui, "ptnd.action.file.open");
+        runner.sync_and_update();
+        for key in ["p", "v", "Space"] {
+            runner.write_text(key);
+        }
+        assert_eq!(ui.shell.peek().active_tool(), ToolKind::Select);
+    }
+    #[test]
+    fn export_request_uses_selected_dpi_and_normalizes_suffix_before_overwrite_check() {
+        let surface = petunia_design_foundation::SurfaceId::new(42);
+        let (payload, request) =
+            dialogs::desktop_export_payload("png", " /tmp/logo.SVG ", 300, Some(surface)).unwrap();
+        assert_eq!(payload["dpi"], 300);
+        assert_eq!(request.dpi, 300.);
+        assert_eq!(request.surface, Some(surface));
+        assert_eq!(payload["path"], "/tmp/logo.png");
+        assert_eq!(request.path, std::path::PathBuf::from("/tmp/logo.png"));
+        let (_, pdf) =
+            dialogs::desktop_export_payload("pdf", "/tmp/pages.png", 72, Some(surface)).unwrap();
+        assert_eq!(pdf.surface, None);
+    }
+    #[test]
+    fn export_selected_dpi_produces_the_promised_png_dimensions() {
+        let mut shell = PetuniaShell::new(800., 600.);
+        file_workflows::create_configured_document(&mut shell, "PNG", [72., 36.], 0., 0.).unwrap();
+        let output =
+            std::env::temp_dir().join(format!("petunia-ui-density-{}.png", std::process::id()));
+        let (payload, request) = dialogs::desktop_export_payload(
+            "png",
+            output.to_str().unwrap(),
+            300,
+            shell.bridge.active_surface(),
+        )
+        .unwrap();
+        shell
+            .bridge
+            .dispatch_action(petunia_design_application::ActionRequest::new(
+                petunia_design_application::ActionId::new("ptnd.action.file.export"),
+                payload,
+            ))
+            .unwrap();
+        let bytes = std::fs::read(&request.path).unwrap();
+        let image = petunia_design_io::import_raster(&bytes, 32 * 1024 * 1024).unwrap();
+        assert_eq!((image.width, image.height), (300, 150));
+        std::fs::remove_file(request.path).unwrap();
+    }
+    #[test]
+    fn close_confirmation_keeps_its_target_when_tab_indices_change() {
+        let (mut runner, ui) = mount();
+        let mut shell = ui.shell;
+        shell.write().new_document("Target").unwrap();
+        let surface = shell.peek().bridge.active_surface().unwrap();
+        shell
+            .write()
+            .bridge
+            .submit_all(
+                "Edit",
+                vec![petunia_design_application::Command::SetSurfaceGeometry {
+                    surface,
+                    origin: [0., 0.],
+                    dimensions: [640., 480.],
+                }],
+            )
+            .unwrap();
+        shell.write().new_document("Keep").unwrap();
+        file_workflows::request_close(&ui, 1);
+        runner.sync_and_update();
+        shell.write().bridge.close_session_at(0, true).unwrap();
+        runner.sync_and_update();
+        click(&mut runner, &ui.text("close_discard"));
+        assert_eq!(shell.peek().bridge.sessions().len(), 1);
+        assert_eq!(shell.peek().bridge.session().unwrap().title(), "Keep");
+    }
+}
+
+#[cfg(test)]
+mod object_edit_ui_tests {
+    use super::*;
+    use freya_testing::prelude::*;
+    use object_edits::{EditKind, EditValue};
+    use std::{cell::RefCell, rc::Rc};
+
+    fn mount() -> (TestingRunner, UiShell, petunia_design_foundation::ObjectId) {
+        let seen = Rc::new(RefCell::new(None));
+        let observed = seen.clone();
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                use_init_theme(theme::petunia_theme);
+                let shell = use_state(|| object_edits::tests::fixture().0);
+                let ui = UiShell::fresh(shell);
+                observed.replace(Some(ui.clone()));
+                let keys = ui.clone();
+                rect()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .child(dock::RightDock(ui.clone()))
+                    .child(object_edit_dialog::ObjectEditDialog(ui))
+                    .on_global_key_down(move |event: Event<KeyboardEventData>| {
+                        dispatch_workspace_key(&keys, &event)
+                    })
+            },
+            (1000., 720.).into(),
+            |_| {},
+            1.,
+        );
+        runner.sync_and_update();
+        let ui = seen.borrow().clone().unwrap();
+        let text = ui.shell.peek().bridge.selection().selected_ids[0];
+        (runner, ui, text)
+    }
+    fn click_label(runner: &mut TestingRunner, text: &str) {
+        let node = runner
+            .find_many(|node, element| {
+                Label::try_downcast(element)
+                    .filter(|label| label.text == text)
+                    .map(|_| node)
+            })
+            .pop()
+            .unwrap_or_else(|| panic!("Missing {text}"));
+        let area = node.layout().area;
+        runner.click_cursor((
+            f64::from(area.min_x() + area.width() / 2.),
+            f64::from(area.min_y() + area.height() / 2.),
+        ));
+        runner.sync_and_update();
+    }
+    fn replace_input(runner: &mut TestingRunner, index: usize, text: &str) {
+        let mut nodes = runner.find_many(|node, element| {
+            Rect::try_downcast(element)
+                .filter(|el| {
+                    matches!(
+                        el.accessibility.builder.role(),
+                        AccessibilityRole::TextInput | AccessibilityRole::MultilineTextInput
+                    )
+                })
+                .map(|_| node)
+        });
+        nodes.sort_by(|a, b| a.layout().area.min_y().total_cmp(&b.layout().area.min_y()));
+        let area = nodes[index].layout().area;
+        let point = (f64::from(area.min_x() + 20.), f64::from(area.min_y() + 15.));
+        runner.move_cursor(point);
+        runner.click_cursor(point);
+        runner.send_event(PlatformEvent::Keyboard {
+            name: KeyboardEventName::KeyDown,
+            key: Key::Character("a".into()),
+            code: Code::KeyA,
+            modifiers: Modifiers::CONTROL,
+        });
+        runner.sync_and_update();
+        runner.press_key(Key::Named(NamedKey::Backspace));
+        if !text.is_empty() {
+            runner.write_text(text);
+        }
+        runner.sync_and_update();
+    }
+    fn screenshot(runner: &mut TestingRunner, name: &str) {
+        if let Some(directory) = std::env::var_os("PETUNIA_UI_EVIDENCE_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            runner.render_to_file(directory.join(format!("{name}.png")));
+        }
+    }
+    #[test]
+    fn rename_invalid_draft_is_visible_then_confirmation_and_undo_work() {
+        let (mut runner, ui, text) = mount();
+        object_edit_dialog::request(&ui, text, EditKind::Name);
+        runner.sync_and_update();
+        replace_input(&mut runner, 0, "");
+        click_label(&mut runner, &ui.text("edit_apply"));
+        assert!(ui.object_edit.peek().is_some());
+        assert!(runner
+            .find(|_, el| Label::try_downcast(el)
+                .filter(|label| label.text == ui.text("edit_invalid_name")))
+            .is_some());
+        replace_input(&mut runner, 0, "Título final");
+        screenshot(&mut runner, "rename-layer");
+        click_label(&mut runner, &ui.text("edit_apply"));
+        assert!(ui.object_edit.peek().is_none());
+        assert_eq!(
+            ui.shell
+                .peek()
+                .bridge
+                .session()
+                .unwrap()
+                .find_object(text)
+                .unwrap()
+                .name,
+            "Título final"
+        );
+        ui.shell.clone().write().bridge.undo().unwrap();
+        assert_eq!(
+            ui.shell
+                .peek()
+                .bridge
+                .session()
+                .unwrap()
+                .find_object(text)
+                .unwrap()
+                .name,
+            "Title"
+        );
+    }
+    #[test]
+    fn text_cancel_and_shortcuts_leave_document_and_tools_unchanged() {
+        let (mut runner, ui, text) = mount();
+        let original =
+            object_edits::ObjectEdit::capture(&ui.shell.peek(), text, EditKind::Text).unwrap();
+        object_edit_dialog::request(&ui, text, EditKind::Text);
+        runner.sync_and_update();
+        replace_input(&mut runner, 0, "p v Space");
+        runner.press_key(Key::Named(NamedKey::Delete));
+        assert_eq!(ui.shell.peek().active_tool(), ToolKind::Select);
+        assert_eq!(
+            object_edits::ObjectEdit::capture(&ui.shell.peek(), text, EditKind::Text).unwrap(),
+            original
+        );
+        runner.press_key(Key::Named(NamedKey::Escape));
+        assert!(ui.object_edit.peek().is_none());
+        assert_eq!(
+            object_edits::ObjectEdit::capture(&ui.shell.peek(), text, EditKind::Text).unwrap(),
+            original
+        );
+    }
+    #[test]
+    fn clearing_text_remains_empty_after_reopening_and_preserves_styles() {
+        let (mut runner, ui, text) = mount();
+        object_edit_dialog::request(&ui, text, EditKind::Text);
+        runner.sync_and_update();
+        replace_input(&mut runner, 0, "");
+        click_label(&mut runner, &ui.text("edit_apply"));
+        object_edit_dialog::request(&ui, text, EditKind::Text);
+        runner.sync_and_update();
+        let EditValue::Text(petunia_design_document::ShapeKind::Text {
+            content,
+            font_family,
+            on_path,
+            ..
+        }) = ui.object_edit.peek().as_ref().unwrap().original.clone()
+        else {
+            panic!()
+        };
+        assert!(content.is_empty());
+        assert_eq!(font_family, "Noto Sans");
+        assert!(on_path.is_some());
+        replace_input(&mut runner, 0, "Linha um");
+        runner.press_key(Key::Named(NamedKey::Enter));
+        runner.write_text("Linha dois");
+        screenshot(&mut runner, "edit-text");
+        click_label(&mut runner, &ui.text("edit_apply"));
+        assert!(
+            matches!(ui.shell.peek().bridge.session().unwrap().find_object(text).unwrap().shape.as_ref(), Some(petunia_design_document::ShapeKind::Text { content, .. }) if content == "Linha um\nLinha dois")
+        );
+    }
+    #[test]
+    fn invalid_transform_keeps_dialog_and_values_then_applies_once() {
+        let (mut runner, ui, text) = mount();
+        object_edit_dialog::request(&ui, text, EditKind::Transform);
+        runner.sync_and_update();
+        let revision = ui.shell.peek().bridge.session().unwrap().current_revision();
+        replace_input(&mut runner, 2, "0");
+        click_label(&mut runner, &ui.text("edit_apply"));
+        assert!(ui.object_edit.peek().is_some());
+        assert_eq!(
+            ui.shell.peek().bridge.session().unwrap().current_revision(),
+            revision
+        );
+        assert!(runner
+            .find(|_, el| Label::try_downcast(el).filter(|label| label.text.starts_with("W: ")))
+            .is_some());
+        screenshot(&mut runner, "transform-error");
+        replace_input(&mut runner, 2, "240,5 pt");
+        screenshot(&mut runner, "edit-transform");
+        click_label(&mut runner, &ui.text("edit_apply"));
+        let shell = ui.shell.peek();
+        let obj = shell.bridge.session().unwrap().find_object(text).unwrap();
+        assert_eq!(obj.bounds, Some([30., 40., 240.5, 50.]));
+        assert_eq!(obj.rotation, 0.73);
+    }
+    #[test]
+    fn layer_rename_button_does_not_replace_selection() {
+        let (mut runner, ui, text) = mount();
+        let selected = ui.shell.peek().bridge.selection().selected_ids;
+        let nodes = runner.find_many(|node, el| {
+            Label::try_downcast(el)
+                .filter(|label| label.text == ui.text("edit_name"))
+                .map(|_| node)
+        });
+        let points: Vec<_> = nodes
+            .iter()
+            .map(|node| {
+                let a = node.layout().area;
+                (
+                    f64::from(a.min_x() + a.width() / 2.),
+                    f64::from(a.min_y() + a.height() / 2.),
+                )
+            })
+            .collect();
+        assert_eq!(points.len(), 2);
+        for point in points {
+            runner.click_cursor(point);
+            runner.sync_and_update();
+            assert!(ui.object_edit.peek().is_some());
+            assert_eq!(ui.shell.peek().bridge.selection().selected_ids, selected);
+            click_label(&mut runner, &ui.text("cancel"));
+        }
+        assert_eq!(selected, vec![text]);
     }
 }

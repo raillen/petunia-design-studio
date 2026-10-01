@@ -1,0 +1,51 @@
+# ADR-009: Raster persistente, recursos binários e publicação de fluxos nativos
+
+**Status:** Contrato aceito; implementação aguardando validação  
+**Data:** 2026-10-01  
+**Escopo:** Milestone Required (MVP)
+
+## Contexto
+
+O MVP não tinha pixels editáveis canônicos, persistência binária nem recuperação. Carimbos de pincel eram artefatos de apresentação; máscaras e cópia de grupos podiam perder semântica. Arquivos, imagens e exportação executavam trabalho pesado na UI. Estilo de texto, regras de preenchimento e SVG não preservavam consistentemente a cena avaliada. Este contrato estende [ADR-005](/pt/developers/adr/ADR-005-immutable-image-assets), [ADR-006](/pt/developers/adr/ADR-006-shaped-text-and-canvas-preview), [ADR-007](/pt/developers/adr/ADR-007-desktop-file-workflows) e [ADR-008](/pt/developers/adr/ADR-008-object-edit-drafts). Pendências anteriores substituídas abaixo são registros históricos das respectivas etapas.
+
+## Decisão
+
+### Recursos canônicos e esquema
+
+O esquema nativo **4** acrescenta `ShapeKind::Raster`, planos finitos de pixels/máscaras e `TextStyle` uniforme tipado. O objeto persiste a regra de preenchimento: documentos anteriores usam EvenOdd por padrão, entrada SVG declarada usa NonZero, e texto preparado usa NonZero. Esquemas 1–3 migram pela admissão geométrica existente; descritores raster são rejeitados em esquemas anteriores.
+
+Camadas de pixels usam RGBA8/RGBA16 com alfa não associado; máscaras usam cobertura Gray8/Gray16. Todas as amostras de 16 bits são little-endian. O mapa esparso ordenado de blocos 128×128 mantém `Arc<Tile>` e payload `Arc<Vec<u8>>` compartilhados separadamente. Metadados e pixels alterados se separam independentemente no COW. Blocos vazios com fundo zero são eliminados no commit. Máscaras opacas começam sem blocos residentes, com cobertura implícita do plano finito; blocos editados para zero permanecem, e o padding externo continua zero. Imagens inseridas preservam os originais codificados; a pintura cria uma camada separada quando não há raster editável selecionado. Borracha exige camada de pixels/máscara.
+
+Limites simultâneos: 32.768 pixels por dimensão, 16.777.216 pixels por plano, 2.048 blocos residentes e 128 MiB por armazenamento; 1.024 superfícies, 100.000 objetos, 1.000.000 verbos de caminhos de origem, 64 KiB de texto por objeto e 256 MiB de capacidade dos recursos canônicos únicos. São cotas de recursos, **não garantia de RSS total**. Metadados COW, histórico, fontes, codecs e superfícies transitórias têm orçamentos separados. O histórico exclui arrays JSON de pixels da estimativa e contabiliza payloads alterados retidos.
+
+O manifesto exige o contrato de recursos binários no esquema 4. `resources/index.json` associa IDs estáveis aos descritores e binários de imagens/blocos endereçados por SHA-256. Metadados são separados do JSON legível do documento. Payloads idênticos são gravados uma vez e compartilhados ao abrir. Nomes, dimensões/formato/alfa/coordenadas, conjunto exato de entradas, hashes e cotas são admitidos antes de anexar. Imagens sem fonte impedem o salvamento; caminhos são informativos e não são relidos durante a renderização.
+
+### Gestos e publicação assíncrona
+
+Planos de rascunho do pincel/borracha, cobertura acumulada e stencils de seleção com AA são prévias imutáveis derivadas. Interpolação de pressão/espaçamento/fluxo tem cotas por evento/traço; os carimbos compõem sobre o original capturado, sem exceder repetidamente a opacidade principal nas sobreposições. Pointer Up publica uma transação Command com guarda de origem. Esc, mudança de sessão/revisão/superfície ou falha de cota descartam o rascunho. Seleção raster ativa vazia não pinta; sua inversão cobre o plano finito. Preenchimento de quatro conexões usa algoritmo scanline de spans limitado, bitset de visitados e cancelamento antes de um único commit.
+
+Abrir/salvar/inserir/exportar e codecs da área de transferência executam em um worker com uma posição na fila. `SessionIdentity`, revisão e superfície capturadas impedem publicações na aba errada, mesmo com revisões iguais. O salvamento reconhece o estado de histórico capturado na aba original; edições posteriores continuam não salvas. Salvar antes de Fechar Tudo conclui todos os snapshots alterados antes de fechar qualquer aba; novas edições abortam o fechamento. Seletores nativos preenchem caminhos assincronamente; a publicação continua explícita.
+
+Salvar projetos e exportações adquirem um bloqueio estável de arquivo auxiliar no mesmo diretório antes da codificação/publicação. Conteúdo temporário é sincronizado antes da substituição atômica; o diretório pai também é sincronizado no Unix. O inode do bloqueio permanece para evitar divisão de propriedade por remoção/recriação. Destinos não regulares/symlinks e symlinks de bloqueio são rejeitados. O protocolo coordena escritores cooperantes; não impede um processo externo de reescrever intencionalmente o destino. Candidatos de recuperação têm nomes aleatórios privados e são publicados sob bloqueio separado do armazenamento.
+
+A recuperação grava PTND binário completo com título, caminho original, revisão e horário no mesmo manifesto. O armazenamento limitado nunca grava o original. Abas alteradas têm debounce; gravações pendentes terminam antes da limpeza. A inicialização oferece cópias disponíveis; restaurar abre uma aba nova não salva e exige Salvar Como. Corrupção gera erro visível. Caminhos originais são informativos. Dispensar a oferta preserva cópias.
+
+### Área de transferência, tipografia, SVG e RGB
+
+Copiar/duplicar/excluir subárvores preserva descendentes e remapeia conjuntamente pais, filhos, máscaras e referências a caminhos de texto. Desanexar um fragmento deriva TRS mundial nos descritores copiados sem invalidar temporariamente o ClipGroup original. Colar considera as origens das pranchetas; payloads continuam compartilhados. Recortar só remove originais depois de estabelecer a propriedade da área de transferência nativa e confirmar a revisão de origem.
+
+O adaptador Linux usa `wl-copy`/`wl-paste` no Wayland ou `xclip` no X11, sem shell. A distribuição precisa fornecer `wl-clipboard`/`xclip`. Transferências têm limite de 16 MiB, cancelamento e timeout. Fragmentos editáveis usam o codec PTND com `application/vnd.petunia-design-studio.fragment+zip`. Colar prefere o fragmento nativo anunciado, depois SVG declarado, PNG e texto UTF-8; vetores anunciados inválidos/não suportados geram diagnóstico, sem achatamento silencioso. Backends de outras plataformas permanecem capacidades ausentes explícitas.
+
+Família, tamanho, peso, itálico, entrelinha, tracking, alinhamento e fluxo artístico/quadro persistem e desfazem juntos. Texto artístico preserva quebras explícitas sem wrapping; quadros quebram e recortam no limite finito antes dos efeitos. Glifos/clusters preparados pelo worker são compartilhados com limites excedentes do texto artístico e seleção. Fontes solicitadas ausentes e excesso de texto no quadro geram diagnóstico, preservando a fonte editável. A entrada multilinha nativa atende edição/IME no diálogo de rascunho. A integração exata de cursor/seleção no canvas com os glifos preparados da arte continua **inacabada**; este ADR não declara aceitação completa de M2.2.
+
+O SVG usa a mesma cena imutável: caminhos locais/transforms mundiais precisos, origens de prancheta, pinturas ordenadas, traços/gradientes suportados, grupos, máscaras, glifos delineados, PNG de 8/16 bits incorporado sem perda e blur/sombra suportados. Ajustes sem representação fiel, alinhamento de traço, reamostragem live e texto em caminho falham explicitamente. Instâncias de máscaras têm IDs SVG únicos. O importador declara subconjunto estrito limitado: formas básicas, grupos, transforms afins, pinturas sólidas e caminhos M/L/H/V/C/S/Q/T/Z, com preenchimento/traços herdados. Arcos, CSS, gradientes/defs, filtros, imagens e texto SVG de entrada estão indisponíveis; recursos externos não são buscados.
+
+Derivados de imagens ICC RGB convertem para sRGB com moxcms existente, intenção colorimétrica relativa, parsing limitado de perfil/CLUT/TRC e buffers por scanline. Cobertura é copiada intacta; originais mantêm precisão/perfil. Perfis Gray/CMYK e prova profissional/aquisição do monitor permanecem indisponíveis neste fluxo. Isso estende a rejeição anterior de toda imagem ICC, **não** o escopo V1 de CMYK/prova/PDF. A prévia mostra a prancheta ativa pelo mesmo compositor CPU transparente, ajustada à tela; o DPI escolhido controla o PNG real. Cancelar exportação descarta o handle e a publicação atômica verifica o cancelamento.
+
+## Consequências e evidência
+
+**Todas as alterações atuais estão sem validação.** O usuário adiou testes, builds e gates até implementar todas as features do MVP. Fontes de regressão cobrem máscaras opacas esparsas, integridade/compartilhamento binário, seleção/traços, recuperação, topologia dos fragmentos, escrita atômica/cancelamento, cobertura/precisão ICC RGB e admissão/precisão SVG. Geração de referências e formatação em modo de escrita não demonstram correção. Gates históricos não validam este head.
+
+Faltam no MVP cursor/IME coerentes no canvas, pressão real de caneta Linux além do adaptador de força touch, medição agregada de caches/histórico, histograma da composição real, os quatro projetos de tarefa e aceitação Linux/acessibilidade/instalação/backends. A nuvem não tem mesa digitalizadora nem monitor calibrado; evidência de hardware e usuários não pode ser inventada. A conversão básica RGB está implementada; aquisição/configuração do perfil de display segue aberta. Gates de MVP/V1 continuam abertos; PDF fica fora do seletor MVP com motivo V1.
+
+Referências efetivamente inspecionadas: Paul Heckbert, *A Seed Fill Algorithm*, Graphics Gems (1990), [código publicado](https://github.com/erich666/GraphicsGems/blob/master/gems/SeedFill.c); W3C SVG 2 [caminhos](https://www.w3.org/TR/SVG2/paths.html) e [coordenadas](https://www.w3.org/TR/SVG2/coords.html); implementações locais de parsing/transformação limitada do moxcms 0.9.1; semântica de bloqueio de arquivos Rust; entrada multilinha e mapeamento de força touch do Freya. A fundamentação Porter–Duff/filtragem linear pré-multiplicada permanece no ADR-005. Isso registra pesquisa de código/APIs, não leitura integral de papers, equivalência aos concorrentes nem aceitação concluída.

@@ -1,0 +1,176 @@
+{
+  "date": "2026-10-01",
+  "scope": "Milestone Required (MVP)",
+  "contract": "ADR-008",
+  "goal": "Explicit Rename, multiline content and exact local transformation drafts",
+  "atlas": [
+    "08.5",
+    "08.17",
+    "08.18",
+    "08.19",
+    "08.14",
+    "08.16",
+    "09.16"
+  ],
+  "audit_findings_addressed": [
+    "UX-08",
+    "UX-10",
+    "UX-11",
+    "UX-12",
+    "UX-13"
+  ],
+  "audit_findings_still_open": [
+    "UX-09",
+    "UX-14"
+  ],
+  "snapshot": "/workspace/.petunia-uiux-check",
+  "cargo_target": "/workspace/.petunia-uiux-target",
+  "validation_scope": "Frozen source copy; does not certify the entire evolving MVP",
+  "sources": [
+    {
+      "path": "apps/petunia-design/src/object_edits.rs",
+      "snapshot_sha256": "2cb85e45c949d33011621cecff823e6ca05f39b1559d37267a5bbe8951f05318",
+      "matches_current_workspace": true
+    },
+    {
+      "path": "apps/petunia-design/src/object_edit_dialog.rs",
+      "snapshot_sha256": "f3e23aff7448c45873cdddd51ed38fc695002ffe9d8c729f706ba143cc77036b",
+      "matches_current_workspace": true
+    },
+    {
+      "path": "apps/petunia-design/src/main.rs",
+      "snapshot_sha256": "6563884276e8983caf5355ec3c0889b883d429908e9f5e925f1fff82fd580765",
+      "matches_current_workspace": false
+    },
+    {
+      "path": "apps/petunia-design/src/dock.rs",
+      "snapshot_sha256": "9b88c01a142a7f5abdd798a8f0f7bcf7ca627b6cac6793a7a1de6a6f011e5740",
+      "matches_current_workspace": true
+    },
+    {
+      "path": "apps/petunia-design/src/ui_state.rs",
+      "snapshot_sha256": "57c8721ab371269f3f2dfa2fae64ab7be6746b6e8d6954d5a4dd7c9617040724",
+      "matches_current_workspace": false
+    },
+    {
+      "path": "apps/petunia-design/src/typography.rs",
+      "snapshot_sha256": "d0cbf372bfb19d69902e6bf2cf25dd5d39b775803924b3dfc7959618c37ba79d",
+      "matches_current_workspace": false
+    },
+    {
+      "path": "apps/petunia-design/src/recovery.rs",
+      "snapshot_sha256": "62bea96ae07f0f26ff1714df41731cac33018c0e6ac81fd4231dde91027c05b9",
+      "matches_current_workspace": true
+    },
+    {
+      "path": "apps/petunia-design/tests/click_smoke.rs",
+      "snapshot_sha256": "1caae37c3d2958f58a2241bb929f0963f5bcf808ac9744d3560c71435da84c5d",
+      "matches_current_workspace": true
+    },
+    {
+      "path": "apps/petunia-design/src/file_workflows.rs",
+      "snapshot_sha256": "9716eced441b44512dcfeddcd1981972bc7fddbddad984704df5d5af18432ff6",
+      "matches_current_workspace": true
+    },
+    {
+      "path": "crates/petunia_design_resources/src/file_workflow_strings.rs",
+      "snapshot_sha256": "35aa99f34035e2659d14822a9514e1ea7ffc4155a31868b71643cba17f196b60",
+      "matches_current_workspace": true
+    },
+    {
+      "path": "crates/petunia_design_resources/src/i18n.rs",
+      "snapshot_sha256": "3e16605ac25d0f57d1ba3fa2d60c33a8dc145f936adccb922fae4e3d3bd4d6bd",
+      "matches_current_workspace": true
+    },
+    {
+      "path": "crates/petunia_design_shell/src/bridge/gui_bridge.rs",
+      "snapshot_sha256": "bdf7cbc5fb17e293993d4dea7054b1a20cb0f2209071c2c2f803519629847c93",
+      "matches_current_workspace": true
+    },
+    {
+      "path": "crates/petunia_design_application/src/session.rs",
+      "snapshot_sha256": "2fd6592d236ef1fa5ba4d1c7481c771b130ab5acd750f7532d9f90ad869fb120",
+      "matches_current_workspace": true
+    },
+    {
+      "path": "crates/petunia_design_application/src/commands.rs",
+      "snapshot_sha256": "ef7c55be5c0d3daee2682ab29d0f5054573bbf3c78a8915ddbc6f5690359d80f",
+      "matches_current_workspace": true
+    },
+    {
+      "path": "crates/petunia_design_document/src/document_object.rs",
+      "snapshot_sha256": "f92f735d308ec6cc7166c8e732201813ab07bea4eea31b77b6621a8027749670",
+      "matches_current_workspace": true
+    },
+    {
+      "path": "apps/petunia-design/Cargo.toml",
+      "snapshot_sha256": "e4186d24f6404cda3d3fc5ccf90dd03ee893bb4daafb2cdf783d475f6ddf8740",
+      "matches_current_workspace": true
+    },
+    {
+      "path": "Cargo.lock",
+      "snapshot_sha256": "88e52d7a9de567a48856bce602c818b1d6547ac7e10f065b31853d0642d631de",
+      "matches_current_workspace": true
+    }
+  ],
+  "checks": [
+    {
+      "name": "desktop_tests",
+      "status": "passed",
+      "log": "/workspace/petunia-uiux-2026-10-01/implementation/objects/checks/petunia-object-all.log",
+      "sha256": "11fa05f9ff8357a9fd47f2aac6a2b7d88c58a7063e0a7d764eae44d029da3dbc"
+    },
+    {
+      "name": "localized_workflow_catalog",
+      "status": "passed",
+      "log": "/workspace/petunia-uiux-2026-10-01/implementation/objects/checks/petunia-object-i18n.log",
+      "sha256": "66e41fbbe08ab6bdbf7925e1db83841f7d1119ebe87d9b20dd8bd9db9fea5df3"
+    },
+    {
+      "name": "app_only_strict_clippy",
+      "status": "passed",
+      "log": "/workspace/petunia-uiux-2026-10-01/implementation/objects/checks/petunia-object-clippy.log",
+      "sha256": "ec5263c8d78166814f2ee5be79124688ad80bcc4295c8a59844c265728d26581"
+    },
+    {
+      "name": "selected_source_format",
+      "status": "pending"
+    },
+    {
+      "name": "en_pt_documentation_parity",
+      "status": "pending"
+    },
+    {
+      "name": "documentation_build",
+      "status": "pending"
+    }
+  ],
+  "new_distinct_regressions": 13,
+  "test_count_note": "60 binary + 27 integration executions = 87 executions, 73 distinct desktop cases. 14 shared-source unit cases repeat in the integration harness (6 file workflows, 8 object edits). Two binary typography tests are concurrent main-thread work, not credited as new UI-wave regressions. One additional workflow catalog case passes.",
+  "screenshots": [
+    "/workspace/petunia-uiux-2026-10-01/implementation/objects/rename-layer.png",
+    "/workspace/petunia-uiux-2026-10-01/implementation/objects/edit-text.png",
+    "/workspace/petunia-uiux-2026-10-01/implementation/objects/edit-transform.png",
+    "/workspace/petunia-uiux-2026-10-01/implementation/objects/transform-error.png"
+  ],
+  "microcontext": {
+    "invariants": [
+      "Prompt/cancel never mutate",
+      "Session+ObjectId owns the draft",
+      "Edited-property conflicts preserve newer work and typed input",
+      "Text content/size changes preserve unrelated typography/path",
+      "Points/degrees require finite numbers and positive dimensions",
+      "One confirmed change creates one undo step; unchanged fields create none",
+      "Modal typing does not dispatch canvas tools"
+    ],
+    "prumo_cli": "Unavailable; scope, invariants, sources and evidence recorded locally"
+  },
+  "limitations": [
+    "Direct shaped in-canvas text editing and multiselection remain open",
+    "AT-SPI, screen-reader labels/focus trapping, real IME, portals, Wayland/X11 and tablet use remain unverified",
+    "One raster dependency has an unused tile-variable warning; app Clippy uses --no-deps",
+    "No full-workspace verify/migration/render conformance/release gates executed",
+    "Backend/typography/recovery work continues concurrently; each source fingerprint records snapshot/live differences",
+    "Remaining table is acceptance work; concurrently implemented engine features are not asserted absent"
+  ]
+}

@@ -141,7 +141,10 @@ impl LocalizationService {
             .get(&Locale::PtBr)
             .cloned()
             .unwrap_or_else(|| LocaleCatalog::new(Locale::PtBr));
-        for row in crate::shell_strings::SHELL_STRINGS {
+        for row in crate::shell_strings::SHELL_STRINGS
+            .iter()
+            .chain(crate::file_workflow_strings::FILE_WORKFLOW_STRINGS)
+        {
             en.insert(TextId::new(row.id), row.en);
             pt.insert(TextId::new(row.id), row.pt);
         }
@@ -320,7 +323,10 @@ mod tests {
     #[test]
     fn shell_catalog_resolves_registry_text_ids_in_both_locales() {
         let service = LocalizationService::with_shell_catalog();
-        for row in crate::shell_strings::SHELL_STRINGS {
+        for row in crate::shell_strings::SHELL_STRINGS
+            .iter()
+            .chain(crate::file_workflow_strings::FILE_WORKFLOW_STRINGS)
+        {
             assert_eq!(service.text(row.id, &Locale::EnUs), row.en);
             assert_eq!(service.text(row.id, &Locale::PtBr), row.pt);
         }

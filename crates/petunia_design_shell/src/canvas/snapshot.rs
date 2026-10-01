@@ -89,6 +89,16 @@ impl SnapshotCache {
         Self::default()
     }
 
+    pub fn prepared_scene(
+        &self,
+        revision: u64,
+        surface: SurfaceId,
+    ) -> Option<Arc<petunia_design_render::RenderSurface>> {
+        self.preview
+            .as_ref()
+            .filter(|source| source.revision() == revision && source.surface_id() == surface)?
+            .prepared_scene()
+    }
     /// Drops the entry (document open/new/close: the session — and therefore
     /// every stable id — was replaced).
     pub fn clear(&mut self) {
@@ -167,7 +177,10 @@ impl PetuniaShell {
             }) {
                 cache.preview = Some(PreviewSource::capture(surface, revision));
             }
-            cache.preview.clone()
+            overlays
+                .raster_preview_source
+                .clone()
+                .or_else(|| cache.preview.clone())
         };
         // Cache hit: filter the stored full-scene projections by the current
         // viewport and clone only the visible ones. Every shared payload

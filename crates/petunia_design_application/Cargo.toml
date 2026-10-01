@@ -12,6 +12,7 @@ petunia_design_io = { path = "../petunia_design_io" }
 petunia_design_render = { path = "../petunia_design_render" }
 petunia_design_raster = { path = "../petunia_design_raster" }
 petunia_design_jobs = { path = "../petunia_design_jobs" }
+tiny-skia = { version = "0.11.4", default-features = false, features = ["std", "simd"] }
 rstar = "0.12"
 serde.workspace = true
 serde_json.workspace = true

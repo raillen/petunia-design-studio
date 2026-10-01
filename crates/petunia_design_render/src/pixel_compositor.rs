@@ -459,11 +459,13 @@ impl SoftwarePixelCompositor {
                 Change::FillChanged { id, .. }
                 | Change::StrokeChanged { id, .. }
                 | Change::ShapeChanged { id, .. }
+                | Change::TextStyleChanged { id, .. }
                 | Change::AppearanceChanged { id, .. }
                 | Change::VisibilityChanged { id, .. }
                 | Change::OpacityChanged { id, .. }
                 | Change::ModifiersChanged { id, .. }
                 | Change::ChildrenChanged { id, .. }
+                | Change::MaskModeChanged { id, .. }
                 | Change::ClipMaskChanged { id, .. }
                 | Change::Reparented { id, .. } => {
                     if let Some(obj) = surface.objects().iter().find(|o| o.id == *id) {

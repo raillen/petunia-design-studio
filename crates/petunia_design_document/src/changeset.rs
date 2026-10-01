@@ -78,6 +78,12 @@ pub enum Change {
         previous: Option<crate::ShapeKind>,
         next: Option<crate::ShapeKind>,
     },
+    /// Uniform text flow/typography changed independently of its content.
+    TextStyleChanged {
+        id: ObjectId,
+        previous: crate::TextStyle,
+        next: crate::TextStyle,
+    },
     /// An object was reordered within its surface.
     ObjectReordered {
         surface: SurfaceId,
@@ -124,6 +130,12 @@ pub enum Change {
         next_mask: Option<ObjectId>,
         previous_is_mask: bool,
         next_is_mask: bool,
+    },
+    /// Pixel/vector mask compositing mode changed without rewriting artwork.
+    MaskModeChanged {
+        id: ObjectId,
+        previous: crate::MaskMode,
+        next: crate::MaskMode,
     },
     /// A surface's origin or dimensions changed (10.7).
     SurfaceGeometryChanged {

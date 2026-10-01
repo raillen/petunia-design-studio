@@ -6,6 +6,26 @@ const crypto = require('node:crypto');
 const root = path.resolve(__dirname, '..');
 const read = (name) => fs.readFileSync(path.join(root, name), 'utf8');
 const files = [
+  'crates/petunia_design_raster/src/layer.rs',
+  'crates/petunia_design_application/src/raster_edit.rs',
+  'crates/petunia_design_application/src/clipboard.rs',
+  'crates/petunia_design_application/src/recovery.rs',
+  'crates/petunia_design_io/src/binary_resources.rs',
+  'crates/petunia_design_io/src/atomic_output.rs',
+  'crates/petunia_design_io/src/recovery.rs',
+  'crates/petunia_design_io/src/clipboard_package.rs',
+  'crates/petunia_design_io/src/svg_input.rs',
+  'crates/petunia_design_io/src/svg_scene.rs',
+  'crates/petunia_design_platform/src/native_clipboard.rs',
+  'crates/petunia_design_color/src/rgb_profiles.rs',
+  'crates/petunia_design_shell/src/tools/pixel_fill.rs',
+  'crates/petunia_design_shell/src/tools/text.rs',
+  'crates/petunia_design_shell/src/bridge/gui_bridge.rs',
+  'apps/petunia-design/src/file_jobs.rs',
+  'apps/petunia-design/src/export_preview.rs',
+  'apps/petunia-design/src/recovery.rs',
+  'apps/petunia-design/src/typography.rs',
+
   'crates/petunia_design_foundation/src/lib.rs',
   'crates/petunia_design_document/Cargo.toml',
   'crates/petunia_design_document/src/document_object.rs',
@@ -50,12 +70,28 @@ const files = [
   'crates/petunia_design_shell/src/tools/gradient.rs',
   'crates/petunia_design_shell/src/tools/photo.rs',
   'apps/petunia-design/src/actions.rs',
+  'apps/petunia-design/src/file_workflows.rs',
+  'apps/petunia-design/src/file_dialogs.rs',
+  'apps/petunia-design/src/object_edits.rs',
+  'apps/petunia-design/src/object_edit_dialog.rs',
+  'crates/petunia_design_resources/src/file_workflow_strings.rs',
   'apps/petunia-design/src/dialogs.rs',
   'apps/petunia-design/src/ui_state.rs',
   'crates/petunia_design_resources/src/shell_strings.rs',
   'apps/petunia-design/src/main.rs',
 ];
 const tests = [
+  'crates/petunia_design_raster/tests/persistent_layers.rs',
+  'crates/petunia_design_application/tests/raster_edit.rs',
+  'crates/petunia_design_application/tests/clipboard_fragments.rs',
+  'crates/petunia_design_render/tests/raster_layers.rs',
+  'crates/petunia_design_io/tests/binary_resources.rs',
+  'crates/petunia_design_io/tests/recovery.rs',
+  'crates/petunia_design_io/tests/atomic_output.rs',
+  'crates/petunia_design_io/tests/clipboard_package.rs',
+  'crates/petunia_design_io/tests/svg_scope.rs',
+  'crates/petunia_design_color/tests/rgb_profiles.rs',
+
   'crates/petunia_design_application/tests/correctness_regressions.rs',
   'crates/petunia_design_application/tests/transaction_regressions.rs',
   'crates/petunia_design_application/tests/background_render.rs',
@@ -86,16 +122,18 @@ const tests = [
   'crates/petunia_design_testkit/src/bin/canvas_benchmark.rs',
 ];
 const reference = {
-  contract: 'ADR-006', related_contracts: ['ADR-005', 'ADR-004', 'ADR-003', 'ADR-002'], scope: 'Milestone Required',
-  schema_version: Number(read(files[0]).match(/NATIVE_SCHEMA_VERSION: u32 = (\d+)/)[1]),
+  contract: 'ADR-009', related_contracts: ['ADR-008', 'ADR-007', 'ADR-006', 'ADR-005', 'ADR-004', 'ADR-003', 'ADR-002'], scope: 'Milestone Required',
+  schema_version: Number(read('crates/petunia_design_foundation/src/lib.rs').match(/NATIVE_SCHEMA_VERSION: u32 = (\d+)/)[1]),
   rust_toolchain: read('rust-toolchain.toml').match(/channel = "([^"]+)"/)[1],
   gui: { runtime: 'Freya/Skia', version: read('apps/petunia-design/Cargo.toml').match(/freya\s*=\s*"([^"]+)"/)?.[1] ?? 'see Cargo.lock' },
   sources: files.map((file) => ({ path: file, sha256: crypto.createHash('sha256').update(read(file)).digest('hex') })),
   tests: tests.map((file) => ({ path: file, count: [...read(file).matchAll(/#\[test\]/g)].length })),
   validation_results: 'checks.json',
+  ui_workflow_validation_results: 'uiux-file-workflows.json',
+  ui_object_edit_validation_results: 'uiux-object-edits.json',
   current_validation_status: 'not_run; user deferred validation until all MVP features are implemented',
   integration_regressions: [{ path: 'crates/petunia_design_shell/tests/tools_test.rs', cases: ['perspective_drag_on_rotated_object_preserves_untouched_world_corners'] }, { path: 'crates/petunia_design_shell/tests/bridge_test.rs', cases: ['preview_source_is_shared_across_selection_and_camera_changes', 'preview_source_changes_on_revision_and_session_replacement'] }],
-  limitations: ['Immutable paths/encoded sources are shared and decoded display pyramids are cached; document containers/binary resources still need COW/packaging.', 'Canvas now presents shared CPU-composed previews in workers, including shaped uniform-style text and images. Remaining text/style/editing/capability adapters, import admission workers, tiled presentation and acceptance are pending; current implementation is unvalidated.', 'World-axis-aligned crop on a rotated object requires a polygon mask, which is not implemented.', 'The benchmark measures snapshot queries, not painted frames.', 'MVP and V1 release gates remain open.'],
+  limitations: ['Current implementation and regression sources are unvalidated; user deferred every gate until all MVP features are implemented.', 'Schema 4 binary resources and sparse COW pixel/mask layers are implemented; admission quotas are not a whole-process RSS cap.', 'Native Linux object clipboard requires wl-clipboard/xclip and a Wayland/X11 session; tablet pressure, display-profile setup, accessibility/install and representative user evidence remain open.', 'Native multiline drafts provide basic text editing/IME; exact in-canvas caret/selection using the artwork glyph runs is unfinished.', 'SVG import/output declare strict capability subsets; unsupported representations fail explicitly. True CMYK/proof/professional PDF remain V1 Required.', 'Histogram composition and aggregate performance/caches still require work; release benchmarks and four MVP task projects have not been accepted.', 'MVP and V1 release gates remain open.'],
 };
 const output = path.join(root, 'docs/public/implementation/contracts.json');
 const content = JSON.stringify(reference, null, 2) + '\n';

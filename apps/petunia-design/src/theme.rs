@@ -211,6 +211,8 @@ pub const SURFACE_CHROME_STRONG: Color = Color::from_rgb(0x22, 0x23, 0x26);
 pub const SURFACE_PANEL: Color = Color::from_rgb(0x30, 0x32, 0x36);
 pub const BORDER_SUBTLE: Color = Color::from_rgb(0x41, 0x44, 0x4A);
 pub const TEXT_PRIMARY: Color = Color::from_rgb(0xF2, 0xF3, 0xF5);
+/// Recoverable error feedback shared by desktop prompts.
+pub const TEXT_ERROR: Color = Color::from_rgb(0xE5, 0x6B, 0x6B);
 pub const TEXT_SECONDARY: Color = Color::from_rgb(0xC2, 0xC6, 0xCC);
 pub const TEXT_TERTIARY: Color = Color::from_rgb(0x8E, 0x94, 0x9D);
 // Controls the registry blocks: visible, but plainly not actionable.

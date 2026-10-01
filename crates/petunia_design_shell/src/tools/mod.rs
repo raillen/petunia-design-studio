@@ -43,3 +43,5 @@ pub use shape::{ShapeKind, ShapeTool};
 pub use shape_builder::{BuilderMode, BuilderOp, ShapeBuilderTool};
 pub use text::{TextTool, TextToolMode};
 pub use view::{CameraAction, ViewTool, ViewToolMode};
+
+mod pixel_fill;

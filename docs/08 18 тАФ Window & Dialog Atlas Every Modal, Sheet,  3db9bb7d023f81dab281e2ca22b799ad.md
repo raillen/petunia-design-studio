@@ -90,3 +90,22 @@ Every non-native window defines:
 - loading/progress behavior;
 - Esc/Enter semantics;
 - accessibility title/description.
+
+### Implementation cross-reference — 2026-10-01
+
+Scope: **Milestone Required (MVP)**. The desktop file-workflow adapter resolves
+configuration, stable save/close targets, normalized export destinations and PNG
+DPI. Native-system and assistive-technology acceptance remain open. See
+[ADR-007](../docs/developers/adr/ADR-007-desktop-file-workflows.md) and
+[implementation/evidence mapping](../docs/developers/uiux-file-workflows.md).
+This note does not promote ICC/CMYK or basic PDF to production-ready capability.
+
+
+### Object-editor implementation — 2026-10-01
+
+Scope: **Milestone Required (MVP)**. Explicit stable session/object drafts now
+cover Rename, multiline content and exact local placement with points/degrees.
+Cancel/conflict/invalid input do not publish. Typography/path and exact rotation
+are preserved; multiselection, direct canvas text and external a11y remain open.
+See [ADR-008](../docs/developers/adr/ADR-008-object-edit-drafts.md) and
+[implementation/remaining-work/evidence](../docs/developers/uiux-object-edits.md).

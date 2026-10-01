@@ -148,6 +148,55 @@ impl<'doc> DocumentMutator<'doc> {
         Ok(changes)
     }
 
+    /// Adds a whole detached graph in one staged append and validation walk.
+    pub fn add_objects_bulk(
+        &mut self,
+        surface: SurfaceId,
+        objects: Vec<DocumentObject>,
+    ) -> Result<ChangeSet, PetuniaError> {
+        self.document.surface(surface)?;
+        let mut ids: std::collections::HashSet<_> = self
+            .document
+            .surfaces
+            .iter()
+            .flat_map(|s| s.objects.iter())
+            .map(|o| o.id)
+            .collect();
+        let mut normalized = Vec::with_capacity(objects.len());
+        for mut object in objects {
+            if !ids.insert(object.id) {
+                return Err(PetuniaError::invalid_input(
+                    "duplicate bulk object identity",
+                ));
+            }
+            if let Some(shape) = object.shape.take() {
+                object.shape = Some(shape.into_local(object.bounds)?);
+            }
+            object.modifiers = object
+                .modifiers
+                .into_iter()
+                .map(|m| m.into_local(object.bounds))
+                .collect::<Result<_, _>>()?;
+            crate::validation::validate_object(&object)?;
+            normalized.push(object);
+        }
+        let mut staged = self.document.clone();
+        let target = staged.surface_mut(surface)?;
+        let first = target.objects.len();
+        target.objects.extend(normalized.iter().cloned());
+        staged.validate()?;
+        *self.document = staged;
+        let mut changes = ChangeSet::empty();
+        for (i, object) in normalized.into_iter().enumerate() {
+            changes.push(Change::ObjectAdded {
+                surface,
+                object,
+                index: first + i,
+            });
+        }
+        Ok(changes)
+    }
+
     /// Removes an object by stable ID, keeping it for undo (F-09/F-10).
     /// Cleans `parent.children` references and `clip_mask_id` pointers so no
     /// dangling IDs remain. Records the original z-index for order-preserving
@@ -541,6 +590,18 @@ impl<'doc> DocumentMutator<'doc> {
             .ok_or_else(|| PetuniaError::not_found(format!("clip `{clip_id}` not found")))?
             .clone();
 
+        if [&subject, &clip].iter().any(|object| {
+            matches!(
+                object.shape,
+                Some(crate::ShapeKind::Raster { .. })
+                    | Some(crate::ShapeKind::Image { .. })
+                    | Some(crate::ShapeKind::Text { .. })
+            )
+        }) {
+            return Err(PetuniaError::capability_unavailable(
+                "vector division requires vector operands",
+            ));
+        }
         let tolerance = petunia_design_geometry::GeometryTolerance::default_tolerance().clamped();
         let subj_input = petunia_design_geometry::BooleanInput::new(
             subject.evaluated_path().to_polygons(tolerance.flatten),
@@ -619,6 +680,96 @@ impl<'doc> DocumentMutator<'doc> {
         Ok(changes)
     }
 
+    /// Atomically replaces descriptors in a single graph walk. Native resource
+    /// resolution uses this lane instead of one O(objects) lookup per tile layer.
+    pub fn set_shapes_bulk(
+        &mut self,
+        shapes: Vec<(ObjectId, crate::ShapeKind)>,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let mut requested = std::collections::HashMap::new();
+        for (id, shape) in shapes {
+            if requested.insert(id, shape).is_some() {
+                return Err(PetuniaError::invalid_input("duplicate bulk shape target"));
+            }
+        }
+        let mut next_document = self.document.clone();
+        let mut changes = ChangeSet::empty();
+        for object in next_document
+            .surfaces
+            .iter_mut()
+            .flat_map(|s| s.objects.iter_mut())
+        {
+            if let Some(shape) = requested.remove(&object.id) {
+                let next = Some(shape.into_local(object.bounds)?);
+                let previous = std::mem::replace(&mut object.shape, next.clone());
+                changes.push(Change::ShapeChanged {
+                    id: object.id,
+                    previous,
+                    next,
+                });
+            }
+        }
+        if !requested.is_empty() {
+            return Err(PetuniaError::not_found("unknown bulk shape target"));
+        }
+        next_document.validate()?;
+        *self.document = next_document;
+        Ok(changes)
+    }
+
+    /// Validates before publication; only a text object accepts typography edits.
+    pub fn set_text_style(
+        &mut self,
+        id: ObjectId,
+        style: crate::TextStyle,
+    ) -> Result<ChangeSet, PetuniaError> {
+        style.validate()?;
+        let object = self
+            .document
+            .find_object_mut(id)
+            .ok_or_else(|| PetuniaError::not_found("unknown text object"))?;
+        if !matches!(object.shape, Some(crate::ShapeKind::Text { .. })) {
+            return Err(PetuniaError::invalid_input(
+                "typography requires a text object",
+            ));
+        }
+        if object.text_style == style {
+            return Ok(ChangeSet::empty());
+        }
+        let previous = std::mem::replace(&mut object.text_style, style);
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::TextStyleChanged {
+            id,
+            previous,
+            next: style,
+        });
+        Ok(changes)
+    }
+
+    /// Explicit pixel/vector mask mode; the descriptor and its undo record agree.
+    pub fn set_mask_mode(
+        &mut self,
+        id: ObjectId,
+        mode: crate::MaskMode,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let object = self
+            .document
+            .find_object_mut(id)
+            .ok_or_else(|| PetuniaError::not_found("unknown mask object"))?;
+        if object.mask_mode == mode {
+            return Ok(ChangeSet::empty());
+        }
+        let previous = object.mask_mode;
+        object.mask_mode = mode;
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::MaskModeChanged {
+            id,
+            previous,
+            next: mode,
+        });
+        Ok(changes)
+    }
+
     /// Converts a parametric shape or text object to an editable vector path (10.3, 10.6).
     /// Text has no vector outline without font shaping: rejects explicitly
     /// (F-20) instead of silently substituting a rectangle.
@@ -627,7 +778,9 @@ impl<'doc> DocumentMutator<'doc> {
             if let Some(object) = surface.objects.iter_mut().find(|o| o.id == id) {
                 if matches!(
                     object.shape,
-                    Some(crate::ShapeKind::Text { .. }) | Some(crate::ShapeKind::Image { .. })
+                    Some(crate::ShapeKind::Text { .. })
+                        | Some(crate::ShapeKind::Image { .. })
+                        | Some(crate::ShapeKind::Raster { .. })
                 ) {
                     return Err(PetuniaError::invalid_input(format!(
                         "object `{id}` cannot be converted to curves without vectorization"
@@ -956,6 +1109,14 @@ impl<'doc> DocumentMutator<'doc> {
             .document
             .find_object(id)
             .ok_or_else(|| PetuniaError::not_found(format!("object `{id}` does not exist")))?;
+        if matches!(
+            object.shape,
+            Some(crate::ShapeKind::Raster { .. })
+                | Some(crate::ShapeKind::Image { .. })
+                | Some(crate::ShapeKind::Text { .. })
+        ) {
+            return Err(PetuniaError::capability_unavailable("this source requires explicit rasterization/shaped outline conversion before geometry bake"));
+        }
         let bounds = object.bounds.ok_or_else(|| frame_transform_error(id))?;
         let base = object
             .base_path_local()
@@ -2325,6 +2486,14 @@ impl<'doc> DocumentMutator<'doc> {
             crate::hierarchy::ContainerRole::ClipGroup,
         )?;
 
+        if self.document.find_object(mask_id).is_some_and(|mask| {
+            matches!(
+                mask.shape,
+                Some(crate::ShapeKind::Raster { .. }) | Some(crate::ShapeKind::Image { .. })
+            )
+        }) {
+            changes.extend(self.set_mask_mode(mask_id, crate::MaskMode::Alpha)?);
+        }
         if let Some(mask) = self.document.find_object_mut(mask_id) {
             let prev_is_mask = mask.is_clip_mask;
             let prev_mask_id = mask.clip_mask_id;
@@ -3027,6 +3196,9 @@ impl<'doc> DocumentMutator<'doc> {
                     found.bounds = previous_bounds;
                     found.rotation = previous_rotation;
                 }
+                Change::TextStyleChanged { id, previous, .. } => {
+                    self.set_text_style(id, previous)?;
+                }
                 Change::ShapeChanged { id, previous, .. } => {
                     let found = self
                         .document
@@ -3132,6 +3304,9 @@ impl<'doc> DocumentMutator<'doc> {
                             PetuniaError::not_found(format!("object `{id}` does not exist"))
                         })?;
                     found.role = previous;
+                }
+                Change::MaskModeChanged { id, previous, .. } => {
+                    self.set_mask_mode(id, previous)?;
                 }
                 Change::ClipMaskChanged {
                     id,

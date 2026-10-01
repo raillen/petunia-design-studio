@@ -39,11 +39,24 @@ pub fn use_canvas_preview(
     channel: usize,
     soft_proof: bool,
 ) -> (Option<PresentedPreview>, Option<String>) {
+    use_canvas_preview_with_background(snapshot, channel, soft_proof, false)
+}
+pub fn use_canvas_preview_with_background(
+    snapshot: &CanvasSnapshot,
+    channel: usize,
+    soft_proof: bool,
+    transparent: bool,
+) -> (Option<PresentedPreview>, Option<String>) {
     let next = snapshot
         .preview_source
         .as_ref()
         .map(|source| {
-            PreviewRequest::from_camera(source.clone(), &snapshot.camera, channel, soft_proof)
+            PreviewRequest::from_camera(source.clone(), &snapshot.camera, channel, soft_proof).map(
+                |mut request| {
+                    request.transparent_artboard = transparent;
+                    request
+                },
+            )
         })
         .transpose();
     let input_error = next.as_ref().err().map(ToString::to_string);
@@ -115,6 +128,7 @@ pub fn use_canvas_preview(
             next.source.id() == frame.request.source.id()
                 && next.channel == frame.request.channel
                 && next.soft_proof == frame.request.soft_proof
+                && next.transparent_artboard == frame.request.transparent_artboard
         })
     });
     let mut cache = uploads.borrow_mut();
@@ -124,6 +138,9 @@ pub fn use_canvas_preview(
             .flatten()
     });
     if let Some(frame) = frame {
+        if error.is_none() && !frame.warnings.is_empty() {
+            error = Some(frame.warnings.join(" · "));
+        }
         if cache
             .as_ref()
             .is_none_or(|upload| !Arc::ptr_eq(&upload.frame, frame))

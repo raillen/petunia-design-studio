@@ -1,6 +1,6 @@
 //! Package reader/writer with extension policy and atomic saves.
 
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{Read, Write as _};
 use std::path::{Path, PathBuf};
 
@@ -62,6 +62,7 @@ pub struct OpenedPackage {
     pub document: Document,
     /// Format the bytes came from.
     pub format: PackageFormat,
+    pub recovery: Option<crate::recovery::RecoveryMetadata>,
 }
 
 /// Readable package manifest at the ZIP root.
@@ -73,6 +74,12 @@ pub struct PackageManifest {
     pub schema_version: u32,
     /// Workspace build that wrote the package (informational).
     pub writer: String,
+    /// Schema 4 stores immutable image/tile bytes in verified binary entries.
+    #[serde(default)]
+    pub binary_resources: bool,
+    /// Recovery metadata is committed atomically with its document bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<crate::recovery::RecoveryMetadata>,
 }
 
 impl PackageManifest {
@@ -83,6 +90,8 @@ impl PackageManifest {
             media_type: MEDIA_TYPE.to_string(),
             schema_version: NATIVE_SCHEMA_VERSION,
             writer: format!("petunia-design/{}", env!("CARGO_PKG_VERSION")),
+            binary_resources: true,
+            recovery: None,
         }
     }
 }
@@ -125,29 +134,47 @@ pub fn has_native_extension(path: &Path) -> bool {
 /// Only the current native suffix is writable: legacy paths must go through
 /// Save As so the original file is never overwritten (15.A).
 pub fn save_package(document: &Document, path: &Path) -> Result<(), PetuniaError> {
+    save_with_manifest(document, path, &PackageManifest::current())
+}
+
+pub(crate) fn save_recovery_package(
+    document: &Document,
+    path: &Path,
+    metadata: &crate::recovery::RecoveryMetadata,
+) -> Result<(), PetuniaError> {
+    let mut manifest = PackageManifest::current();
+    manifest.recovery = Some(metadata.clone());
+    save_with_manifest(document, path, &manifest)
+}
+
+fn save_with_manifest(
+    document: &Document,
+    path: &Path,
+    manifest: &PackageManifest,
+) -> Result<(), PetuniaError> {
     check_writable_suffix(path)?;
     document.validate()?;
-    let parent = path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    let temp = tempfile::Builder::new()
-        .prefix(".petunia-save-")
-        .tempfile_in(parent)
-        .map_err(|e| PetuniaError::io(format!("create temporary package: {e}")))?;
-    let file = temp
-        .as_file()
-        .try_clone()
-        .map_err(|e| PetuniaError::io(format!("clone package handle: {e}")))?;
-    write_package(document, file)?
-        .sync_all()
-        .map_err(|e| PetuniaError::io(format!("sync package: {e}")))?;
-    temp.persist(path)
-        .map_err(|e| PetuniaError::io(format!("atomic rename {}: {e}", path.display())))?;
-    #[cfg(unix)]
-    File::open(parent)
-        .and_then(|dir| dir.sync_all())
-        .map_err(|e| PetuniaError::io(format!("sync package directory: {e}")))?;
+    // Recovery candidates already have a private random pathname and are
+    // published under the store lease. Ordinary saves need a stable target lock.
+    if manifest.recovery.is_some() {
+        let file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(path)
+            .map_err(|e| PetuniaError::io(e.to_string()))?;
+        write_package(document, file, manifest)?
+            .sync_all()
+            .map_err(|e| PetuniaError::io(e.to_string()))?;
+    } else {
+        let lease = crate::atomic_output::OutputLease::acquire(path)?;
+        let temp = lease.temporary()?;
+        let file = temp
+            .as_file()
+            .try_clone()
+            .map_err(|e| PetuniaError::io(e.to_string()))?;
+        write_package(document, file, manifest)?;
+        lease.publish(temp, &|| false)?;
+    }
     Ok(())
 }
 
@@ -204,7 +231,19 @@ pub fn open_package(path: &Path) -> Result<OpenedPackage, PetuniaError> {
             "manifest and document schema versions disagree",
         ));
     }
-    let document = Document::from_json(&document_text)?;
+    let mut document = Document::from_json(&document_text)?;
+    if manifest.schema_version >= 4 {
+        if !manifest.binary_resources {
+            return Err(PetuniaError::invalid_input(
+                "schema 4 requires binary resources",
+            ));
+        }
+        crate::binary_resources::read(&mut document, &mut archive)?;
+    } else if manifest.binary_resources {
+        return Err(PetuniaError::invalid_input(
+            "binary resources require schema 4",
+        ));
+    }
     // A legacy suffix alone marks the package legacy even when the manifest
     // already carries the current media type.
     let format = if suffix_format == PackageFormat::Legacy {
@@ -212,7 +251,38 @@ pub fn open_package(path: &Path) -> Result<OpenedPackage, PetuniaError> {
     } else {
         manifest_format
     };
-    Ok(OpenedPackage { document, format })
+    Ok(OpenedPackage {
+        document,
+        format,
+        recovery: manifest.recovery,
+    })
+}
+
+/// Reads small manifest metadata only; restore still validates the full payload.
+pub(crate) fn recovery_metadata(
+    path: &Path,
+) -> Result<Option<crate::recovery::RecoveryMetadata>, PetuniaError> {
+    let file = File::open(path).map_err(|e| PetuniaError::io(e.to_string()))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| PetuniaError::invalid_input(e.to_string()))?;
+    if archive.len() > 10_000
+        || archive
+            .file_names()
+            .filter(|name| *name == MANIFEST_PATH)
+            .count()
+            != 1
+    {
+        return Err(PetuniaError::invalid_input(
+            "invalid recovery package entries",
+        ));
+    }
+    let text = read_bounded_entry(&mut archive, MANIFEST_PATH, MAX_MANIFEST_BYTES)?;
+    let manifest: PackageManifest =
+        serde_json::from_str(&text).map_err(|e| PetuniaError::invalid_input(e.to_string()))?;
+    if manifest.media_type != MEDIA_TYPE || manifest.schema_version != NATIVE_SCHEMA_VERSION {
+        return Err(PetuniaError::invalid_input("unsupported recovery package"));
+    }
+    Ok(manifest.recovery)
 }
 
 fn read_bounded_entry(
@@ -241,22 +311,27 @@ fn read_bounded_entry(
     Ok(text)
 }
 
-fn write_package(document: &Document, file: File) -> Result<File, PetuniaError> {
+fn write_package(
+    document: &Document,
+    file: File,
+    manifest: &PackageManifest,
+) -> Result<File, PetuniaError> {
     let mut zip = zip::ZipWriter::new(file);
     let manifest_options =
         zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     zip.start_file(MANIFEST_PATH, manifest_options)
         .map_err(|e| PetuniaError::io(format!("zip manifest: {e}")))?;
-    let manifest_json = serde_json::to_string_pretty(&PackageManifest::current())
+    let manifest_json = serde_json::to_string_pretty(manifest)
         .map_err(|e| PetuniaError::io(format!("serialize manifest: {e}")))?;
     zip.write_all(manifest_json.as_bytes())
         .map_err(|e| PetuniaError::io(format!("write manifest: {e}")))?;
 
+    let metadata = crate::binary_resources::write(document, &mut zip)?;
     let document_options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
     zip.start_file(DOCUMENT_PATH, document_options)
         .map_err(|e| PetuniaError::io(format!("zip document: {e}")))?;
-    serde_json::to_writer_pretty(&mut zip, document)
+    serde_json::to_writer_pretty(&mut zip, &metadata)
         .map_err(|e| PetuniaError::io(format!("write document: {e}")))?;
     zip.finish()
         .map_err(|e| PetuniaError::io(format!("finish package: {e}")))

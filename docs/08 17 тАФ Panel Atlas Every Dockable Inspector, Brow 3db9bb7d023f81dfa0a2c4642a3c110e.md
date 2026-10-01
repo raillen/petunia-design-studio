@@ -77,3 +77,12 @@ Each panel must define all three where applicable. For example:
 # Panel persistence
 
 Persist tab ordering, size, section collapsed state and view mode in workspace/user settings. Do not persist transient selection/filter search in canonical document. Search retention may be session-specific.
+
+### Object-editor implementation — 2026-10-01
+
+Scope: **Milestone Required (MVP)**. Explicit stable session/object drafts now
+cover Rename, multiline content and exact local placement with points/degrees.
+Cancel/conflict/invalid input do not publish. Typography/path and exact rotation
+are preserved; multiselection, direct canvas text and external a11y remain open.
+See [ADR-008](../docs/developers/adr/ADR-008-object-edit-drafts.md) and
+[implementation/remaining-work/evidence](../docs/developers/uiux-object-edits.md).

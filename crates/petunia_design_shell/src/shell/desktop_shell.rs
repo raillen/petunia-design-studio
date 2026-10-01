@@ -101,9 +101,20 @@ impl PetuniaShell {
         event: &NormalizedPointerEvent,
     ) -> Result<ChangeSet, PetuniaError> {
         let camera = self.view_camera();
+        if event.phase == PointerPhase::Down {
+            self.tools.set_feedback(None);
+        }
         let changes =
-            self.tools
-                .on_pointer_event(event, &mut self.bridge, &camera, &mut self.snap)?;
+            match self
+                .tools
+                .on_pointer_event(event, &mut self.bridge, &camera, &mut self.snap)
+            {
+                Ok(changes) => changes,
+                Err(error) => {
+                    self.tools.set_feedback(Some(error.to_string()));
+                    return Err(error);
+                }
+            };
         if event.phase == PointerPhase::Up || event.phase == PointerPhase::Cancel {
             self.snap.reset_hysteresis();
         }
@@ -117,6 +128,14 @@ impl PetuniaShell {
             self.set_view_camera(camera);
         }
         Ok(changes)
+    }
+
+    pub fn poll_tool_jobs(&mut self) -> Result<ChangeSet, PetuniaError> {
+        let result = self.tools.poll_jobs(&mut self.bridge);
+        if let Err(error) = &result {
+            self.tools.set_feedback(Some(error.to_string()));
+        }
+        result
     }
 
     /// Switches the active editing tool.

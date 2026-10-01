@@ -652,7 +652,10 @@ impl McpServer {
     }
 
     fn handle_export_svg(&self, id: serde_json::Value) -> McpResponse {
-        let svg = petunia_design_io::export_document_svg(&self.document);
+        let svg = match petunia_design_io::export_document_svg(&self.document) {
+            Ok(svg) => svg,
+            Err(error) => return McpResponse::error(id, McpError::new(INTERNAL_ERROR, error.to_string())),
+        };
         let len = svg.len();
         McpResponse::success(
             id,

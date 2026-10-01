@@ -10,6 +10,7 @@ fn spec(text: &str) -> TextFrameSpec {
         line_height: 1.2,
         letter_spacing: 0.0,
         width: 400.0,
+        weight: 400, italic: false, alignment: Default::default(), wrap: true,
     }
 }
 #[test]

@@ -245,6 +245,7 @@ pub fn tool_hint_text_id(tool: ToolKind) -> Option<&'static str> {
         ToolKind::SelectionBrush => Some("ptnd.text.tool.selection_brush.summary"),
         ToolKind::FloodSelect => Some("ptnd.text.tool.flood_select.summary"),
         ToolKind::PixelPaintBrush => Some("ptnd.text.tool.brush.summary"),
+        ToolKind::PixelFill => Some("ptnd.text.tool.pixel_fill.summary"),
         ToolKind::PixelEraser => Some("ptnd.text.tool.eraser.summary"),
         ToolKind::PhotoGradient => Some("ptnd.text.tool.gradient.summary"),
         ToolKind::Crop => Some("ptnd.text.tool.crop.summary"),
@@ -469,6 +470,7 @@ mod tests {
             can_redo: true,
             is_dirty: true,
             clipboard_non_empty: true,
+            native_clipboard_available: false,
             command_palette_open: false,
             persona: PERSONA_VECTOR,
         }

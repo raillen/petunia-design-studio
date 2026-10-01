@@ -119,20 +119,18 @@ impl TextTool {
             self.current_doc = Some(event.doc_pos);
             return Ok(ChangeSet::empty());
         }
-        // 2. Fresh click on a path arms text-on-path creation.
-        if let Some((target, t)) = hit_path(event.doc_pos, bridge, camera) {
-            let mut pt = event.doc_pos;
-            if !event.modifiers.disable_snap {
-                pt = snap.snap_point(pt, camera, &[]).point;
+        // Basic text creation must work over existing artwork. Attaching a path
+        // requires the V1 shaping capability; never create unrenderable text implicitly.
+        if event.modifiers.duplicate {
+            if let Some((target, _)) = hit_path(event.doc_pos, bridge, camera) {
+                let detached = detach_selected_on_path(bridge, target)?;
+                if !detached.is_empty() {
+                    return Ok(detached);
+                }
+                return Err(PetuniaError::invalid_input(
+                    "text-on-path shaping is unavailable",
+                ));
             }
-            // Clicking the text's own target with Alt detaches selected texts.
-            if event.modifiers.duplicate {
-                return detach_selected_on_path(bridge, target);
-            }
-            self.pending_path = Some((target, t));
-            self.start_doc = Some(pt);
-            self.current_doc = Some(pt);
-            return Ok(ChangeSet::empty());
         }
         // 3. Straight text creation drag as before.
         let mut pt = event.doc_pos;
@@ -210,19 +208,27 @@ impl TextTool {
             TextToolMode::Frame => petunia_design_document::shape_factory::frame_text(),
         };
 
-        // One gesture, one undo entry (F-01).
-        let changes = bridge.submit_all(
-            "Create text",
-            petunia_design_application::create_shape_commands(
-                active_surface,
-                obj_id,
-                name,
-                text_shape,
-                Some(bounds),
-                Some(petunia_design_document::shape_factory::DEFAULT_TEXT_FILL.to_string()),
-                None,
-            ),
-        )?;
+        // One gesture, one undo entry, including artistic/frame flow.
+        let mut commands = petunia_design_application::create_shape_commands(
+            active_surface,
+            obj_id,
+            name,
+            text_shape,
+            Some(bounds),
+            Some(petunia_design_document::shape_factory::DEFAULT_TEXT_FILL.to_string()),
+            None,
+        );
+        commands.push(Command::SetTextStyle {
+            id: obj_id,
+            style: petunia_design_document::TextStyle {
+                flow: match self.mode {
+                    TextToolMode::Artistic => petunia_design_document::TextFlow::Artistic,
+                    TextToolMode::Frame => petunia_design_document::TextFlow::Frame,
+                },
+                ..Default::default()
+            },
+        });
+        let changes = bridge.submit_all("Create text", commands)?;
 
         bridge.set_selection(vec![obj_id]);
         Ok(changes)

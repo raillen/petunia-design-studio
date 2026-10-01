@@ -58,6 +58,9 @@ pub struct PetuniaDesignGuiBridge {
     /// User order and visibility of the context toolbar. The catalog stays the
     /// source of which entries exist; this only arranges them.
     toolbar_layout: context_toolbar::ToolbarLayout,
+    /// Application clipboard shared across document tabs; artwork resources remain immutable.
+    clipboard: Vec<petunia_design_document::DocumentObject>,
+    clipboard_origin: [f64; 2],
     /// Background jobs tracker (renders, bakes, exports, indexing).
     jobs: petunia_design_jobs::JobManager,
 }
@@ -93,6 +96,8 @@ impl PetuniaDesignGuiBridge {
 
         Self {
             sessions: Vec::new(),
+            clipboard: Vec::new(),
+            clipboard_origin: [0., 0.],
             active_index: None,
             snapshot_cache: std::cell::RefCell::new(crate::canvas::SnapshotCache::new()),
             capabilities,
@@ -183,7 +188,10 @@ impl PetuniaDesignGuiBridge {
                 can_undo: session.history().can_undo(),
                 can_redo: session.history().can_redo(),
                 is_dirty: session.is_dirty(),
-                clipboard_non_empty: !session.clipboard().is_empty(),
+                clipboard_non_empty: !self.clipboard.is_empty() || !session.clipboard().is_empty(),
+                native_clipboard_available:
+                    petunia_design_platform::native_clipboard::LinuxClipboardBackend::detect()
+                        .is_ok(),
                 command_palette_open: session.view.command_palette_open,
                 persona: self.active_persona,
             },
@@ -323,24 +331,170 @@ impl PetuniaDesignGuiBridge {
         Ok(())
     }
 
+    /// Attaches already admitted import data. Imports require Save As into PTND.
+    pub fn attach_imported_document(
+        &mut self,
+        title: String,
+        document: Document,
+    ) -> Result<(), PetuniaError> {
+        document.validate()?;
+        self.push_session(DocumentSession::with_recovered_document(title, document));
+        self.snapshot_cache.borrow_mut().clear();
+        Ok(())
+    }
+    /// Publish admitted native clipboard data through the ordinary command lane.
+    pub fn complete_clipboard_fragment(
+        &mut self,
+        target: petunia_design_application::session::SessionIdentity,
+        revision: u64,
+        surface: SurfaceId,
+        fragment: Vec<petunia_design_document::DocumentObject>,
+        cut: Option<Vec<ObjectId>>,
+        paste: bool,
+        origin: [f64; 2],
+    ) -> Result<ChangeSet, PetuniaError> {
+        let session = self
+            .sessions
+            .iter_mut()
+            .find(|s| s.identity() == target)
+            .ok_or_else(|| PetuniaError::not_found("clipboard target tab was closed"))?;
+        if (paste || cut.is_some()) && session.current_revision() != revision {
+            return Err(PetuniaError::invalid_input(
+                "clipboard target changed; retry the operation",
+            ));
+        }
+        let result = if paste {
+            session.paste_clipboard_fragment(surface, fragment.clone(), origin)?
+        } else if let Some(ids) = cut {
+            session.cut_clipboard_fragment(&ids, fragment.clone())?
+        } else {
+            session.set_clipboard(fragment.clone());
+            ChangeSet::empty()
+        };
+        session.set_clipboard_at(fragment.clone(), origin);
+        self.clipboard = fragment;
+        self.clipboard_origin = origin;
+        Ok(result)
+    }
+
+    /// Savepoint publication is scoped to the captured tab, even if it is inactive.
+    pub fn acknowledge_saved_snapshot(
+        &mut self,
+        target: petunia_design_application::session::SessionIdentity,
+        path: std::path::PathBuf,
+        revision: u64,
+        history_state: u64,
+    ) -> Result<bool, PetuniaError> {
+        let session = self
+            .sessions
+            .iter_mut()
+            .find(|s| s.identity() == target)
+            .ok_or_else(|| PetuniaError::not_found("saved document tab was closed"))?;
+        session.acknowledge_saved_snapshot(path, revision, history_state);
+        Ok(!session.is_dirty())
+    }
+    /// Worker import data enters the ordinary command lane only after its source guard.
+    pub fn place_prepared_image(
+        &mut self,
+        target: petunia_design_application::session::SessionIdentity,
+        revision: u64,
+        surface: SurfaceId,
+        path: std::path::PathBuf,
+        source: std::sync::Arc<petunia_design_raster::EncodedImage>,
+        size: [u32; 2],
+    ) -> Result<ChangeSet, PetuniaError> {
+        let session = self
+            .sessions
+            .iter_mut()
+            .find(|s| s.identity() == target)
+            .ok_or_else(|| PetuniaError::not_found("image target tab was closed"))?;
+        if session.current_revision() != revision {
+            return Err(PetuniaError::invalid_input(
+                "image target changed during admission; retry placement",
+            ));
+        }
+        let board = session.document().surface(surface)?;
+        let fit = (board.dimensions[0] * 0.8 / f64::from(size[0]))
+            .min(board.dimensions[1] * 0.8 / f64::from(size[1]))
+            .min(1.);
+        let width = f64::from(size[0]) * fit;
+        let height = f64::from(size[1]) * fit;
+        let bounds = [
+            board.origin[0] + (board.dimensions[0] - width) * 0.5,
+            board.origin[1] + (board.dimensions[1] - height) * 0.5,
+            width,
+            height,
+        ];
+        let id = session.next_object_id();
+        let changes = session.execute_command(CommandRequest::new(Command::CreateShapeObject {
+            surface,
+            id,
+            name: path
+                .file_stem()
+                .map_or_else(|| "Image".into(), |n| n.to_string_lossy().into_owned()),
+            shape: ShapeKind::Image {
+                path: path.to_string_lossy().into_owned(),
+                data: Some(source),
+            },
+            bounds: Some(bounds),
+            fill: None,
+            stroke: None,
+            stroke_width: 0.,
+        }))?;
+        session.selection.select_exact(vec![id]);
+        Ok(changes)
+    }
+
     /// Opens a project from disk, replacing the active session.
     ///
     /// A legacy package decodes into a canonical document but deliberately
     /// records **no path**: the next save must go through Save As so the
     /// original `.aubrieta`/`.aubri` file is never overwritten (15.A).
     pub fn open_path(&mut self, path: &std::path::Path) -> Result<(), PetuniaError> {
-        let opened = petunia_design_io::open_package(path)?;
-        let title = path.file_name().map_or_else(
-            || "Untitled".to_string(),
-            |n| n.to_string_lossy().into_owned(),
-        );
-        let mut session = DocumentSession::with_document(title, opened.document);
-        if session.active_surface().is_none() {
-            if let Some(first) = session.surfaces().first() {
-                session.set_active_surface(first.id);
-            }
+        if path
+            .extension()
+            .and_then(|v| v.to_str())
+            .is_some_and(|v| v.eq_ignore_ascii_case("svg"))
+        {
+            let document = petunia_design_io::read_svg(path)?;
+            let title = path.file_stem().map_or_else(
+                || "SVG".to_owned(),
+                |name| name.to_string_lossy().into_owned(),
+            );
+            self.push_session(DocumentSession::with_recovered_document(title, document));
+            self.snapshot_cache.borrow_mut().clear();
+            return Ok(());
         }
-        if opened.format == petunia_design_io::PackageFormat::Ptnd {
+        self.attach_opened_package(path, petunia_design_io::open_package(path)?, false)
+    }
+    pub fn open_recovery_path(&mut self, path: &std::path::Path) -> Result<(), PetuniaError> {
+        self.attach_opened_package(path, petunia_design_io::open_package(path)?, true)
+    }
+    pub fn attach_opened_package(
+        &mut self,
+        path: &std::path::Path,
+        opened: petunia_design_io::OpenedPackage,
+        require_recovery: bool,
+    ) -> Result<(), PetuniaError> {
+        opened.document.validate()?;
+        if require_recovery && opened.recovery.is_none() {
+            return Err(PetuniaError::invalid_input(
+                "selected package is not a recovery snapshot",
+            ));
+        }
+        let recovery = opened.recovery.is_some();
+        let title = opened.recovery.map(|meta| meta.title).unwrap_or_else(|| {
+            path.file_name().map_or_else(
+                || "Untitled".to_string(),
+                |name| name.to_string_lossy().into_owned(),
+            )
+        });
+        let mut session = if recovery {
+            DocumentSession::with_recovered_document(title, opened.document)
+        } else {
+            DocumentSession::with_document(title, opened.document)
+        };
+        if opened.format == petunia_design_io::PackageFormat::Ptnd && !recovery {
             session.adopt_path(path.to_path_buf());
         }
         self.push_session(session);
@@ -548,6 +702,14 @@ impl PetuniaDesignGuiBridge {
         session.transact(label, commands)
     }
 
+    /// Publishes a disposable paint draft through the application command lane.
+    pub fn commit_raster_stroke(
+        &mut self,
+        stroke: petunia_design_application::raster_edit::RasterStroke,
+    ) -> Result<ChangeSet, PetuniaError> {
+        stroke.commit(self.session_req_mut()?)
+    }
+
     /// Undoes the last committed command.
     pub fn undo(&mut self) -> Result<bool, PetuniaError> {
         CommandPort::undo(self)
@@ -621,7 +783,20 @@ impl PetuniaDesignGuiBridge {
     /// Explicit world evaluated bounds, when the frame is migrated.
     #[must_use]
     pub fn cached_world_bounds(&self, id: ObjectId) -> Option<[f64; 4]> {
-        self.session()?.cached_world_bounds(id)
+        let session = self.session()?;
+        if let Some(scene) = session.active_surface().and_then(|surface| {
+            self.snapshot_cache
+                .borrow()
+                .prepared_scene(session.current_revision(), surface)
+        }) {
+            if let Some(node) = scene.node(id) {
+                if let Some(bounds) = node.text_bounds() {
+                    let bounds = node.local_to_world().transform_rect(bounds);
+                    return Some([bounds.x0, bounds.y0, bounds.width(), bounds.height()]);
+                }
+            }
+        }
+        session.cached_world_bounds(id)
     }
 
     /// Nominal world frame bounds, available for legacy paths too.
@@ -638,8 +813,60 @@ impl PetuniaDesignGuiBridge {
         pt: petunia_design_geometry::GPoint,
         tol: f64,
     ) -> bool {
-        self.session()
-            .is_some_and(|s| s.cached_world_hit(id, pt, tol))
+        let Some(session) = self.session() else {
+            return false;
+        };
+        if let Some(scene) = session.active_surface().and_then(|surface| {
+            self.snapshot_cache
+                .borrow()
+                .prepared_scene(session.current_revision(), surface)
+        }) {
+            if let Some(hit) = scene.node(id).and_then(|node| node.text_hit(pt)) {
+                return hit;
+            }
+        }
+        session.cached_world_hit(id, pt, tol)
+    }
+    /// Add worker-shaped artistic overflow to the spatial prefilter, retaining
+    /// canonical stacking order rather than HashMap iteration order.
+    pub fn spatial_candidates_point(
+        &self,
+        point: petunia_design_geometry::GPoint,
+        tolerance: f64,
+    ) -> Vec<ObjectId> {
+        let Some(session) = self.session() else {
+            return Vec::new();
+        };
+        let mut ids: std::collections::HashSet<_> = session
+            .spatial_candidates_point(point, tolerance)
+            .into_iter()
+            .collect();
+        if let Some(scene) = session.active_surface().and_then(|surface| {
+            self.snapshot_cache
+                .borrow()
+                .prepared_scene(session.current_revision(), surface)
+        }) {
+            for node in scene.text_nodes() {
+                if let Some(bounds) = node.text_bounds() {
+                    let b = node.local_to_world().transform_rect(bounds);
+                    if point.x >= b.x0 - tolerance
+                        && point.x <= b.x1 + tolerance
+                        && point.y >= b.y0 - tolerance
+                        && point.y <= b.y1 + tolerance
+                    {
+                        ids.insert(node.id());
+                    }
+                }
+            }
+        }
+        session
+            .document()
+            .surfaces()
+            .iter()
+            .flat_map(|surface| surface.objects().iter().rev())
+            .filter(|object| ids.contains(&object.id))
+            .map(|object| object.id)
+            .collect()
     }
     /// Hit-test against the memoized evaluated outline (F1 + F2).
     /// `tol` should come from `zoom_flatten_tol`. Visibility/locking stay
@@ -1518,6 +1745,16 @@ impl ActionQueryPort for PetuniaDesignGuiBridge {
                 self.new_document("Untitled")?;
                 return Ok(ChangeSet::empty());
             }
+            "ptnd.action.file.recover" => {
+                let path = request
+                    .payload
+                    .get("path")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|path| !path.trim().is_empty())
+                    .ok_or_else(|| PetuniaError::invalid_input("recovery requires a path"))?;
+                self.open_recovery_path(std::path::Path::new(path))?;
+                return Ok(ChangeSet::empty());
+            }
             "ptnd.action.file.open" => {
                 let path = request
                     .payload
@@ -1572,8 +1809,22 @@ impl ActionQueryPort for PetuniaDesignGuiBridge {
             }
             _ => {}
         }
-        let session = self.session_req_mut()?;
-        session.dispatch_action(request)
+        if action == "ptnd.action.edit.paste" && !self.clipboard.is_empty() {
+            let clipboard = self.clipboard.clone();
+            let origin = self.clipboard_origin;
+            self.session_req_mut()?.set_clipboard_at(clipboard, origin);
+        }
+        let result = self.session_req_mut()?.dispatch_action(request);
+        if result.is_ok()
+            && matches!(
+                action.as_str(),
+                "ptnd.action.edit.copy" | "ptnd.action.edit.cut" | "ptnd.action.edit.paste"
+            )
+        {
+            self.clipboard_origin = self.session_req_mut()?.clipboard_origin();
+            self.clipboard = self.session_req_mut()?.clipboard().to_vec();
+        }
+        result
     }
 }
 

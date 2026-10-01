@@ -216,6 +216,7 @@ pub(crate) fn validate_modifiers(
 }
 
 pub(crate) fn validate_object(object: &DocumentObject) -> Result<(), PetuniaError> {
+    object.text_style.validate()?;
     if !object.rotation.is_finite()
         || !unit(object.opacity)
         || !object.stroke_width.is_finite()
@@ -235,6 +236,7 @@ pub(crate) fn validate_object(object: &DocumentObject) -> Result<(), PetuniaErro
         }
     }
     match &object.shape {
+        Some(ShapeKind::Raster { layer }) => layer.validate()?,
         Some(ShapeKind::Path(_)) => {
             return Err(invalid(
                 "parent-space path must be normalized before publication",
@@ -296,6 +298,83 @@ pub(crate) fn validate_object(object: &DocumentObject) -> Result<(), PetuniaErro
     Ok(())
 }
 
+/// Canonical resource ceiling; render derivatives/history/toolkit allocations
+/// have separate budgets. Shared buffers count once, descriptor maps count too.
+pub const MAX_DOCUMENT_RESOURCE_BYTES: usize = 256 * 1024 * 1024;
+fn validate_resource_budget(document: &Document) -> Result<(), PetuniaError> {
+    if document.surfaces().len() > 1024 {
+        return Err(invalid("document surface budget exceeded"));
+    }
+    let mut objects = 0usize;
+    let mut bytes = 0usize;
+    let mut pixels = HashSet::new();
+    let mut layers = HashSet::new();
+    let mut images = HashSet::new();
+    let mut paths = HashSet::new();
+    for surface in document.surfaces() {
+        bytes = bytes.saturating_add(surface.name.capacity());
+        if bytes > MAX_DOCUMENT_RESOURCE_BYTES {
+            return Err(invalid("surface label budget exceeded"));
+        }
+        for object in surface.objects() {
+            objects += 1;
+            if objects > 100_000 {
+                return Err(invalid("document object budget exceeded"));
+            }
+            bytes = bytes
+                .saturating_add(std::mem::size_of::<DocumentObject>())
+                .saturating_add(object.name.capacity());
+            match &object.shape {
+                Some(ShapeKind::Raster { layer }) => {
+                    if layers.insert(std::sync::Arc::as_ptr(layer)) {
+                        bytes = bytes.saturating_add(layer.tiles().resident_tile_count() * 96);
+                        for (_, tile) in layer.tiles().tiles() {
+                            if pixels.insert(std::sync::Arc::as_ptr(&tile.data)) {
+                                bytes = bytes.saturating_add(tile.data.capacity());
+                            }
+                        }
+                    }
+                }
+                Some(ShapeKind::Image { path, data }) => {
+                    bytes = bytes.saturating_add(path.capacity());
+                    if let Some(image) = data {
+                        if images.insert(std::sync::Arc::as_ptr(image)) {
+                            bytes = bytes.saturating_add(image.resident_bytes());
+                        }
+                    }
+                }
+                Some(ShapeKind::LocalPath { path, .. }) => {
+                    if path.verbs.len() > 1_000_000 {
+                        return Err(invalid("source path verb budget exceeded"));
+                    }
+                    if paths.insert(std::sync::Arc::as_ptr(path)) {
+                        bytes = bytes.saturating_add(path.verbs.capacity().saturating_mul(
+                            std::mem::size_of::<petunia_design_geometry::PathVerb>(),
+                        ));
+                    }
+                }
+                Some(ShapeKind::Text {
+                    content,
+                    font_family,
+                    ..
+                }) => {
+                    if content.len() > 64 * 1024 || font_family.len() > 1024 {
+                        return Err(invalid("text source budget exceeded"));
+                    }
+                    bytes = bytes
+                        .saturating_add(content.capacity())
+                        .saturating_add(font_family.capacity());
+                }
+                _ => {}
+            }
+            if bytes > MAX_DOCUMENT_RESOURCE_BYTES {
+                return Err(invalid("canonical document resource byte budget exceeded"));
+            }
+        }
+    }
+    Ok(())
+}
+
 impl Document {
     /// Checks IDs, frames and reciprocal ownership, references and cycles.
     /// Loading a project never repairs or silently drops malformed artwork.
@@ -305,6 +384,7 @@ impl Document {
                 "document schema must be migrated before publication",
             ));
         }
+        validate_resource_budget(self)?;
         let mut surface_ids = HashSet::new();
         let mut objects = HashMap::new();
         for surface in &self.surfaces {

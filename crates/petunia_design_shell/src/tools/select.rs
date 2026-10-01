@@ -1005,7 +1005,7 @@ impl SelectTool {
         // Spatial prefilter (F3) over evaluated bounds, topmost-first, then
         // the exact test on the memoized outline (F1 + F2). Unlike the old
         // base-bounds pre-check, warped/inset outlines hit where drawn (09.31).
-        let candidates = session.spatial_candidates_point(doc_pos, prox_tol);
+        let candidates = bridge.spatial_candidates_point(doc_pos, prox_tol);
         let ids: Vec<ObjectId> = if !candidates.is_empty() {
             candidates
         } else {

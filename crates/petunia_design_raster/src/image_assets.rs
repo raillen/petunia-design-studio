@@ -46,6 +46,9 @@ impl EncodedImage {
     pub fn as_slice(&self) -> &[u8] {
         &self.bytes
     }
+    pub fn resident_bytes(&self) -> usize {
+        self.bytes.capacity()
+    }
     pub fn byte_len(&self) -> usize {
         self.bytes.len()
     }

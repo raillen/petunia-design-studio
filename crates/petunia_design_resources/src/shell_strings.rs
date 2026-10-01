@@ -114,8 +114,8 @@ pub const SHELL_STRINGS: &[ShellString] = &[
     ),
     entry(
         "ptnd.text.blocked.raster_post_v1",
-        "Raster pixel layers are planned after V1",
-        "Camadas de pixels raster estão planejadas para depois da V1",
+        "This pixel selection tool is not implemented yet",
+        "Esta ferramenta de seleção de pixels ainda não foi implementada",
     ),
     entry(
         "ptnd.text.blocked.select_object",
@@ -270,6 +270,7 @@ pub const SHELL_STRINGS: &[ShellString] = &[
         "Interseção",
     ),
     entry("ptnd.text.object.boolean.union", "Union", "União"),
+    entry("ptnd.text.object.pixel_mask", "Add Editable Pixel Mask", "Adicionar máscara de pixels editável"),
     entry(
         "ptnd.text.object.clip_mask",
         "Create Clipping Mask",
@@ -598,6 +599,11 @@ pub const SHELL_STRINGS: &[ShellString] = &[
         "Create expressive typography",
         "Crie tipografia expressiva",
     ),
+    entry("ptnd.text.file.recover", "Restore recovery copy…", "Restaurar cópia de recuperação…"),
+    entry("ptnd.text.raster.apply_color", "Apply color", "Aplicar cor"),
+    entry("ptnd.text.raster.white", "White", "Branco"),
+    entry("ptnd.text.tool.pixel_fill", "Pixel Fill", "Preenchimento bitmap"),
+    entry("ptnd.text.tool.pixel_fill.summary", "Fill connected pixels in the selection", "Preencha pixels conectados dentro da seleção"),
     entry("ptnd.text.tool.brush", "Brush", "Pincel"),
     entry(
         "ptnd.text.tool.brush.summary",

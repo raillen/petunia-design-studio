@@ -7,10 +7,14 @@
 //! is the accepted short alias. `.abrt` and `.pds` are rejected glossary
 //! terms, reported as explicit errors.
 
+pub mod atomic_output;
 pub mod image_io;
 mod package;
 pub mod pdf;
 mod svg;
+mod svg_input;
+mod svg_scene;
+pub use svg_input::{import_svg, read_svg};
 
 pub use image_io::{
     export_png_rgba8_at_dpi, export_raster, import_raster, read_encoded_image, RasterExportOptions,
@@ -26,3 +30,9 @@ pub use pdf::{
 };
 pub use petunia_design_raster::PixelFormat;
 pub use svg::{export_document_svg, export_path_d, parse_path_d};
+
+mod binary_resources;
+mod clipboard_package;
+pub use clipboard_package::{decode_clipboard_fragment, encode_clipboard_fragment};
+
+pub mod recovery;

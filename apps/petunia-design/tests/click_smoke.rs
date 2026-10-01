@@ -22,6 +22,12 @@ mod actions;
 #[path = "../src/chrome.rs"]
 mod chrome;
 #[allow(dead_code)]
+#[path = "../src/file_workflows.rs"]
+mod file_workflows;
+#[allow(dead_code)]
+#[path = "../src/object_edits.rs"]
+mod object_edits;
+#[allow(dead_code)]
 #[path = "../src/theme.rs"]
 mod theme;
 #[allow(dead_code)]
@@ -114,9 +120,9 @@ fn mount() -> (
             let temporary_tool = use_state(|| None);
             let suspended_tool = use_state(|| None);
             let dock_tab = use_state(|| 0usize);
-            let text_edit_content = use_state(String::new);
             let new_doc_open = use_state(|| false);
             let export_open = use_state(|| false);
+            let place_image_open = use_state(|| false);
             let confirm_close_open = use_state(|| false);
             let pending_close = use_state(|| None);
             let offset_prompt_open = use_state(|| false);
@@ -147,9 +153,9 @@ fn mount() -> (
                 temporary_tool,
                 suspended_tool,
                 dock_tab,
-                text_edit_content,
                 new_doc_open,
                 export_open,
+                place_image_open,
                 confirm_close_open,
                 pending_close,
                 offset_prompt_open,
@@ -499,9 +505,9 @@ fn mount_full() -> FullMount {
             let temporary_tool = use_state(|| None);
             let suspended_tool = use_state(|| None);
             let dock_tab = use_state(|| 0usize);
-            let text_edit_content = use_state(String::new);
             let new_doc_open = use_state(|| false);
             let export_open = use_state(|| false);
+            let place_image_open = use_state(|| false);
             let confirm_close_open = use_state(|| false);
             let pending_close = use_state(|| None);
             let offset_prompt_open = use_state(|| false);
@@ -532,9 +538,9 @@ fn mount_full() -> FullMount {
                 temporary_tool,
                 suspended_tool,
                 dock_tab,
-                text_edit_content,
                 new_doc_open,
                 export_open,
+                place_image_open,
                 confirm_close_open,
                 pending_close,
                 offset_prompt_open,

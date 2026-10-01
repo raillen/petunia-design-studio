@@ -14,7 +14,11 @@
 //!
 //! Export never mutates the document and never enters history.
 
-use std::path::{Path, PathBuf};
+use petunia_design_jobs::CancellationToken;
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use petunia_design_document::{Document, Surface};
 use petunia_design_foundation::{PetuniaError, SurfaceId};
@@ -206,15 +210,27 @@ pub fn export_document(
     document: &Document,
     request: &ExportRequest,
 ) -> Result<ExportOutcome, PetuniaError> {
+    export_document_cancellable(document, request, &CancellationToken::new())
+}
+/// Cold scene preparation/composition and file publication observe cancellation.
+pub fn export_document_cancellable(
+    document: &Document,
+    request: &ExportRequest,
+    cancellation: &CancellationToken,
+) -> Result<ExportOutcome, PetuniaError> {
+    if cancellation.is_cancelled() {
+        return Err(PetuniaError::invalid_input("export cancelled"));
+    }
     if document.surfaces().is_empty() {
         return Err(PetuniaError::invalid_input(
             "nothing to export: the document has no surfaces",
         ));
     }
+    let lease = petunia_design_io::atomic_output::OutputLease::acquire(&request.path)?;
     let mut degradations: Vec<String> = Vec::new();
     let (bytes, surfaces) = match request.format {
         ExportFormat::Svg => (
-            export_document_svg(document).into_bytes(),
+            export_document_svg(document)?.into_bytes(),
             export_enabled(document),
         ),
         ExportFormat::Pdf => {
@@ -224,17 +240,17 @@ pub fn export_document(
         }
         ExportFormat::Png => {
             let surface = resolve_surface(document, request.surface)?;
-            let (bytes, items) = render_surface_png(surface, request.dpi)?;
+            let (bytes, items) =
+                render_surface_png_cancellable(surface, request.dpi, cancellation)?;
             degradations.extend(items.into_iter().map(|item| item.code));
             (bytes, 1)
         }
     };
-    std::fs::write(&request.path, &bytes).map_err(|error| {
-        PetuniaError::io(format!(
-            "could not write export {}: {error}",
-            request.path.display()
-        ))
-    })?;
+    let mut temporary = lease.temporary()?;
+    temporary
+        .write_all(&bytes)
+        .map_err(|e| PetuniaError::io(e.to_string()))?;
+    lease.publish(temporary, &|| cancellation.is_cancelled())?;
     Ok(ExportOutcome {
         path: request.path.clone(),
         bytes: bytes.len(),
@@ -279,12 +295,19 @@ fn render_surface_png(
     surface: &Surface,
     dpi: f64,
 ) -> Result<(Vec<u8>, Vec<petunia_design_io::DegradationItem>), PetuniaError> {
-    let scene = RenderSurface::extract(surface)
+    render_surface_png_cancellable(surface, dpi, &CancellationToken::new())
+}
+fn render_surface_png_cancellable(
+    surface: &Surface,
+    dpi: f64,
+    cancellation: &CancellationToken,
+) -> Result<(Vec<u8>, Vec<petunia_design_io::DegradationItem>), PetuniaError> {
+    let scene = RenderSurface::extract_cancellable(surface, &|| cancellation.is_cancelled())
         .map_err(|error| PetuniaError::invalid_input(error.to_string()))?;
     let request = RenderRequest::for_surface(&scene, dpi)
         .map_err(|error| PetuniaError::invalid_input(error.to_string()))?;
     let rendered = CpuRenderer::default()
-        .render(&scene, request)
+        .render_cancellable(&scene, request, cancellation)
         .map_err(|error| PetuniaError::invalid_input(error.to_string()))?;
     let raw = RawRasterImage::from_rgba8(rendered.width, rendered.height, rendered.data)?;
     Ok((export_png_rgba8_at_dpi(&raw, dpi)?, Vec::new()))

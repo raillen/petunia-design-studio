@@ -134,3 +134,12 @@ Nonblocking for long tasks. Background-task popover/status indicator shows curre
 # Export error handling
 
 Errors identify specific target and format setting; do not show generic `Export failed`. Batch continues when safe and summarizes failures.
+
+### Implementation cross-reference — 2026-10-01
+
+Scope: **Milestone Required (MVP)**. The desktop file-workflow adapter resolves
+configuration, stable save/close targets, normalized export destinations and PNG
+DPI. Native-system and assistive-technology acceptance remain open. See
+[ADR-007](../docs/developers/adr/ADR-007-desktop-file-workflows.md) and
+[implementation/evidence mapping](../docs/developers/uiux-file-workflows.md).
+This note does not promote ICC/CMYK or basic PDF to production-ready capability.

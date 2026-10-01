@@ -86,52 +86,19 @@ fn palette_row(
     let mut active_tool = ui.active_tool;
     let mut tool_rail = ui.tool_rail;
     let mut customize_open = ui.customize_open;
-    let mut new_doc_open = ui.new_doc_open;
-    let mut export_open = ui.export_open;
-    let mut place_image_open = ui.place_image_open;
-    let mut confirm_close_open = ui.confirm_close_open;
-    let mut pending_close = ui.pending_close;
     let mut offset_prompt_open = ui.offset_prompt_open;
     let photo = *ui.persona.read() == petunia_design_application::surfaces::PERSONA_PHOTO;
     rect().width(Size::fill()).child(
         Button::new()
             .on_press(move |_| {
-                let action_id = run_action_token(&mut shell.write(), &token);
+                let action_id = crate::actions::run_ui_token(&ui, &token);
                 if let Some(action_id) = action_id {
                     if action_id == ActionId::EDIT_PREFERENCES {
                         customize_open.set(true);
                     }
-                    if action_id == "ptnd.action.file.new" {
-                        new_doc_open.set(true);
-                    }
-                    if action_id == "ptnd.action.file.export" {
-                        export_open.set(true);
-                    }
-                    if action_id == "ptnd.action.file.place" {
-                        place_image_open.set(true);
-                    }
+
                     if action_id == "ptnd.action.object.offset_path" {
                         offset_prompt_open.set(true);
-                    }
-                    if action_id == "ptnd.action.file.close" {
-                        let mut s = shell.write();
-                        let dirty = s.bridge.is_dirty();
-                        let active = s.bridge.active_session_index();
-                        if dirty {
-                            pending_close.set(active);
-                            confirm_close_open.set(true);
-                        } else if let Some(idx) = active {
-                            let _ = s.bridge.close_session_at(idx, false);
-                        }
-                    }
-                    if action_id == "ptnd.action.file.quit" {
-                        let mut s = shell.write();
-                        if s.bridge.any_session_dirty() {
-                            pending_close.set(None);
-                            confirm_close_open.set(true);
-                        } else {
-                            let _ = s.bridge.close_all_sessions(false);
-                        }
                     }
                     if let Some(tool) =
                         petunia_design_application::tools::ToolKind::from_action_id(&action_id)
@@ -850,12 +817,19 @@ pub struct NewDocumentDialog(pub UiShell);
 impl Component for NewDocumentDialog {
     fn render(&self) -> impl IntoElement {
         let ui = &self.0;
-        let doc_name = use_state(|| "Novo Documento".to_string());
+        let doc_name = use_state(|| "Untitled".to_string());
         let width_val = use_state(|| 1920.0f64);
         let height_val = use_state(|| 1080.0f64);
         let bleed_val = use_state(|| 0.0f64);
         let margin_val = use_state(|| 0.0f64);
-        let color_space = use_state(|| "srgb".to_string());
+        let mut error = use_state(|| None::<String>);
+        let observed_open = ui.new_doc_open;
+        use_side_effect(move || {
+            let _ = *observed_open.read();
+            error.set(None);
+        });
+        let error_text = error.read().clone();
+        let failure = ui.text("failed");
 
         if !(*ui.new_doc_open.read()) {
             return rect().width(Size::px(0.)).height(Size::px(0.));
@@ -867,31 +841,17 @@ impl Component for NewDocumentDialog {
         let mut h_state = height_val;
         let mut bleed_state = bleed_val;
         let mut margin_state = margin_val;
-        let mut cs_state = color_space;
 
         let cur_w = *width_val.read();
         let cur_h = *height_val.read();
         let cur_bleed = *bleed_val.read();
         let cur_margin = *margin_val.read();
-        let cur_cs = color_space.read().clone();
 
-        rect()
-            .position(Position::new_absolute().top(50.))
-            .width(Size::fill())
-            .cross_align(Alignment::Center)
-            .main_align(Alignment::Center)
-            .child(
+        rect().child(Popup::new().width(Size::px(560.)).max_width(Size::window_percent(96.)).on_close_request(move |_| new_doc_open.set(false))
+            .child(PopupContent::new().child(
                 rect()
                     .direction(Direction::Vertical)
-                    .width(Size::px(500.))
-                    .background(theme::SURFACE_PANEL)
-                    .border(
-                        Border::new()
-                            .fill(theme::SURFACE_CHROME_STRONG)
-                            .width(1.)
-                            .alignment(BorderAlignment::Inner),
-                    )
-                    .padding(Gaps::new_all(theme::SPACE_3))
+                    .width(Size::fill())
                     .spacing(theme::SPACE_2)
                     .child(
                         rect()
@@ -901,7 +861,7 @@ impl Component for NewDocumentDialog {
                             .cross_align(Alignment::Center)
                             .child(
                                 label()
-                                    .text("Novo Documento / New Document")
+                                    .text(ui.text("new"))
                                     .font_size(14.)
                                     .color(theme::TEXT_PRIMARY),
                             )
@@ -920,17 +880,17 @@ impl Component for NewDocumentDialog {
                             .spacing(theme::SPACE_1)
                             .child(
                                 label()
-                                    .text("NOME DO DOCUMENTO")
+                                    .text(ui.text("name"))
                                     .font_size(10.)
                                     .color(theme::TEXT_TERTIARY),
                             )
                             .child(
-                                Input::new(doc_name).placeholder("Nome do documento..."),
+                                Input::new(doc_name).placeholder(ui.text("name")),
                             ),
                     )
                     .child(
                         label()
-                            .text("PRESETS DE TAMANHO")
+                            .text(ui.text("presets"))
                             .font_size(10.)
                             .color(theme::TEXT_TERTIARY),
                     )
@@ -961,7 +921,7 @@ impl Component for NewDocumentDialog {
                                         w_state.set(1080.0);
                                         h_state.set(1080.0);
                                     })
-                                    .child(label().text("Square").font_size(11.)),
+                                    .child(label().text(ui.text("square")).font_size(11.)),
                             )
                             .child(
                                 Button::new()
@@ -969,7 +929,7 @@ impl Component for NewDocumentDialog {
                                         w_state.set(390.0);
                                         h_state.set(844.0);
                                     })
-                                    .child(label().text("Mobile").font_size(11.)),
+                                    .child(label().text(ui.text("mobile")).font_size(11.)),
                             )
                             .child(
                                 Button::new()
@@ -996,7 +956,7 @@ impl Component for NewDocumentDialog {
                             .cross_align(Alignment::Center)
                             .child(
                                 label()
-                                    .text(format!("Dimensões: {:.0} × {:.0} pt", cur_w, cur_h))
+                                    .text(format!("{}: {:.0} × {:.0} pt", ui.text("dimensions"), cur_w, cur_h))
                                     .font_size(12.)
                                     .color(theme::TEXT_SECONDARY),
                             )
@@ -1007,12 +967,12 @@ impl Component for NewDocumentDialog {
                                         w_state.set(h);
                                         h_state.set(w);
                                     })
-                                    .child(label().text("⇄ Inverter Orientação").font_size(11.)),
+                                    .child(label().text(ui.text("rotate_orientation")).font_size(11.)),
                             ),
                     )
                     .child(
                         label()
-                            .text("SANGRIA / BLEED")
+                            .text(ui.text("bleed"))
                             .font_size(10.)
                             .color(theme::TEXT_TERTIARY),
                     )
@@ -1026,11 +986,7 @@ impl Component for NewDocumentDialog {
                                     .on_press(move |_| bleed_state.set(0.0))
                                     .child(
                                         label()
-                                            .text(if cur_bleed == 0.0 {
-                                                "✓ Sem Sangria"
-                                            } else {
-                                                "Sem Sangria"
-                                            })
+                                            .text(format!("{}{}", if cur_bleed == 0.0 {"✓ "} else {""}, ui.text("no_bleed")))
                                             .font_size(11.),
                                     ),
                             )
@@ -1063,7 +1019,7 @@ impl Component for NewDocumentDialog {
                     )
                     .child(
                         label()
-                            .text("MARGENS SEGURAS / MARGINS")
+                            .text(ui.text("margins"))
                             .font_size(10.)
                             .color(theme::TEXT_TERTIARY),
                     )
@@ -1123,55 +1079,13 @@ impl Component for NewDocumentDialog {
                     )
                     .child(
                         label()
-                            .text("ESPAÇO DE COR / COLOR PROFILE")
+                            .text(ui.text("color_mode"))
                             .font_size(10.)
                             .color(theme::TEXT_TERTIARY),
                     )
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .spacing(theme::SPACE_1)
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| cs_state.set("srgb".to_string()))
-                                    .child(
-                                        label()
-                                            .text(if cur_cs == "srgb" {
-                                                "✓ sRGB (Telas)"
-                                            } else {
-                                                "sRGB (Telas)"
-                                            })
-                                            .font_size(11.),
-                                    ),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| cs_state.set("p3".to_string()))
-                                    .child(
-                                        label()
-                                            .text(if cur_cs == "p3" {
-                                                "✓ Display P3"
-                                            } else {
-                                                "Display P3"
-                                            })
-                                            .font_size(11.),
-                                    ),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| cs_state.set("cmyk".to_string()))
-                                    .child(
-                                        label()
-                                            .text(if cur_cs == "cmyk" {
-                                                "✓ CMYK (Impressão)"
-                                            } else {
-                                                "CMYK (Impressão)"
-                                            })
-                                            .font_size(11.),
-                                    ),
-                            ),
-                    )
+                    .child(label().text("RGB").color(theme::TEXT_PRIMARY))
+                    .child(label().text(ui.text("color_unavailable")).color(theme::TEXT_SECONDARY))
+                    .children(error_text.into_iter().map(|message| label().text(message).color(PROMPT_ERROR)))
                     .child(
                         rect()
                             .direction(Direction::Horizontal)
@@ -1183,7 +1097,7 @@ impl Component for NewDocumentDialog {
                                     .on_press(move |_| {
                                         new_doc_open.set(false);
                                     })
-                                    .child(label().text("Cancelar").font_size(11.)),
+                                    .child(label().text(ui.text("cancel")).font_size(11.)),
                             )
                             .child(
                                 Button::new()
@@ -1193,36 +1107,16 @@ impl Component for NewDocumentDialog {
                                         let h = *height_val.peek();
                                         let bleed_amt = *bleed_val.peek();
                                         let margin_amt = *margin_val.peek();
-                                        let mut s = shell.write();
-                                        if s.new_document(&name).is_ok() {
-                                            if let Some(surf_id) = s.bridge.active_surface() {
-                                                let cmds = vec![
-                                                    petunia_design_application::Command::SetSurfaceGeometry {
-                                                        surface: surf_id,
-                                                        origin: [0.0, 0.0],
-                                                        dimensions: [w, h],
-                                                    },
-                                                    petunia_design_application::Command::SetSurfaceBleed {
-                                                        surface: surf_id,
-                                                        bleed: petunia_design_document::Bleed::uniform(bleed_amt),
-                                                    },
-                                                    petunia_design_application::Command::SetSurfaceMargins {
-                                                        surface: surf_id,
-                                                        margins: petunia_design_document::Margins::uniform(margin_amt),
-                                                    },
-                                                ];
-                                                let _ = s.bridge.submit_all(
-                                                    "Set surface geometry, bleed and margins",
-                                                    cmds,
-                                                );
-                                            }
+                                        let result=crate::file_workflows::create_configured_document(&mut shell.write(),&name,[w,h],bleed_amt,margin_amt);
+                                        match result {
+                                            Ok(())=>{error.set(None);new_doc_open.set(false);},
+                                            Err(reason)=>error.set(Some(format!("{failure}: {reason}"))),
                                         }
-                                        new_doc_open.set(false);
                                     })
-                                    .child(label().text("Criar Documento").font_size(11.)),
+                                    .child(label().text(ui.text("create")).font_size(11.)),
                             ),
-                    ),
-            )
+                    )
+            )))
     }
 }
 
@@ -1230,313 +1124,119 @@ impl Component for NewDocumentDialog {
 #[derive(Clone, PartialEq)]
 pub struct ExportDialog(pub UiShell);
 
+/// Resolves the exact request used for preview, overwrite checks and dispatch.
+/// Normalization happens before asking to replace an existing destination.
+pub fn desktop_export_payload(
+    format: &str,
+    path: &str,
+    dpi: u32,
+    surface: Option<petunia_design_foundation::SurfaceId>,
+) -> Result<
+    (
+        serde_json::Value,
+        petunia_design_application::export_service::ExportRequest,
+    ),
+    petunia_design_foundation::PetuniaError,
+> {
+    let mut payload = serde_json::json!({"format":format,"path":path.trim(),"dpi":dpi});
+    if let Some(surface) = surface {
+        payload["surface"] = serde_json::json!(surface.raw());
+    }
+    let request =
+        petunia_design_application::export_service::ExportRequest::from_payload(&payload, surface)?;
+    payload["path"] = serde_json::json!(request.path);
+    Ok((payload, request))
+}
+
 impl Component for ExportDialog {
     fn render(&self) -> impl IntoElement {
         let ui = &self.0;
-        let export_format = use_state(|| "png".to_string());
-        let export_path = use_state(|| "export_output.png".to_string());
-        let dpi_scale = use_state(|| 72u32);
-        let bg_transparent = use_state(|| true);
-
-        if !(*ui.export_open.read()) {
+        let mut format = use_state(|| "png".to_string());
+        let mut path = use_state(|| "export_output.png".to_string());
+        let mut dpi = use_state(|| 72u32);
+        let mut error = use_state(|| None::<String>);
+        let mut replace = use_state(|| None::<std::path::PathBuf>);
+        let mut open = ui.export_open;
+        use_side_effect(move || {
+            let _ = *open.read();
+            error.set(None);
+            replace.set(None);
+        });
+        if !*open.read() {
             return rect().width(Size::px(0.)).height(Size::px(0.));
         }
-        let mut export_open = ui.export_open;
-        let mut shell = ui.shell;
-
-        let mut fmt_state = export_format;
-        let mut path_state = export_path;
-        let mut dpi_state = dpi_scale;
-        let mut bg_state = bg_transparent;
-
-        let active_fmt = export_format.read().clone();
-        let cur_dpi = *dpi_scale.read();
-        let cur_bg_trans = *bg_transparent.read();
-
-        let active_surf_info = {
-            let s = shell.peek();
-            s.bridge.active_surface().and_then(|surf_id| {
-                s.bridge
-                    .session()
-                    .and_then(|sess| sess.document().surface(surf_id).ok())
-                    .map(|surf| (surf.name.clone(), surf.dimensions[0], surf.dimensions[1]))
-            })
-        };
-
-        rect()
-            .position(Position::new_absolute().top(70.))
-            .width(Size::fill())
-            .cross_align(Alignment::Center)
-            .main_align(Alignment::Center)
-            .child(
-                rect()
-                    .direction(Direction::Vertical)
-                    .width(Size::px(480.))
-                    .background(theme::SURFACE_PANEL)
-                    .border(
-                        Border::new()
-                            .fill(theme::SURFACE_CHROME_STRONG)
-                            .width(1.)
-                            .alignment(BorderAlignment::Inner),
-                    )
-                    .padding(Gaps::new_all(theme::SPACE_3))
-                    .spacing(theme::SPACE_2)
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .main_align(Alignment::SpaceBetween)
-                            .cross_align(Alignment::Center)
-                            .child(
-                                label()
-                                    .text("Exportar Arte / Export Artwork")
-                                    .font_size(14.)
-                                    .color(theme::TEXT_PRIMARY),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        export_open.set(false);
-                                    })
-                                    .child(label().text("✕").font_size(12.)),
-                            ),
-                    )
-                    .child(
-                        label()
-                            .text("FORMATO DE EXPORTAÇÃO")
-                            .font_size(10.)
-                            .color(theme::TEXT_TERTIARY),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .spacing(theme::SPACE_1)
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        fmt_state.set("png".to_string());
-                                        let cur = path_state.peek().clone();
-                                        let updated = if cur.ends_with(".svg") {
-                                            cur.replace(".svg", ".png")
-                                        } else if cur.ends_with(".pdf") {
-                                            cur.replace(".pdf", ".png")
-                                        } else if !cur.ends_with(".png") {
-                                            format!("{}.png", cur)
-                                        } else {
-                                            cur
-                                        };
-                                        path_state.set(updated);
-                                    })
-                                    .child(
-                                        label()
-                                            .text(if active_fmt == "png" {
-                                                "✓ PNG (Bitmap)"
-                                            } else {
-                                                "PNG (Bitmap)"
-                                            })
-                                            .font_size(11.),
-                                    ),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        fmt_state.set("svg".to_string());
-                                        let cur = path_state.peek().clone();
-                                        let updated = if cur.ends_with(".png") {
-                                            cur.replace(".png", ".svg")
-                                        } else if cur.ends_with(".pdf") {
-                                            cur.replace(".pdf", ".svg")
-                                        } else if !cur.ends_with(".svg") {
-                                            format!("{}.svg", cur)
-                                        } else {
-                                            cur
-                                        };
-                                        path_state.set(updated);
-                                    })
-                                    .child(
-                                        label()
-                                            .text(if active_fmt == "svg" {
-                                                "✓ SVG (Vetorial)"
-                                            } else {
-                                                "SVG (Vetorial)"
-                                            })
-                                            .font_size(11.),
-                                    ),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        fmt_state.set("pdf".to_string());
-                                        let cur = path_state.peek().clone();
-                                        let updated = if cur.ends_with(".png") {
-                                            cur.replace(".png", ".pdf")
-                                        } else if cur.ends_with(".svg") {
-                                            cur.replace(".svg", ".pdf")
-                                        } else if !cur.ends_with(".pdf") {
-                                            format!("{}.pdf", cur)
-                                        } else {
-                                            cur
-                                        };
-                                        path_state.set(updated);
-                                    })
-                                    .child(
-                                        label()
-                                            .text(if active_fmt == "pdf" {
-                                                "✓ PDF (Documento)"
-                                            } else {
-                                                "PDF (Documento)"
-                                            })
-                                            .font_size(11.),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        label()
-                            .text("RESOLUÇÃO / DENSIDADE (DPI)")
-                            .font_size(10.)
-                            .color(theme::TEXT_TERTIARY),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .spacing(theme::SPACE_1)
-                            .child(
-                                Button::new().on_press(move |_| dpi_state.set(72)).child(
-                                    label()
-                                        .text(if cur_dpi == 72 {
-                                            "✓ 72 DPI (1x Tela)"
-                                        } else {
-                                            "72 DPI (1x Tela)"
-                                        })
-                                        .font_size(11.),
-                                ),
-                            )
-                            .child(
-                                Button::new().on_press(move |_| dpi_state.set(144)).child(
-                                    label()
-                                        .text(if cur_dpi == 144 {
-                                            "✓ 144 DPI (2x Retina)"
-                                        } else {
-                                            "144 DPI (2x Retina)"
-                                        })
-                                        .font_size(11.),
-                                ),
-                            )
-                            .child(
-                                Button::new().on_press(move |_| dpi_state.set(300)).child(
-                                    label()
-                                        .text(if cur_dpi == 300 {
-                                            "✓ 300 DPI (Impressão)"
-                                        } else {
-                                            "300 DPI (Impressão)"
-                                        })
-                                        .font_size(11.),
-                                ),
-                            ),
-                    )
-                    .child(
-                        label()
-                            .text("FUNDO DA IMAGEM")
-                            .font_size(10.)
-                            .color(theme::TEXT_TERTIARY),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .spacing(theme::SPACE_1)
-                            .child(
-                                Button::new().on_press(move |_| bg_state.set(true)).child(
-                                    label()
-                                        .text(if cur_bg_trans {
-                                            "✓ Transparente (Alpha)"
-                                        } else {
-                                            "Transparente (Alpha)"
-                                        })
-                                        .font_size(11.),
-                                ),
-                            )
-                            .child(
-                                Button::new().on_press(move |_| bg_state.set(false)).child(
-                                    label()
-                                        .text(if !cur_bg_trans {
-                                            "✓ Branco Opaco"
-                                        } else {
-                                            "Branco Opaco"
-                                        })
-                                        .font_size(11.),
-                                ),
-                            ),
-                    )
-                    .child(if let Some((name, w, h)) = active_surf_info {
-                        rect().child(
-                            label()
-                                .text(format!(
-                                    "Superfície Alvo: {} ({:.0} × {:.0} pt)",
-                                    name, w, h
-                                ))
-                                .font_size(11.)
-                                .color(theme::TEXT_SECONDARY),
-                        )
-                    } else {
-                        rect()
-                    })
-                    .child(
-                        rect()
-                            .direction(Direction::Vertical)
-                            .width(Size::fill())
-                            .spacing(theme::SPACE_1)
-                            .child(
-                                label()
-                                    .text("CAMINHO DE GRAVAÇÃO DO ARQUIVO")
-                                    .font_size(10.)
-                                    .color(theme::TEXT_TERTIARY),
-                            )
-                            .child(Input::new(export_path).placeholder("Caminho do arquivo...")),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .main_align(Alignment::End)
-                            .spacing(theme::SPACE_1)
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        export_open.set(false);
-                                    })
-                                    .child(label().text("Cancelar").font_size(11.)),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        let path = export_path.peek().clone();
-                                        let fmt = export_format.peek().clone();
-                                        let mut payload = serde_json::json!({
-                                            "path": path,
-                                            "format": fmt,
-                                        });
-                                        if let Some(surf) = shell.peek().bridge.active_surface() {
-                                            payload["surface"] = serde_json::json!(surf.raw());
-                                        }
-                                        let res = shell.write().bridge.dispatch_action(
-                                            petunia_design_application::ActionRequest::new(
-                                                petunia_design_application::ActionId::new(
-                                                    "ptnd.action.file.export",
-                                                ),
-                                                payload,
-                                            ),
-                                        );
-                                        if res.is_ok() {
-                                            export_open.set(false);
-                                        }
-                                    })
-                                    .child(label().text("Exportar Arquivo").font_size(11.)),
-                            ),
-                    ),
-            )
+        let active_format = format.read().clone();
+        let density = *dpi.read();
+        let surf = ui.shell.peek().bridge.active_surface();
+        let prepared = desktop_export_payload(&active_format, &path.read(), density, surf);
+        let destination = prepared
+            .as_ref()
+            .ok()
+            .map(|(_, request)| request.path.clone());
+        let confirmed = destination.is_some() && *replace.read() == destination;
+        let surface_info = ui
+            .shell
+            .peek()
+            .bridge
+            .session()
+            .and_then(|session| surf.and_then(|id| session.document().surface(id).ok()))
+            .map(|surface| {
+                format!(
+                    "{}: {:.0} × {:.0} px",
+                    ui.text("export_dimensions"),
+                    (surface.dimensions[0] * f64::from(density) / 72.).ceil(),
+                    (surface.dimensions[1] * f64::from(density) / 72.).ceil()
+                )
+            });
+        let failure = ui.text("failed");
+        let shell = ui.shell;
+        let export_ui = ui.clone();
+        let cancel_ui = ui.clone();
+        let close_ui = ui.clone();
+        let busy = ui.file_job.read().is_some();
+        let error_text = error.read().clone();
+        rect().child(Popup::new().width(Size::px(560.)).max_width(Size::window_percent(96.)).on_close_request(move |_| {crate::file_jobs::cancel_export(&close_ui);open.set(false);error.set(None);replace.set(None);})
+            .child(PopupTitle::new(ui.text("export")))
+            .child(PopupContent::new().child(rect().direction(Direction::Vertical).width(Size::fill()).spacing(theme::SPACE_2)
+                .child(label().text(ui.text("format")))
+                .child(rect().direction(Direction::Horizontal).spacing(theme::SPACE_1).children(["png","svg"].into_iter().map(|fmt| {
+                    let selected=active_format==fmt;
+                    Button::new().on_press(move |_| {
+                        format.set(fmt.to_string());
+                        if !path.peek().trim().is_empty() {
+                            let parsed=petunia_design_application::export_service::ExportFormat::parse(fmt).expect("listed export format");
+                            let target=petunia_design_application::export_service::with_format_suffix(std::path::PathBuf::from(path.peek().trim()),parsed);
+                            path.set(target.to_string_lossy().into_owned());
+                        }
+                        replace.set(None);error.set(None);
+                    }).child(format!("{}{}",if selected {"✓ "} else {""},fmt.to_uppercase()))
+                })))
+                .child(label().text(ui.text(if active_format=="png" {"scope_png"} else {"scope_document"})).color(theme::TEXT_SECONDARY))
+                .maybe_child((active_format=="png").then(|| rect().direction(Direction::Vertical).spacing(theme::SPACE_1)
+                    .child(label().text(ui.text("dpi")))
+                    .child(rect().direction(Direction::Horizontal).spacing(theme::SPACE_1).children([72u32,144,300].into_iter().map(|value| {
+                        Button::new().on_press(move |_| {dpi.set(value); replace.set(None);}).child(format!("{}{value} DPI",if density==value {"✓ "} else {""}))
+                    })))
+                    .maybe_child(surface_info.map(|info| label().text(info)))
+                    .child(label().text(ui.text("alpha")).color(theme::TEXT_SECONDARY))))
+                .child(label().text(ui.text("pdf_limit")).color(theme::TEXT_SECONDARY))
+                .maybe_child((active_format=="png").then(||crate::export_preview::ExportPreview(ui.clone())))
+                .child(label().text(ui.text("destination")))
+                .child(Input::new(path).width(Size::fill()).placeholder(ui.text("destination")))
+                .maybe_child(destination.as_ref().map(|path| label().text(path.display().to_string()).color(theme::TEXT_SECONDARY)))
+                .children(error_text.into_iter().map(|message| label().text(message).color(PROMPT_ERROR)))
+                .maybe_child(confirmed.then(|| label().text(ui.text("overwrite_reason")).color(theme::TEXT_PRIMARY)))
+                .child(rect().direction(Direction::Horizontal).main_align(Alignment::End).spacing(theme::SPACE_1)
+                    .child(Button::new().on_press(move |_| {crate::file_jobs::cancel_export(&cancel_ui);open.set(false);error.set(None);replace.set(None);}).child(ui.text("cancel")))
+                    .child(Button::new().enabled(!busy).on_press(move |_| {
+                        let (_,request)=match &prepared {Ok(value)=>value.clone(),Err(reason)=>{error.set(Some(format!("{failure}: {reason}")));return;}};
+                        if request.path.exists() && !confirmed {replace.set(Some(request.path));return;}
+                        let result=crate::file_jobs::export(&export_ui,request.clone());
+                        match result {
+                            Ok(_)=>{error.set(None);replace.set(None);},
+                            Err(reason)=>error.set(Some(format!("{failure}: {reason}"))),
+                        }
+                    }).child(ui.text(if confirmed {"overwrite"} else {"export"})))))))
     }
 }
 
@@ -1547,82 +1247,127 @@ pub struct ConfirmCloseDialog(pub UiShell);
 impl Component for ConfirmCloseDialog {
     fn render(&self) -> impl IntoElement {
         let ui = &self.0;
-        if !(*ui.confirm_close_open.read()) {
+        if !*ui.confirm_close_open.read() {
             return rect().width(Size::px(0.)).height(Size::px(0.));
         }
-        let mut confirm_close_open = ui.confirm_close_open;
-        let mut pending_close = ui.pending_close;
+        let mut open = ui.confirm_close_open;
+        let mut pending = ui.pending_close;
         let mut shell = ui.shell;
-        let target = *pending_close.read();
-
-        rect()
-            .position(Position::new_absolute().top(120.))
-            .width(Size::fill())
-            .cross_align(Alignment::Center)
-            .main_align(Alignment::Center)
-            .child(
-                rect()
-                    .direction(Direction::Vertical)
-                    .width(Size::px(400.))
-                    .background(theme::SURFACE_PANEL)
-                    .border(
-                        Border::new()
-                            .fill(theme::SURFACE_CHROME_STRONG)
-                            .width(1.)
-                            .alignment(BorderAlignment::Inner),
-                    )
-                    .padding(Gaps::new_all(theme::SPACE_3))
-                    .spacing(theme::SPACE_2)
-                    .child(
-                        label()
-                            .text("Alterações Não Salvas")
-                            .font_size(14.)
-                            .color(theme::TEXT_PRIMARY),
-                    )
-                    .child(
-                        label()
-                            .text(if target.is_some() {
-                                "O documento possui alterações não salvas. Deseja fechar e descartar as alterações?"
-                            } else {
-                                "Há documentos com alterações não salvas. Deseja sair e descartar as alterações de todos?"
-                            })
-                            .font_size(12.)
-                            .color(theme::TEXT_SECONDARY),
-                    )
-                    .child(
+        let save_ui = ui.clone();
+        let mut error = ui.file_error;
+        let index = *pending.peek();
+        let identity = *ui.close_target.peek();
+        let target_title = identity.and_then(|id| {
+            shell
+                .peek()
+                .bridge
+                .sessions()
+                .iter()
+                .find(|s| s.identity() == id)
+                .map(|s| s.title().to_string())
+        });
+        let failure = ui.text("failed");
+        let save_failure = failure.clone();
+        let error_text = error.read().clone();
+        rect().child(
+            Popup::new()
+                .width(Size::px(560.))
+                .max_width(Size::window_percent(96.))
+                .on_close_request(move |_| {
+                    open.set(false);
+                    pending.set(None);
+                    error.set(None);
+                })
+                .child(PopupTitle::new(ui.text("close_title")))
+                .child(
+                    PopupContent::new().child(
                         rect()
-                            .direction(Direction::Horizontal)
+                            .direction(Direction::Vertical)
                             .width(Size::fill())
-                            .main_align(Alignment::End)
-                            .spacing(theme::SPACE_1)
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        pending_close.set(None);
-                                        confirm_close_open.set(false);
-                                    })
-                                    .child(label().text("Cancelar").font_size(11.)),
+                            .spacing(theme::SPACE_2)
+                            .child(label().text(ui.text(if index.is_some() {
+                                "close_one"
+                            } else {
+                                "close_all"
+                            })))
+                            .maybe_child(
+                                target_title
+                                    .map(|title| label().text(title).color(theme::TEXT_PRIMARY)),
+                            )
+                            .children(
+                                error_text
+                                    .into_iter()
+                                    .map(|message| label().text(message).color(PROMPT_ERROR)),
                             )
                             .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        confirm_close_open.set(false);
-                                        pending_close.set(None);
-                                        if let Some(idx) = target {
-                                            let _ = shell.write().bridge.close_session_at(idx, true);
-                                        } else {
-                                            let _ = shell.write().bridge.close_all_sessions(true);
-                                        }
-                                    })
-                                    .child(label().text("Fechar Sem Salvar").font_size(11.)),
+                                rect()
+                                    .direction(Direction::Horizontal)
+                                    .main_align(Alignment::End)
+                                    .spacing(theme::SPACE_1)
+                                    .child(
+                                        Button::new()
+                                            .on_press(move |_| {
+                                                open.set(false);
+                                                pending.set(None);
+                                                error.set(None);
+                                            })
+                                            .child(ui.text("cancel")),
+                                    )
+                                    .child(
+                                        Button::new()
+                                            .on_press(move |_| {
+                                                if index.is_some() && identity.is_none() {
+                                                    error.set(Some(failure.clone()));
+                                                    return;
+                                                }
+                                                let result = crate::file_workflows::discard_target(
+                                                    &mut shell.write(),
+                                                    identity,
+                                                );
+                                                match result {
+                                                    Ok(true) => {
+                                                        open.set(false);
+                                                        pending.set(None);
+                                                        error.set(None);
+                                                    }
+                                                    Ok(false) => error.set(Some(failure.clone())),
+                                                    Err(reason) => error
+                                                        .set(Some(format!("{failure}: {reason}"))),
+                                                }
+                                            })
+                                            .child(ui.text("close_discard")),
+                                    )
+                                    .child(
+                                        Button::new()
+                                            .on_press(move |_| {
+                                                if index.is_some() && identity.is_none() {
+                                                    error.set(Some(save_failure.clone()));
+                                                    return;
+                                                }
+                                                match crate::file_jobs::save_before_close(
+                                                    &save_ui, identity,
+                                                ) {
+                                                    Ok(()) => {
+                                                        open.set(false);
+                                                        pending.set(None);
+                                                        error.set(None);
+                                                    }
+                                                    Err(reason) => error.set(Some(format!(
+                                                        "{save_failure}: {reason}"
+                                                    ))),
+                                                }
+                                            })
+                                            .child(ui.text("close_save")),
+                                    ),
                             ),
                     ),
-            )
+                ),
+        )
     }
 }
 
 /// Error ink for rejected prompt values (no theme error token exists yet).
-const PROMPT_ERROR: Color = Color::from_rgb(0xE5, 0x6B, 0x6B);
+const PROMPT_ERROR: Color = theme::TEXT_ERROR;
 
 /// Parses a typed numeric prompt value in points.
 ///
@@ -1920,13 +1665,16 @@ impl Component for PlaceImageDialog {
     fn render(&self) -> impl IntoElement {
         let ui = &self.0;
         let path = use_state(String::new);
+        let mut picker_busy = use_state(|| false);
         let error = use_state(|| None::<String>);
         if !*ui.place_image_open.read() {
             return rect().width(Size::px(0.)).height(Size::px(0.));
         }
         let mut open = ui.place_image_open;
         let mut close_open = open;
-        let mut shell = ui.shell;
+        let place_ui = ui.clone();
+        let browse_ui = ui.clone();
+        let busy = ui.file_job.read().is_some() || *picker_busy.read();
         let mut path_state = path;
         let mut error_state = error;
         let mut close_error = error;
@@ -1939,6 +1687,9 @@ impl Component for PlaceImageDialog {
             .child(
                 Popup::new()
                     .on_close_request(move |_| {
+                        if busy {
+                            return;
+                        }
                         close_error.set(None);
                         close_open.set(false);
                     })
@@ -1961,6 +1712,38 @@ impl Component for PlaceImageDialog {
                                     ui,
                                     "ptnd.text.image.source_path",
                                 )))
+                                .child(
+                                    Button::new()
+                                        .enabled(!busy)
+                                        .on_press(move |_| {
+                                            picker_busy.set(true);
+                                            let browse_ui = browse_ui.clone();
+                                            spawn(async move {
+                                                let file = rfd::AsyncFileDialog::new()
+                                                    .add_filter(
+                                                        "Images",
+                                                        &[
+                                                            "png", "jpg", "jpeg", "tif", "tiff",
+                                                            "webp",
+                                                        ],
+                                                    )
+                                                    .pick_file()
+                                                    .await;
+                                                picker_busy.set(false);
+                                                if *browse_ui.place_image_open.peek() {
+                                                    if let Some(file) = file {
+                                                        path_state.set(
+                                                            file.path()
+                                                                .to_string_lossy()
+                                                                .into_owned(),
+                                                        );
+                                                        error_state.set(None);
+                                                    }
+                                                }
+                                            });
+                                        })
+                                        .child(ui.text("browse")),
+                                )
                                 .children(
                                     error_text
                                         .into_iter()
@@ -1974,6 +1757,9 @@ impl Component for PlaceImageDialog {
                                         .child(
                                             Button::new()
                                                 .on_press(move |_| {
+                                                    if busy {
+                                                        return;
+                                                    }
                                                     error_state.set(None);
                                                     open.set(false);
                                                 })
@@ -1984,21 +1770,18 @@ impl Component for PlaceImageDialog {
                                         )
                                         .child(
                                             Button::new()
+                                                .enabled(!busy)
                                                 .on_press(move |_| {
                                                     let chosen =
                                                         path_state.read().trim().to_string();
-                                                    let result = shell
-                                                        .write()
-                                                        .bridge
-                                                        .dispatch_action(ActionRequest::new(
-                                                            ActionId::new("ptnd.action.file.place"),
-                                                            serde_json::json!({"path": chosen}),
-                                                        ));
+                                                    let result = crate::file_jobs::place(
+                                                        &place_ui,
+                                                        std::path::Path::new(&chosen),
+                                                    );
                                                     match result {
                                                         Ok(_) => {
                                                             path_state.set(String::new());
                                                             error_state.set(None);
-                                                            open.set(false);
                                                         }
                                                         Err(reason) => error_state.set(Some(
                                                             format!("{failure_label}: {reason}"),

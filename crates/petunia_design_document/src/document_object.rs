@@ -57,8 +57,57 @@ fn default_true() -> bool {
     true
 }
 
+fn default_fill_rule() -> petunia_design_geometry::FillRule { petunia_design_geometry::FillRule::EvenOdd }
 fn default_one() -> f64 {
     1.0
+}
+
+/// Basic paragraph alignment, interpreted relative to its writing direction.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TextAlignment {
+    #[default]
+    Start,
+    Center,
+    End,
+}
+/// Text artistic flow is unwrapped; frames wrap and clip at their finite box.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TextFlow {
+    Artistic,
+    #[default]
+    Frame,
+}
+/// Uniform basic text style. Toolkit and font-database handles are never stored.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TextStyle {
+    pub weight: u16,
+    pub italic: bool,
+    pub alignment: TextAlignment,
+    pub flow: TextFlow,
+}
+impl Default for TextStyle {
+    fn default() -> Self {
+        Self {
+            weight: 400,
+            italic: false,
+            alignment: TextAlignment::Start,
+            flow: TextFlow::Frame,
+        }
+    }
+}
+impl TextStyle {
+    pub(crate) fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+    pub fn validate(&self) -> Result<(), petunia_design_foundation::PetuniaError> {
+        if !(1..=1000).contains(&self.weight) {
+            return Err(petunia_design_foundation::PetuniaError::invalid_input(
+                "font weight must be in 1..=1000",
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Single node in the document tree.
@@ -115,6 +164,12 @@ pub struct DocumentObject {
     /// Canonical vector shape or text content of this object, if not a container.
     #[serde(default)]
     pub shape: Option<ShapeKind>,
+    /// Canonical vector winding; historical documents retain even-odd parity.
+    #[serde(default = "default_fill_rule")]
+    pub fill_rule: petunia_design_geometry::FillRule,
+    /// Basic typography retained independently of source text content.
+    #[serde(default, skip_serializing_if = "TextStyle::is_default")]
+    pub text_style: TextStyle,
     /// Ordered live modifier chain (the non-destructive EffectChain, 09.31).
     /// Empty by default; evaluated on read, never stored as geometry.
     #[serde(default)]
@@ -195,6 +250,10 @@ pub enum ShapeKind {
         #[serde(default)]
         data: Option<std::sync::Arc<petunia_design_raster::EncodedImage>>,
     },
+    /// Editable sparse bitmap or coverage mask; tiles are shared by snapshots.
+    Raster {
+        layer: std::sync::Arc<petunia_design_raster::RasterLayer>,
+    },
 }
 
 impl ShapeKind {
@@ -252,6 +311,8 @@ impl DocumentObject {
             clip_mask_id: None,
             mask_mode: crate::hierarchy::MaskMode::Vector,
             shape: None,
+            text_style: TextStyle::default(),
+            fill_rule: default_fill_rule(),
             modifiers: Vec::new(),
         }
     }
@@ -328,6 +389,11 @@ impl DocumentObject {
                     *points as usize,
                 ))
             }
+            Some(ShapeKind::Raster { .. }) => Ok(petunia_design_geometry::GPath::rect(
+                petunia_design_geometry::GRect::new(0.0, 0.0, b[2], b[3]),
+                0.0,
+                0.0,
+            )),
             Some(ShapeKind::Text { .. }) | Some(ShapeKind::Image { .. }) | None => {
                 Ok(petunia_design_geometry::GPath::new())
             }
@@ -435,9 +501,9 @@ impl DocumentObject {
                     petunia_design_geometry::GPoint::new(b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
                 petunia_design_geometry::GPath::star(center, outer_r, inner_r, *points as usize)
             }
-            Some(ShapeKind::Text { .. }) | Some(ShapeKind::Image { .. }) => {
-                petunia_design_geometry::GPath::new()
-            }
+            Some(ShapeKind::Text { .. })
+            | Some(ShapeKind::Image { .. })
+            | Some(ShapeKind::Raster { .. }) => petunia_design_geometry::GPath::new(),
             _ => petunia_design_geometry::GPath::rect(rect, 0.0, 0.0),
         }
     }
@@ -530,7 +596,7 @@ impl DocumentObject {
             if evaluated.is_empty() {
                 return false;
             }
-            return evaluated.contains_point(point, 0.5);
+            return evaluated.contains_point_with_fill(point, 0.5, self.fill_rule);
         }
         if let Some(b) = self.bounds {
             if point.x < b[0] || point.x > b[0] + b[2] || point.y < b[1] || point.y > b[1] + b[3] {
@@ -546,7 +612,7 @@ impl DocumentObject {
                 return dx * dx + dy * dy <= 1.0;
             }
             if self.shape.as_ref().is_some_and(ShapeKind::is_path) {
-                return self.to_path().contains_point(point, 0.5);
+                return self.to_path().contains_point_with_fill(point, 0.5, self.fill_rule);
             }
             true
         } else {

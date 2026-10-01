@@ -2,6 +2,20 @@
 
 **Escopo: Milestone Required (MVP) e V1 Required.** O usuário autorizou executar o [plano](/pt/developers/implementation-roadmap-2026-09-30). O trabalho partiu da baseline auditada `73447647a34f5b4be209415c36e6965c5f71b9b9`; achados e probes da baseline conservam a evidência histórica. Este registro descreve implementação, não anuncia release. **MVP, V1 e o plano completo continuam inacabados.** Candidatos/pesquisas futuros mantêm seus critérios de admissão.
 
+
+## Continuação atual do MVP: pixels persistentes e fluxos nativos (validação adiada)
+
+[ADR-009](/pt/developers/adr/ADR-009-persistent-raster-and-native-workflows) introduz PTND binário no esquema 4 e planos esparsos editáveis RGBA/cobertura, incluindo máscaras opacas sem alocação do plano inteiro. Pincel/borracha/seleção/preenchimento publicam transações únicas com guardas; imagens originais permanecem intactas. O alfa do ClipGroup aplica uma vez. Payloads e fontes são compartilhados por snapshots/histórico/duplicação e admitidos por cotas explícitas.
+
+Arquivos/codecs da UI agora usam worker limitado com guardas de aba/revisão. Salvar reconhece o histórico capturado e preserva edições novas não salvas; Fechar Tudo espera todos os salvamentos necessários. Escrita atômica de projetos/exportações coordena processos cooperantes com bloqueio auxiliar estável. Recuperação binária oferece restauração na inicialização em aba nova não salva. A área de transferência Linux usa wl-clipboard/xclip; cópia/duplicação/exclusão de subárvores remapeia topologia e origens das pranchetas, e recortar espera a propriedade antes de excluir.
+
+Estilos uniformes e fluxo artístico/quadro persistem. Glifos preparados pelo worker fornecem seleção do texto artístico excedente e diagnóstico de fonte ausente/excesso no quadro. Rascunhos nativos multilinha fornecem edição/IME; integrar exatamente o cursor no canvas continua pendente. SVG de saída usa a cena compartilhada e preserva máscaras/pinturas/transforms/glifos suportados e pixels incorporados de 8/16 bits; entrada SVG básica estrita rejeita construções indisponíveis. Derivados de imagens ICC RGB usam moxcms limitado para sRGB sem regravar originais. PNG tem prévia transparente real e cancelamento. PDF fica fora do seletor MVP com motivo V1.
+
+**O código atual está sem validação.** Novas fontes de regressão foram escritas sem rodar testes, builds ou gates. Referências/checks gerados distinguem contagem de fontes de resultados. O gate original permanece aberto: cursor/IME no canvas, pressão nativa da caneta, configuração de perfil do display, histograma da composição real, performance agregada de caches/histórico, quatro projetos de tarefa e evidência Linux/backends/acessibilidade/instalação. A nuvem não fornece evidência física de mesa digitalizadora/monitor calibrado/usuários. Implementar estes subsistemas não conclui o MVP inteiro nem a V1.
+
+Seções anteriores são registros históricos das etapas; ADR-009 substitui suas pendências de esquema/recursos/entrada ICC e fluxos.
+
+
 ## Continuação do MVP: texto com shaping e canvas em worker (validação adiada)
 
 [ADR-006](/pt/developers/adr/ADR-006-shaped-text-and-canvas-preview) conecta shaping avançado uniforme e contornos de tinta TTF/CFF à cena CPU comum. Clusters/famílias resolvidas, quebra pela largura e tracking são retidos; fills/strokes/máscaras usam winding não zero para texto. Originais seguem editáveis. Texto vazio continua vazio; crop/efeitos/transforms de grupo usam o backend existente. Texto preparado tem residência LRU limitada e contabilização de owners pinados.

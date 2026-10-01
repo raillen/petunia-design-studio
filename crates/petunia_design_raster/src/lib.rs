@@ -8,6 +8,7 @@
 pub mod brush;
 pub mod image_assets;
 mod image_cache;
+pub mod layer;
 pub mod pixel;
 pub mod tile;
 
@@ -18,3 +19,5 @@ pub use image_assets::{
 pub use image_cache::{ImageCache, ImageCacheLimits, ImageCacheStats, ImageLevel, PreparedImage};
 pub use pixel::{AlphaMode, BitDepth, PixelFormat};
 pub use tile::{Tile, TileCoord, TileMap, TileState, TILE_SIZE};
+
+pub use layer::{RasterLayer, RasterLayerKind};

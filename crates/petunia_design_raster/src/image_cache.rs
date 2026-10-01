@@ -243,8 +243,7 @@ impl ImageCache {
         source: &EncodedImage,
         cancelled: &dyn Fn() -> bool,
     ) -> Result<Arc<PreparedImage>, ImageAssetError> {
-        let decoded =
-            crate::image_assets::decode_display_image(source.as_slice(), self.limits.decode)?;
+        let mut decoded = crate::decode_image(source.as_slice(), self.limits.decode)?;
         if cancelled() {
             return Err(ImageAssetError::Cancelled);
         }
@@ -301,6 +300,22 @@ impl ImageCache {
             account: self.live_bytes.clone(),
             bytes,
         };
+        if let Some(profile) = decoded.icc_profile.as_ref() {
+            petunia_design_color::rgb_profiles::convert_rgba_to_srgb(
+                &mut decoded.data,
+                decoded.format == PixelFormat::Rgba16,
+                decoded.width,
+                profile,
+                cancelled,
+            )
+            .map_err(|e| {
+                if cancelled() {
+                    ImageAssetError::Cancelled
+                } else {
+                    ImageAssetError::Invalid(e.to_string())
+                }
+            })?;
+        }
         let source_format = decoded.format;
         let mut current = linear_premultiplied(&decoded, cancelled)?;
         let profile = decoded.icc_profile;
@@ -358,7 +373,7 @@ fn linear_premultiplied(
         if i % image.width as usize == 0 && cancelled() {
             return Err(ImageAssetError::Cancelled);
         }
-        let rgba = if image.format == PixelFormat::Rgba16 {
+        let rgba: [f32; 4] = if image.format == PixelFormat::Rgba16 {
             std::array::from_fn(|c| {
                 f32::from(u16::from_le_bytes([
                     image.data[i * 8 + c * 2],

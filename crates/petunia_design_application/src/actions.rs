@@ -51,6 +51,7 @@ impl ActionId {
     pub const TOOL_PHOTO_SELECTION_BRUSH: &'static str = "ptnd.tool.photo.selection_brush";
     pub const TOOL_PHOTO_FLOOD_SELECT: &'static str = "ptnd.tool.photo.flood_select";
     pub const TOOL_PHOTO_BRUSH: &'static str = "ptnd.tool.photo.brush";
+    pub const TOOL_PHOTO_FILL: &'static str = "ptnd.tool.photo.fill";
     pub const TOOL_PHOTO_ERASER: &'static str = "ptnd.tool.photo.eraser";
     pub const TOOL_PHOTO_GRADIENT: &'static str = "ptnd.tool.photo.gradient";
     pub const TOOL_PHOTO_CROP: &'static str = "ptnd.tool.photo.crop";

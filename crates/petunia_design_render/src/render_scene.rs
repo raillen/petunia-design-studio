@@ -55,6 +55,38 @@ pub struct RenderNode {
 }
 
 impl RenderNode {
+    /// Read-only canonical descriptor retained by this immutable scene.
+    pub fn source(&self) -> &DocumentObject {
+        &self.source
+    }
+    pub fn prepared_text(&self) -> Option<&PreparedText> {
+        match &self.geometry {
+            RenderGeometry::Text(text) => Some(text),
+            _ => None,
+        }
+    }
+    /// Shared text footprint used by selection, independent of the stored box
+    /// for artistic overflow. Frames keep their editable clipping rectangle.
+    pub fn text_bounds(&self) -> Option<GRect> {
+        let text = self.prepared_text()?;
+        if self.source.text_style.flow == petunia_design_document::TextFlow::Frame {
+            let [_, _, w, h] = self.source.bounds?;
+            Some(GRect::new(0., 0., w, h))
+        } else {
+            match (text.logical_bounds(), text.ink_bounds()) {
+                (Some(a), Some(b)) => a.union(b),
+                (Some(a), None) | (None, Some(a)) => Some(a),
+                _ => None,
+            }
+        }
+    }
+    pub fn text_hit(&self, world_point: petunia_design_geometry::GPoint) -> Option<bool> {
+        let _ = self.prepared_text()?;
+        let point = self.world.inverse()?.apply(world_point);
+        Some(self.text_bounds().is_some_and(|b| {
+            point.x >= b.x0 && point.x <= b.x1 && point.y >= b.y0 && point.y <= b.y1
+        }))
+    }
     /// Canonical object identity.
     pub fn id(&self) -> ObjectId {
         self.source.id
@@ -99,9 +131,72 @@ impl RenderSurface {
     pub fn node(&self, id: ObjectId) -> Option<&RenderNode> {
         self.nodes.get(&id)
     }
+    pub fn text_nodes(&self) -> impl Iterator<Item = &RenderNode> {
+        self.nodes
+            .values()
+            .filter(|node| node.prepared_text().is_some())
+    }
+    /// Deterministic bounded diagnostics; source family and bytes stay editable.
+    pub fn text_warnings(&self) -> Vec<String> {
+        let mut nodes: Vec<_> = self.text_nodes().collect();
+        nodes.sort_by_key(|node| node.id());
+        nodes
+            .into_iter()
+            .filter_map(|node| {
+                let text = node.prepared_text()?;
+                if text.missing_family() {
+                    if let Some(petunia_design_document::ShapeKind::Text { font_family, .. }) =
+                        &node.source.shape
+                    {
+                        return Some(format!(
+                            "{}: missing font family ‘{}’; fallback displayed",
+                            node.source.name, font_family
+                        ));
+                    }
+                }
+                if node.source.text_style.flow == petunia_design_document::TextFlow::Frame
+                    && node
+                        .source
+                        .bounds
+                        .is_some_and(|b| text.flow_height() > b[3])
+                {
+                    return Some(format!("{}: text exceeds its frame", node.source.name));
+                }
+                None
+            })
+            .take(64)
+            .collect()
+    }
     /// Root identities in back-to-front order.
     pub fn roots(&self) -> &[ObjectId] {
         &self.roots
+    }
+
+    /// Replaces pixels only in a derived preview scene; canonical descriptors
+    /// and ownership remain in the captured document snapshot.
+    pub fn with_raster_preview(
+        &self,
+        id: ObjectId,
+        layer: Arc<petunia_design_raster::RasterLayer>,
+    ) -> Result<Self, RenderError> {
+        layer
+            .validate()
+            .map_err(|e| RenderError::Invalid(e.to_string()))?;
+        let mut next = self.clone();
+        let node = next
+            .nodes
+            .get_mut(&id)
+            .ok_or_else(|| RenderError::Invalid("missing raster preview target".into()))?;
+        if !matches!(
+            node.source.shape,
+            Some(petunia_design_document::ShapeKind::Raster { .. })
+        ) {
+            return Err(RenderError::Invalid(
+                "preview target is not a raster layer".into(),
+            ));
+        }
+        node.source.shape = Some(petunia_design_document::ShapeKind::Raster { layer });
+        Ok(next)
     }
 
     /// Conservative damage in world coordinates, retaining the previous scene
@@ -337,6 +432,20 @@ fn extract_node(
                 line_height: *line_height,
                 letter_spacing: *letter_spacing,
                 width: w,
+                weight: object.text_style.weight,
+                italic: object.text_style.italic,
+                alignment: match object.text_style.alignment {
+                    petunia_design_document::TextAlignment::Start => {
+                        petunia_design_text::FlowAlignment::Start
+                    }
+                    petunia_design_document::TextAlignment::Center => {
+                        petunia_design_text::FlowAlignment::Center
+                    }
+                    petunia_design_document::TextAlignment::End => {
+                        petunia_design_text::FlowAlignment::End
+                    }
+                },
+                wrap: object.text_style.flow == petunia_design_document::TextFlow::Frame,
             },
             cancelled,
         )

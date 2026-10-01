@@ -30,6 +30,7 @@ use petunia_design_application::interaction::NormalizedPointerEvent;
 #[derive(Debug)]
 pub struct ToolManager {
     active_kind: ToolKind,
+    feedback: Option<String>,
     select_tool: SelectTool,
     pen_tool: PenTool,
     node_tool: NodeTool,
@@ -63,6 +64,7 @@ pub struct ToolManager {
     photo_flood_select_tool: PhotoTool,
     photo_brush_tool: PhotoTool,
     photo_eraser_tool: PhotoTool,
+    pixel_fill_tool: super::pixel_fill::PixelFillTool,
     photo_gradient_tool: GradientTool,
     photo_crop_tool: PhotoTool,
 }
@@ -79,6 +81,7 @@ impl ToolManager {
     pub fn new() -> Self {
         Self {
             active_kind: ToolKind::Select,
+            feedback: None,
             select_tool: SelectTool::new(),
             pen_tool: PenTool::new(),
             node_tool: NodeTool::new(),
@@ -112,6 +115,7 @@ impl ToolManager {
             photo_flood_select_tool: PhotoTool::new(PhotoToolKind::FloodSelect),
             photo_brush_tool: PhotoTool::new(PhotoToolKind::Brush),
             photo_eraser_tool: PhotoTool::new(PhotoToolKind::Eraser),
+            pixel_fill_tool: super::pixel_fill::PixelFillTool::default(),
             photo_gradient_tool: GradientTool::new(GradientToolMode::Fill),
             photo_crop_tool: PhotoTool::new(PhotoToolKind::Crop),
         }
@@ -127,6 +131,7 @@ impl ToolManager {
     pub fn set_active_tool(&mut self, kind: ToolKind) {
         if self.active_kind != kind {
             self.cancel_active();
+            self.feedback = None;
             self.active_kind = kind;
         }
     }
@@ -279,6 +284,22 @@ impl ToolManager {
         &mut self.color_picker_tool
     }
 
+    pub fn feedback(&self) -> Option<&str> {
+        self.feedback.as_deref()
+    }
+    pub fn set_feedback(&mut self, message: Option<String>) {
+        self.feedback = message;
+    }
+    pub fn has_pending_jobs(&self) -> bool {
+        self.pixel_fill_tool.is_pending()
+    }
+    pub fn poll_jobs(
+        &mut self,
+        bridge: &mut PetuniaDesignGuiBridge,
+    ) -> Result<ChangeSet, PetuniaError> {
+        self.pixel_fill_tool.poll(bridge)
+    }
+
     /// Cancels any active gesture in the current tool.
     pub fn cancel_active(&mut self) {
         match self.active_kind {
@@ -315,6 +336,7 @@ impl ToolManager {
             ToolKind::FloodSelect => self.photo_flood_select_tool.cancel(),
             ToolKind::PixelPaintBrush => self.photo_brush_tool.cancel(),
             ToolKind::PixelEraser => self.photo_eraser_tool.cancel(),
+            ToolKind::PixelFill => self.pixel_fill_tool.cancel(),
             ToolKind::PhotoGradient => self.photo_gradient_tool.cancel(),
             ToolKind::Crop => self.photo_crop_tool.cancel(),
         }
@@ -415,6 +437,11 @@ impl ToolManager {
             ToolKind::PixelPaintBrush => self
                 .photo_brush_tool
                 .on_pointer_event(event, bridge, camera, snap),
+            ToolKind::PixelFill => self.pixel_fill_tool.on_pointer_event(
+                event,
+                bridge,
+                self.photo_brush_tool.brush_settings(),
+            ),
             ToolKind::PixelEraser => self
                 .photo_eraser_tool
                 .on_pointer_event(event, bridge, camera, snap),
@@ -478,6 +505,7 @@ impl ToolManager {
             ToolKind::FloodSelect => self.photo_flood_select_tool.overlays(camera, bridge),
             ToolKind::PixelPaintBrush => self.photo_brush_tool.overlays(camera, bridge),
             ToolKind::PixelEraser => self.photo_eraser_tool.overlays(camera, bridge),
+            ToolKind::PixelFill => self.photo_brush_tool.overlays(camera, bridge),
             ToolKind::PhotoGradient => self.photo_gradient_tool.overlays(bridge, camera),
             ToolKind::Crop => self.photo_crop_tool.overlays(camera, bridge),
         }

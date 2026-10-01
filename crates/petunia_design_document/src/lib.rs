@@ -31,7 +31,7 @@ pub use changeset::{Change, ChangeSet};
 pub use document::{Document, Surface};
 pub use document_object::{
     AlignmentMode, ArrangePosition, DistributionAxis, DocumentObject, GeometryFrameError,
-    ShapeKind, TextOnPathAttachment,
+    ShapeKind, TextAlignment, TextFlow, TextOnPathAttachment, TextStyle,
 };
 pub use hierarchy::{ContainerRole, HierarchyValidation, MaskMode};
 pub use modifiers::{

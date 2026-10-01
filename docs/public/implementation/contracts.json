@@ -1,13 +1,16 @@
 {
-  "contract": "ADR-006",
+  "contract": "ADR-009",
   "related_contracts": [
+    "ADR-008",
+    "ADR-007",
+    "ADR-006",
     "ADR-005",
     "ADR-004",
     "ADR-003",
     "ADR-002"
   ],
   "scope": "Milestone Required",
-  "schema_version": 3,
+  "schema_version": 4,
   "rust_toolchain": "1.98.1",
   "gui": {
     "runtime": "Freya/Skia",
@@ -15,8 +18,84 @@
   },
   "sources": [
     {
+      "path": "crates/petunia_design_raster/src/layer.rs",
+      "sha256": "138b42e102452d301c93a21f70d437725330601413748cb3d73650359602a215"
+    },
+    {
+      "path": "crates/petunia_design_application/src/raster_edit.rs",
+      "sha256": "31bb93193d241bdfa73997206151bec0ae583bb96738a571109860e9e8da151d"
+    },
+    {
+      "path": "crates/petunia_design_application/src/clipboard.rs",
+      "sha256": "753e555b9b417dd0ab530397aa40450034b101a329d0d2de6409698395934e4a"
+    },
+    {
+      "path": "crates/petunia_design_application/src/recovery.rs",
+      "sha256": "41d151f0c08e89b5ca0c3501f79ea92a23a4366202cc6939b4b392f42a32d1f9"
+    },
+    {
+      "path": "crates/petunia_design_io/src/binary_resources.rs",
+      "sha256": "b5aa038a90b64adeab59979bd78f2563682474703d8174e8191848666ec2348b"
+    },
+    {
+      "path": "crates/petunia_design_io/src/atomic_output.rs",
+      "sha256": "04fa1db53ffe4443d0598366653eb667840510d612e0fbe468ecc4bd35fffa88"
+    },
+    {
+      "path": "crates/petunia_design_io/src/recovery.rs",
+      "sha256": "7e22f4679b6292cd2b66b13d23ad952aa1bfd2f227454b04fb622453884675f1"
+    },
+    {
+      "path": "crates/petunia_design_io/src/clipboard_package.rs",
+      "sha256": "c34623c61e6191dc3e4edb6ab338199e66dfad1cfdbd45b09bbd1bbf06d88117"
+    },
+    {
+      "path": "crates/petunia_design_io/src/svg_input.rs",
+      "sha256": "ce1b7852703df05d18294a4ce792b1cd64c17865cd140679dfa9df30f5bce472"
+    },
+    {
+      "path": "crates/petunia_design_io/src/svg_scene.rs",
+      "sha256": "56cca67f85a2e36527c9ff34ae981534e5982c340ac879cd802f1d1fc070958e"
+    },
+    {
+      "path": "crates/petunia_design_platform/src/native_clipboard.rs",
+      "sha256": "be66932d0c63f296a7638be1c311ef8aa5e7c2c4d736d772ae68f1ba50a9eee9"
+    },
+    {
+      "path": "crates/petunia_design_color/src/rgb_profiles.rs",
+      "sha256": "16f0cc46825da288e9f81074ae3a5e147daeead1fa40277d1cf7216eca4fe5bc"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/pixel_fill.rs",
+      "sha256": "33600331d2fb2be79bcbdbceb485ce645642eb38aed5fff4a06606a42a1eb658"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/text.rs",
+      "sha256": "4193dc8c8eb2e95e7a4d946461f6db1af52f267b9292a602802d70d92c2ac55c"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/bridge/gui_bridge.rs",
+      "sha256": "fd2f73731ab778b02e477bd01e1d57cb2ed3ac93972d0febb9a50d1b8a1445a7"
+    },
+    {
+      "path": "apps/petunia-design/src/file_jobs.rs",
+      "sha256": "410bdc912bd46912eed38fdaba4a30b0525963de3371e97829997af3fd7762e3"
+    },
+    {
+      "path": "apps/petunia-design/src/export_preview.rs",
+      "sha256": "f184f477191c430004c073efc767c9987a7e01e93e236723a7da58141581d777"
+    },
+    {
+      "path": "apps/petunia-design/src/recovery.rs",
+      "sha256": "9bc4ec623b130ec582ec79532950318f02ff0c8c2864e9d877661258a86c75f9"
+    },
+    {
+      "path": "apps/petunia-design/src/typography.rs",
+      "sha256": "4e5d3978b3da5e2d70329388fa03d57f35a06407c0d6cfe1379ae177b400553f"
+    },
+    {
       "path": "crates/petunia_design_foundation/src/lib.rs",
-      "sha256": "e9a4d7581a4cec15fc4ae449d9d36020bde5cb1f5b09f94edfacdb56f505da4f"
+      "sha256": "cdf30db54c33806a0dba415bcb818aacae09a5a2bf397afee1e07558da766e03"
     },
     {
       "path": "crates/petunia_design_document/Cargo.toml",
@@ -24,19 +103,19 @@
     },
     {
       "path": "crates/petunia_design_document/src/document_object.rs",
-      "sha256": "1dff83c356d4af6f0f70a5b80a1cbce7dd37c03872788df79db7f246b9782b67"
+      "sha256": "fc188d5882fe1d208d755efb24a752bd83f543bc883d5625bf2ee73b95cd8d47"
     },
     {
       "path": "crates/petunia_design_document/src/document.rs",
-      "sha256": "6b79ea6cc813bd6109a28ff239b094930613a3e24cf1130cb5cc680cf4d66ff3"
+      "sha256": "dcde99d0a7f4ad200dcb3df708038da0394e4f6f9be645f87a43d6a943c14791"
     },
     {
       "path": "crates/petunia_design_document/src/changeset.rs",
-      "sha256": "834023344dbba9c50a4f67a3e95435a66cc4b3cad3474293a6981277d227834a"
+      "sha256": "5068fa6b9ff58e14383447eea0409097c4bf4868b61f98ccf6016bbcab66b140"
     },
     {
       "path": "crates/petunia_design_document/src/validation.rs",
-      "sha256": "34087bb5520f32622258b64bdd5ffd9b466c721f3aeb45bedf0f5de23ed76218"
+      "sha256": "c48472ac3c6dee47543b40be64ebd02603d05e1a72b6b529cd2753b849987af8"
     },
     {
       "path": "crates/petunia_design_document/src/modifiers.rs",
@@ -48,11 +127,11 @@
     },
     {
       "path": "crates/petunia_design_document/src/mutator.rs",
-      "sha256": "68892159e13faff6667cdc94a5afc11490c75f0d96861c8c37e4d2de354869aa"
+      "sha256": "50be98a3500c143573e4b214401c6ff6f66b1893d024ec04688cccedf866ca37"
     },
     {
       "path": "crates/petunia_design_application/Cargo.toml",
-      "sha256": "b9d8523616adc3c9a9ebb4224c272d8655c8bcfbdc7581d49b549c8ae3e57dac"
+      "sha256": "640e79af44a19b86bc5d5c1f1b377ec22d1ea56f62a1b66b44590a045f208ae6"
     },
     {
       "path": "crates/petunia_design_application/src/transaction.rs",
@@ -60,11 +139,11 @@
     },
     {
       "path": "crates/petunia_design_application/src/history.rs",
-      "sha256": "4ac35d297c4a9bfb3c471a6515c5432356fa1b498a2ac73a98f4909d5739f840"
+      "sha256": "df968e7d2f11c3865e92306a424ac491a599ba027ba48475a1c71fbba4e72855"
     },
     {
       "path": "crates/petunia_design_application/src/commands.rs",
-      "sha256": "34d37591d48d8b4c7638c4b1a1642c7cfbf0dffcce9c6c437713b1c40cc62e05"
+      "sha256": "3bdc4536e6144e2c601adebdb0dc6a4abf276ae54f2e0a85569c66ef167df78b"
     },
     {
       "path": "crates/petunia_design_application/src/background_render.rs",
@@ -72,11 +151,11 @@
     },
     {
       "path": "crates/petunia_design_application/src/preview.rs",
-      "sha256": "2e31fc63b58a3232ef43afcd20f0dff5a78625d8830238b449062ac1a67893e1"
+      "sha256": "656bbc3d689eb5fd0f496f2bb56e924a76c023be4bcf91cd80b1736368d554a6"
     },
     {
       "path": "crates/petunia_design_shell/src/canvas/snapshot.rs",
-      "sha256": "1eb37e895cacb250d4b962c65b1e5a700eb386ccf10be15c5969b66a0eeb69a5"
+      "sha256": "10b99f83e5f6bb5d9a95a8b6a5b96e77fb8869de35b96369a98682a65f4aa304"
     },
     {
       "path": "crates/petunia_design_text/Cargo.toml",
@@ -84,7 +163,7 @@
     },
     {
       "path": "crates/petunia_design_text/src/outlines.rs",
-      "sha256": "6d90b37e0ad9268f48a4085ee62e9464dea6b225e72f28794dd37ae7b601cb41"
+      "sha256": "989a8c66f0799c824c3b5552ab568809fcf5001ce666602c14e499b1394c033e"
     },
     {
       "path": "crates/petunia_design_geometry/src/path.rs",
@@ -96,11 +175,11 @@
     },
     {
       "path": "apps/petunia-design/src/canvas_preview.rs",
-      "sha256": "ef6d6cc00e01392c404e0fa7b6c44ffe13b6fe19a0e3c72e9f2629213c07b1fd"
+      "sha256": "138bd6fe684786c97acd481e24033f1d6676b5570a01b8bf5592adc612631126"
     },
     {
       "path": "crates/petunia_design_application/src/session.rs",
-      "sha256": "9459d32064c0f1a05a10c2dcef751c119adcfddd91a7e5d1298e7456c7b64d51"
+      "sha256": "cbe63eb2e81dcb928d7f230af1ee4a7d63facfb4455e4a49583edecd78ff5214"
     },
     {
       "path": "apps/petunia-design/src/canvas_paint.rs",
@@ -108,11 +187,11 @@
     },
     {
       "path": "apps/petunia-design/src/dock.rs",
-      "sha256": "1b25df1dc771da41eae7949ba59c2301cf575c313d88a4af95a568c91685d31a"
+      "sha256": "9b88c01a142a7f5abdd798a8f0f7bcf7ca627b6cac6793a7a1de6a6f011e5740"
     },
     {
       "path": "crates/petunia_design_application/src/export_service.rs",
-      "sha256": "9abd82cd4851d46b5041acbf5741b3c61c64f799083b419a3f2ad86d459da555"
+      "sha256": "ab4c2f1b5903add63de35256cf1b7199ad19923e858f88434f0088f461d6f882"
     },
     {
       "path": "crates/petunia_design_render/Cargo.toml",
@@ -120,15 +199,15 @@
     },
     {
       "path": "crates/petunia_design_render/src/render_scene.rs",
-      "sha256": "5623495797ce075d93e8e6d48770e7671b822015613fac3164948e617abae314"
+      "sha256": "c024cdacb241bbbfccf8380aaf158d0f4a283ab3b93a4187a80b1c5f11be01f5"
     },
     {
       "path": "crates/petunia_design_render/src/cpu_renderer.rs",
-      "sha256": "25b66255923de9ab2a8e0fdddc32883c44f295c9b38bb8f36c4f176621829a61"
+      "sha256": "0f38cd92d64c2bbb11e53394d016c7359d04c5d8064569261484f54ff2c8879c"
     },
     {
       "path": "crates/petunia_design_render/src/pixel_compositor.rs",
-      "sha256": "8ec95c8949128fdbe0a19c383755af9246966d2ee047f19fca00c987d3668255"
+      "sha256": "ea8bca17a37021b18a98268a8e6ff4c47ac3afca4ff627e741fc2fddf9f87447"
     },
     {
       "path": "crates/petunia_design_jobs/src/executor.rs",
@@ -140,35 +219,35 @@
     },
     {
       "path": "crates/petunia_design_io/src/package.rs",
-      "sha256": "e8871b42a4502e02c6f195c67a78c8161af24cbda0ac5ef5151a565ef6b35450"
+      "sha256": "1eb89bb9b1cfe7c791d6f1510fb9fe4b89100b7228a8b60a8ee9ae3e02922124"
     },
     {
       "path": "crates/petunia_design_io/src/image_io.rs",
-      "sha256": "5ed15cfb26b5b19d2d358c423ced7e9b04582e3f455a57e8cbb62354b3a6e39d"
+      "sha256": "6a6cada6552ff356be0b229c4463ddc193ae393b12f393e429008f14ab70dde8"
     },
     {
       "path": "crates/petunia_design_io/Cargo.toml",
-      "sha256": "eb8dc25c2a7416003f916b395ba7514bf2db920159c4f49b6246fdad07e84e8c"
+      "sha256": "5e8546221a575ed7fb30d4d77d834e284dbcee6713c719c11238bc3b5de9fb78"
     },
     {
       "path": "crates/petunia_design_raster/src/image_assets.rs",
-      "sha256": "142762c84b65ba01be950a24d9138aa266e24c5dac19c673a4eeb1ef24b07004"
+      "sha256": "747fdfa304adba434655f031bfee32c2d9c41a5f21b49116dea2e478ef8959a8"
     },
     {
       "path": "crates/petunia_design_raster/src/image_cache.rs",
-      "sha256": "717226cd9e581d3c24b0d8578b8e0a750fe5d324860d09d2f602b13e7f7e54dc"
+      "sha256": "d34ba149dd20e5f1114d6d2ff64f85154870ffa785bbba3b38266f4bb26642e2"
     },
     {
       "path": "crates/petunia_design_raster/Cargo.toml",
-      "sha256": "64ddf266de63f1156a808151c9cbd45cad57340e781ae660b2f32d96b176b9c7"
+      "sha256": "db95004e9ccbe55a879c81646b52b3e9c48c899c0db8bbdad92874f6c0d8adee"
     },
     {
       "path": "crates/petunia_design_raster/src/tile.rs",
-      "sha256": "2f6fd1f49f33bc815847a178d2cf09f1fb42d64fba6c760331c54b08f5954603"
+      "sha256": "416db10c614cb029024e30a6b5f8f8fb4043fe7b2b24b5f5b21e483f4172dc43"
     },
     {
       "path": "crates/petunia_design_raster/src/brush.rs",
-      "sha256": "6e0ab768855b6956db1ae2896de49b2fe3df819054112ae75b5aef10c0c0f9dd"
+      "sha256": "9b57b29759d60a1f1091c7c3bc32b88a4b5119fd0ac9bf166fbd3fdf9bfc3384"
     },
     {
       "path": "crates/petunia_design_testkit/src/bin/canvas_benchmark.rs",
@@ -184,30 +263,90 @@
     },
     {
       "path": "crates/petunia_design_shell/src/tools/photo.rs",
-      "sha256": "60b0876be39e2a3ac405876b0f6c22f78f293f2f0cd9861c9335f4d48f88ca2d"
+      "sha256": "55812f5e00eb0937a4d03991b543e0a9305c40d34e31ba1b4cca0d73f8eace89"
     },
     {
       "path": "apps/petunia-design/src/actions.rs",
-      "sha256": "4fbe07844954d1f8230979ce7784d723ea9c28623cefa410a7edab8df47dd95c"
+      "sha256": "2672ca02264597c8be69b06e33d51d416a911942d3a38d1fc8e099b7f15e9ccc"
+    },
+    {
+      "path": "apps/petunia-design/src/file_workflows.rs",
+      "sha256": "beb3412f45765a2f213ebb8e7066cb8e3a9d68e6cccadbbe726895caa38efd14"
+    },
+    {
+      "path": "apps/petunia-design/src/file_dialogs.rs",
+      "sha256": "11242fb99617fee8d9729b8bfab21de05b18fe9bcc340b7fe0e789ffcb5e4daf"
+    },
+    {
+      "path": "apps/petunia-design/src/object_edits.rs",
+      "sha256": "2cb85e45c949d33011621cecff823e6ca05f39b1559d37267a5bbe8951f05318"
+    },
+    {
+      "path": "apps/petunia-design/src/object_edit_dialog.rs",
+      "sha256": "f3e23aff7448c45873cdddd51ed38fc695002ffe9d8c729f706ba143cc77036b"
+    },
+    {
+      "path": "crates/petunia_design_resources/src/file_workflow_strings.rs",
+      "sha256": "13155f72496ce8cf599560eda834385c1fd5efcf1705f5f954a25ff0a916871e"
     },
     {
       "path": "apps/petunia-design/src/dialogs.rs",
-      "sha256": "b7f848d03d63e7209230a7ae47119532dac282b3b28c87ea99504aa1d60f01d3"
+      "sha256": "e38ff97c705cee10e215a522f7c354a1cd0c50fe2390ac24b5378d31883d277c"
     },
     {
       "path": "apps/petunia-design/src/ui_state.rs",
-      "sha256": "5821c6d3c5d7542d7bcbcc282468cc36c2ab48d50e8022ade5d6d3de9c7f030c"
+      "sha256": "c82d3bb885cefdb88b6ba576bcd21dce833d5f9a023cfd3b0af0c620726b7a0b"
     },
     {
       "path": "crates/petunia_design_resources/src/shell_strings.rs",
-      "sha256": "af34e0b6401aa02205222a5915d7cc4266fe45382e0e47e90356f54ab6b717be"
+      "sha256": "556fde6fce1546d60e1dbfa67e6b6df3f01a42aa6d4556d8030f49820f818c7d"
     },
     {
       "path": "apps/petunia-design/src/main.rs",
-      "sha256": "65756df12fe7f5d4fa28e04e5fe1ed2bc0be2e32dc767c42ef6586c9f2f10f8c"
+      "sha256": "fefa0a52fd21d31e408ac077634863e0bcda0dd4564840d1d4079bc7df96275f"
     }
   ],
   "tests": [
+    {
+      "path": "crates/petunia_design_raster/tests/persistent_layers.rs",
+      "count": 12
+    },
+    {
+      "path": "crates/petunia_design_application/tests/raster_edit.rs",
+      "count": 13
+    },
+    {
+      "path": "crates/petunia_design_application/tests/clipboard_fragments.rs",
+      "count": 4
+    },
+    {
+      "path": "crates/petunia_design_render/tests/raster_layers.rs",
+      "count": 6
+    },
+    {
+      "path": "crates/petunia_design_io/tests/binary_resources.rs",
+      "count": 7
+    },
+    {
+      "path": "crates/petunia_design_io/tests/recovery.rs",
+      "count": 6
+    },
+    {
+      "path": "crates/petunia_design_io/tests/atomic_output.rs",
+      "count": 3
+    },
+    {
+      "path": "crates/petunia_design_io/tests/clipboard_package.rs",
+      "count": 2
+    },
+    {
+      "path": "crates/petunia_design_io/tests/svg_scope.rs",
+      "count": 5
+    },
+    {
+      "path": "crates/petunia_design_color/tests/rgb_profiles.rs",
+      "count": 3
+    },
     {
       "path": "crates/petunia_design_application/tests/correctness_regressions.rs",
       "count": 3
@@ -322,6 +461,8 @@
     }
   ],
   "validation_results": "checks.json",
+  "ui_workflow_validation_results": "uiux-file-workflows.json",
+  "ui_object_edit_validation_results": "uiux-object-edits.json",
   "current_validation_status": "not_run; user deferred validation until all MVP features are implemented",
   "integration_regressions": [
     {
@@ -339,10 +480,12 @@
     }
   ],
   "limitations": [
-    "Immutable paths/encoded sources are shared and decoded display pyramids are cached; document containers/binary resources still need COW/packaging.",
-    "Canvas now presents shared CPU-composed previews in workers, including shaped uniform-style text and images. Remaining text/style/editing/capability adapters, import admission workers, tiled presentation and acceptance are pending; current implementation is unvalidated.",
-    "World-axis-aligned crop on a rotated object requires a polygon mask, which is not implemented.",
-    "The benchmark measures snapshot queries, not painted frames.",
+    "Current implementation and regression sources are unvalidated; user deferred every gate until all MVP features are implemented.",
+    "Schema 4 binary resources and sparse COW pixel/mask layers are implemented; admission quotas are not a whole-process RSS cap.",
+    "Native Linux object clipboard requires wl-clipboard/xclip and a Wayland/X11 session; tablet pressure, display-profile setup, accessibility/install and representative user evidence remain open.",
+    "Native multiline drafts provide basic text editing/IME; exact in-canvas caret/selection using the artwork glyph runs is unfinished.",
+    "SVG import/output declare strict capability subsets; unsupported representations fail explicitly. True CMYK/proof/professional PDF remain V1 Required.",
+    "Histogram composition and aggregate performance/caches still require work; release benchmarks and four MVP task projects have not been accepted.",
     "MVP and V1 release gates remain open."
   ]
 }

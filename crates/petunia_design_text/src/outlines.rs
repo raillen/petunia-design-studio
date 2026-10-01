@@ -1,7 +1,7 @@
 //! Advanced shaped glyph outlines for GUI-free scene rendering. Originals stay
 //! text; these bounded, immutable paths are rebuildable display resources.
 use crate::TypeSystem;
-use cosmic_text::{Attrs, Buffer, Family, Hinting, Metrics, Shaping, Wrap};
+use cosmic_text::{Align, Attrs, Buffer, Family, Hinting, Metrics, Shaping, Style, Weight, Wrap};
 use petunia_design_geometry::{GAffine, GPath, GPoint, GRect, PathVerb};
 use std::collections::HashMap;
 use std::sync::{
@@ -9,6 +9,14 @@ use std::sync::{
     Arc, Mutex, OnceLock,
 };
 
+/// Direction-relative alignment for a uniform paragraph.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum FlowAlignment {
+    #[default]
+    Start,
+    Center,
+    End,
+}
 #[derive(Clone, Debug, PartialEq)]
 /// Uniform-style frame input in document points, independent of GUI types.
 pub struct TextFrameSpec {
@@ -22,6 +30,12 @@ pub struct TextFrameSpec {
     pub line_height: f64,
     /// Tracking in document points; converted to EM at the shaping boundary.
     pub letter_spacing: f64,
+    /// Numeric font weight, in 1..=1000.
+    pub weight: u16,
+    pub italic: bool,
+    pub alignment: FlowAlignment,
+    /// False for artistic text, preserving explicit paragraph breaks only.
+    pub wrap: bool,
     /// Positive wrap width; height does not implicitly clip ink.
     pub width: f64,
 }
@@ -46,6 +60,7 @@ pub struct PositionedGlyph {
     pub advance: f32,
     pub font_family: String,
     pub rtl: bool,
+    pub bounds: [f64; 4],
 }
 #[derive(Debug)]
 struct Residency {
@@ -64,6 +79,7 @@ pub struct PreparedText {
     glyphs: Vec<PositionedGlyph>,
     line_count: usize,
     height: f64,
+    missing_family: bool,
     _residency: Residency,
 }
 impl PreparedText {
@@ -83,6 +99,24 @@ impl PreparedText {
     pub fn flow_height(&self) -> f64 {
         self.height
     }
+    pub fn missing_family(&self) -> bool {
+        self.missing_family
+    }
+    /// Logical cluster rectangles, in the exact shaped visual positions. This
+    /// includes spaces without pretending their outlines contain visible ink.
+    pub fn logical_bounds(&self) -> Option<GRect> {
+        self.glyphs.iter().fold(None, |bounds, glyph| {
+            let [x, y, w, h] = glyph.bounds;
+            let next = GRect::new(x, y, x + w, y + h);
+            bounds.map_or(Some(next), |prior: GRect| prior.union(next))
+        })
+    }
+    pub fn hit_test(&self, point: GPoint) -> bool {
+        self.glyphs.iter().any(|g| {
+            let [x, y, w, h] = g.bounds;
+            point.x >= x && point.x <= x + w && point.y >= y && point.y <= y + h
+        })
+    }
     /// Actual outline footprint, absent for whitespace.
     pub fn ink_bounds(&self) -> Option<GRect> {
         self.outline.bounding_box()
@@ -93,12 +127,14 @@ struct Key {
     content: String,
     family: String,
     metrics: [u64; 4],
+    style: (u16, bool, FlowAlignment, bool),
 }
 impl From<&TextFrameSpec> for Key {
     fn from(s: &TextFrameSpec) -> Self {
         Self {
             content: s.content.clone(),
             family: s.family.clone(),
+            style: (s.weight, s.italic, s.alignment, s.wrap),
             metrics: [
                 s.font_size.to_bits(),
                 s.line_height.to_bits(),
@@ -177,9 +213,10 @@ pub fn prepare_text(
         spec.width,
         spec.font_size * spec.line_height,
     ];
-    if !values
-        .iter()
-        .all(|v| v.is_finite() && *v > 0.0 && *v <= 1_000_000.0)
+    if !(1..=1000).contains(&spec.weight)
+        || !values
+            .iter()
+            .all(|v| v.is_finite() && *v > 0.0 && *v <= 1_000_000.0)
         || !spec.letter_spacing.is_finite()
         || spec.letter_spacing.abs() > 1_000_000.0
     {
@@ -199,7 +236,7 @@ pub fn prepare_text(
     if let Some(hit) = hit(cache, &key) {
         return Ok(hit);
     }
-    let (outline, glyphs, lines, height) = shape_outlines(spec, cancelled)?;
+    let (outline, glyphs, lines, height, missing_family) = shape_outlines(spec, cancelled)?;
     if cancelled() {
         return Err(TextRenderError::Cancelled);
     }
@@ -239,6 +276,7 @@ pub fn prepare_text(
         glyphs,
         line_count: lines,
         height,
+        missing_family,
         _residency: Residency {
             bytes,
             account: cache.live.clone(),
@@ -259,7 +297,7 @@ pub fn prepare_text(
 fn shape_outlines(
     spec: &TextFrameSpec,
     cancelled: &dyn Fn() -> bool,
-) -> Result<(GPath, Vec<PositionedGlyph>, usize, f64), TextRenderError> {
+) -> Result<(GPath, Vec<PositionedGlyph>, usize, f64, bool), TextRenderError> {
     let mut system = TypeSystem::lock();
     if cancelled() {
         return Err(TextRenderError::Cancelled);
@@ -270,8 +308,20 @@ fn shape_outlines(
         "monospace" => Family::Monospace,
         _ => Family::Name(&spec.family),
     };
+    let missing_family = matches!(family, Family::Name(_))
+        && !system.db().faces().any(|face| {
+            face.families
+                .iter()
+                .any(|(name, _)| name.eq_ignore_ascii_case(&spec.family))
+        });
     let attrs = Attrs::new()
         .family(family)
+        .weight(Weight(spec.weight))
+        .style(if spec.italic {
+            Style::Italic
+        } else {
+            Style::Normal
+        })
         .letter_spacing((spec.letter_spacing / spec.font_size) as f32);
     let mut buffer = Buffer::new(
         &mut system,
@@ -281,9 +331,18 @@ fn shape_outlines(
         ),
     );
     buffer.set_size(Some(spec.width as f32), None);
-    buffer.set_wrap(Wrap::WordOrGlyph);
+    buffer.set_wrap(if spec.wrap {
+        Wrap::WordOrGlyph
+    } else {
+        Wrap::None
+    });
     buffer.set_hinting(Hinting::Disabled);
-    buffer.set_text(&spec.content, &attrs, Shaping::Advanced, None);
+    let alignment = match spec.alignment {
+        FlowAlignment::Start => None,
+        FlowAlignment::Center => Some(Align::Center),
+        FlowAlignment::End => Some(Align::End),
+    };
+    buffer.set_text(&spec.content, &attrs, Shaping::Advanced, alignment);
     buffer.shape_until_scroll(&mut system, false);
     let mut combined = GPath::new();
     let mut glyphs = Vec::new();
@@ -424,10 +483,16 @@ fn shape_outlines(
                 advance: glyph.w,
                 font_family: family.clone(),
                 rtl: glyph.level.is_rtl(),
+                bounds: [
+                    f64::from(glyph.x),
+                    f64::from(run.line_top),
+                    f64::from(glyph.w),
+                    f64::from(run.line_height),
+                ],
             });
         }
     }
-    Ok((combined, glyphs, lines, height))
+    Ok((combined, glyphs, lines, height, missing_family))
 }
 struct Outline {
     path: GPath,

@@ -553,6 +553,13 @@ impl Document {
                         "schema 3 requires explicit local modifier frames",
                     ));
                 }
+                if doc.schema_version < 4
+                    && matches!(object.shape, Some(crate::ShapeKind::Raster { .. }))
+                {
+                    return Err(PetuniaError::invalid_input(
+                        "persistent raster layers require schema 4",
+                    ));
+                }
                 if let Some(shape) = object.shape.take() {
                     object.shape = Some(shape.into_local(object.bounds)?);
                 }

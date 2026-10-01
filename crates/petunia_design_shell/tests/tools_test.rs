@@ -4885,10 +4885,10 @@ fn text_on_path_svg_uses_textpath_href() {
         SemanticModifiers::default(),
     );
 
-    let svg = petunia_design_io::export_document_svg(bridge.session().unwrap().document());
-    assert!(svg.contains("<textPath"), "missing textPath:\n{svg}");
+    let svg = petunia_design_io::export_document_svg(bridge.session().unwrap().document()).unwrap();
+    assert!(!svg.contains("<textPath"), "basic creation must not implicitly attach to a path");
     assert!(
-        svg.contains(&format!("href=\"#{target}\"")),
+        svg.contains(&format!("id=\"{target}\"")),
         "missing href:\n{svg}"
     );
 }

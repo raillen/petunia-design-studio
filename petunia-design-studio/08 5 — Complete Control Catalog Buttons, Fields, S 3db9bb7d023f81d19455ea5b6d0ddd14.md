@@ -205,3 +205,12 @@ Resizable panels with minimum size and collapse behavior. Splitter has semantic 
 # Inspector/property row conventions
 
 Labels align consistently per section. Units, reset/revert, **binding/automation indicators only for capabilities that actually exist**, and mixed states have reserved positions to prevent layout jitter. **Keyframe/animation semantics are Out of Scope unless a future product ADR introduces animation; do not reserve or implement animation UI merely from this layout note.**
+
+### Object-editor implementation — 2026-10-01
+
+Scope: **Milestone Required (MVP)**. Explicit stable session/object drafts now
+cover Rename, multiline content and exact local placement with points/degrees.
+Cancel/conflict/invalid input do not publish. Typography/path and exact rotation
+are preserved; multiselection, direct canvas text and external a11y remain open.
+See [ADR-008](../docs/developers/adr/ADR-008-object-edit-drafts.md) and
+[implementation/remaining-work/evidence](../docs/developers/uiux-object-edits.md).

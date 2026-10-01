@@ -255,6 +255,7 @@ pub const MENU_BAR: &[MenuFamily] = &[
         nodes: &[
             node(item("ptnd.action.file.new", "ptnd.text.file.new")),
             node(item("ptnd.action.file.open", "ptnd.text.file.open")),
+            node(item("ptnd.action.file.recover", "ptnd.text.file.recover")),
             node(item("ptnd.action.file.save", "ptnd.text.file.save")),
             node(item("ptnd.action.file.save_as", "ptnd.text.file.save_as")),
             node(item("ptnd.action.file.export", "ptnd.text.file.export")),
@@ -342,6 +343,10 @@ pub const MENU_BAR: &[MenuFamily] = &[
                 "ptnd.menu.layer.clip_mask",
                 "ptnd.text.object.clip_mask",
                 &[
+                    item(
+                        "ptnd.action.object.pixel_mask.create",
+                        "ptnd.text.object.pixel_mask",
+                    ),
                     item(
                         "ptnd.action.object.clip_mask.create",
                         "ptnd.text.object.clip_mask",
@@ -501,6 +506,7 @@ pub const MENU_BAR: &[MenuFamily] = &[
                     item("ptnd.tool.photo.gradient", "ptnd.text.tool.gradient"),
                     item("ptnd.tool.photo.eyedropper", "ptnd.text.tool.eyedropper"),
                     item("ptnd.tool.photo.brush", "ptnd.text.tool.brush"),
+                    item("ptnd.tool.photo.fill", "ptnd.text.tool.pixel_fill"),
                     item("ptnd.tool.photo.eraser", "ptnd.text.tool.eraser"),
                     item("ptnd.tool.photo.hand", "ptnd.text.tool.hand"),
                     item("ptnd.tool.photo.zoom", "ptnd.text.tool.zoom"),
@@ -555,6 +561,8 @@ pub struct ActionContext {
     pub is_dirty: bool,
     /// The internal clipboard buffer contains at least one object.
     pub clipboard_non_empty: bool,
+    /// Host advertises an available native object clipboard backend.
+    pub native_clipboard_available: bool,
     /// A command palette overlay is currently open.
     pub command_palette_open: bool,
     /// Persona the shell is in. Decides which families are reachable.
@@ -570,6 +578,7 @@ impl Default for ActionContext {
             can_redo: false,
             is_dirty: false,
             clipboard_non_empty: false,
+            native_clipboard_available: false,
             command_palette_open: false,
             persona: PERSONA_VECTOR,
         }
@@ -729,7 +738,9 @@ pub fn availability(action_id: &str, ctx: &ActionContext) -> Availability {
     let some_selection = || ctx.selection_count >= 1;
     match action_id {
         // File: export and save need a document; save only when it is dirty.
-        "ptnd.action.file.new" | "ptnd.action.file.open" => Availability::ENABLED,
+        "ptnd.action.file.new" | "ptnd.action.file.open" | "ptnd.action.file.recover" => {
+            Availability::ENABLED
+        }
         "ptnd.action.file.close" | "ptnd.action.file.quit" => {
             if ctx.has_document {
                 Availability::ENABLED
@@ -788,7 +799,7 @@ pub fn availability(action_id: &str, ctx: &ActionContext) -> Availability {
         "ptnd.action.edit.paste" => {
             if !ctx.has_document {
                 Availability::blocked("ptnd.text.blocked.no_document")
-            } else if !ctx.clipboard_non_empty {
+            } else if !ctx.clipboard_non_empty && !ctx.native_clipboard_available {
                 Availability::blocked("ptnd.text.blocked.nothing_to_paste")
             } else {
                 Availability::ENABLED
@@ -836,7 +847,8 @@ pub fn availability(action_id: &str, ctx: &ActionContext) -> Availability {
         | "ptnd.action.object.bake_corners"
         | "ptnd.action.object.offset_path"
         | "ptnd.action.object.slice_path"
-        | "ptnd.action.object.clip_mask.release" => {
+        | "ptnd.action.object.clip_mask.release"
+        | "ptnd.action.object.pixel_mask.create" => {
             if some_selection() {
                 Availability::ENABLED
             } else {
@@ -1011,6 +1023,7 @@ mod tests {
             can_redo: true,
             is_dirty: true,
             clipboard_non_empty: true,
+            native_clipboard_available: false,
             command_palette_open: false,
             persona: PERSONA_VECTOR,
         }
