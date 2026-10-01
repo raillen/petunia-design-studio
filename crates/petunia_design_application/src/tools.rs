@@ -81,6 +81,8 @@ pub enum ToolKind {
     PixelPaintBrush,
     /// Raster pixel/alpha eraser.
     PixelEraser,
+    /// Contiguous pixel fill constrained by the active selection.
+    PixelFill,
     /// Raster pixel-layer gradient fill.
     PhotoGradient,
     /// Nondestructive Surface/document crop or destructive PixelLayer crop.
@@ -125,6 +127,7 @@ impl ToolKind {
             Self::FloodSelect => ActionId::TOOL_PHOTO_FLOOD_SELECT,
             Self::PixelPaintBrush => ActionId::TOOL_PHOTO_BRUSH,
             Self::PixelEraser => ActionId::TOOL_PHOTO_ERASER,
+            Self::PixelFill => ActionId::TOOL_PHOTO_FILL,
             Self::PhotoGradient => ActionId::TOOL_PHOTO_GRADIENT,
             Self::Crop => ActionId::TOOL_PHOTO_CROP,
         }
@@ -228,6 +231,9 @@ impl ToolKind {
         if action_id == Self::PixelPaintBrush.action_id() {
             return Some(Self::PixelPaintBrush);
         }
+        if action_id == Self::PixelFill.action_id() {
+            return Some(Self::PixelFill);
+        }
         if action_id == Self::PixelEraser.action_id() {
             return Some(Self::PixelEraser);
         }
@@ -251,6 +257,7 @@ impl ToolKind {
                 | Self::FloodSelect
                 | Self::PixelPaintBrush
                 | Self::PixelEraser
+                | Self::PixelFill
                 | Self::PhotoGradient
                 | Self::Crop
         )

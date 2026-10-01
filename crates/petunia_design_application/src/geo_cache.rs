@@ -279,9 +279,8 @@ impl crate::session::DocumentSession {
     #[must_use]
     pub fn cached_hit(&self, id: ObjectId, pt: GPoint, tol: f64) -> bool {
         self.cached_polygons(id, tol).is_some_and(|polys| {
-            polys
-                .iter()
-                .fold(false, |inside, poly| inside ^ point_in_poly(pt, poly))
+            let rule = self.find_object(id).map(|o| o.fill_rule).unwrap_or(petunia_design_geometry::FillRule::EvenOdd);
+            hit_polygons(pt, &polys, rule)
         })
     }
 
@@ -352,9 +351,8 @@ impl crate::session::DocumentSession {
     #[must_use]
     pub fn cached_world_hit(&self, id: ObjectId, pt: GPoint, tol: f64) -> bool {
         self.cached_world_polygons(id, tol).is_some_and(|polys| {
-            polys
-                .iter()
-                .fold(false, |inside, poly| inside ^ point_in_poly(pt, poly))
+            let rule = self.find_object(id).map(|o| o.fill_rule).unwrap_or(petunia_design_geometry::FillRule::EvenOdd);
+            hit_polygons(pt, &polys, rule)
         })
     }
 
@@ -492,4 +490,20 @@ fn evaluated_bounds_for(obj: &DocumentObject, evaluated: &GPath) -> Option<[f64;
     } else {
         obj.bounds
     }
+}
+
+fn hit_polygons(point: GPoint, polygons: &[Vec<GPoint>], rule: petunia_design_geometry::FillRule) -> bool {
+    if rule == petunia_design_geometry::FillRule::EvenOdd {
+        return polygons.iter().fold(false, |inside, poly| inside ^ point_in_poly(point, poly));
+    }
+    let mut winding = 0_i64;
+    for poly in polygons.iter().filter(|p| p.len() >= 3) {
+        for i in 0..poly.len() {
+            let a = poly[i]; let b = poly[(i+1)%poly.len()];
+            let side = (b.x-a.x)*(point.y-a.y) - (point.x-a.x)*(b.y-a.y);
+            if a.y <= point.y && b.y > point.y && side > 0. { winding += 1; }
+            else if a.y > point.y && b.y <= point.y && side < 0. { winding -= 1; }
+        }
+    }
+    winding != 0
 }

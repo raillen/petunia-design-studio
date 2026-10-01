@@ -3266,8 +3266,10 @@ dependencies = [
  "petunia_design_geometry",
  "petunia_design_io",
  "petunia_design_jobs",
+ "petunia_design_platform",
  "petunia_design_raster",
  "petunia_design_shell",
+ "rfd",
  "serde_json",
 ]
 
@@ -3307,6 +3309,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+ "tiny-skia",
 ]
 
 [[package]]
@@ -3383,17 +3386,22 @@ dependencies = [
 name = "petunia_design_io"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "image",
  "krilla",
+ "libc",
  "petunia_design_color",
  "petunia_design_document",
  "petunia_design_foundation",
  "petunia_design_geometry",
  "petunia_design_raster",
+ "petunia_design_render",
+ "roxmltree",
  "png",
  "proptest",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror 2.0.20",
  "zip",
@@ -3439,6 +3447,7 @@ name = "petunia_design_raster"
 version = "0.1.0"
 dependencies = [
  "image",
+ "petunia_design_color",
  "petunia_design_foundation",
  "petunia_design_geometry",
  "serde",

@@ -319,7 +319,10 @@ fn hit_targets_along(
 fn is_sliceable(shape: &Option<ShapeKind>) -> bool {
     match shape {
         Some(ShapeKind::Path(_)) => true,
-        Some(ShapeKind::Text { .. }) | Some(ShapeKind::Image { .. }) | None => false,
+        Some(ShapeKind::Text { .. })
+        | Some(ShapeKind::Image { .. })
+        | Some(ShapeKind::Raster { .. })
+        | None => false,
         Some(_) => true,
     }
 }

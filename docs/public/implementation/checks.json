@@ -1,9 +1,9 @@
 {
-  "scope": "Draft MVP shared CPU canvas/shaped-text continuation; current implementation unvalidated",
+  "scope": "Draft MVP schema 4 raster/native workflow continuation; current implementation unvalidated",
   "baseline": "73447647a34f5b4be209415c36e6965c5f71b9b9",
   "rust": "1.98.1",
   "date": "2026-10-01",
-  "new_focused_tests": 163,
+  "new_focused_tests": 226,
   "pending_checks": [
     "cargo xtask verify",
     "cargo xtask conformance",
@@ -14,12 +14,13 @@
     "MVP visual/performance corpus and Linux user-task acceptance"
   ],
   "open_release_gates": [
-    "M0 completion",
-    "shared scene and faithful rendering",
-    "persistent bitmap layers",
-    "MVP user tasks/Linux hardware/accessibility",
-    "ICC/CMYK",
-    "professional PDF/X-4/print",
+    "M0 aggregate budgets/save/recovery failure acceptance",
+    "M1 composition/visual corpus/performance",
+    "M2 text caret/IME and full tool workflow acceptance",
+    "M3 bitmap/mask/selection and ordered adjustment acceptance",
+    "M4 Linux tablet/display-profile/accessibility/install/four user tasks",
+    "V1 true ICC/CMYK/proof",
+    "V1 professional PDF/X-4/print",
     "V1 release",
     "future admission/research"
   ],
@@ -109,7 +110,7 @@
       "final_evidence_present": true
     }
   ],
-  "native_schema": 3,
+  "native_schema": 4,
   "wave": "MVP continuation: shaped outlines, latest-request worker canvas and bounded job history",
   "new_tests_this_wave": 37,
   "additional_integration_regressions": 1,
@@ -231,24 +232,38 @@
     "crates/petunia_design_render/tests/text_rendering.rs",
     "crates/petunia_design_application/tests/preview.rs",
     "crates/petunia_design_jobs/tests/lifecycle.rs",
-    "crates/petunia_design_jobs/tests/executor.rs",
     "crates/petunia_design_shell/tests/bridge_test.rs",
-    "crates/petunia_design_geometry/tests/contour_orientation.rs"
+    "crates/petunia_design_geometry/tests/contour_orientation.rs",
+    "crates/petunia_design_raster/tests/persistent_layers.rs",
+    "crates/petunia_design_application/tests/raster_edit.rs",
+    "crates/petunia_design_application/tests/clipboard_fragments.rs",
+    "crates/petunia_design_render/tests/raster_layers.rs",
+    "crates/petunia_design_io/tests/binary_resources.rs",
+    "crates/petunia_design_io/tests/recovery.rs",
+    "crates/petunia_design_io/tests/atomic_output.rs",
+    "crates/petunia_design_io/tests/clipboard_package.rs",
+    "crates/petunia_design_io/tests/svg_scope.rs",
+    "crates/petunia_design_color/tests/rgb_profiles.rs",
+    "apps/petunia-design/src/typography.rs"
   ],
-  "new_tests_prepared_current_wave": 34,
+  "new_tests_prepared_current_wave": 63,
   "previous_unvalidated_continuation": {
     "commit": "d40cd0ef427ae1ba4a1ba5a923cfee175c0836c4",
     "new_tests_prepared": 37,
     "status": "not_run"
   },
   "current_wave_prepared_source_counts": {
-    "crates/petunia_design_text/tests/outlines.rs": 10,
-    "crates/petunia_design_render/tests/text_rendering.rs": 8,
-    "crates/petunia_design_application/tests/preview.rs": 8,
-    "crates/petunia_design_jobs/tests/lifecycle.rs": 2,
-    "crates/petunia_design_jobs/tests/executor.rs": 1,
-    "crates/petunia_design_shell/tests/bridge_test.rs": 2,
-    "crates/petunia_design_geometry/tests/contour_orientation.rs": 3
+    "crates/petunia_design_raster/tests/persistent_layers.rs": 12,
+    "crates/petunia_design_application/tests/raster_edit.rs": 13,
+    "crates/petunia_design_application/tests/clipboard_fragments.rs": 4,
+    "crates/petunia_design_render/tests/raster_layers.rs": 6,
+    "crates/petunia_design_io/tests/binary_resources.rs": 7,
+    "crates/petunia_design_io/tests/recovery.rs": 6,
+    "crates/petunia_design_io/tests/atomic_output.rs": 3,
+    "crates/petunia_design_io/tests/clipboard_package.rs": 2,
+    "crates/petunia_design_io/tests/svg_scope.rs": 5,
+    "crates/petunia_design_color/tests/rgb_profiles.rs": 3,
+    "apps/petunia-design/src/typography.rs": 2
   },
   "image_quotas": {
     "encoded_source_mib": 32,
@@ -262,7 +277,7 @@
     "skia_upload_mib": 64,
     "skia_upload_entries": 1,
     "codec_private_allocation_accounting": "best_effort",
-    "gui_cold_preparation": "canvas scene preparation/rendering in worker; import admission/histogram cold preparation still synchronous"
+    "gui_cold_preparation": "canvas, file/image/clipboard admission and export use bounded workers; legacy histogram cold work still requires replacement"
   },
   "previous_image_continuation": {
     "commit": "09da8d626536523234f495b16a854012b59b9888",
@@ -282,5 +297,38 @@
     "output_pixels": 16777216,
     "font_database_private_shaping_accounting": "best_effort",
     "whole_process_RSS_cap": false
-  }
+  },
+  "previous_text_canvas_continuation": {
+    "commit": "37772790d366752378f45fa14d7bbc34862886d4",
+    "new_tests_prepared": 34,
+    "status": "not_run"
+  },
+  "current_implementation_status": "not_run",
+  "raster_native_quotas": {
+    "schema": 4,
+    "tile_dimension": 128,
+    "resident_tiles_per_plane": 2048,
+    "tile_mib_per_plane": 128,
+    "plane_pixels": 16777216,
+    "canonical_unique_resource_mib": 256,
+    "clipboard_transfer_mib": 16,
+    "file_workers": 1,
+    "file_queue": 1,
+    "recovery_entries": 256,
+    "recovery_disk_mib": 1024,
+    "whole_process_RSS_cap": false
+  },
+  "rgb_input_profiles": {
+    "engine": "moxcms 0.9.1",
+    "intent": "relative colorimetric",
+    "destination": "sRGB",
+    "input_space": "RGB",
+    "profile_mib": 4,
+    "clut_mib": 1,
+    "trc_elements": 65536,
+    "original_pixels_preserved": true,
+    "monitor_profile_acquisition": "not_implemented",
+    "validation": "not_run"
+  },
+  "current_wave_commands_executed": "source edits, write-mode formatting and reference generation only; no build/test/lint/conformance/migration/docs gate"
 }

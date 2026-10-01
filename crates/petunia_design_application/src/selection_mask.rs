@@ -110,6 +110,9 @@ impl SelectionMode {
 /// Transient raster selection mask: flat contours, even-odd containment.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct RasterSelection {
+    /// Distinguishes no selection from an active mask with zero coverage.
+    #[serde(default)]
+    pub active: bool,
     /// Mask contours (holes are siblings with opposite winding).
     #[serde(default)]
     pub contours: Vec<Vec<GPoint>>,
@@ -131,13 +134,20 @@ impl RasterSelection {
         self.contours.is_empty()
     }
 
+    pub fn is_active(&self) -> bool {
+        self.active || !self.contours.is_empty()
+    }
+
     /// Clears the mask (Ctrl+D equivalent).
     pub fn clear(&mut self) {
         self.contours.clear();
+        self.active = false;
+        self.feather = 0.0;
     }
 
     /// Combines one shape into the mask under `mode`.
     pub fn combine(&mut self, shape: &SelectionShape, mode: SelectionMode) {
+        self.active = true;
         let incoming = shape.contours();
         match mode {
             SelectionMode::Replace => {
@@ -156,11 +166,12 @@ impl RasterSelection {
     }
 
     /// Inverts the mask inside `frame` (Select Inverse).
-    /// Empty masks stay empty: inverting nothing selects nothing.
+    /// The complement of an empty mask is the full finite editing frame.
     pub fn invert_in(&mut self, frame: &[GPoint]) {
-        if self.contours.is_empty() || frame.len() < 3 {
+        if frame.len() < 3 {
             return;
         }
+        self.active = true;
         self.contours = difference_all(std::slice::from_ref(&frame.to_vec()), &self.contours);
     }
 

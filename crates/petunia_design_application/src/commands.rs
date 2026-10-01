@@ -68,6 +68,11 @@ pub enum Command {
         id: ObjectId,
         offset: [f64; 2],
     },
+    /// Publish a detached fragment with all identities and graph edges resolved.
+    PasteObjects {
+        surface: SurfaceId,
+        objects: Vec<DocumentObject>,
+    },
     /// Set an object's complete appearance stack (10.4).
     SetAppearance {
         id: ObjectId,
@@ -260,6 +265,11 @@ pub enum Command {
         id: ObjectId,
         shape: Option<petunia_design_document::ShapeKind>,
     },
+    /// Uniform basic typography; editing content does not reset this style.
+    SetTextStyle {
+        id: ObjectId,
+        style: petunia_design_document::TextStyle,
+    },
     /// Replace a parent-space path and its placement as one atomic edit.
     SetPath {
         id: ObjectId,
@@ -337,6 +347,7 @@ impl Command {
                 | Self::CreateObject { .. }
                 | Self::SetBounds { .. }
                 | Self::SetShape { .. }
+                | Self::SetTextStyle { .. }
                 | Self::SetFill { .. }
                 | Self::SetVisibility { .. }
                 | Self::SetLocked { .. }
@@ -417,6 +428,11 @@ pub fn execute(
                         "cannot duplicate unknown object `{source}`"
                     ))
                 })?;
+            if !original.children.is_empty() {
+                return Err(PetuniaError::capability_unavailable(
+                    "container duplication requires a complete object fragment",
+                ));
+            }
             let mut copy = original;
             copy.id = *id;
             copy.parent = None;
@@ -434,6 +450,11 @@ pub fn execute(
             id,
             offset,
         } => {
+            if !object.children.is_empty() {
+                return Err(PetuniaError::capability_unavailable(
+                    "container paste requires a complete object fragment",
+                ));
+            }
             let mut copy = object.as_ref().clone();
             copy.id = *id;
             copy.parent = None;
@@ -445,6 +466,9 @@ pub fn execute(
                 copy.bounds = Some([x + offset[0], y + offset[1], w, h]);
             }
             mutator.add_object(*surface, copy)
+        }
+        Command::PasteObjects { surface, objects } => {
+            mutator.add_objects_bulk(*surface, objects.clone())
         }
         Command::SetFill { id, fill } => mutator.set_fill(*id, fill.clone()),
         Command::SetVisibility { id, visible } => mutator.set_visibility(*id, *visible),
@@ -616,6 +640,7 @@ pub fn execute(
             mutator.add_object(*surface, obj)
         }
         Command::SetShape { id, shape } => mutator.set_shape(*id, shape.clone()),
+        Command::SetTextStyle { id, style } => mutator.set_text_style(*id, *style),
         Command::SetPath {
             id,
             path,
@@ -642,6 +667,18 @@ pub fn execute(
                 .ok_or_else(|| PetuniaError::not_found(format!("clip `{clip_id}` not found")))?
                 .clone();
 
+            if [&subject, &clip].iter().any(|object| {
+                matches!(
+                    object.shape,
+                    Some(petunia_design_document::ShapeKind::Raster { .. })
+                        | Some(petunia_design_document::ShapeKind::Image { .. })
+                        | Some(petunia_design_document::ShapeKind::Text { .. })
+                )
+            }) {
+                return Err(PetuniaError::capability_unavailable(
+                    "vector booleans require vector operands",
+                ));
+            }
             // Explicit flatten tolerance (F-21): part of the operation's
             // evidence, no longer a magic literal. Operands read evaluated
             // (09.31): live modifiers participate without being consumed.

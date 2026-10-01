@@ -188,6 +188,11 @@ fn tool_meta(tool: ToolKind) -> ToolMeta {
             label_id: "ptnd.text.tool.brush",
             summary_id: "ptnd.text.tool.brush.summary",
         },
+        ToolKind::PixelFill => ToolMeta {
+            icon: theme::ICON_FILL,
+            label_id: "ptnd.text.tool.pixel_fill",
+            summary_id: "ptnd.text.tool.pixel_fill.summary",
+        },
         ToolKind::PixelEraser => ToolMeta {
             icon: theme::ICON_ERASER,
             label_id: "ptnd.text.tool.eraser",
@@ -300,8 +305,6 @@ impl Component for DocumentTabStrip {
         };
         let mut shell = ui.shell;
         let mut new_doc_open = ui.new_doc_open;
-        let mut confirm_close_open = ui.confirm_close_open;
-        let mut pending_close = ui.pending_close;
 
         let tabs: Vec<(usize, String, bool, bool)> = {
             let bridge = &shell_ref.bridge;
@@ -330,6 +333,7 @@ impl Component for DocumentTabStrip {
                     .cross_align(Alignment::Center)
                     .children(tabs.into_iter().map(|(idx, title, is_dirty, is_active)| {
                         let mut shell = shell;
+                        let close_ui = ui.clone();
                         rect()
                             .direction(Direction::Horizontal)
                             .height(Size::px(26.))
@@ -369,14 +373,9 @@ impl Component for DocumentTabStrip {
                                     .width(Size::px(16.))
                                     .height(Size::px(16.))
                                     .center()
-                                    .on_press(move |_| {
-                                        if is_dirty {
-                                            pending_close.set(Some(idx));
-                                            confirm_close_open.set(true);
-                                        } else {
-                                            let _ =
-                                                shell.write().bridge.close_session_at(idx, false);
-                                        }
+                                    .on_press(move |event: Event<PressEventData>| {
+                                        event.stop_propagation();
+                                        crate::file_workflows::request_close(&close_ui, idx);
                                     })
                                     .child(
                                         label()
@@ -1752,11 +1751,6 @@ fn menu_item(ui: UiShell, item: &MenuItemPresentation) -> impl IntoElement {
     let mut active_tool = ui.active_tool;
     let mut tool_rail = ui.tool_rail;
     let mut customize_open = ui.customize_open;
-    let mut new_doc_open = ui.new_doc_open;
-    let mut export_open = ui.export_open;
-    let mut place_image_open = ui.place_image_open;
-    let mut confirm_close_open = ui.confirm_close_open;
-    let mut pending_close = ui.pending_close;
     let mut offset_prompt_open = ui.offset_prompt_open;
     let photo = *ui.persona.read() == petunia_design_application::surfaces::PERSONA_PHOTO;
 
@@ -1781,42 +1775,14 @@ fn menu_item(ui: UiShell, item: &MenuItemPresentation) -> impl IntoElement {
             if !enabled {
                 return;
             }
-            let action_id = run_action_token(&mut shell.write(), &token);
+            let action_id = crate::actions::run_ui_token(&ui, &token);
             if let Some(action_id) = action_id {
                 if action_id == ActionId::EDIT_PREFERENCES {
                     customize_open.set(true);
                 }
-                if action_id == "ptnd.action.file.new" {
-                    new_doc_open.set(true);
-                }
-                if action_id == "ptnd.action.file.export" {
-                    export_open.set(true);
-                }
-                if action_id == "ptnd.action.file.place" {
-                    place_image_open.set(true);
-                }
+
                 if action_id == "ptnd.action.object.offset_path" {
                     offset_prompt_open.set(true);
-                }
-                if action_id == "ptnd.action.file.close" {
-                    let mut s = shell.write();
-                    let dirty = s.bridge.is_dirty();
-                    let active = s.bridge.active_session_index();
-                    if dirty {
-                        pending_close.set(active);
-                        confirm_close_open.set(true);
-                    } else if let Some(idx) = active {
-                        let _ = s.bridge.close_session_at(idx, false);
-                    }
-                }
-                if action_id == "ptnd.action.file.quit" {
-                    let mut s = shell.write();
-                    if s.bridge.any_session_dirty() {
-                        pending_close.set(None);
-                        confirm_close_open.set(true);
-                    } else {
-                        let _ = s.bridge.close_all_sessions(false);
-                    }
                 }
                 if let Some(tool) = ToolKind::from_action_id(&action_id) {
                     active_tool.set(tool);

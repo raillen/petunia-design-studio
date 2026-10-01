@@ -27,10 +27,15 @@ fn needs_typed_value(action_id: &str, payload: &serde_json::Value) -> bool {
 fn needs_destination(action_id: &str) -> bool {
     matches!(
         action_id,
-        "ptnd.action.file.open"
+        "ptnd.action.file.new"
+            | "ptnd.action.file.open"
+            | "ptnd.action.file.recover"
+            | "ptnd.action.file.save"
             | "ptnd.action.file.save_as"
             | "ptnd.action.file.export"
             | "ptnd.action.file.place"
+            | "ptnd.action.file.close"
+            | "ptnd.action.file.quit"
     )
 }
 
@@ -38,7 +43,15 @@ fn needs_destination(action_id: &str) -> bool {
 ///
 /// Returns the resolved action id, or `None` for an unknown token.
 pub fn run_action_token(shell: &mut PetuniaShell, token: &str) -> Option<String> {
-    let (item, payload) = menus::item_for_token(token)?;
+    run_action_token_result(shell, token).ok().flatten()
+}
+fn run_action_token_result(
+    shell: &mut PetuniaShell,
+    token: &str,
+) -> Result<Option<String>, petunia_design_foundation::PetuniaError> {
+    let Some((item, payload)) = menus::item_for_token(token) else {
+        return Ok(None);
+    };
     let action_id = menus::dispatch_action_id(item)
         .unwrap_or(item.surface)
         .to_string();
@@ -51,24 +64,24 @@ pub fn run_action_token(shell: &mut PetuniaShell, token: &str) -> Option<String>
         if enabled {
             shell.set_active_tool(tool);
         }
-        return Some(action_id);
+        return Ok(Some(action_id));
     }
     if action_id == ActionId::EDIT_PREFERENCES {
-        return Some(action_id);
+        return Ok(Some(action_id));
     }
     if needs_destination(&action_id) {
-        return Some(action_id);
+        return Ok(Some(action_id));
     }
     if needs_typed_value(&action_id, &payload) {
-        return Some(action_id);
+        return Ok(Some(action_id));
     }
     if !menus::availability(&action_id, &ctx).enabled {
-        return Some(action_id);
+        return Ok(Some(action_id));
     }
-    let _ = shell
+    shell
         .bridge
-        .dispatch_action(ActionRequest::new(ActionId::new(&action_id), payload));
-    Some(action_id)
+        .dispatch_action(ActionRequest::new(ActionId::new(&action_id), payload))?;
+    Ok(Some(action_id))
 }
 
 pub fn run_action_id(shell: &mut PetuniaShell, action_id: &str) -> Option<String> {
@@ -77,4 +90,34 @@ pub fn run_action_id(shell: &mut PetuniaShell, action_id: &str) -> Option<String
         .flat_map(|family| family.items())
         .find(|item| menus::dispatch_action_id(item) == Some(action_id))
         .and_then(|item| run_action_token(shell, &menus::item_token(item)))
+}
+
+/// Desktop activations share the same routes for menus and keyboard shortcuts.
+pub fn run_ui_token(ui: &crate::ui_state::UiShell, token: &str) -> Option<String> {
+    let (item, _) = menus::item_for_token(token)?;
+    let action = menus::dispatch_action_id(item)
+        .unwrap_or(item.surface)
+        .to_owned();
+    if !menus::availability(&action, &ui.shell.peek().bridge.action_context()).enabled {
+        return Some(action);
+    }
+    if crate::file_jobs::route_clipboard(ui, &action)
+        || crate::file_workflows::route_file_action(ui, &action)
+    {
+        return Some(action);
+    }
+    match run_action_token_result(&mut ui.shell.clone().write(), token) {
+        Ok(result) => result,
+        Err(error) => {
+            ui.file_error.clone().set(Some(error.to_string()));
+            Some(action)
+        }
+    }
+}
+pub fn run_ui_id(ui: &crate::ui_state::UiShell, action_id: &str) -> Option<String> {
+    menus::MENU_BAR
+        .iter()
+        .flat_map(|family| family.items())
+        .find(|item| menus::dispatch_action_id(item) == Some(action_id))
+        .and_then(|item| run_ui_token(ui, &menus::item_token(item)))
 }

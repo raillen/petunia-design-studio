@@ -16,7 +16,7 @@ pub mod surface_planner;
 
 pub use blend::BlendMode;
 pub use composition::{EffectiveContext, IsolationGroup};
-pub use cpu_renderer::{CpuRenderer, RenderLimits, RenderRequest};
+pub use cpu_renderer::{composite_raster_preview, CpuRenderer, RenderLimits, RenderRequest};
 pub use pixel_compositor::{PixelBufferRgba16, PixelBufferRgba8, SoftwarePixelCompositor};
 pub use render_scene::{RenderError, RenderNode, RenderScene, RenderSurface};
 pub use scene::{HeadlessSummaryBackend, RenderBackend, Scene, SceneFragment};

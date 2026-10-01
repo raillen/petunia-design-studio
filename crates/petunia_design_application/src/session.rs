@@ -101,9 +101,27 @@ impl SelectionSession {
     }
 }
 
+/// Process-local session identity. Never serialized or used as a document ID.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SessionIdentity(u64);
+impl SessionIdentity {
+    fn next() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(
+            NEXT.fetch_update(
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+                |value| value.checked_add(1),
+            )
+            .expect("session identity space exhausted"),
+        )
+    }
+}
+
 /// Document session owning one open document, history, and selection (09.24).
 #[derive(Debug)]
 pub struct DocumentSession {
+    identity: SessionIdentity,
     /// Canonical document storage. Private: read via `document()` and
     /// targeted accessors; mutate only via command lane (A2).
     document: Document,
@@ -142,6 +160,7 @@ pub struct DocumentSession {
     saved_history_state: u64,
     /// Internal clipboard buffer storing copied/cut objects for pasting (Dossier V1 §15).
     clipboard: Vec<petunia_design_document::DocumentObject>,
+    clipboard_origin: [f64; 2],
 }
 
 impl DocumentSession {
@@ -164,6 +183,7 @@ impl DocumentSession {
             .unwrap_or(0);
         Self {
             document,
+            identity: SessionIdentity::next(),
             history: History::default(),
             selection: SelectionSession::new(),
             spatial: std::cell::RefCell::new(crate::spatial_index::SpatialIndex::new()),
@@ -178,6 +198,7 @@ impl DocumentSession {
             saved_revision: 0,
             saved_history_state: 0,
             clipboard: Vec::new(),
+            clipboard_origin: [0., 0.],
         }
     }
 
@@ -199,6 +220,7 @@ impl DocumentSession {
             .unwrap_or(0);
         Self {
             document,
+            identity: SessionIdentity::next(),
             history: History::default(),
             selection: SelectionSession::new(),
             spatial: std::cell::RefCell::new(crate::spatial_index::SpatialIndex::new()),
@@ -213,7 +235,21 @@ impl DocumentSession {
             saved_revision: 0,
             saved_history_state: 0,
             clipboard: Vec::new(),
+            clipboard_origin: [0., 0.],
         }
+    }
+
+    /// A recovered document starts dirty and requires Save As; no original
+    /// pathname is adopted and no artificial document edit/ID is created.
+    pub fn with_recovered_document(title: impl Into<String>, document: Document) -> Self {
+        let mut session = Self::with_document(title, document);
+        session.saved_history_state = u64::MAX;
+        session
+    }
+
+    /// Rejects stale asynchronous edits even when two tabs have equal revisions.
+    pub fn identity(&self) -> SessionIdentity {
+        self.identity
     }
 
     /// Returns the current clipboard objects buffer.
@@ -222,9 +258,63 @@ impl DocumentSession {
         &self.clipboard
     }
 
+    /// Capture editable selected subtrees without touching canonical storage.
+    pub fn capture_clipboard_fragment(
+        &self,
+    ) -> Result<Vec<petunia_design_document::DocumentObject>, PetuniaError> {
+        crate::clipboard::capture(&self.document, &self.selection.selected_ids)
+    }
+    /// Complete a cut after native ownership was established. Guarding the
+    /// captured revision belongs to the host; this remains one command transaction.
+    pub fn cut_clipboard_fragment(
+        &mut self,
+        selected: &[ObjectId],
+        fragment: Vec<petunia_design_document::DocumentObject>,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let ids = crate::clipboard::deletion_ids(&self.document, selected)?;
+        let changes = self.transact(
+            "Cut",
+            ids.into_iter()
+                .map(|id| Command::DeleteObject { id })
+                .collect(),
+        )?;
+        self.clipboard = fragment;
+        self.prune_selection();
+        Ok(changes)
+    }
+    /// Paste a whole admitted fragment with fresh identities and resolved edges.
+    pub fn paste_clipboard_fragment(
+        &mut self,
+        surface: SurfaceId,
+        fragment: Vec<petunia_design_document::DocumentObject>,
+        origin: [f64; 2],
+    ) -> Result<ChangeSet, PetuniaError> {
+        let board = self.document.surface(surface)?;
+        let offset = [
+            board.origin[0] - origin[0] + 12.,
+            board.origin[1] - origin[1] + 12.,
+        ];
+        let (objects, selected) =
+            crate::clipboard::place(&fragment, &mut self.id_generator, offset)?;
+        let changes = self.transact("Paste", vec![Command::PasteObjects { surface, objects }])?;
+        self.selection.select_exact(selected);
+        self.set_clipboard_at(fragment, origin);
+        Ok(changes)
+    }
     /// Sets the clipboard buffer.
     pub fn set_clipboard(&mut self, objects: Vec<petunia_design_document::DocumentObject>) {
+        self.set_clipboard_at(objects, [0., 0.]);
+    }
+    pub fn clipboard_origin(&self) -> [f64; 2] {
+        self.clipboard_origin
+    }
+    pub fn set_clipboard_at(
+        &mut self,
+        objects: Vec<petunia_design_document::DocumentObject>,
+        origin: [f64; 2],
+    ) {
         self.clipboard = objects;
+        self.clipboard_origin = origin;
     }
 
     /// Allocates a new monotonically increasing ObjectId that is guaranteed unique within the document.
@@ -356,6 +446,22 @@ impl DocumentSession {
         Ok(target)
     }
 
+    /// Records a durable worker snapshot without marking newer edits as saved.
+    pub fn acknowledge_saved_snapshot(
+        &mut self,
+        path: std::path::PathBuf,
+        revision: u64,
+        history_state: u64,
+    ) {
+        self.title = path.file_name().map_or_else(
+            || self.title.clone(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        self.path = Some(path);
+        self.saved_revision = revision;
+        self.saved_history_state = history_state;
+    }
+
     /// Finds an object anywhere in the document.
     #[must_use]
     pub fn find_object(&self, id: ObjectId) -> Option<&DocumentObject> {
@@ -427,17 +533,16 @@ impl DocumentSession {
         let action = petunia_design_foundation::normalize_action_id(&renamed);
         match action.as_str() {
             "ptnd.action.edit.delete" => {
-                let mut combined = ChangeSet::empty();
-                let to_delete = self.selection.selected_ids.clone();
-                for id in to_delete {
-                    let cmd = CommandRequest::new(Command::DeleteObject { id });
-                    let changes = self.execute_command(cmd)?;
-                    for c in changes.changes {
-                        combined.push(c);
-                    }
-                }
+                let ids =
+                    crate::clipboard::deletion_ids(&self.document, &self.selection.selected_ids)?;
+                let changes = self.transact(
+                    "Delete selection",
+                    ids.into_iter()
+                        .map(|id| Command::DeleteObject { id })
+                        .collect(),
+                )?;
                 self.selection.clear();
-                Ok(combined)
+                Ok(changes)
             }
             "ptnd.action.edit.select_all" => {
                 self.select_all();
@@ -636,102 +741,71 @@ impl DocumentSession {
                 }
                 Ok(changes)
             }
-            // Copy stores clones of selected objects in the session clipboard.
             "ptnd.action.edit.copy" => {
-                let ids = self.selection.selected_ids.clone();
-                if ids.is_empty() {
-                    return Ok(ChangeSet::empty());
+                self.clipboard_origin = self
+                    .active_surface
+                    .and_then(|id| self.document.surface(id).ok())
+                    .map_or([0., 0.], |s| s.origin);
+                if !self.selection.selected_ids.is_empty() {
+                    self.clipboard =
+                        crate::clipboard::capture(&self.document, &self.selection.selected_ids)?;
                 }
-                let mut copied = Vec::new();
-                for id in ids {
-                    if let Some(obj) = self.document.find_object(id) {
-                        copied.push(obj.clone());
-                    }
-                }
-                self.clipboard = copied;
                 Ok(ChangeSet::empty())
             }
-            // Cut copies selected objects then deletes them in a single undo transaction.
             "ptnd.action.edit.cut" => {
-                let ids = self.selection.selected_ids.clone();
-                if ids.is_empty() {
-                    return Ok(ChangeSet::empty());
-                }
-                let mut copied = Vec::new();
-                let mut cmds = Vec::new();
-                for id in &ids {
-                    if let Some(obj) = self.document.find_object(*id) {
-                        copied.push(obj.clone());
-                    }
-                    cmds.push(Command::DeleteObject { id: *id });
-                }
+                let copied =
+                    crate::clipboard::capture(&self.document, &self.selection.selected_ids)?;
+                let ids =
+                    crate::clipboard::deletion_ids(&self.document, &self.selection.selected_ids)?;
+                let changes = self.transact(
+                    "Cut",
+                    ids.into_iter()
+                        .map(|id| Command::DeleteObject { id })
+                        .collect(),
+                )?;
                 self.clipboard = copied;
-                let changes = self.transact("Cut", cmds)?;
+                self.clipboard_origin = self
+                    .active_surface
+                    .and_then(|id| self.document.surface(id).ok())
+                    .map_or([0., 0.], |s| s.origin);
                 self.selection.clear();
                 Ok(changes)
             }
-            // Paste creates copies of clipboard objects on the active surface with an offset.
             "ptnd.action.edit.paste" => {
                 if self.clipboard.is_empty() {
                     return Ok(ChangeSet::empty());
                 }
-                let target_surface = self
+                let surface = self
                     .active_surface
                     .or_else(|| self.document.surfaces().first().map(|s| s.id))
-                    .ok_or_else(|| {
-                        PetuniaError::invalid_input("no active surface to paste onto")
-                    })?;
-
-                let mut cmds = Vec::new();
-                let mut pasted_ids = Vec::new();
-                for obj in &self.clipboard {
-                    let next_id = self.id_generator.next_object();
-                    pasted_ids.push(next_id);
-                    cmds.push(Command::PasteObject {
-                        surface: target_surface,
-                        object: Box::new(obj.clone()),
-                        id: next_id,
-                        offset: [12.0, 12.0],
-                    });
-                }
-                // Cascading offset for subsequent pastes (position only)
-                for obj in &mut self.clipboard {
-                    if let Some(b) = &mut obj.bounds {
-                        b[0] += 12.0;
-                        b[1] += 12.0;
-                    }
-                }
-                let changes = self.transact("Paste", cmds)?;
-                self.selection.select_exact(pasted_ids);
+                    .ok_or_else(|| PetuniaError::invalid_input("no active paste surface"))?;
+                let origin = self.document.surface(surface)?.origin;
+                let offset = [
+                    origin[0] - self.clipboard_origin[0] + 12.,
+                    origin[1] - self.clipboard_origin[1] + 12.,
+                ];
+                let (objects, selected) =
+                    crate::clipboard::place(&self.clipboard, &mut self.id_generator, offset)?;
+                let changes =
+                    self.transact("Paste", vec![Command::PasteObjects { surface, objects }])?;
+                crate::clipboard::cascade(&mut self.clipboard, [12., 12.]);
+                self.selection.select_exact(selected);
                 Ok(changes)
             }
-            // Duplicate copies the selection with fresh identities and a small
-            // visual offset, so the copy is distinguishable from the original.
             "ptnd.action.edit.duplicate" => {
-                let ids = self.selection.selected_ids.clone();
-                if ids.is_empty() {
+                if self.selection.selected_ids.is_empty() {
                     return Ok(ChangeSet::empty());
                 }
-                let surface = self
-                    .document
-                    .find_object_surface(ids[0])
-                    .ok_or_else(|| PetuniaError::invalid_input("selection has no surface"))?;
-                let mut cmds = Vec::new();
-                let mut created = Vec::new();
-                for id in ids {
-                    let next = self.id_generator.next_object();
-                    created.push(next);
-                    cmds.push(Command::DuplicateObject {
-                        surface,
-                        source: id,
-                        id: next,
-                        offset: [12.0, 12.0],
-                    });
-                }
-                let changes = self.transact("Duplicate", cmds)?;
-                // Select the copies so a follow-up drag moves the duplicate,
-                // not the original.
-                self.selection.select_exact(created);
+                let surface = self.target_surface(&self.selection.selected_ids)?;
+                let fragment =
+                    crate::clipboard::capture(&self.document, &self.selection.selected_ids)?;
+                let (objects, selected) =
+                    crate::clipboard::place(&fragment, &mut self.id_generator, [12., 12.])?;
+                let changes = self.transact(
+                    "Duplicate",
+                    vec![Command::PasteObjects { surface, objects }],
+                )?;
+                self.selection.select_exact(selected);
                 Ok(changes)
             }
             // Arrange moves the whole selection to a z-order edge. Objects are
@@ -860,6 +934,51 @@ impl DocumentSession {
             // Clipping masks: the first selected object is the mask boundary
             // (10.5 Table B), mirrored from `hierarchy_service` so the panel
             // and the Action lane cannot drift apart.
+            "ptnd.action.object.pixel_mask.create" => {
+                let payload = self.with_selection_targets(&request.payload);
+                let ids = target_ids(&payload)?;
+                if ids.is_empty() {
+                    return Err(PetuniaError::invalid_input(
+                        "select content for the pixel mask",
+                    ));
+                }
+                let surface = self.target_surface(&ids)?;
+                let board = self.document.surface(surface)?;
+                let [width, height] = board.dimensions;
+                let bounds = [board.origin[0], board.origin[1], width, height];
+                let layer = petunia_design_raster::RasterLayer::opaque_mask(
+                    width.ceil() as u32,
+                    height.ceil() as u32,
+                    petunia_design_raster::BitDepth::Sixteen,
+                )?;
+                let mask_id = self.id_generator.next_object();
+                let group_id = self.id_generator.next_object();
+                let changes = self.transact(
+                    "Create pixel mask",
+                    vec![
+                        Command::CreateShapeObject {
+                            surface,
+                            id: mask_id,
+                            name: "Pixel mask".into(),
+                            shape: petunia_design_document::ShapeKind::Raster {
+                                layer: std::sync::Arc::new(layer),
+                            },
+                            bounds: Some(bounds),
+                            fill: None,
+                            stroke: None,
+                            stroke_width: 0.,
+                        },
+                        Command::CreateClipGroup {
+                            surface,
+                            group_id,
+                            mask_id,
+                            content_ids: ids,
+                        },
+                    ],
+                )?;
+                self.selection.select_exact(vec![mask_id]);
+                Ok(changes)
+            }
             "ptnd.action.object.clip_mask.create" => {
                 let payload = self.with_selection_targets(&request.payload);
                 let ids = target_ids(&payload)?;
@@ -1016,7 +1135,7 @@ impl DocumentSession {
     /// masks stay empty). Both selections are transient session state like
     /// `select_all`/marquee: empty `ChangeSet`, no history, no revision bump.
     pub fn select_invert(&mut self) {
-        if !self.raster_selection.is_empty() {
+        if self.raster_selection.is_active() {
             if let Some(surface_id) = self.active_surface {
                 if let Ok(surface) = self.document.surface(surface_id) {
                     let [x, y, w, h] = surface.bounds();

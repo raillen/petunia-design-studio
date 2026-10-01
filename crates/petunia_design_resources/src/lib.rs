@@ -5,6 +5,7 @@
 //! - Multi-locale catalogs with mandatory `en-US` and `pt-BR` synchronization.
 //! - Resource pack bundles and semantic icon maps.
 
+pub mod file_workflow_strings;
 pub mod i18n;
 pub mod pack;
 pub mod shell_strings;

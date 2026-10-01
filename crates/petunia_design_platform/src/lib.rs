@@ -12,6 +12,7 @@ pub mod clipboard;
 pub mod dialogs;
 pub mod env;
 pub mod error;
+pub mod native_clipboard;
 
 pub use clipboard::{ClipboardContent, ClipboardService, HeadlessClipboard};
 pub use dialogs::{FileDialogService, FileFilter, HeadlessFileDialog};

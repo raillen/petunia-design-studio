@@ -4,6 +4,9 @@
 **Date:** 2026-10-01  
 **Scope:** Milestone Required (MVP)
 
+
+**Current extension:** [ADR-009](/developers/adr/ADR-009-persistent-raster-and-native-workflows) supersedes schema/resource, uniform text style/overflow, native file/clipboard and blanket ICC RGB image rejection pending statements. This original wave record remains historical; current code is unvalidated.
+
 ## Context
 
 The desktop painted a flat list with independent Skia approximations. This lost group composition, masks and shared effects, and cold image preparation still ran during painting. Text used one default-font `draw_str`, without the document's actual family, multiline flow or shaping. The CPU scene rejected text. Revision alone cannot identify a preview: two tabs can have the same revision and surface ID, and a camera/channel change can leave a result obsolete without any document edit. Continuous viewport work also exposed linear job lookup and unbounded completed-job history.

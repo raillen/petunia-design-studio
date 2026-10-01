@@ -4,6 +4,9 @@
 **Data:** 2026-10-01  
 **Escopo:** Milestone Required (MVP)
 
+
+**Extensão atual:** [ADR-009](/pt/developers/adr/ADR-009-persistent-raster-and-native-workflows) substitui pendências de esquema/recursos, estilo/limites de texto, arquivos/área de transferência nativos e rejeição geral de imagens ICC RGB. Este registro da etapa original é histórico; o código atual não foi validado.
+
 ## Contexto
 
 O desktop pintava uma lista plana com aproximações Skia independentes, perdendo composição de grupos, máscaras e efeitos compartilhados; a preparação fria de imagens ainda acontecia na pintura. Texto usava um único `draw_str` de fonte padrão, sem família efetiva, fluxo multilinha ou shaping. A cena CPU rejeitava texto. Revisão sozinha não identifica uma prévia: abas podem compartilhar revisão e SurfaceId; mudanças de câmera/canal tornam resultados obsoletos sem editar o documento. Trabalho contínuo também expôs consultas lineares e histórico ilimitado de tarefas concluídas.

@@ -92,6 +92,23 @@ impl GAffine {
         }
     }
 
+    /// Axis-aligned footprint of all four transformed corners.
+    #[must_use]
+    pub fn transform_rect(self, rect: crate::GRect) -> crate::GRect {
+        let points = [
+            GPoint::new(rect.x0, rect.y0),
+            GPoint::new(rect.x1, rect.y0),
+            GPoint::new(rect.x1, rect.y1),
+            GPoint::new(rect.x0, rect.y1),
+        ]
+        .map(|point| self.apply(point));
+        crate::GRect::new(
+            points.iter().map(|p| p.x).fold(f64::INFINITY, f64::min),
+            points.iter().map(|p| p.y).fold(f64::INFINITY, f64::min),
+            points.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max),
+            points.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max),
+        )
+    }
     /// Composes so `other` applies first: `apply(p) == self.apply(other.apply(p))`.
     #[must_use]
     pub fn after(self, other: Self) -> Self {

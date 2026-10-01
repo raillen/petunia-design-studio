@@ -17,6 +17,61 @@ impl std::io::Write for PayloadSize {
     }
 }
 
+// Count retained immutable resource bytes without serializing millions of
+// byte-array elements on the UI thread. Shape replacements charge only tiles
+// whose Arc identity changed; descriptors/maps are charged separately.
+fn bounded_history_payload(changes: &ChangeSet) -> (ChangeSet, usize) {
+    use petunia_design_document::{Change, ShapeKind};
+    fn strip(shape: &mut Option<ShapeKind>) -> usize {
+        let bytes = match shape {
+            Some(ShapeKind::Raster { layer }) => layer
+                .resident_bytes()
+                .saturating_add(layer.tiles().resident_tile_count() * 64)
+                .saturating_add(256),
+            Some(ShapeKind::Image {
+                data: Some(source), ..
+            }) => source.resident_bytes(),
+            _ => return 0,
+        };
+        match shape {
+            Some(ShapeKind::Image { data, .. }) => *data = None,
+            _ => *shape = None,
+        }
+        bytes
+    }
+    let mut metadata = changes.clone();
+    let mut resources = 0usize;
+    for change in &mut metadata.changes {
+        let bytes = match change {
+            Change::ShapeChanged { previous, next, .. } => {
+                let bytes = match (&*previous, &*next) {
+                    (
+                        Some(ShapeKind::Raster { layer: a }),
+                        Some(ShapeKind::Raster { layer: b }),
+                    ) => a
+                        .tiles()
+                        .changed_retained_bytes(b.tiles())
+                        .saturating_add(512),
+                    (
+                        Some(ShapeKind::Image { data: Some(a), .. }),
+                        Some(ShapeKind::Image { data: Some(b), .. }),
+                    ) if std::sync::Arc::ptr_eq(a, b) => 0,
+                    _ => strip(previous).saturating_add(strip(next)),
+                };
+                strip(previous);
+                strip(next);
+                bytes
+            }
+            Change::ObjectAdded { object, .. } | Change::ObjectRemoved { object, .. } => {
+                strip(&mut object.shape)
+            }
+            _ => 0,
+        };
+        resources = resources.saturating_add(bytes);
+    }
+    (metadata, resources)
+}
+
 /// Bounded undo stack. Redo is cleared on every new execution.
 #[derive(Debug)]
 pub struct History {
@@ -85,9 +140,10 @@ impl History {
             return Ok(());
         }
         let mut size = PayloadSize::default();
-        serde_json::to_writer(&mut size, &changes)
+        let (metadata, resources) = bounded_history_payload(&changes);
+        serde_json::to_writer(&mut size, &metadata)
             .map_err(|e| PetuniaError::invalid_input(format!("history payload: {e}")))?;
-        let bytes = size.0;
+        let bytes = size.0.saturating_add(resources);
         if bytes > self.byte_limit {
             return Err(PetuniaError::invalid_input(
                 "edit exceeds history payload budget; document was not changed",
@@ -276,6 +332,9 @@ impl Replayer {
                 } => {
                     mutator.set_bounds(id, next_bounds, next_rotation)?;
                 }
+                Change::TextStyleChanged { id, next, .. } => {
+                    mutator.set_text_style(id, next)?;
+                }
                 Change::ShapeChanged { id, next, .. } => {
                     mutator.set_shape(id, next)?;
                 }
@@ -305,6 +364,9 @@ impl Replayer {
                 }
                 Change::ContainerRoleChanged { id, next, .. } => {
                     mutator.force_role(id, next)?;
+                }
+                Change::MaskModeChanged { id, next, .. } => {
+                    mutator.set_mask_mode(id, next)?;
                 }
                 Change::ClipMaskChanged {
                     id,

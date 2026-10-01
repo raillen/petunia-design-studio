@@ -2,6 +2,20 @@
 
 **Scope: Milestone Required (MVP) and V1 Required.** The user authorized execution of the [roadmap](/developers/implementation-roadmap-2026-09-30). Work started from the audited baseline `73447647a34f5b4be209415c36e6965c5f71b9b9`; baseline findings and probes remain historical evidence. This ledger describes implementation, not a release announcement. **MVP, V1 and the complete roadmap remain unfinished.** Future candidates/research retain their admission criteria.
 
+
+## Current MVP continuation: persistent pixels and native workflows (validation deferred)
+
+[ADR-009](/developers/adr/ADR-009-persistent-raster-and-native-workflows) introduces schema 4 binary PTND resources and editable sparse RGBA/coverage planes, including opaque masks without full-plane allocation. Brush/eraser/selection/fill publish single guarded transactions; original images remain unchanged. Clip-group alpha is applied once. Tile payloads and sources are shared across snapshots/history/duplication and admitted by explicit budgets.
+
+Desktop I/O/codec work now runs in a bounded worker with stable tab/revision guards. Saves acknowledge the captured history state, preserving newer dirty edits; Close All waits for every required save. Atomic native/export writes coordinate cooperating processes through stable sidecar locks. Recovery stores binary snapshots and offers restoration at startup into a new dirty tab. Native Linux object clipboard uses wl-clipboard/xclip; subtree copy/duplicate/delete remaps topology and origin-aware paste, and cut waits for ownership before deleting.
+
+Uniform text styles and frame/artistic flow persist. Worker-prepared glyph metadata supplies artistic overflow selection and missing-font/overset diagnostics. Native multiline drafts supply text editing/IME; exact canvas caret integration is still unfinished. SVG output consumes the shared scene and preserves supported masks/paints/transforms/glyph ink and embedded 8/16-bit pixels; strict basic SVG input rejects unavailable constructs explicitly. ICC RGB image derivatives use bounded moxcms conversion to sRGB without rewriting originals. PNG export has a real transparent artwork preview and cancellation. PDF remains outside the MVP chooser with its V1 reason.
+
+**Current code is unvalidated.** Additional meaningful regression sources were written, without running tests, builds or gates. The generated reference/check ledger distinguishes source counts from results. The original exit gate remains open: in-canvas text caret/IME, native tablet pressure, display-profile setup, real histogram composition, aggregate cache/history performance, four task projects and Linux/backend/accessibility/install evidence still need completion. The cloud cannot supply physical tablet/calibrated-display/user evidence. Implementation of these subsystems does not close the complete MVP or V1.
+
+Earlier continuation sections below are historical wave records; ADR-009 supersedes their schema/resource/ICC-input and workflow pending statements.
+
+
 ## MVP continuation: shaped text and worker canvas (validation deferred)
 
 [ADR-006](/developers/adr/ADR-006-shaped-text-and-canvas-preview) connects advanced uniform-style text shaping and TTF/CFF ink outlines to the shared CPU scene. Glyph clusters/fallback families, width wrapping and tracking are retained; fills/strokes/masks use nonzero winding for text. Originals remain editable. Empty text stays empty; live crop/effects/group transforms compose through the existing backend. Prepared text has bounded LRU residency and pinned-owner accounting.

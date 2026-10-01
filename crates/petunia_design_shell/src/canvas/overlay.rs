@@ -320,6 +320,9 @@ pub struct CanvasOverlays {
     pub path_preview: Option<petunia_design_geometry::GPath>,
     /// In-flight raster brush stroke preview dabs (`BrushDab`).
     pub brush_preview: Option<Vec<petunia_design_raster::BrushDab>>,
+    /// Immutable real-pixel draft composed by the preview worker.
+    pub raster_preview_source:
+        Option<std::sync::Arc<petunia_design_application::preview::PreviewSource>>,
     /// Floating measurement badge text and document position (`(doc_point, label)`), if active.
     pub measure_badge: Option<(GPoint, String)>,
     /// Active cursor affordance requested by canvas tools.

@@ -360,6 +360,21 @@ impl Context<'_> {
             return Err(unsupported("geometry modifiers on composed groups"));
         }
         match &node.source.shape {
+            Some(ShapeKind::Raster { layer }) => {
+                layer
+                    .validate()
+                    .map_err(|e| RenderError::Invalid(e.to_string()))?;
+                if node.source.modifiers.iter().any(|m| {
+                    m.enabled
+                        && !matches!(
+                            m.kind,
+                            petunia_design_document::ModifierKind::CropRect { .. }
+                                | petunia_design_document::ModifierKind::TransparentGradient { .. }
+                        )
+                }) {
+                    return Err(unsupported("raster perspective/contour sampling"));
+                }
+            }
             Some(ShapeKind::Image { data, .. }) => {
                 if node.source.modifiers.iter().any(|m| {
                     m.enabled
@@ -577,6 +592,40 @@ impl Context<'_> {
                     .pixmap
                     .fill_path(&path, &paint, fill_rule, transform, None);
             }
+            if let Some(ShapeKind::Raster { layer: source }) = &node.source.shape {
+                let [_, _, w, h] = node
+                    .source
+                    .bounds
+                    .ok_or_else(|| RenderError::Invalid("raster has no local frame".into()))?;
+                let pixels_to_layer = local_to_layer.after(GAffine::scale(
+                    w / f64::from(source.width()),
+                    h / f64::from(source.height()),
+                ));
+                let inverse = pixels_to_layer
+                    .inverse()
+                    .ok_or_else(|| RenderError::Invalid("singular raster sampling frame".into()))?;
+                let (_permit, coverage) =
+                    self.path_mask(&layer, &path, local_to_layer, fill_rule)?;
+                let width = layer.pixmap.width() as usize;
+                for (index, output) in layer.pixmap.data_mut().chunks_exact_mut(4).enumerate() {
+                    if index % width == 0 {
+                        self.check_cancelled()?;
+                    }
+                    let mask = f32::from(coverage.data()[index]) / 255.0;
+                    if mask == 0.0 {
+                        continue;
+                    }
+                    let point = inverse.apply(GPoint::new(
+                        (index % width) as f64 + 0.5,
+                        (index / width) as f64 + 0.5,
+                    ));
+                    let pixel = sample_raster(source, point);
+                    for channel in 0..4 {
+                        output[channel] =
+                            (pixel[channel] * mask * 255.0).round().clamp(0.0, 255.0) as u8;
+                    }
+                }
+            }
             let [px, py, _, _] = node.source.bounds.unwrap_or([0.0; 4]);
             // Existing color paints are parent-frame descriptors. Convert to
             // local explicitly; do not confuse them with local modifier frames.
@@ -648,6 +697,21 @@ impl Context<'_> {
                         .stroke_path(&path, &paint, &style, transform, Some(&mask));
                 }
             }
+        }
+        // Clip frame ink before effects. Artistic text remains unwrapped and unbounded
+        // by its placement frame; both modes retain editable source text.
+        if matches!(node.source.shape, Some(ShapeKind::Text { .. }))
+            && node.source.text_style.flow == petunia_design_document::TextFlow::Frame
+        {
+            let [_, _, w, h] = node
+                .source
+                .bounds
+                .ok_or_else(|| RenderError::Invalid("text has no frame".into()))?;
+            let frame = sk_path(&GPath::rect(GRect::new(0.0, 0.0, w, h), 0.0, 0.0))?
+                .ok_or_else(|| RenderError::Invalid("empty text frame".into()))?;
+            let (_permit, mask) =
+                self.path_mask(&layer, &frame, local_to_layer, sk::FillRule::Winding)?;
+            layer.pixmap.apply_mask(&mask);
         }
         let child_window = GRect::new(x, y, right, bottom);
         for child in &node.source.children {
@@ -721,7 +785,25 @@ impl Context<'_> {
         }
         self.adjust(&mut layer.pixmap, &app.adjustments)?;
         if let Some(mask_id) = node.source.clip_mask_id {
-            self.apply_clip(&mut layer, mask_id, node.source.mask_mode, depth + 1)?;
+            let mask = self.node(mask_id)?;
+            let grouped = node
+                .source
+                .parent
+                .and_then(|parent| self.surface.nodes.get(&parent))
+                .is_some_and(|parent| {
+                    parent.source.role == Some(ContainerRole::ClipGroup)
+                        && parent.source.children.contains(&mask_id)
+                });
+            // ClipGroup applies its shared coverage after sibling composition.
+            // Applying it to each child as well would square alpha/edge coverage.
+            if !grouped {
+                let mode = if mask.source.mask_mode != MaskMode::Vector {
+                    mask.source.mask_mode
+                } else {
+                    node.source.mask_mode
+                }; // legacy per-reference mode
+                self.apply_clip(&mut layer, mask_id, mode, depth + 1)?;
+            }
         }
         if node.source.role == Some(ContainerRole::ClipGroup) {
             let masks: Vec<_> = node
@@ -1279,8 +1361,80 @@ fn map_blend(mode: petunia_design_document::BlendMode) -> sk::BlendMode {
     }
 }
 
+/// Composes an uncommitted new pixel layer above a completed preview. No
+/// canonical object identity is fabricated for the disposable draft.
+pub fn composite_raster_preview(
+    output: &mut PixelBufferRgba8,
+    request: RenderRequest,
+    source: &petunia_design_raster::RasterLayer,
+    pixels_to_world: GAffine,
+    cancellation: &CancellationToken,
+) -> Result<(), RenderError> {
+    if output.width != request.width
+        || output.height != request.height
+        || output.data.len() != output.width as usize * output.height as usize * 4
+    {
+        return Err(RenderError::Invalid("raster preview dimensions".into()));
+    }
+    let inverse = pixels_to_world
+        .inverse()
+        .ok_or_else(|| RenderError::Invalid("singular raster preview".into()))?;
+    let width = output.width as usize;
+    for (index, pixel) in output.data.chunks_exact_mut(4).enumerate() {
+        if index % width == 0 && cancellation.is_cancelled() {
+            return Err(RenderError::Cancelled);
+        }
+        let world = GPoint::new(
+            request.viewport.x0
+                + (index % width) as f64 * request.viewport.width() / f64::from(request.width)
+                + 0.5 * request.viewport.width() / f64::from(request.width),
+            request.viewport.y0
+                + ((index / width) as f64 + 0.5) * request.viewport.height()
+                    / f64::from(request.height),
+        );
+        let src = sample_raster(source, inverse.apply(world));
+        let dst_alpha = f32::from(pixel[3]) / 255.0;
+        let alpha = src[3] + dst_alpha * (1.0 - src[3]);
+        if alpha > 0.0 {
+            for c in 0..3 {
+                pixel[c] = ((src[c] + f32::from(pixel[c]) / 255.0 * dst_alpha * (1.0 - src[3]))
+                    / alpha
+                    * 255.0)
+                    .round()
+                    .clamp(0.0, 255.0) as u8;
+            }
+            pixel[3] = (alpha * 255.0).round() as u8;
+        }
+    }
+    Ok(())
+}
+
+/// Bilinear premultiplied sampling with transparent exterior, including masks.
+fn sample_raster(source: &petunia_design_raster::RasterLayer, point: GPoint) -> [f32; 4] {
+    let x = point.x - 0.5;
+    let y = point.y - 0.5;
+    let x0 = x.floor() as i64;
+    let y0 = y.floor() as i64;
+    let fx = (x - x.floor()) as f32;
+    let fy = (y - y.floor()) as f32;
+    let mut result = [0.0; 4];
+    for (dx, dy, weight) in [
+        (0, 0, (1.0 - fx) * (1.0 - fy)),
+        (1, 0, fx * (1.0 - fy)),
+        (0, 1, (1.0 - fx) * fy),
+        (1, 1, fx * fy),
+    ] {
+        let p = source.pixel(x0.saturating_add(dx), y0.saturating_add(dy));
+        for c in 0..3 {
+            result[c] += p[c] * p[3] * weight;
+        }
+        result[3] += p[3] * weight;
+    }
+    result
+}
+
 fn node_fill_rule(node: &RenderNode) -> sk::FillRule {
-    if matches!(node.source.shape, Some(ShapeKind::Text { .. })) {
+    if matches!(node.source.shape, Some(ShapeKind::Text { .. })) || node.source.fill_rule == petunia_design_geometry::FillRule::NonZero {
         sk::FillRule::Winding
     } else {
         sk::FillRule::EvenOdd

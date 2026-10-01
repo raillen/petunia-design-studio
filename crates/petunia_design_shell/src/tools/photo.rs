@@ -4,13 +4,9 @@
 //! raster selection (Replace/Add/Subtract/Intersect via Shift/Alt, Photoshop
 //! convention). Crop commits surface geometry or a nondestructive CropRect.
 //!
-//! SelectionBrush, FloodSelect, Brush, and Eraser need pixel layers in the
-//! document, which do not exist yet (TOOLS_DECISIONS Batch 13). They refuse the
-//! gesture at `Down` with `CapabilityUnavailable` rather than accepting a drag
-//! and returning an empty changeset: a tool that silently discards an edit is a
-//! worse defect than a tool that reports it cannot run. Their registry rows are
-//! `Disabled`, so the rail and menus also refuse to activate them.
-
+//! Brush and eraser edit disposable copy-on-write drafts; pointer-up commits
+//! one reversible pixel-layer transaction. Unsupported selection samplers
+//! remain explicitly disabled.
 use petunia_design_application::{SelectionMode, SelectionShape};
 use petunia_design_document::ChangeSet;
 use petunia_design_foundation::PetuniaError;
@@ -62,6 +58,8 @@ pub struct PhotoBrushSettings {
     pub flow: f32,
     /// Master opacity in [0.0, 1.0].
     pub opacity: f32,
+    /// Straight sRGB foreground color used by pixel and mask painting.
+    pub color: [f32; 4],
 }
 
 impl Default for PhotoBrushSettings {
@@ -71,6 +69,7 @@ impl Default for PhotoBrushSettings {
             hardness: 0.8,
             flow: 1.0,
             opacity: 1.0,
+            color: [0.1, 0.1, 0.1, 1.0],
         }
     }
 }
@@ -83,6 +82,7 @@ pub struct PhotoTool {
     start_doc: Option<GPoint>,
     current_doc: Option<GPoint>,
     lasso_doc: Vec<GPoint>,
+    raster_stroke: Option<petunia_design_application::raster_edit::RasterStroke>,
 }
 
 impl PhotoTool {
@@ -95,6 +95,7 @@ impl PhotoTool {
             start_doc: None,
             current_doc: None,
             lasso_doc: Vec::new(),
+            raster_stroke: None,
         }
     }
 
@@ -122,6 +123,7 @@ impl PhotoTool {
 
     /// Cancels active raster gesture.
     pub fn cancel(&mut self) {
+        self.raster_stroke = None;
         self.start_doc = None;
         self.current_doc = None;
         self.lasso_doc.clear();
@@ -146,19 +148,32 @@ impl PhotoTool {
                 if event.button != PointerButton::Primary {
                     return Ok(ChangeSet::empty());
                 }
-                // Refuse before the gesture starts, so a brush/eraser drag
-                // cannot appear to work and then discard every dab.
+                self.cancel();
                 if matches!(
                     self.kind,
-                    PhotoToolKind::SelectionBrush
-                        | PhotoToolKind::FloodSelect
-                        | PhotoToolKind::Brush
-                        | PhotoToolKind::Eraser
+                    PhotoToolKind::SelectionBrush | PhotoToolKind::FloodSelect
                 ) {
-                    return Err(PetuniaError::capability_unavailable(format!(
-                        "photo tool `{:?}` has no document pixel layer yet",
-                        self.kind
-                    )));
+                    return Err(PetuniaError::capability_unavailable(
+                        "this tool requires a pixel-selection sampler",
+                    ));
+                }
+                if matches!(self.kind, PhotoToolKind::Brush | PhotoToolKind::Eraser) {
+                    let session = bridge
+                        .session()
+                        .ok_or_else(|| PetuniaError::invalid_input("no paint session"))?;
+                    let brush = petunia_design_application::raster_edit::RasterBrush {
+                        radius: self.brush_settings.radius,
+                        hardness: self.brush_settings.hardness,
+                        opacity: self.brush_settings.opacity,
+                        flow: self.brush_settings.flow,
+                        color: self.brush_settings.color,
+                        erase: self.kind == PhotoToolKind::Eraser,
+                    };
+                    let mut stroke = petunia_design_application::raster_edit::RasterStroke::begin(
+                        session, brush,
+                    )?;
+                    stroke.sample(event.doc_pos, event.pressure)?;
+                    self.raster_stroke = Some(stroke);
                 }
                 snap.reset_hysteresis();
                 self.start_doc = Some(event.doc_pos);
@@ -167,6 +182,22 @@ impl PhotoTool {
                 Ok(ChangeSet::empty())
             }
             PointerPhase::Move => {
+                if let Some(stroke) = &mut self.raster_stroke {
+                    let result = if bridge
+                        .session()
+                        .is_some_and(|session| stroke.belongs_to(session))
+                    {
+                        stroke.sample(event.doc_pos, event.pressure)
+                    } else {
+                        Err(PetuniaError::invalid_input(
+                            "paint gesture belongs to an obsolete document",
+                        ))
+                    };
+                    if let Err(error) = result {
+                        self.cancel();
+                        return Err(error);
+                    }
+                }
                 if self.start_doc.is_some() {
                     self.current_doc = Some(event.doc_pos);
                     if self.kind == PhotoToolKind::Lasso {
@@ -184,6 +215,10 @@ impl PhotoTool {
                 let current = self.current_doc.take();
                 let lasso = std::mem::take(&mut self.lasso_doc);
                 snap.reset_hysteresis();
+                if let Some(mut stroke) = self.raster_stroke.take() {
+                    stroke.finish_sample(event.doc_pos, event.pressure)?;
+                    return bridge.commit_raster_stroke(stroke);
+                }
 
                 if let (Some(p0), Some(p1)) = (start, current) {
                     match self.kind {
@@ -228,7 +263,7 @@ impl PhotoTool {
                         | PhotoToolKind::Brush
                         | PhotoToolKind::Eraser => {
                             return Err(PetuniaError::capability_unavailable(format!(
-                                "photo tool `{:?}` has no document pixel layer yet",
+                                "photo tool `{:?}` has no active supported edit draft",
                                 self.kind
                             )));
                         }
@@ -368,6 +403,14 @@ impl PhotoTool {
         bridge: &PetuniaDesignGuiBridge,
     ) -> CanvasOverlays {
         let mut overlays = CanvasOverlays::default();
+        if let Some(stroke) = &self.raster_stroke {
+            if bridge
+                .session()
+                .is_some_and(|session| stroke.belongs_to(session))
+            {
+                overlays.raster_preview_source = Some(stroke.preview_source());
+            }
+        }
         if let (Some(p0), Some(p1)) = (self.start_doc, self.current_doc) {
             match self.kind {
                 PhotoToolKind::Lasso => {

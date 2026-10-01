@@ -278,6 +278,15 @@ pub struct HoverTarget {
 /// identity so the diffing pass treats one shared instance as equal.
 #[derive(Clone)]
 pub struct UiShell {
+    pub close_target: State<Option<petunia_design_application::session::SessionIdentity>>,
+    pub typography_edit: State<Option<crate::typography::Draft>>,
+    pub object_edit: State<Option<crate::object_edits::ObjectEdit>>,
+    pub file_job: State<Option<crate::file_jobs::Request>>,
+    pub recovery_entries: State<Vec<petunia_design_io::recovery::RecoveryEntry>>,
+    pub recovery_open: State<bool>,
+    pub file_prompt: State<Option<crate::file_workflows::FilePrompt>>,
+    pub file_notice: State<Option<String>>,
+    pub file_error: State<Option<String>>,
     pub shell: State<PetuniaShell>,
     pub open_family: State<Option<String>>,
     pub palette_open: State<bool>,
@@ -296,7 +305,6 @@ pub struct UiShell {
     pub temporary_tool: State<Option<ToolKind>>,
     pub suspended_tool: State<Option<ToolKind>>,
     pub dock_tab: State<usize>,
-    pub text_edit_content: State<String>,
     pub new_doc_open: State<bool>,
     pub export_open: State<bool>,
     pub place_image_open: State<bool>,
@@ -320,7 +328,16 @@ pub struct UiShell {
 
 impl PartialEq for UiShell {
     fn eq(&self, other: &Self) -> bool {
-        self.shell == other.shell
+        self.typography_edit == other.typography_edit
+            && self.object_edit == other.object_edit
+            && self.close_target == other.close_target
+            && self.file_job == other.file_job
+            && self.recovery_entries == other.recovery_entries
+            && self.recovery_open == other.recovery_open
+            && self.file_prompt == other.file_prompt
+            && self.file_notice == other.file_notice
+            && self.file_error == other.file_error
+            && self.shell == other.shell
             && self.open_family == other.open_family
             && self.palette_open == other.palette_open
             && self.palette_query == other.palette_query
@@ -335,7 +352,6 @@ impl PartialEq for UiShell {
             && self.temporary_tool == other.temporary_tool
             && self.suspended_tool == other.suspended_tool
             && self.dock_tab == other.dock_tab
-            && self.text_edit_content == other.text_edit_content
             && self.new_doc_open == other.new_doc_open
             && self.export_open == other.export_open
             && self.place_image_open == other.place_image_open
@@ -379,7 +395,6 @@ impl UiShell {
         temporary_tool: State<Option<ToolKind>>,
         suspended_tool: State<Option<ToolKind>>,
         dock_tab: State<usize>,
-        text_edit_content: State<String>,
         new_doc_open: State<bool>,
         export_open: State<bool>,
         place_image_open: State<bool>,
@@ -399,6 +414,15 @@ impl UiShell {
         bottom_dock_tab: State<usize>,
     ) -> Self {
         Self {
+            object_edit: use_state(|| None),
+            typography_edit: use_state(|| None),
+            close_target: use_state(|| None),
+            file_prompt: use_state(|| None),
+            file_job: use_state(|| None),
+            recovery_entries: use_state(Vec::new),
+            recovery_open: use_state(|| false),
+            file_notice: use_state(|| None),
+            file_error: use_state(|| None),
             shell,
             open_family,
             palette_open,
@@ -414,7 +438,6 @@ impl UiShell {
             temporary_tool,
             suspended_tool,
             dock_tab,
-            text_edit_content,
             new_doc_open,
             export_open,
             place_image_open,
@@ -433,6 +456,29 @@ impl UiShell {
             bottom_dock_height,
             bottom_dock_tab,
         }
+    }
+
+    /// File-workflow catalog shorthand; language comes from the shell locale.
+    pub fn text(&self, key: &str) -> String {
+        let shell = self.shell.peek();
+        shell
+            .bridge
+            .localization()
+            .text(&format!("ptnd.text.workflow.{key}"), shell.bridge.locale())
+    }
+
+    pub fn has_modal(&self) -> bool {
+        *self.recovery_open.peek()
+            || self.typography_edit.peek().is_some()
+            || self.object_edit.peek().is_some()
+            || self.file_prompt.peek().is_some()
+            || *self.new_doc_open.peek()
+            || *self.export_open.peek()
+            || *self.place_image_open.peek()
+            || *self.confirm_close_open.peek()
+            || *self.customize_open.peek()
+            || *self.offset_prompt_open.peek()
+            || *self.overwrite_conflict_open.peek()
     }
 
     pub fn activate_tool(&self, tool: ToolKind) {
@@ -487,7 +533,6 @@ impl UiShell {
         let temporary_tool = use_state(|| None);
         let suspended_tool = use_state(|| None);
         let dock_tab = use_state(|| 0usize);
-        let text_edit_content = use_state(String::new);
         let new_doc_open = use_state(|| false);
         let export_open = use_state(|| false);
         let place_image_open = use_state(|| false);
@@ -521,7 +566,6 @@ impl UiShell {
             temporary_tool,
             suspended_tool,
             dock_tab,
-            text_edit_content,
             new_doc_open,
             export_open,
             place_image_open,

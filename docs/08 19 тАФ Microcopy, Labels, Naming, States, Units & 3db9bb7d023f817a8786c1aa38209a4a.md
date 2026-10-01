@@ -120,3 +120,12 @@ Hints are short imperative or stateful phrases: `Drag to create a rectangle · S
 # Accessibility copy
 
 Accessible names describe outcome, not icon appearance: `Toggle layer visibility`, not `Eye icon`. When visual label already clear, avoid redundant verbose screen-reader text.
+
+### Object-editor implementation — 2026-10-01
+
+Scope: **Milestone Required (MVP)**. Explicit stable session/object drafts now
+cover Rename, multiline content and exact local placement with points/degrees.
+Cancel/conflict/invalid input do not publish. Typography/path and exact rotation
+are preserved; multiselection, direct canvas text and external a11y remain open.
+See [ADR-008](../docs/developers/adr/ADR-008-object-edit-drafts.md) and
+[implementation/remaining-work/evidence](../docs/developers/uiux-object-edits.md).

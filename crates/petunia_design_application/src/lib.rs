@@ -11,6 +11,7 @@ pub mod background_render;
 pub mod boolean_service;
 mod capabilities;
 mod commands;
+mod clipboard;
 mod creation;
 pub mod data_merge;
 pub mod export_service;
@@ -52,3 +53,7 @@ pub use view_models::{
     HistoryPresentationModel, LayerRowViewModel, LayersPresentationModel,
     PropertiesPresentationModel, SelectionViewModel, SessionSnapshot, SurfaceRowViewModel,
 };
+
+pub mod raster_edit;
+
+pub mod recovery;

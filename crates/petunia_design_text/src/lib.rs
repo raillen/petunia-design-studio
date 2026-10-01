@@ -11,7 +11,7 @@ pub mod layout;
 pub mod on_path;
 pub mod outlines;
 pub mod story;
-pub use outlines::{prepare_text, PreparedText, TextFrameSpec, TextRenderError};
+pub use outlines::{prepare_text, FlowAlignment, PreparedText, TextFrameSpec, TextRenderError};
 
 pub use fonts::{FontMetrics, ShapedGlyph, TypeSystem};
 

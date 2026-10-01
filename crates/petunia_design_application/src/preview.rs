@@ -8,7 +8,7 @@ use petunia_design_render::{
 };
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc,
+    Arc, OnceLock,
 };
 
 /// Process-local identity prevents same-revision tabs from sharing results.
@@ -20,6 +20,23 @@ pub struct PreviewSource {
     id: PreviewSourceId,
     revision: u64,
     surface: Arc<Surface>,
+    raster_edit: Option<RasterPreview>,
+    prepared: Arc<OnceLock<Arc<RenderSurface>>>,
+}
+#[derive(Clone)]
+struct RasterPreview {
+    target: Option<petunia_design_foundation::ObjectId>,
+    layer: Arc<petunia_design_raster::RasterLayer>,
+    pixels_to_world: petunia_design_geometry::GAffine,
+}
+fn next_source_id() -> PreviewSourceId {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    PreviewSourceId(
+        NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            value.checked_add(1)
+        })
+        .expect("preview source identity space exhausted"),
+    )
 }
 impl std::fmt::Debug for PreviewSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -39,12 +56,37 @@ impl PartialEq for PreviewSource {
 impl PreviewSource {
     /// Copies canonical descriptors; immutable geometry/image bytes stay shared.
     pub fn capture(surface: &Surface, revision: u64) -> Arc<Self> {
-        static NEXT: AtomicU64 = AtomicU64::new(1);
         Arc::new(Self {
-            id: PreviewSourceId(NEXT.fetch_add(1, Ordering::Relaxed)),
+            id: next_source_id(),
             revision,
             surface: Arc::new(surface.clone()),
+            raster_edit: None,
+            prepared: Arc::new(OnceLock::new()),
         })
+    }
+    /// Immutable draft snapshot. It neither changes canonical IDs nor adds a
+    /// document revision/history entry. Successive drafts share the source.
+    pub fn with_raster_edit(
+        &self,
+        target: Option<petunia_design_foundation::ObjectId>,
+        layer: Arc<petunia_design_raster::RasterLayer>,
+        pixels_to_world: petunia_design_geometry::GAffine,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            id: next_source_id(),
+            revision: self.revision,
+            surface: self.surface.clone(),
+            prepared: Arc::new(OnceLock::new()),
+            raster_edit: Some(RasterPreview {
+                target,
+                layer,
+                pixels_to_world,
+            }),
+        })
+    }
+    /// Worker-produced immutable glyph/scene data; no shaping on UI reads.
+    pub fn prepared_scene(&self) -> Option<Arc<RenderSurface>> {
+        self.prepared.get().cloned()
     }
     /// Cache identity, distinct from canonical `SurfaceId`.
     pub fn id(&self) -> PreviewSourceId {
@@ -66,6 +108,7 @@ pub struct PreviewRequest {
     pub render: RenderRequest,
     pub channel: usize,
     pub soft_proof: bool,
+    pub transparent_artboard: bool,
 }
 impl PreviewRequest {
     /// Validates the camera before dimensions are converted or work is admitted.
@@ -106,6 +149,7 @@ impl PreviewRequest {
             },
             channel,
             soft_proof,
+            transparent_artboard: false,
         })
     }
 }
@@ -114,6 +158,7 @@ impl PreviewRequest {
 pub struct PreviewFrame {
     pub request: PreviewRequest,
     pub pixels: PixelBufferRgba8,
+    pub warnings: Vec<String>,
 }
 struct Completed {
     frame: Arc<PreviewFrame>,
@@ -153,6 +198,7 @@ impl PreviewController {
                 next.source.id() != frame.request.source.id()
                     || next.channel != frame.request.channel
                     || next.soft_proof != frame.request.soft_proof
+                    || next.transparent_artboard != frame.request.transparent_artboard
             })
         }) {
             self.latest = None;
@@ -219,6 +265,23 @@ impl PreviewController {
                         .map_err(render_failure)?,
                     ),
                 };
+                let scene = if let Some(edit) = request
+                    .source
+                    .raster_edit
+                    .as_ref()
+                    .filter(|edit| edit.target.is_some())
+                {
+                    Arc::new(
+                        scene
+                            .with_raster_preview(
+                                edit.target.expect("filtered target"),
+                                edit.layer.clone(),
+                            )
+                            .map_err(render_failure)?,
+                    )
+                } else {
+                    scene
+                };
                 let count = (u64::from(render.width) * u64::from(render.height) * 4) as usize;
                 let mut data = Vec::new();
                 data.try_reserve_exact(count)
@@ -239,7 +302,13 @@ impl PreviewController {
                             v.x0 + (f64::from(col) + 0.5) * v.width() / f64::from(render.width);
                         if px >= x && px < x + w {
                             let offset = (row as usize * render.width as usize + col as usize) * 4;
-                            data[offset..offset + 4].copy_from_slice(&[0xe2, 0xe4, 0xe8, 255]);
+                            data[offset..offset + 4].copy_from_slice(&if request
+                                .transparent_artboard
+                            {
+                                [0; 4]
+                            } else {
+                                [0xe2, 0xe4, 0xe8, 255]
+                            });
                         }
                     }
                 }
@@ -251,6 +320,21 @@ impl PreviewController {
                 let mut pixels = CpuRenderer::default()
                     .render_over_cancellable(&scene, render, &backdrop, context.cancellation())
                     .map_err(render_failure)?;
+                if let Some(edit) = request
+                    .source
+                    .raster_edit
+                    .as_ref()
+                    .filter(|edit| edit.target.is_none())
+                {
+                    petunia_design_render::composite_raster_preview(
+                        &mut pixels,
+                        render,
+                        &edit.layer,
+                        edit.pixels_to_world,
+                        context.cancellation(),
+                    )
+                    .map_err(render_failure)?;
+                }
                 for row in pixels.data.chunks_exact_mut(render.width as usize * 4) {
                     context.check_cancelled()?;
                     for pixel in row.chunks_exact_mut(4) {
@@ -269,7 +353,15 @@ impl PreviewController {
                 }
                 context.check_cancelled()?;
                 Ok(Completed {
-                    frame: Arc::new(PreviewFrame { request, pixels }),
+                    frame: {
+                        let warnings = scene.text_warnings();
+                        let _ = request.source.prepared.set(scene.clone());
+                        Arc::new(PreviewFrame {
+                            request,
+                            pixels,
+                            warnings,
+                        })
+                    },
                     scene,
                 })
             },

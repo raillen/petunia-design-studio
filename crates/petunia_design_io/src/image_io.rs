@@ -149,7 +149,7 @@ impl RawRasterImage {
     /// Creates a RawRasterImage directly from an `petunia_design_raster::Tile`.
     #[must_use]
     pub fn from_tile(tile: &Tile) -> Self {
-        let mut data = tile.data.clone();
+        let mut data = tile.data.as_ref().clone();
         if tile.alpha_mode == petunia_design_raster::AlphaMode::Premultiplied {
             match tile.format {
                 PixelFormat::Rgba8 => {
@@ -203,7 +203,7 @@ impl RawRasterImage {
             format: self.format,
             alpha_mode: petunia_design_raster::AlphaMode::Straight,
             state: petunia_design_raster::TileState::ResidentWorkingDirty,
-            data: self.data.clone(),
+            data: self.data.clone().into(),
         })
     }
 
@@ -529,12 +529,16 @@ pub fn import_raster(bytes: &[u8], max_bytes: usize) -> Result<RawRasterImage, P
     limits.max_decoded_bytes = limits
         .max_decoded_bytes
         .min((max_bytes as u64).saturating_mul(4));
-    let decoded = petunia_design_raster::decode_image(bytes, limits)
+    let mut decoded = petunia_design_raster::decode_image(bytes, limits)
         .map_err(|e| PetuniaError::invalid_input(e.to_string()))?;
-    if decoded.icc_profile.is_some() {
-        return Err(PetuniaError::invalid_input(
-            "ICC image conversion requires a color-management module",
-        ));
+    if let Some(profile) = decoded.icc_profile.as_ref() {
+        petunia_design_color::rgb_profiles::convert_rgba_to_srgb(
+            &mut decoded.data,
+            decoded.format == PixelFormat::Rgba16,
+            decoded.width,
+            profile,
+            &|| false,
+        )?;
     }
     Ok(RawRasterImage {
         width: decoded.width,

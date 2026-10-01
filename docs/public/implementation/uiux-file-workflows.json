@@ -1,0 +1,196 @@
+{
+  "date": "2026-10-01",
+  "contract": "ADR-007",
+  "scope": "Milestone Required (MVP)",
+  "goal": "Desktop UI/UX file lifecycle and truthful export options",
+  "atlas": [
+    "08.2",
+    "08.10",
+    "08.18",
+    "08.29",
+    "08.16",
+    "09.16"
+  ],
+  "validation_scope": "isolated source snapshot; does not certify the complete evolving MVP workspace",
+  "snapshot": "/workspace/.petunia-uiux-check",
+  "cargo_target": "/workspace/.petunia-uiux-target",
+  "sources": [
+    {
+      "path": "apps/petunia-design/src/actions.rs",
+      "snapshot_sha256": "18baadca05913b26cfabc762805de871a9d6533eb35b942fdca0a659829f6659",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "apps/petunia-design/src/chrome.rs",
+      "snapshot_sha256": "44aa47d207adec4abb0ad9ceac337dca4ca71b03aa687b01cbbbdcbf34c3075a",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "apps/petunia-design/src/dialogs.rs",
+      "snapshot_sha256": "07d5081ffa6050fdc8907a1968ab9c2a17a559925b912133933fb84e9d4c2000",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "apps/petunia-design/src/file_dialogs.rs",
+      "snapshot_sha256": "89bd92a8538ca036c936984a95709cfe98e4a8c6c4aaf9fdbc34c8cf3fc50c89",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "apps/petunia-design/src/file_workflows.rs",
+      "snapshot_sha256": "d5c0de6b2a727b14af19c1c69b7e6d1b4471c71014702f4f1d54bc9ddf0dfc7f",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "apps/petunia-design/src/ui_state.rs",
+      "snapshot_sha256": "d734776d728b1dfd3a903d00905644701ca0f216cc75be65ba890b2f0c7f7c65",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "apps/petunia-design/src/main.rs",
+      "snapshot_sha256": "49057299b67f9b6432ddfecfe4c8912582051784f1385c08268bcff7990b0b41",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "apps/petunia-design/src/theme.rs",
+      "snapshot_sha256": "62d3e368018870cf7bab99f5315cae21db2643380866056a1f6557f30f574962",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "apps/petunia-design/src/dock.rs",
+      "snapshot_sha256": "6df9f34a89a5d4c1625586f8929261a0edbfab3eeb1326d45bbd6f515177d054",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "apps/petunia-design/tests/click_smoke.rs",
+      "snapshot_sha256": "da76058468fcd7df79992a7b7fb3a14da48a7296eb251d9158b3d1c3191ec89d",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "crates/petunia_design_resources/src/file_workflow_strings.rs",
+      "snapshot_sha256": "d0a61c981dcbbc19fce46bc78b3c9221edee57a98541a0dc44c3909450045c5f",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "crates/petunia_design_resources/src/i18n.rs",
+      "snapshot_sha256": "3e16605ac25d0f57d1ba3fa2d60c33a8dc145f936adccb922fae4e3d3bd4d6bd",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "crates/petunia_design_resources/src/lib.rs",
+      "snapshot_sha256": "b9463d7ed1be2d6ab487e3b1d52dd7b4d977ec792cff7771bdc110f13bc35348",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "crates/petunia_design_application/src/session.rs",
+      "snapshot_sha256": "24ef7f6edfd0e90ac7fcb6db74603e96a94e44065aa45ab1f9b3ba9da9f004f7",
+      "matches_live_at_report_time": false
+    },
+    {
+      "path": "crates/petunia_design_application/src/export_service.rs",
+      "snapshot_sha256": "9abd82cd4851d46b5041acbf5741b3c61c64f799083b419a3f2ad86d459da555",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "crates/petunia_design_application/src/raster_edit.rs",
+      "snapshot_sha256": "40a3abbfcf66027d984c890ecde15776042b0180d96eaae3845150d557a8ede7",
+      "matches_live_at_report_time": false
+    },
+    {
+      "path": "crates/petunia_design_raster/src/image_cache.rs",
+      "snapshot_sha256": "344015bc87088d8625c79bee01f00ce60bfc5351f348bf584670b212fddda8bc",
+      "matches_live_at_report_time": true
+    },
+    {
+      "path": "crates/petunia_design_io/src/image_io.rs",
+      "snapshot_sha256": "6a6b7921bf87c84020b5c7843a6527f4e231a0453a40212e032bb1eff0ece61d",
+      "matches_live_at_report_time": true
+    }
+  ],
+  "checks": [
+    {
+      "name": "desktop_all_targets",
+      "status": "passed",
+      "log": "/workspace/petunia-uiux-2026-10-01/implementation/checks/petunia-ui-all.log",
+      "sha256": "b05098d04adde8d6bebba62d4319b93f7038cbcfdec762b599fef1ba2ac44b04"
+    },
+    {
+      "name": "resource_catalog",
+      "status": "passed",
+      "log": "/workspace/petunia-uiux-2026-10-01/implementation/checks/petunia-ui-i18n.log",
+      "sha256": "7a6b9d0105a3edd9cc346056ac71b5545d058045f781f220bf6de05f57121270"
+    },
+    {
+      "name": "app_clippy",
+      "status": "passed",
+      "log": "/workspace/petunia-uiux-2026-10-01/implementation/checks/petunia-ui-clippy.log",
+      "sha256": "20f770cbe28ffce6820ecb7f5a61248dd4c0ee24e5d748705012b88d82828607"
+    },
+    {
+      "name": "headless_screenshots",
+      "status": "passed",
+      "log": "/workspace/petunia-uiux-2026-10-01/implementation/checks/petunia-ui-screenshots.log",
+      "sha256": "3da3405280d4756cf635a4591b0002e8b97549db0f3d6fe18e6fd464ca204a6c"
+    },
+    {
+      "name": "rustfmt_selected_sources",
+      "status": "passed"
+    },
+    {
+      "name": "documentation_parity",
+      "status": "passed",
+      "canonical_pages": 28,
+      "pt_mirrors": 28
+    },
+    {
+      "name": "documentation_build",
+      "status": "passed",
+      "log": "/workspace/petunia-uiux-2026-10-01/implementation/checks/petunia-ui-docs.log",
+      "sha256": "3ec8a64d9fbde14267bab32ef9d7e9e02cfc677dd10ca92a58b21cf715e04bf2"
+    }
+  ],
+  "test_count_note": "Desktop test binaries include the file_workflows unit module twice: 45 binary tests plus 19 integration executions = 64 executions / 58 distinct cases; one additional localization case. The new regression set has 15 distinct cases.",
+  "screenshots": [
+    "/workspace/petunia-uiux-2026-10-01/implementation/new-document.png",
+    "/workspace/petunia-uiux-2026-10-01/implementation/open-document.png"
+  ],
+  "compile_prerequisites": [
+    "explicit [f32; 4] RGBA type",
+    "Arc<Vec<u8>>/Vec<u8> tile adapters",
+    "optional bounds for a raster object command",
+    "PixelFill desktop metadata",
+    "existing GUI callback arity exemptions and fixed-size RGBA chunk iteration"
+  ],
+  "limitations": [
+    "Native Linux portal/Zenity and dialog parenting not tested",
+    "AT-SPI, screen-reader focus trapping and real IME not tested",
+    "Save/export still synchronous after destination confirmation",
+    "File action payloads require UTF-8 paths; invalid native paths fail explicitly without changing the session",
+    "Whole-MVP workspace verify/migration/conformance not executed",
+    "One raster-layer dependency emits an unused-variable warning; app Clippy uses --no-deps",
+    "The remainder of the UI/UX audit and MVP/V1 release gates remain open"
+  ],
+  "microcontext": {
+    "capabilities": [
+      "native path selection",
+      "manual path fallback",
+      "stable-target save/close",
+      "PNG DPI/scope",
+      "EN/PT file prompts"
+    ],
+    "invariants": [
+      "No mutation on prompt open/cancel",
+      "No close after failed save",
+      "No save to a replacement session",
+      "Resolve effective suffix before overwrite decision",
+      "File popups own typing; native-picker results only fill a field"
+    ]
+  },
+  "prumo_cli": "not installed in this environment; microcontext and evidence recorded locally without installing additional tooling",
+  "commands": {
+    "desktop_all_targets": "cargo test -p petunia-design --all-targets -- --test-threads=1",
+    "resource_catalog": "cargo test -p petunia_design_resources file_workflow_strings::tests -- --test-threads=1",
+    "app_clippy": "cargo clippy -p petunia-design --all-targets --no-deps -- -D warnings",
+    "documentation_build": "vitepress build docs",
+    "documentation_parity": "node scripts/check-i18n.js"
+  }
+}

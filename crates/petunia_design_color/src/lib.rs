@@ -17,3 +17,5 @@ pub use proof::{
 };
 pub use transform::{convert_for_display, transform_via_profile};
 pub use value::{Cmyk, ColorValue, Lab, Srgb};
+
+pub mod rgb_profiles;

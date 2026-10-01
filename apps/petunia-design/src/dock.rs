@@ -128,7 +128,7 @@ fn tab_button(
 
 fn layers_tab(ui: UiShell) -> impl IntoElement {
     let shell = ui.shell;
-    let layers_model = shell.peek().query_layers();
+    let layers_model = shell.read().query_layers();
     let total_rows = layers_model.rows.len();
 
     let mut shell_for_group = shell;
@@ -233,8 +233,7 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                     let mut shell_for_lock = shell;
                     let mut shell_for_up = shell;
                     let mut shell_for_down = shell;
-                    let mut shell_for_rename = shell;
-                    let current_name = name.clone();
+                    let rename_ui = ui.clone();
 
                     rect()
                         .direction(Direction::Horizontal)
@@ -291,7 +290,8 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                                 .child(
                                     rect()
                                         .padding(Gaps::new_all(2.))
-                                        .on_press(move |_| {
+                                        .on_press(move |event: Event<PressEventData>| {
+                                            event.stop_propagation();
                                             let surf = shell_for_up.peek().bridge.active_surface();
                                             if let Some(surf) = surf {
                                                 let _ = LayersPanelController::new().arrange_row(
@@ -312,7 +312,8 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                                 .child(
                                     rect()
                                         .padding(Gaps::new_all(2.))
-                                        .on_press(move |_| {
+                                        .on_press(move |event: Event<PressEventData>| {
+                                            event.stop_propagation();
                                             let surf = shell_for_down.peek().bridge.active_surface();
                                             if let Some(surf) = surf {
                                                 let _ = LayersPanelController::new().arrange_row(
@@ -331,30 +332,22 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                                         ),
                                 )
                                 .child(
-                                    rect()
-                                        .padding(Gaps::new_all(2.))
-                                        .on_press(move |_| {
-                                            let new_name = if current_name.ends_with(" *") {
-                                                current_name.trim_end_matches(" *").to_string()
-                                            } else {
-                                                format!("{} *", current_name)
-                                            };
-                                            let _ = LayersPanelController::new().rename_row(
-                                                &mut shell_for_rename.write().bridge,
-                                                id,
-                                                new_name,
-                                            );
+                                    Button::new().compact()
+                                        .on_press(move |event: Event<PressEventData>| {
+                                            event.stop_propagation();
+                                            crate::object_edit_dialog::request(&rename_ui, id, crate::object_edits::EditKind::Name);
                                         })
                                         .child(
                                             label()
-                                                .text("✏️")
+                                                .text(ui.text("edit_name"))
                                                 .font_size(10.),
                                         ),
                                 )
                                 .child(
                                     rect()
                                         .padding(Gaps::new_all(2.))
-                                        .on_press(move |_| {
+                                        .on_press(move |event: Event<PressEventData>| {
+                                            event.stop_propagation();
                                             let _ = LayersPanelController::new().toggle_visibility(
                                                 &mut shell_for_vis.write().bridge,
                                                 id,
@@ -369,7 +362,8 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                                 .child(
                                     rect()
                                         .padding(Gaps::new_all(2.))
-                                        .on_press(move |_| {
+                                        .on_press(move |event: Event<PressEventData>| {
+                                            event.stop_propagation();
                                             let _ = LayersPanelController::new().toggle_lock(
                                                 &mut shell_for_lock.write().bridge,
                                                 id,
@@ -392,7 +386,7 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
 
 fn properties_tab(ui: UiShell) -> impl IntoElement {
     let shell = ui.shell;
-    let props = shell.peek().bridge.query_properties();
+    let props = shell.read().bridge.query_properties();
     let sel = shell.peek().bridge.selection();
 
     if props.selection_empty {
@@ -437,19 +431,14 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
             .cloned()
     });
 
-    let (is_text, text_content, font_size) = if let Some(ref obj) = selected_obj {
-        if let Some(ShapeKind::Text {
-            ref content,
-            font_size,
-            ..
-        }) = obj.shape
-        {
-            (true, content.clone(), font_size)
+    let (is_text, font_size) = if let Some(ref obj) = selected_obj {
+        if let Some(ShapeKind::Text { font_size, .. }) = obj.shape {
+            (true, font_size)
         } else {
-            (false, String::new(), 16.0)
+            (false, 16.0)
         }
     } else {
-        (false, String::new(), 16.0)
+        (false, 16.0)
     };
 
     let star_params = selected_obj.as_ref().and_then(|obj| {
@@ -589,131 +578,27 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                 .child(value_pill("W", format!("{:.1}", w)))
                 .child(value_pill("H", format!("{:.1}", h))),
         )
-        .child(
-            // Quick nudge/resize buttons
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::fill())
-                .main_align(Alignment::SpaceBetween)
-                .child(nudge_button(shell, first_id, "W -10", -10.0, 0.0, -10.0, 0.0))
-                .child(nudge_button(shell, first_id, "W +10", 0.0, 0.0, 10.0, 0.0))
-                .child(nudge_button(shell, first_id, "H -10", 0.0, -10.0, 0.0, -10.0))
-                .child(nudge_button(shell, first_id, "H +10", 0.0, 0.0, 0.0, 10.0)),
-        )
-        .maybe(is_text, |el| {
-            let mut edit_content = ui.text_edit_content;
-            if edit_content.read().is_empty() && !text_content.is_empty() {
-                edit_content.set(text_content.clone());
-            }
-            let current_input = edit_content.read().clone();
-            let mut shell_for_text = shell;
-            let mut shell_for_size_down = shell;
-            let mut shell_for_size_up = shell;
-            let text_for_down = text_content.clone();
-            let text_for_up = text_content.clone();
-
-            el.child(section_header("TIPOGRAFIA & TEXTO"))
-                .child(
-                    rect()
-                        .direction(Direction::Vertical)
-                        .width(Size::fill())
-                        .spacing(theme::SPACE_1)
-                        .child(
-                            rect()
-                                .width(Size::fill())
-                                .child(Input::new(edit_content).placeholder("Digite o texto aqui...")),
-                        )
-                        .child(
-                            rect()
-                                .direction(Direction::Horizontal)
-                                .width(Size::fill())
-                                .main_align(Alignment::SpaceBetween)
-                                .cross_align(Alignment::Center)
-                                .child(
-                                    Button::new()
-                                        .on_press(move |_| {
-                                            if let Some(id) = first_id {
-                                                let shape = ShapeKind::Text {
-                                                    content: current_input.clone(),
-                                                    font_family: "Inter".to_string(),
-                                                    font_size,
-                                                    line_height: 1.2,
-                                                    letter_spacing: 0.0,
-                                                    on_path: None,
-                                                };
-                                                let _ = shell_for_text.write().bridge.submit_all(
-                                                    "Set text",
-                                                    vec![Command::SetShape {
-                                                        id,
-                                                        shape: Some(shape),
-                                                    }],
-                                                );
-                                            }
-                                        })
-                                        .child(label().text("Aplicar Texto").font_size(11.)),
-                                )
-                                .child(
-                                    rect()
-                                        .direction(Direction::Horizontal)
-                                        .spacing(theme::SPACE_1)
-                                        .cross_align(Alignment::Center)
-                                        .child(
-                                            Button::new()
-                                                .on_press(move |_| {
-                                                if let Some(id) = first_id {
-                                                    let new_size = (font_size - 4.0).max(8.0);
-                                                    let shape = ShapeKind::Text {
-                                                        content: text_for_down.clone(),
-                                                        font_family: "Inter".to_string(),
-                                                        font_size: new_size,
-                                                        line_height: 1.2,
-                                                        letter_spacing: 0.0,
-                                                        on_path: None,
-                                                    };
-                                                    let _ = shell_for_size_down.write().bridge.submit_all(
-                                                        "Set font size",
-                                                        vec![Command::SetShape {
-                                                            id,
-                                                            shape: Some(shape),
-                                                        }],
-                                                    );
-                                                }
-                                                })
-                                                .child(label().text("A-").font_size(11.)),
-                                        )
-                                        .child(
-                                            label()
-                                                .text(format!("{:.0}pt", font_size))
-                                                .font_size(12.)
-                                                .color(theme::TEXT_PRIMARY),
-                                        )
-                                        .child(
-                                            Button::new()
-                                                .on_press(move |_| {
-                                                if let Some(id) = first_id {
-                                                    let new_size = (font_size + 4.0).min(144.0);
-                                                    let shape = ShapeKind::Text {
-                                                        content: text_for_up.clone(),
-                                                        font_family: "Inter".to_string(),
-                                                        font_size: new_size,
-                                                        line_height: 1.2,
-                                                        letter_spacing: 0.0,
-                                                        on_path: None,
-                                                    };
-                                                    let _ = shell_for_size_up.write().bridge.submit_all(
-                                                        "Set font size",
-                                                        vec![Command::SetShape {
-                                                            id,
-                                                            shape: Some(shape),
-                                                        }],
-                                                    );
-                                                }
-                                                })
-                                                .child(label().text("A+").font_size(11.)),
-                                        ),
-                                ),
-                        ),
-                )
+        .child({
+            let transform_ui = ui.clone();
+            Button::new().enabled(sel.selected_ids.len() == 1 && obj_bounds.is_some())
+                .on_press(move |_| {
+                    if let Some(id) = first_id { crate::object_edit_dialog::request(&transform_ui, id, crate::object_edits::EditKind::Transform); }
+                }).child(ui.text("edit_transform"))
+        })
+        .maybe(sel.selected_ids.len() > 1, |el| el.child(label().text(ui.text("edit_single_selection")).color(theme::TEXT_SECONDARY)))
+        .maybe(is_text && sel.selected_ids.len() == 1, |el| {
+            let edit_ui = ui.clone();
+            let down_ui = ui.clone();
+            let up_ui = ui.clone();
+            el.child(section_header(ui.text("edit_typography")))
+                .maybe(first_id.is_some(), |el| el.child(crate::typography::TypographyControl(ui.clone(), first_id.unwrap())))
+                .child(Button::new().on_press(move |_| {
+                    if let Some(id) = first_id { crate::object_edit_dialog::request(&edit_ui, id, crate::object_edits::EditKind::Text); }
+                }).child(ui.text("edit_text")))
+                .child(rect().direction(Direction::Horizontal).spacing(theme::SPACE_2).cross_align(Alignment::Center)
+                    .child(Button::new().on_press(move |_| step_text_size(&down_ui, first_id, -4.)).child("A−"))
+                    .child(label().text(format!("{font_size:.1} pt")).color(theme::TEXT_PRIMARY))
+                    .child(Button::new().on_press(move |_| step_text_size(&up_ui, first_id, 4.)).child("A+")))
         })
         .child(
             // Section: Appearance
@@ -2464,9 +2349,9 @@ impl Component for NavigatorTab {
 // Helper Widgets
 // =========================================================================
 
-fn section_header(title: &'static str) -> impl IntoElement {
+fn section_header(title: impl Into<String>) -> impl IntoElement {
     label()
-        .text(title)
+        .text(title.into())
         .font_size(11.)
         .color(theme::TEXT_TERTIARY)
 }
@@ -2483,39 +2368,23 @@ fn value_pill(tag: &'static str, value: String) -> impl IntoElement {
         )
 }
 
-fn nudge_button(
-    mut shell: State<petunia_design_shell::PetuniaShell>,
-    target_id: Option<ObjectId>,
-    text: &'static str,
-    _dx: f64,
-    _dy: f64,
-    dw: f64,
-    dh: f64,
-) -> impl IntoElement {
-    Button::new()
-        .on_press(move |_| {
-            if let Some(id) = target_id {
-                let current_bounds = shell
-                    .peek()
-                    .bridge
-                    .session()
-                    .and_then(|s| s.find_object(id))
-                    .and_then(|o| o.bounds);
-                if let Some([x, y, w, h]) = current_bounds {
-                    let new_w = (w + dw).max(10.0);
-                    let new_h = (h + dh).max(10.0);
-                    let _ = shell.write().bridge.submit_all(
-                        "Set bounds",
-                        vec![Command::SetBounds {
-                            id,
-                            bounds: Some([x, y, new_w, new_h]),
-                            rotation: 0.0,
-                        }],
-                    );
-                }
-            }
-        })
-        .child(label().text(text).font_size(10.))
+fn step_text_size(ui: &UiShell, target_id: Option<ObjectId>, delta: f64) {
+    let Some(id) = target_id else {
+        return;
+    };
+    let target = crate::object_edits::ObjectEdit::capture(
+        &ui.shell.peek(),
+        id,
+        crate::object_edits::EditKind::Text,
+    );
+    let result = target.and_then(|target| {
+        crate::object_edits::step_font_size(&mut ui.shell.clone().write(), &target, delta)
+    });
+    if let Err(reason) = result {
+        ui.file_error
+            .clone()
+            .set(Some(crate::object_edit_dialog::failure_text(ui, reason)));
+    }
 }
 
 fn opacity_button(
@@ -2550,14 +2419,16 @@ fn stroke_button(
                     .bridge
                     .session()
                     .and_then(|s| s.find_object(id))
-                    .map(|o| o.stroke_width)
-                    .unwrap_or(1.0);
+                    .map(|o| (o.stroke_width, o.stroke.clone()));
+                let Some((current, stroke)) = current else {
+                    return;
+                };
                 let new_width = (current + delta).max(0.0);
                 let _ = shell.write().bridge.submit_all(
                     "Set stroke width",
                     vec![Command::SetStroke {
                         id,
-                        stroke: Some("ptnd.gray/900".to_string()),
+                        stroke,
                         width: new_width,
                     }],
                 );
@@ -4604,7 +4475,13 @@ pub fn compute_histogram_bins(
                     let level = &image.levels()[0];
                     let total = level.premultiplied_rgba8().len() / 4;
                     let stride = total.div_ceil(500).max(1);
-                    for pixel in level.premultiplied_rgba8().chunks_exact(4).step_by(stride) {
+                    for pixel in level
+                        .premultiplied_rgba8()
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .step_by(stride)
+                    {
                         if pixel[3] > 12 {
                             let unassociate = 255.0 / f64::from(pixel[3]);
                             sampled.push((
@@ -6108,6 +5985,7 @@ mod tests {
             hardness: 0.5,
             flow: 0.8,
             opacity: 0.9,
+            color: default_brush.color,
         };
         shell
             .tools

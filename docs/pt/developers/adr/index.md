@@ -10,6 +10,11 @@ Decisões são documentação de primeira classe. Cada ADR registra contexto, de
 | [ADR-004](/pt/developers/adr/ADR-004-render-snapshots-and-workers) | Snapshots vetoriais imutáveis e workers limitados | Contrato aceito · Milestone Required · validação pendente |
 | [ADR-005](/pt/developers/adr/ADR-005-immutable-image-assets) | Fontes de imagem imutáveis, decoding limitado e pirâmides compartilhadas | Contrato aceito · Milestone Required · validação pendente |
 | [ADR-006](/pt/developers/adr/ADR-006-shaped-text-and-canvas-preview) | Contornos de texto com shaping e apresentação da última prévia solicitada | Contrato aceito · Milestone Required · validação pendente |
+| [ADR-007](/pt/developers/adr/ADR-007-desktop-file-workflows) | Adaptador desktop de fluxos de arquivos | Accepted contract · Milestone Required · see bounded UI checks |
+
+| [ADR-008](/pt/developers/adr/ADR-008-object-edit-drafts) | Rascunhos estáveis de edição de objetos | Accepted contract · Milestone Required · bounded UI checks |
+
+| [ADR-009](/pt/developers/adr/ADR-009-persistent-raster-and-native-workflows) | Raster persistente, recursos binários e fluxos nativos | Contrato aceito · Milestone Required · validação pendente |
 
 ## Como escrever um novo ADR
 
