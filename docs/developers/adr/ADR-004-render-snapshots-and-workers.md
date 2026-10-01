@@ -6,6 +6,8 @@
 
 **Image extension:** [ADR-005](/developers/adr/ADR-005-immutable-image-assets) supplies the bounded decoded-image/cache and CPU composition adapters previously unavailable here. Image statements below describe the original ADR-004 wave; glyph runs, async GUI scene presentation and tile workers remain pending.
 
+**Text/presentation extension:** [ADR-006](/developers/adr/ADR-006-shaped-text-and-canvas-preview) adds prepared shaped outlines and shared CPU canvas presentation. The pending statements below record this ADR’s original wave; current remaining scope/evidence is in the execution ledger.
+
 ## Context
 
 The previous CPU compositor painted object bounds, sampled a single gradient color and approximated shadows by rectangles. Flat traversal lost ancestor transforms and group isolation. PNG export allocated a buffer extending from the pasteboard origin to a surface and then cropped it; negative origins lost artwork and large positive origins multiplied memory use. The job manager recorded lifecycle states without executing work.

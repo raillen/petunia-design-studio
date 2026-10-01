@@ -20,6 +20,13 @@ const files = [
   'crates/petunia_design_application/src/history.rs',
   'crates/petunia_design_application/src/commands.rs',
   'crates/petunia_design_application/src/background_render.rs',
+  'crates/petunia_design_application/src/preview.rs',
+  'crates/petunia_design_shell/src/canvas/snapshot.rs',
+  'crates/petunia_design_text/Cargo.toml',
+  'crates/petunia_design_text/src/outlines.rs',
+  'crates/petunia_design_geometry/src/path.rs',
+  'crates/petunia_design_text/src/fonts.rs',
+  'apps/petunia-design/src/canvas_preview.rs',
   'crates/petunia_design_application/src/session.rs',
   'apps/petunia-design/src/canvas_paint.rs',
   'apps/petunia-design/src/dock.rs',
@@ -52,6 +59,10 @@ const tests = [
   'crates/petunia_design_application/tests/correctness_regressions.rs',
   'crates/petunia_design_application/tests/transaction_regressions.rs',
   'crates/petunia_design_application/tests/background_render.rs',
+  'crates/petunia_design_application/tests/preview.rs',
+  'crates/petunia_design_text/tests/outlines.rs',
+  'crates/petunia_design_geometry/tests/contour_orientation.rs',
+  'crates/petunia_design_render/tests/text_rendering.rs',
   'crates/petunia_design_application/tests/image_placement.rs',
   'crates/petunia_design_document/tests/color_input_regressions.rs',
   'crates/petunia_design_document/tests/path_frame_regressions.rs',
@@ -75,7 +86,7 @@ const tests = [
   'crates/petunia_design_testkit/src/bin/canvas_benchmark.rs',
 ];
 const reference = {
-  contract: 'ADR-005', related_contracts: ['ADR-004', 'ADR-003', 'ADR-002'], scope: 'Milestone Required',
+  contract: 'ADR-006', related_contracts: ['ADR-005', 'ADR-004', 'ADR-003', 'ADR-002'], scope: 'Milestone Required',
   schema_version: Number(read(files[0]).match(/NATIVE_SCHEMA_VERSION: u32 = (\d+)/)[1]),
   rust_toolchain: read('rust-toolchain.toml').match(/channel = "([^"]+)"/)[1],
   gui: { runtime: 'Freya/Skia', version: read('apps/petunia-design/Cargo.toml').match(/freya\s*=\s*"([^"]+)"/)?.[1] ?? 'see Cargo.lock' },
@@ -83,8 +94,8 @@ const reference = {
   tests: tests.map((file) => ({ path: file, count: [...read(file).matchAll(/#\[test\]/g)].length })),
   validation_results: 'checks.json',
   current_validation_status: 'not_run; user deferred validation until all MVP features are implemented',
-  integration_regressions: [{ path: 'crates/petunia_design_shell/tests/tools_test.rs', cases: ['perspective_drag_on_rotated_object_preserves_untouched_world_corners'] }],
-  limitations: ['Immutable paths/encoded sources are shared and decoded display pyramids are cached; document containers/binary resources still need COW/packaging.', 'Images and spatial opacity are implemented in CPU/PNG; GUI uses the image cache/transform/opacity adapter but full scene parity and async cold preparation remain pending. Current implementation is unvalidated.', 'World-axis-aligned crop on a rotated object requires a polygon mask, which is not implemented.', 'The benchmark measures snapshot queries, not painted frames.', 'MVP and V1 release gates remain open.'],
+  integration_regressions: [{ path: 'crates/petunia_design_shell/tests/tools_test.rs', cases: ['perspective_drag_on_rotated_object_preserves_untouched_world_corners'] }, { path: 'crates/petunia_design_shell/tests/bridge_test.rs', cases: ['preview_source_is_shared_across_selection_and_camera_changes', 'preview_source_changes_on_revision_and_session_replacement'] }],
+  limitations: ['Immutable paths/encoded sources are shared and decoded display pyramids are cached; document containers/binary resources still need COW/packaging.', 'Canvas now presents shared CPU-composed previews in workers, including shaped uniform-style text and images. Remaining text/style/editing/capability adapters, import admission workers, tiled presentation and acceptance are pending; current implementation is unvalidated.', 'World-axis-aligned crop on a rotated object requires a polygon mask, which is not implemented.', 'The benchmark measures snapshot queries, not painted frames.', 'MVP and V1 release gates remain open.'],
 };
 const output = path.join(root, 'docs/public/implementation/contracts.json');
 const content = JSON.stringify(reference, null, 2) + '\n';

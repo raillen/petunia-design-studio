@@ -150,3 +150,33 @@ fn invalid_executor_configuration_returns_an_error() {
         Err(JobFailure::InvalidConfiguration)
     ));
 }
+
+#[test]
+fn cancelling_queued_work_releases_admission_before_worker_is_available() {
+    let executor = JobExecutor::new(1, 1, JobManager::new()).unwrap();
+    let (started_tx, started_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let active = executor
+        .submit("active", 1, move |_| {
+            started_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+            Ok(())
+        })
+        .unwrap();
+    started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    let obsolete = executor.submit("obsolete", 1, |_| Ok(1u32)).unwrap();
+    drop(obsolete);
+    let fresh = executor.submit("fresh", 1, |_| Ok(2u32)).unwrap();
+    release_tx.send(()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(value) = fresh.try_result(1).unwrap() {
+            assert_eq!(value, 2);
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::yield_now();
+    }
+    drop(active);
+    executor.shutdown_and_join();
+}

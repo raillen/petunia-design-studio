@@ -8,6 +8,7 @@
 mod actions;
 mod appearance;
 mod canvas_paint;
+mod canvas_preview;
 mod chrome;
 mod dialogs;
 mod dock;
@@ -254,6 +255,11 @@ impl Component for Workspace {
         let mut is_pointer_down = use_state(|| false);
         let a11y_id = use_a11y();
         let snapshot = shell.read().canvas_snapshot();
+        let (preview, preview_error) = canvas_preview::use_canvas_preview(
+            &snapshot,
+            *self.0.channel_view.read(),
+            *self.0.soft_proof.read(),
+        );
         let cursor_icon = map_cursor_affordance(snapshot.overlays.cursor);
         let in_flight_guide = *ruler_drag.read();
 
@@ -382,6 +388,7 @@ impl Component for Workspace {
                     in_flight_guide,
                     *self.0.soft_proof.read(),
                     *self.0.channel_view.read(),
+                    preview,
                 )
                 .on_pointer_down({
                     move |event| {
@@ -495,6 +502,17 @@ impl Component for Workspace {
                 }),
             );
 
+        if let Some(error) = preview_error {
+            let prefix = {
+                let shell = shell.read();
+                shell.bridge.localization().text(
+                    "ptnd.text.canvas.preview_unavailable",
+                    shell.bridge.locale(),
+                )
+            };
+            workspace_container = workspace_container
+                .child(label().text(format!("{prefix}: {error}")).font_size(12.0));
+        }
         if let Some(editor) = active_text_editor {
             workspace_container = workspace_container.child(editor);
         }

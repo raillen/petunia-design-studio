@@ -9,6 +9,7 @@ Decisões são documentação de primeira classe. Cada ADR registra contexto, de
 | [ADR-003](/pt/developers/adr/ADR-003-local-modifier-frames) | Frames locais persistentes, schema 3 e bake que preserva aparência | Aceito · Milestone Required |
 | [ADR-004](/pt/developers/adr/ADR-004-render-snapshots-and-workers) | Snapshots vetoriais imutáveis e workers limitados | Contrato aceito · Milestone Required · validação pendente |
 | [ADR-005](/pt/developers/adr/ADR-005-immutable-image-assets) | Fontes de imagem imutáveis, decoding limitado e pirâmides compartilhadas | Contrato aceito · Milestone Required · validação pendente |
+| [ADR-006](/pt/developers/adr/ADR-006-shaped-text-and-canvas-preview) | Contornos de texto com shaping e apresentação da última prévia solicitada | Contrato aceito · Milestone Required · validação pendente |
 
 ## Como escrever um novo ADR
 

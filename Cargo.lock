@@ -3458,6 +3458,7 @@ dependencies = [
  "petunia_design_geometry",
  "petunia_design_jobs",
  "petunia_design_raster",
+ "petunia_design_text",
  "proptest",
  "serde",
  "thiserror 2.0.20",
@@ -3514,11 +3515,14 @@ name = "petunia_design_text"
 version = "0.1.0"
 dependencies = [
  "cosmic-text",
+ "fontdb",
  "petunia_design_color",
  "petunia_design_foundation",
  "petunia_design_geometry",
  "serde",
  "serde_json",
+ "thiserror 2.0.20",
+ "ttf-parser",
 ]
 
 [[package]]

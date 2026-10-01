@@ -4,6 +4,8 @@
 **Date:** 2026-10-01  
 **Scope:** Milestone Required (MVP)
 
+**Text/presentation extension:** [ADR-006](/developers/adr/ADR-006-shaped-text-and-canvas-preview) adds prepared shaped outlines and shared CPU canvas presentation. The pending statements below record this ADR’s original wave; current remaining scope/evidence is in the execution ledger.
+
 ## Context
 
 Image placement swallowed file/codec errors, consumed IDs and created a default rectangle without a valid source. The raw importer checked decoded dimensions after decoding and truncated gray/gray-alpha 16-bit inputs to 8 bits. Canvas painting decoded compressed bytes or read the source path on every paint, ignored rotation/opacity and enlarged small images to a minimum of ten screen pixels. CPU export rejected all image objects. The histogram decoded the source repeatedly and had no 16-bit display path.

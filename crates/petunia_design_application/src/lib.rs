@@ -20,6 +20,7 @@ mod history;
 pub mod interaction;
 pub mod menus;
 pub mod ports;
+pub mod preview;
 pub mod selection_mask;
 pub mod session;
 pub mod spatial_index;

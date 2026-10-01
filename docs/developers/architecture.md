@@ -4,6 +4,8 @@ C4-style view of Petunia Design Studio: contexts, containers, components and the
 
 Current persistence and publication contract: [ADR-002](/developers/adr/ADR-002-local-path-and-integrity), with [generated source/test reference](/implementation/contracts.json). The [execution ledger](/developers/implementation-progress) distinguishes implemented corrections from pending milestones.
 
+Shared rendering/presentation: [ADR-006](/developers/adr/ADR-006-shaped-text-and-canvas-preview) connects shaped glyph outlines and immutable source-keyed workers to the canvas. Pixel output is unvalidated; text editing/styles, tiles and full product acceptance remain open.
+
 ## Level 1 — System context
 
 ```mermaid

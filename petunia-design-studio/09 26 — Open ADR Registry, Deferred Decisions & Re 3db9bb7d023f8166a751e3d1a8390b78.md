@@ -64,3 +64,7 @@ An unresolved item must state: current safe behavior, alternatives/constraint sp
 # Closing future items
 
 Once accepted, update the relevant canonical architecture/functionality pages and add the decision to this history. Never silently delete context.
+
+## MVP text/canvas continuation — 2026-10-01
+
+Scope: Milestone Required. ADR-006 (`docs/developers/adr/ADR-006-shaped-text-and-canvas-preview.md`, synchronized pt-BR mirror) adds advanced uniform-style shaped TTF/CFF outlines, bounded prepared-text caching/nonzero glyph coverage and editable source preservation. Canvas artwork now comes from shared CPU composition in bounded workers, with immutable source identity and complete latest-request publication checks across tabs/cameras/channels; GUI retains one upload and interactive overlays. Indexed job metadata keeps 256 terminal records and canceled queued work releases admission immediately. Flat/default-font artwork painting and per-image uploads were removed. This supersedes prior pending canvas/glyph-preparation descriptions, without completing M1/M2 or changing schema 3. Text-on-path/color/variable adapters, editing/IME/styles/hit-testing, import admission workers, total budgets, persistent bitmap/resources/COW/recovery and Linux/product acceptance remain open; ICC/CMYK/PDF remain V1 Required. All new source is UNVALIDATED under the user's deferred-gate policy; 34 regression cases are prepared, not executed.

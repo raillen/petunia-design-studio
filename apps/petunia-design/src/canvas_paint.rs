@@ -1,99 +1,17 @@
-//! Single-pass vector painting for the canvas.
+//! Presentation of composed CPU previews and interactive canvas overlays.
 //!
-//! The previous adapter drew one `rect()` per object from its bounds, so a star,
-//! a polygon and a Bézier path all rendered as plain rectangles. This module
-//! paints the evaluated world outline instead, inside one Freya `Canvas` paint
-//! callback, so the cost is one pass over the scene rather than a widget tree
-//! per object.
+//! Artwork arrives as one immutable composed frame; rulers, selection and
+//! gesture previews remain interactive Skia overlays.
 //!
 //! Presentation only: it reads the toolkit-neutral `CanvasSnapshot` and never
 //! mutates the document or reaches into domain state.
 
 use freya::prelude::*;
 use freya_engine::prelude::{
-    AlphaType, BlurStyle, Canvas as SkiaCanvas, Color, ColorSpace, ColorType, Data, FilterMode,
-    Font, Image, ImageInfo, MaskFilter, Matrix, Paint, PaintStyle, Path, PathBuilder, Point,
+    Canvas as SkiaCanvas, Color, FilterMode, Font, Paint, PaintStyle, Path, PathBuilder, Point,
     Rect as SkRect,
 };
 use petunia_design_geometry::{GPath, GPoint, PathVerb};
-
-#[allow(deprecated)]
-fn make_skia_image_from_rgba8(width: i32, height: i32, data: &[u8]) -> Option<Image> {
-    let info = ImageInfo::new(
-        (width, height),
-        ColorType::RGBA8888,
-        AlphaType::Unpremul,
-        None,
-    );
-    let bytes = Data::new_copy(data);
-    Image::from_raster_data(&info, bytes, (width * 4) as usize)
-}
-
-/// Paints a 128x128 sparse CPU raster tile onto the Skia canvas.
-#[allow(dead_code, deprecated)]
-pub fn paint_raster_tile(
-    canvas: &SkiaCanvas,
-    tile: &petunia_design_raster::Tile,
-    camera: &ViewportCamera,
-    adjustments: &[petunia_design_document::adjustments::AdjustmentItem],
-    soft_proof: bool,
-    channel_view: usize,
-) {
-    let mut rgba8 = match tile.format {
-        petunia_design_raster::PixelFormat::Rgba8
-            if tile.alpha_mode == petunia_design_raster::AlphaMode::Straight =>
-        {
-            tile.data.clone()
-        }
-        _ => {
-            let mut out = Vec::with_capacity(
-                petunia_design_raster::TILE_SIZE * petunia_design_raster::TILE_SIZE * 4,
-            );
-            for y in 0..petunia_design_raster::TILE_SIZE {
-                for x in 0..petunia_design_raster::TILE_SIZE {
-                    let [r, g, b, a] = tile.get_pixel_normalized(x, y);
-                    out.push((r * 255.0).round() as u8);
-                    out.push((g * 255.0).round() as u8);
-                    out.push((b * 255.0).round() as u8);
-                    out.push((a * 255.0).round() as u8);
-                }
-            }
-            out
-        }
-    };
-    if !adjustments.is_empty() || soft_proof || channel_view != 0 {
-        for chunk in rgba8.as_chunks_mut::<4>().0 {
-            let mut rgb = [
-                chunk[0] as f32 / 255.0,
-                chunk[1] as f32 / 255.0,
-                chunk[2] as f32 / 255.0,
-            ];
-            let a = chunk[3] as f32 / 255.0;
-            if !adjustments.is_empty() {
-                rgb =
-                    petunia_design_document::adjustments::apply_adjustment_chain(rgb, adjustments);
-            }
-            let (r, g, b, a_out) =
-                apply_color_proof_and_channels(rgb[0], rgb[1], rgb[2], a, soft_proof, channel_view);
-            chunk[0] = (r.clamp(0.0, 1.0) * 255.0).round() as u8;
-            chunk[1] = (g.clamp(0.0, 1.0) * 255.0).round() as u8;
-            chunk[2] = (b.clamp(0.0, 1.0) * 255.0).round() as u8;
-            chunk[3] = (a_out.clamp(0.0, 1.0) * 255.0).round() as u8;
-        }
-    }
-    let Some(image) = make_skia_image_from_rgba8(
-        petunia_design_raster::TILE_SIZE as i32,
-        petunia_design_raster::TILE_SIZE as i32,
-        &rgba8,
-    ) else {
-        return;
-    };
-    let bounds = tile.coord.bounds();
-    let tl = camera.doc_to_screen(GPoint::new(bounds.x0, bounds.y0));
-    let br = camera.doc_to_screen(GPoint::new(bounds.x1, bounds.y1));
-    let dst = SkRect::new(tl.x as f32, tl.y as f32, br.x as f32, br.y as f32);
-    canvas.draw_image_rect(&image, None, dst, &Paint::default());
-}
 
 /// Paints a single raster brush dab stamp onto the Skia canvas.
 fn paint_brush_dab(
@@ -120,8 +38,8 @@ fn paint_brush_dab(
     canvas.draw_path(&circ.detach(), &paint);
 }
 use petunia_design_shell::canvas::{
-    CanvasObjectProjection, CanvasOverlays, CanvasSnapshot, GradientOverlay, SelectionHandle,
-    SelectionHandleKind, SnapOrientation, SurfaceView, ViewportCamera,
+    CanvasOverlays, CanvasSnapshot, GradientOverlay, SelectionHandle, SelectionHandleKind,
+    SnapOrientation, SurfaceView, ViewportCamera,
 };
 
 /// Screen-pixel size of a handle glyph. The hit box is larger and lives in
@@ -175,6 +93,7 @@ pub fn canvas_view(
     in_flight_guide: Option<(petunia_design_document::GuideOrientation, f64)>,
     soft_proof: bool,
     channel_view: usize,
+    preview: Option<crate::canvas_preview::PresentedPreview>,
 ) -> Canvas {
     let on_render = RenderCallback::new(move |context: &mut CanvasContext| {
         paint_scene(
@@ -183,6 +102,7 @@ pub fn canvas_view(
             in_flight_guide,
             soft_proof,
             channel_view,
+            preview.as_ref(),
         );
     });
     canvas(on_render).width(Size::fill()).height(Size::fill())
@@ -195,6 +115,7 @@ fn paint_scene(
     in_flight_guide: Option<(petunia_design_document::GuideOrientation, f64)>,
     soft_proof: bool,
     channel_view: usize,
+    preview: Option<&crate::canvas_preview::PresentedPreview>,
 ) {
     let canvas = context.canvas;
     paint_surface(
@@ -204,8 +125,32 @@ fn paint_scene(
         soft_proof,
         channel_view,
     );
-    for object in &snapshot.objects {
-        paint_object(canvas, object, &snapshot.camera, soft_proof, channel_view);
+    if let Some(preview) = preview {
+        let v = preview.viewport;
+        let a = snapshot.camera.doc_to_screen(GPoint::new(v.x0, v.y0));
+        let b = snapshot.camera.doc_to_screen(GPoint::new(v.x1, v.y1));
+        let dst = SkRect::new(a.x as f32, a.y as f32, b.x as f32, b.y as f32);
+        canvas.draw_image_rect_with_sampling_options(
+            &preview.image,
+            None,
+            dst,
+            FilterMode::Linear,
+            &Paint::default(),
+        );
+    }
+    for object in snapshot.objects.iter().filter(|object| object.active) {
+        let path = object.outline.as_deref().cloned().unwrap_or_else(|| {
+            GPath::rect(
+                petunia_design_geometry::GRect::new(0.0, 0.0, object.size[0], object.size[1]),
+                0.0,
+                0.0,
+            )
+            .transformed(object.world_transform)
+        });
+        canvas.draw_path(
+            &build_skia_path(&path, &snapshot.camera),
+            &outline_paint(ACCENT, 1.5),
+        );
     }
     paint_overlays(
         canvas,
@@ -290,236 +235,6 @@ fn paint_surface(
     );
 }
 
-/// Paints one object from its evaluated world outline.
-///
-/// Objects with no evaluable geometry are skipped rather than drawn as a proxy
-/// rectangle: a bounding box is not the artwork, and painting one reintroduces
-/// the very defect this module replaces.
-fn paint_object(
-    canvas: &SkiaCanvas,
-    object: &CanvasObjectProjection,
-    camera: &ViewportCamera,
-    soft_proof: bool,
-    channel_view: usize,
-) {
-    for tile in &object.raster_tiles {
-        paint_raster_tile(
-            canvas,
-            tile,
-            camera,
-            &object.adjustments,
-            soft_proof,
-            channel_view,
-        );
-    }
-    let opacity = object.opacity.clamp(0.0, 1.0) as f32;
-    if let Some(path) = object.outline.as_deref() {
-        let sk_path = build_skia_path(path, camera);
-        if !sk_path.is_empty() {
-            // Check for live Gaussian blur filter
-            let gaussian_blur_radius = object.effects.iter().find_map(|e| {
-                if e.visible {
-                    if let petunia_design_document::EffectKind::GaussianBlur { radius } = e.kind {
-                        if radius > 0.0 {
-                            return Some(radius);
-                        }
-                    }
-                }
-                None
-            });
-
-            // Render visible drop shadows behind the object
-            for effect in object.effects.iter() {
-                if !effect.visible {
-                    continue;
-                }
-                if let petunia_design_document::EffectKind::DropShadow {
-                    offset,
-                    blur,
-                    color,
-                    opacity: shadow_opacity,
-                } = &effect.kind
-                {
-                    let dx = (offset[0] * camera.zoom) as f32;
-                    let dy = (offset[1] * camera.zoom) as f32;
-                    let mut shadow_paint = Paint::default();
-                    shadow_paint.set_anti_alias(true);
-                    shadow_paint.set_style(PaintStyle::Fill);
-                    if *blur > 0.0 {
-                        let sigma = ((*blur * camera.zoom) as f32).max(0.5);
-                        shadow_paint.set_mask_filter(MaskFilter::blur(
-                            BlurStyle::Normal,
-                            sigma,
-                            None,
-                        ));
-                    }
-                    let final_opacity =
-                        (opacity * shadow_opacity.clamp(0.0, 1.0) as f32).clamp(0.0, 1.0);
-                    shadow_paint.set_color(resolve_color_with_adjustments(
-                        Some(color),
-                        final_opacity,
-                        &object.adjustments,
-                        soft_proof,
-                        channel_view,
-                    ));
-                    canvas.save();
-                    canvas.translate((dx, dy));
-                    canvas.draw_path(&sk_path, &shadow_paint);
-                    canvas.restore();
-                }
-            }
-            if let Some(fill_token) = object.fill.as_deref() {
-                let mut paint = Paint::default();
-                paint.set_anti_alias(true);
-                paint.set_style(PaintStyle::Fill);
-                if let Some(radius) = gaussian_blur_radius {
-                    let sigma = ((radius * camera.zoom) as f32).max(0.5);
-                    paint.set_mask_filter(MaskFilter::blur(BlurStyle::Normal, sigma, None));
-                }
-                paint.set_color(resolve_color_with_adjustments(
-                    Some(fill_token),
-                    opacity,
-                    &object.adjustments,
-                    soft_proof,
-                    channel_view,
-                ));
-                canvas.draw_path(&sk_path, &paint);
-            }
-            // Render visible inner shadows clipped to the object fill
-            for effect in object.effects.iter() {
-                if !effect.visible {
-                    continue;
-                }
-                if let petunia_design_document::EffectKind::InnerShadow {
-                    offset,
-                    blur,
-                    color,
-                    opacity: shadow_opacity,
-                } = &effect.kind
-                {
-                    let dx = (offset[0] * camera.zoom) as f32;
-                    let dy = (offset[1] * camera.zoom) as f32;
-                    let mut inner_paint = Paint::default();
-                    inner_paint.set_anti_alias(true);
-                    inner_paint.set_style(PaintStyle::Fill);
-                    if *blur > 0.0 {
-                        let sigma = ((*blur * camera.zoom) as f32).max(0.5);
-                        inner_paint.set_mask_filter(MaskFilter::blur(
-                            BlurStyle::Inner,
-                            sigma,
-                            None,
-                        ));
-                    }
-                    let final_opacity =
-                        (opacity * shadow_opacity.clamp(0.0, 1.0) as f32).clamp(0.0, 1.0);
-                    inner_paint.set_color(resolve_color_with_adjustments(
-                        Some(color),
-                        final_opacity,
-                        &object.adjustments,
-                        soft_proof,
-                        channel_view,
-                    ));
-                    canvas.save();
-                    canvas.clip_path(&sk_path, None, true);
-                    canvas.translate((dx, dy));
-                    canvas.draw_path(&sk_path, &inner_paint);
-                    canvas.restore();
-                }
-            }
-            if let Some(stroke_token) = object.stroke.as_deref() {
-                if object.stroke_width > 0.0 {
-                    let mut paint = Paint::default();
-                    paint.set_anti_alias(true);
-                    paint.set_style(PaintStyle::Stroke);
-                    if let Some(radius) = gaussian_blur_radius {
-                        let sigma = ((radius * camera.zoom) as f32).max(0.5);
-                        paint.set_mask_filter(MaskFilter::blur(BlurStyle::Normal, sigma, None));
-                    }
-                    let screen_width = (object.stroke_width * camera.zoom).max(1.0) as f32;
-                    paint.set_stroke_width(screen_width);
-                    paint.set_color(resolve_color_with_adjustments(
-                        Some(stroke_token),
-                        opacity,
-                        &object.adjustments,
-                        soft_proof,
-                        channel_view,
-                    ));
-                    canvas.draw_path(&sk_path, &paint);
-                }
-            }
-            if object.active {
-                let selection_paint = outline_paint(ACCENT, 1.5);
-                canvas.draw_path(&sk_path, &selection_paint);
-            }
-        }
-    } else if let Some(petunia_design_document::ShapeKind::Text { .. }) = object.shape.as_deref() {
-        paint_text_object(canvas, object, camera, opacity, soft_proof, channel_view);
-    } else if let Some(petunia_design_document::ShapeKind::Image { path, data }) =
-        object.shape.as_deref()
-    {
-        paint_image_object(canvas, object, path, data.as_deref(), camera, opacity);
-    }
-}
-
-/// Paints a text object with Skia string rendering.
-fn paint_text_object(
-    canvas: &SkiaCanvas,
-    object: &CanvasObjectProjection,
-    camera: &ViewportCamera,
-    opacity: f32,
-    soft_proof: bool,
-    channel_view: usize,
-) {
-    let Some(petunia_design_document::ShapeKind::Text {
-        content, font_size, ..
-    }) = object.shape.as_deref()
-    else {
-        return;
-    };
-    if content.is_empty() {
-        return;
-    }
-    let screen_origin =
-        camera.doc_to_screen(GPoint::new(object.frame_origin[0], object.frame_origin[1]));
-    canvas.save();
-    canvas.translate((screen_origin.x as f32, screen_origin.y as f32));
-    if object.rotation.abs() > f64::EPSILON {
-        canvas.rotate(
-            (object.rotation * 180.0 / std::f64::consts::PI) as f32,
-            None,
-        );
-    }
-    let screen_font_size = (*font_size * camera.zoom).max(6.0) as f32;
-    let mut font = Font::default();
-    font.set_size(screen_font_size);
-
-    let mut text_paint = Paint::default();
-    text_paint.set_anti_alias(true);
-    text_paint.set_style(PaintStyle::Fill);
-    let color_token = object.fill.as_deref().or(Some("ptnd.gray/900"));
-    text_paint.set_color(resolve_color_with_adjustments(
-        color_token,
-        opacity,
-        &object.adjustments,
-        soft_proof,
-        channel_view,
-    ));
-
-    canvas.draw_str(
-        content,
-        Point::new(0.0, screen_font_size * 0.8),
-        &font,
-        &text_paint,
-    );
-
-    if object.active {
-        let w = (object.size[0] * camera.zoom) as f32;
-        let h = (object.size[1] * camera.zoom) as f32;
-        canvas.draw_rect(SkRect::new(0.0, 0.0, w, h), &outline_paint(ACCENT, 1.5));
-    }
-    canvas.restore();
-}
-
 /// Builds a Skia path from world geometry projected to screen pixels.
 fn build_skia_path(path: &GPath, camera: &ViewportCamera) -> Path {
     let mut builder = PathBuilder::default();
@@ -547,39 +262,6 @@ fn build_skia_path(path: &GPath, camera: &ViewportCamera) -> Path {
         }
     }
     builder.detach()
-}
-
-/// Resolves a design-token into a Skia color with opacity and optional tonal adjustments (Spec 10.10).
-#[allow(dead_code)]
-fn resolve_color(token: Option<&str>, opacity: f32) -> Color {
-    resolve_color_with_adjustments(token, opacity, &[], false, 0)
-}
-
-/// Resolves a design-token and applies non-destructive tonal adjustments, soft-proofing and channel view.
-fn resolve_color_with_adjustments(
-    token: Option<&str>,
-    opacity: f32,
-    adjustments: &[petunia_design_document::adjustments::AdjustmentItem],
-    soft_proof: bool,
-    channel_view: usize,
-) -> Color {
-    let mut rgb = token.map_or(
-        [0.18, 0.5, 0.97],
-        petunia_design_document::resolve_color_to_rgb,
-    );
-    if !adjustments.is_empty() {
-        rgb = petunia_design_document::adjustments::apply_adjustment_chain(rgb, adjustments);
-    }
-    let (r, g, b, a) = apply_color_proof_and_channels(
-        rgb[0],
-        rgb[1],
-        rgb[2],
-        opacity.clamp(0.0, 1.0),
-        soft_proof,
-        channel_view,
-    );
-    let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
-    Color::from_argb(channel(a), channel(r), channel(g), channel(b))
 }
 
 /// Paints overlays in one ordered pass, above the artwork.
@@ -1344,143 +1026,6 @@ fn paint_handle(
     }
 }
 
-/// Thread-local Skia uploads. GPU/toolkit handles never enter domain crates.
-/// Only short-lived paint calls clone a handle; retained uploads are bounded.
-#[derive(Default)]
-struct ImageUploads {
-    entries: Vec<(petunia_design_raster::ImageContentKey, usize, Image, usize)>,
-    bytes: usize,
-}
-impl ImageUploads {
-    #[allow(deprecated)]
-    fn get(&mut self, image: &petunia_design_raster::PreparedImage, lod: usize) -> Option<Image> {
-        let key = image.content_key();
-        if let Some(index) = self.entries.iter().position(|e| e.0 == key && e.1 == lod) {
-            let entry = self.entries.remove(index);
-            let handle = entry.2.clone();
-            self.entries.push(entry);
-            return Some(handle);
-        }
-        const MAX_BYTES: usize = 64 * 1024 * 1024;
-        const MAX_ENTRIES: usize = 128;
-        let level = image.levels().get(lod)?;
-        let bytes = level.premultiplied_rgba8().len();
-        if bytes > MAX_BYTES {
-            return None;
-        }
-        while self.bytes + bytes > MAX_BYTES || self.entries.len() >= MAX_ENTRIES {
-            let evicted = self.entries.remove(0);
-            self.bytes -= evicted.3;
-        }
-        let info = ImageInfo::new(
-            (level.width() as i32, level.height() as i32),
-            ColorType::RGBA8888,
-            AlphaType::Premul,
-            ColorSpace::new_srgb(),
-        );
-        let handle = Image::from_raster_data(
-            &info,
-            Data::new_copy(level.premultiplied_rgba8()),
-            level.width() as usize * 4,
-        )?;
-        self.bytes += bytes;
-        self.entries.push((key, lod, handle.clone(), bytes));
-        Some(handle)
-    }
-}
-thread_local! {
-    static IMAGE_UPLOADS: std::cell::RefCell<ImageUploads> = std::cell::RefCell::new(ImageUploads::default());
-}
-
-/// Displays embedded originals through the shared bounded decoder. Painting
-/// never opens a file and never asks Skia to decode a compressed source again.
-fn paint_image_object(
-    canvas: &SkiaCanvas,
-    object: &CanvasObjectProjection,
-    path: &str,
-    data: Option<&petunia_design_raster::EncodedImage>,
-    camera: &ViewportCamera,
-    opacity: f32,
-) {
-    let [a, b, c, d, tx, ty] = object.world_transform.coeffs;
-    let zoom = camera.zoom;
-    let coefficients = [
-        a * zoom,
-        c * zoom,
-        tx * zoom + camera.pan_x,
-        b * zoom,
-        d * zoom,
-        ty * zoom + camera.pan_y,
-    ];
-    if !coefficients
-        .iter()
-        .all(|v| v.is_finite() && v.abs() <= f64::from(f32::MAX))
-        || !object
-            .size
-            .iter()
-            .all(|v| v.is_finite() && *v > 0.0 && *v <= f64::from(f32::MAX))
-    {
-        return;
-    }
-    let prepared = data.and_then(|source| {
-        petunia_design_raster::ImageCache::shared()
-            .prepare(source, &|| false)
-            .ok()
-    });
-    let handle = prepared.as_ref().and_then(|image| {
-        let sa = a * zoom * object.size[0] / f64::from(image.width());
-        let sb = b * zoom * object.size[0] / f64::from(image.width());
-        let sc = c * zoom * object.size[1] / f64::from(image.height());
-        let sd = d * zoom * object.size[1] / f64::from(image.height());
-        let scale = ((sa * sa
-            + sb * sb
-            + sc * sc
-            + sd * sd
-            + (sa * sa + sb * sb - sc * sc - sd * sd).hypot(2.0 * (sa * sc + sb * sd)))
-            * 0.5)
-            .sqrt();
-        IMAGE_UPLOADS.with(|cache| cache.borrow_mut().get(image, image.level_for_scale(scale)))
-    });
-    let dst = SkRect::new(0.0, 0.0, object.size[0] as f32, object.size[1] as f32);
-    canvas.save();
-    canvas.concat(&Matrix::new_all(
-        coefficients[0] as f32,
-        coefficients[1] as f32,
-        coefficients[2] as f32,
-        coefficients[3] as f32,
-        coefficients[4] as f32,
-        coefficients[5] as f32,
-        0.0,
-        0.0,
-        1.0,
-    ));
-    if let Some(img) = handle {
-        let mut paint = Paint::default();
-        paint.set_alpha_f(opacity.clamp(0.0, 1.0));
-        paint.set_anti_alias(true);
-        canvas.draw_image_rect_with_sampling_options(&img, None, dst, FilterMode::Linear, &paint);
-    } else {
-        let mut bg = Paint::default();
-        bg.set_color(Color::from_rgb(0xEB, 0xEE, 0xF5));
-        bg.set_alpha_f(opacity.clamp(0.0, 1.0));
-        canvas.draw_rect(dst, &bg);
-        let mut font = Font::default();
-        font.set_size((11.0 / zoom) as f32);
-        let mut text = Paint::default();
-        text.set_color(Color::from_rgb(0x37, 0x41, 0x51));
-        canvas.draw_str(
-            format!("🖼 {}", path),
-            Point::new((8.0 / zoom) as f32, (20.0 / zoom) as f32),
-            &font,
-            &text,
-        );
-    }
-    if object.active {
-        canvas.draw_rect(dst, &outline_paint(ACCENT, (1.5 / zoom) as f32));
-    }
-    canvas.restore();
-}
-
 /// Paints horizontal and vertical graduated rulers (ptnd.surface.canvas.rulers)
 fn paint_rulers(canvas: &SkiaCanvas, camera: &ViewportCamera) {
     let ruler_bg = Color::from_rgb(0x28, 0x2A, 0x2E);
@@ -1615,23 +1160,5 @@ mod tests {
         assert!(proofed.0 >= 0.0 && proofed.0 <= 1.0);
         assert!(proofed.1 >= 0.0 && proofed.1 <= 1.0);
         assert!(proofed.2 >= 0.0 && proofed.2 <= 1.0);
-    }
-
-    #[test]
-    fn test_resolve_color_with_proof_and_channels() {
-        let col_normal = resolve_color_with_adjustments(Some("ptnd.gray/900"), 1.0, &[], false, 0);
-        let col_red = resolve_color_with_adjustments(Some("ptnd.gray/900"), 1.0, &[], false, 1);
-        let col_alpha = resolve_color_with_adjustments(Some("ptnd.gray/900"), 0.5, &[], false, 4);
-
-        // Alpha channel view converts 50% opacity into a 50% gray opaque mask
-        assert_eq!(col_alpha.a(), 255);
-        assert_eq!(col_alpha.r(), 128);
-        assert_eq!(col_alpha.g(), 128);
-        assert_eq!(col_alpha.b(), 128);
-
-        // Red channel view renders identical R, G, B channels
-        assert_eq!(col_red.r(), col_red.g());
-        assert_eq!(col_red.g(), col_red.b());
-        assert_eq!(col_normal.a(), 255);
     }
 }

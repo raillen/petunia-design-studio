@@ -46,7 +46,7 @@ impl Default for RenderLimits {
 }
 
 /// Document region mapped directly to output dimensions; supports negative origins.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RenderRequest {
     /// Pasteboard region in points, independent of the window camera.
     pub viewport: GRect,
@@ -136,6 +136,17 @@ impl CpuRenderer {
         cancellation: &CancellationToken,
     ) -> Result<PixelBufferRgba8, RenderError> {
         self.render_internal(surface, request, None, Some(cancellation))
+    }
+
+    /// Composes against the preview backdrop with cooperative cancellation.
+    pub fn render_over_cancellable(
+        &self,
+        surface: &RenderSurface,
+        request: RenderRequest,
+        backdrop: &PixelBufferRgba8,
+        cancellation: &CancellationToken,
+    ) -> Result<PixelBufferRgba8, RenderError> {
+        self.render_internal(surface, request, Some(backdrop), Some(cancellation))
     }
 
     fn render_internal(
@@ -349,7 +360,6 @@ impl Context<'_> {
             return Err(unsupported("geometry modifiers on composed groups"));
         }
         match &node.source.shape {
-            Some(ShapeKind::Text { .. }) => return Err(unsupported("shared shaped glyph runs")),
             Some(ShapeKind::Image { data, .. }) => {
                 if node.source.modifiers.iter().any(|m| {
                     m.enabled
@@ -517,6 +527,7 @@ impl Context<'_> {
         let local_to_layer = GAffine::translate(-x, -y)
             .after(self.world_to_device)
             .after(node.world);
+        let fill_rule = node_fill_rule(node);
         if let Some(path) = sk_path(&node.geometry)? {
             let transform = sk_transform(local_to_layer)?;
             if let Some(ShapeKind::Image {
@@ -564,7 +575,7 @@ impl Context<'_> {
                 };
                 layer
                     .pixmap
-                    .fill_path(&path, &paint, sk::FillRule::EvenOdd, transform, None);
+                    .fill_path(&path, &paint, fill_rule, transform, None);
             }
             let [px, py, _, _] = node.source.bounds.unwrap_or([0.0; 4]);
             // Existing color paints are parent-frame descriptors. Convert to
@@ -576,7 +587,7 @@ impl Context<'_> {
                 {
                     layer
                         .pixmap
-                        .fill_path(&path, &paint, sk::FillRule::EvenOdd, transform, None);
+                        .fill_path(&path, &paint, fill_rule, transform, None);
                 }
             }
             for stroke in app.strokes.iter().filter(|s| s.visible && s.width > 0.0) {
@@ -627,7 +638,8 @@ impl Context<'_> {
                         .pixmap
                         .stroke_path(&path, &paint, &style, transform, None);
                 } else {
-                    let (_permit, mut mask) = self.path_mask(&layer, &path, local_to_layer)?;
+                    let (_permit, mut mask) =
+                        self.path_mask(&layer, &path, local_to_layer, fill_rule)?;
                     if stroke.alignment == StrokeAlignment::Outside {
                         mask.invert();
                     }
@@ -777,6 +789,7 @@ impl Context<'_> {
         layer: &Layer<'_>,
         path: &sk::Path,
         transform: GAffine,
+        fill_rule: sk::FillRule,
     ) -> Result<(Permit<'a>, sk::Mask), RenderError> {
         let size = sk::IntSize::from_wh(layer.pixmap.width(), layer.pixmap.height())
             .ok_or(RenderError::Limit("mask dimensions"))?;
@@ -788,7 +801,7 @@ impl Context<'_> {
         data.resize(bytes, 0);
         let mut mask =
             sk::Mask::from_vec(data, size).ok_or(RenderError::Limit("mask allocation"))?;
-        mask.fill_path(path, sk::FillRule::EvenOdd, true, sk_transform(transform)?);
+        mask.fill_path(path, fill_rule, true, sk_transform(transform)?);
         Ok((permit, mask))
     }
 
@@ -812,7 +825,7 @@ impl Context<'_> {
                 let frame = GAffine::translate(-f64::from(layer.x), -f64::from(layer.y))
                     .after(self.world_to_device)
                     .after(node.world);
-                let (_permit, mask) = self.path_mask(layer, &path, frame)?;
+                let (_permit, mask) = self.path_mask(layer, &path, frame, node_fill_rule(node))?;
                 layer.pixmap.apply_mask(&mask);
             } else {
                 layer.pixmap.data_mut().fill(0);
@@ -1263,5 +1276,13 @@ fn map_blend(mode: petunia_design_document::BlendMode) -> sk::BlendMode {
         D::Saturation => sk::BlendMode::Saturation,
         D::Color => sk::BlendMode::Color,
         D::Luminosity => sk::BlendMode::Luminosity,
+    }
+}
+
+fn node_fill_rule(node: &RenderNode) -> sk::FillRule {
+    if matches!(node.source.shape, Some(ShapeKind::Text { .. })) {
+        sk::FillRule::Winding
+    } else {
+        sk::FillRule::EvenOdd
     }
 }

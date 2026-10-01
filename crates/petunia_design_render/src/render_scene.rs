@@ -6,6 +6,22 @@ use std::sync::Arc;
 use petunia_design_document::{Document, DocumentObject, EffectKind, Surface};
 use petunia_design_foundation::{ObjectId, SurfaceId};
 use petunia_design_geometry::{GAffine, GPath, GRect};
+use petunia_design_text::{prepare_text, PreparedText, TextFrameSpec, TextRenderError};
+
+#[derive(Clone, Debug)]
+pub(crate) enum RenderGeometry {
+    Path(Arc<GPath>),
+    Text(Arc<PreparedText>),
+}
+impl std::ops::Deref for RenderGeometry {
+    type Target = GPath;
+    fn deref(&self) -> &GPath {
+        match self {
+            Self::Path(path) => path,
+            Self::Text(text) => text.outline(),
+        }
+    }
+}
 
 /// A render operation fails explicitly instead of substituting bounding boxes.
 #[derive(Debug, thiserror::Error)]
@@ -33,7 +49,7 @@ pub enum RenderError {
 #[derive(Clone, Debug)]
 pub struct RenderNode {
     pub(crate) source: DocumentObject,
-    pub(crate) geometry: Arc<GPath>,
+    pub(crate) geometry: RenderGeometry,
     pub(crate) world: GAffine,
     pub(crate) visual_bounds: Option<GRect>,
 }
@@ -144,6 +160,17 @@ impl RenderSurface {
 
     /// Builds an independent snapshot, rejecting incomplete/cyclic hierarchies.
     pub fn extract(surface: &Surface) -> Result<Self, RenderError> {
+        Self::extract_cancellable(surface, &|| false)
+    }
+
+    /// Checks cancellation between nodes and glyphs while deriving a scene.
+    pub fn extract_cancellable(
+        surface: &Surface,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<Self, RenderError> {
+        if cancelled() {
+            return Err(RenderError::Cancelled);
+        }
         const MAX_NODES: usize = 100_000;
         if surface.objects().len() > MAX_NODES {
             return Err(RenderError::Limit("scene object count"));
@@ -174,6 +201,8 @@ impl RenderSurface {
                 &mut result.nodes,
                 &mut visited,
                 0,
+                cancelled,
+                true,
             )?;
         }
         if visited.len() != objects.len() {
@@ -216,7 +245,12 @@ fn extract_node(
     nodes: &mut HashMap<ObjectId, RenderNode>,
     visited: &mut HashSet<ObjectId>,
     depth: usize,
+    cancelled: &dyn Fn() -> bool,
+    ancestors_visible: bool,
 ) -> Result<Option<GRect>, RenderError> {
+    if cancelled() {
+        return Err(RenderError::Cancelled);
+    }
     if depth >= 128 {
         return Err(RenderError::Limit("scene hierarchy depth"));
     }
@@ -274,6 +308,61 @@ fn extract_node(
         )
         .ok_or_else(|| RenderError::Invalid("invalid image coverage".into()))?;
     }
+    let visible = ancestors_visible && object.visible;
+    let geometry = if !visible {
+        RenderGeometry::Path(Arc::new(geometry))
+    } else if let Some(petunia_design_document::ShapeKind::Text {
+        content,
+        font_family,
+        font_size,
+        line_height,
+        letter_spacing,
+        on_path,
+    }) = &object.shape
+    {
+        if on_path.is_some() {
+            return Err(RenderError::Unsupported {
+                object: id,
+                feature: "shaped text along a path",
+            });
+        }
+        let [_, _, w, h] = object
+            .bounds
+            .ok_or_else(|| RenderError::Invalid("text has no local frame".into()))?;
+        let text = prepare_text(
+            &TextFrameSpec {
+                content: content.clone(),
+                family: font_family.clone(),
+                font_size: *font_size,
+                line_height: *line_height,
+                letter_spacing: *letter_spacing,
+                width: w,
+            },
+            cancelled,
+        )
+        .map_err(|error| match error {
+            TextRenderError::Cancelled => RenderError::Cancelled,
+            TextRenderError::Limit(reason) => RenderError::Limit(reason),
+            TextRenderError::Unsupported(feature) => RenderError::Unsupported {
+                object: id,
+                feature,
+            },
+            error => RenderError::Invalid(error.to_string()),
+        })?;
+        if object.modifiers.iter().any(|modifier| modifier.enabled) {
+            let path = petunia_design_document::modifiers::evaluate_modifiers_local(
+                text.outline(),
+                &object.modifiers,
+                [w, h],
+            )
+            .ok_or_else(|| RenderError::Invalid("invalid text coverage".into()))?;
+            RenderGeometry::Path(Arc::new(path))
+        } else {
+            RenderGeometry::Text(text)
+        }
+    } else {
+        RenderGeometry::Path(Arc::new(geometry))
+    };
     let appearance = object.effective_appearance();
     let stroke_reach = appearance
         .strokes
@@ -292,23 +381,18 @@ fn extract_node(
         .transformed(world)
         .bounding_box()
         .map(|b| expand(b, stroke_reach));
-    // Text capability admission is handled by the backend; retain its footprint.
-    // An empty image crop stays empty instead of restoring the original frame.
-    if geometry.is_empty()
-        && matches!(
-            object.shape,
-            Some(petunia_design_document::ShapeKind::Text { .. })
-        )
-    {
-        if let Some([_, _, w, h]) = object.bounds {
-            bounds = GPath::rect(GRect::new(0.0, 0.0, w, h), 0.0, 0.0)
-                .transformed(world)
-                .bounding_box();
-        }
-    }
     for child in &object.children {
-        let child_bounds =
-            extract_node(*child, Some(id), world, objects, nodes, visited, depth + 1)?;
+        let child_bounds = extract_node(
+            *child,
+            Some(id),
+            world,
+            objects,
+            nodes,
+            visited,
+            depth + 1,
+            cancelled,
+            visible,
+        )?;
         if !objects[child].is_clip_mask {
             bounds = union(bounds, child_bounds);
         }
@@ -343,7 +427,7 @@ fn extract_node(
         id,
         RenderNode {
             source: (*object).clone(),
-            geometry: Arc::new(geometry),
+            geometry,
             world,
             visual_bounds: bounds,
         },

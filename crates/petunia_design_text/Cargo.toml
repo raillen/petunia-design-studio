@@ -9,6 +9,9 @@ petunia_design_foundation = { path = "../petunia_design_foundation" }
 petunia_design_color = { path = "../petunia_design_color" }
 petunia_design_geometry = { path = "../petunia_design_geometry" }
 cosmic-text = "0.19"
+fontdb = "0.23.0"
+ttf-parser = "0.25.1"
+thiserror.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 

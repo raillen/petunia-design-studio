@@ -4,6 +4,8 @@ Visão estilo C4 do Petunia Design Studio: contextos, contêineres, componentes 
 
 Contrato atual de persistência/publicação: [ADR-002](/pt/developers/adr/ADR-002-local-path-and-integrity), com [referência gerada de fontes/testes](/implementation/contracts.json). O [registro de execução](/pt/developers/implementation-progress) distingue correções implementadas de milestones pendentes.
 
+Renderização/apresentação compartilhadas: [ADR-006](/pt/developers/adr/ADR-006-shaped-text-and-canvas-preview) conecta contornos de glifos e workers com fontes imutáveis ao canvas. Saída de pixels não validada; edição/estilos de texto, tiles e aceitação completa seguem abertos.
+
 ## Nível 1 — Contexto do sistema
 
 ```mermaid

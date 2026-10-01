@@ -167,6 +167,8 @@ impl JobExecutor {
         if queue.shutdown {
             return Err(JobFailure::Shutdown);
         }
+        // Replaced viewport work relinquishes its queue slot immediately.
+        queue.pending.retain(|work| !work.token.is_cancelled());
         if queue.pending.len() >= self.capacity {
             return Err(JobFailure::QueueFull);
         }

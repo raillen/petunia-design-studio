@@ -193,6 +193,7 @@ pub const SHELL_STRINGS: &[ShellString] = &[
         "PNG, JPEG, WebP or RGB/gray TIFF. The original is embedded in the document.",
         "PNG, JPEG, WebP ou TIFF RGB/cinza. O original é incorporado ao documento.",
     ),
+    entry("ptnd.text.canvas.preview_unavailable", "Preview unavailable", "Prévia indisponível"),
     entry("ptnd.text.image.place", "Place", "Inserir"),
     entry("ptnd.text.image.cancel", "Cancel", "Cancelar"),
     entry(

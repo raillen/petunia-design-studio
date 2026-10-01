@@ -4,6 +4,8 @@
 **Data:** 2026-10-01  
 **Escopo:** Milestone Required (MVP)
 
+**Extensão de texto/apresentação:** [ADR-006](/pt/developers/adr/ADR-006-shaped-text-and-canvas-preview) acrescenta contornos com shaping e apresentação CPU comum no canvas. Pendências abaixo registram a onda original deste ADR; escopo/evidência atual está no registro de execução.
+
 ## Contexto
 
 A inserção de imagens ignorava erros de arquivo/codec, consumia IDs e criava um retângulo padrão sem fonte válida. O importador raw conferia dimensões depois do decoding e truncava entradas cinza/cinza-alpha de 16 bits para 8 bits. O canvas decodificava os bytes comprimidos ou lia o caminho original a cada pintura, ignorava rotação/opacidade e ampliava imagens pequenas para um mínimo de dez pixels de tela. A exportação CPU rejeitava todos os objetos de imagem. O histograma decodificava a fonte repetidamente e não tinha caminho de exibição para 16 bits.

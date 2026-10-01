@@ -6,6 +6,8 @@
 
 **Extensão de imagens:** [ADR-005](/pt/developers/adr/ADR-005-immutable-image-assets) fornece os adaptadores de imagem/cache limitado e composição CPU antes indisponíveis aqui. As menções a imagens abaixo descrevem a onda original ADR-004; glyph runs, apresentação GUI assíncrona da cena e workers de tiles continuam pendentes.
 
+**Extensão de texto/apresentação:** [ADR-006](/pt/developers/adr/ADR-006-shaped-text-and-canvas-preview) acrescenta contornos com shaping e apresentação CPU comum no canvas. Pendências abaixo registram a onda original deste ADR; escopo/evidência atual está no registro de execução.
+
 ## Contexto
 
 O compositor CPU anterior pintava bounds, amostrava uma única cor de gradiente e aproximava sombras por retângulos. A travessia plana perdia transforms dos ancestrais e isolamento de grupos. O PNG alocava uma imagem da origem do pasteboard até a prancheta para recortá-la depois; origens negativas perdiam arte e origens positivas distantes multiplicavam a memória. O gerenciador registrava estados de jobs sem executar trabalho.

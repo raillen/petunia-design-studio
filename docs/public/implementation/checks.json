@@ -1,9 +1,9 @@
 {
-  "scope": "Draft MVP image/render/worker continuation; current implementation unvalidated",
+  "scope": "Draft MVP shared CPU canvas/shaped-text continuation; current implementation unvalidated",
   "baseline": "73447647a34f5b4be209415c36e6965c5f71b9b9",
   "rust": "1.98.1",
   "date": "2026-10-01",
-  "new_focused_tests": 129,
+  "new_focused_tests": 163,
   "pending_checks": [
     "cargo xtask verify",
     "cargo xtask conformance",
@@ -110,7 +110,7 @@
     }
   ],
   "native_schema": 3,
-  "wave": "MVP continuation: modifier frames, atomic bake and guide identity",
+  "wave": "MVP continuation: shaped outlines, latest-request worker canvas and bounded job history",
   "new_tests_this_wave": 37,
   "additional_integration_regressions": 1,
   "foundation_checks": {
@@ -226,19 +226,29 @@
     "crates/petunia_design_raster/tests/image_assets.rs",
     "crates/petunia_design_render/tests/image_rendering.rs",
     "crates/petunia_design_application/tests/image_placement.rs",
-    "crates/petunia_design_io/tests/image_admission.rs"
+    "crates/petunia_design_io/tests/image_admission.rs",
+    "crates/petunia_design_text/tests/outlines.rs",
+    "crates/petunia_design_render/tests/text_rendering.rs",
+    "crates/petunia_design_application/tests/preview.rs",
+    "crates/petunia_design_jobs/tests/lifecycle.rs",
+    "crates/petunia_design_jobs/tests/executor.rs",
+    "crates/petunia_design_shell/tests/bridge_test.rs",
+    "crates/petunia_design_geometry/tests/contour_orientation.rs"
   ],
-  "new_tests_prepared_current_wave": 35,
+  "new_tests_prepared_current_wave": 34,
   "previous_unvalidated_continuation": {
     "commit": "d40cd0ef427ae1ba4a1ba5a923cfee175c0836c4",
     "new_tests_prepared": 37,
     "status": "not_run"
   },
   "current_wave_prepared_source_counts": {
-    "crates/petunia_design_raster/tests/image_assets.rs": 18,
-    "crates/petunia_design_render/tests/image_rendering.rs": 8,
-    "crates/petunia_design_application/tests/image_placement.rs": 4,
-    "crates/petunia_design_io/tests/image_admission.rs": 5
+    "crates/petunia_design_text/tests/outlines.rs": 10,
+    "crates/petunia_design_render/tests/text_rendering.rs": 8,
+    "crates/petunia_design_application/tests/preview.rs": 8,
+    "crates/petunia_design_jobs/tests/lifecycle.rs": 2,
+    "crates/petunia_design_jobs/tests/executor.rs": 1,
+    "crates/petunia_design_shell/tests/bridge_test.rs": 2,
+    "crates/petunia_design_geometry/tests/contour_orientation.rs": 3
   },
   "image_quotas": {
     "encoded_source_mib": 32,
@@ -250,8 +260,27 @@
     "cache_resident_mib": 128,
     "cache_entries": 256,
     "skia_upload_mib": 64,
-    "skia_upload_entries": 128,
+    "skia_upload_entries": 1,
     "codec_private_allocation_accounting": "best_effort",
-    "gui_cold_preparation": "synchronous; worker presentation pending"
+    "gui_cold_preparation": "canvas scene preparation/rendering in worker; import admission/histogram cold preparation still synchronous"
+  },
+  "previous_image_continuation": {
+    "commit": "09da8d626536523234f495b16a854012b59b9888",
+    "new_tests_prepared": 35,
+    "status": "not_run"
+  },
+  "text_preview_quotas": {
+    "text_cache_mib": 64,
+    "text_entries": 128,
+    "text_source_kib": 64,
+    "glyphs_per_flow": 65536,
+    "outline_verbs_per_flow": 1000000,
+    "workers": 2,
+    "pending_jobs": 2,
+    "terminal_job_history": 256,
+    "job_label_bytes": 1024,
+    "output_pixels": 16777216,
+    "font_database_private_shaping_accounting": "best_effort",
+    "whole_process_RSS_cap": false
   }
 }

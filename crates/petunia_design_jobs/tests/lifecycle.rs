@@ -31,3 +31,31 @@ fn completed_and_failed_jobs_cannot_change_terminal_state() {
     assert_eq!(list[0].state, JobState::Completed);
     assert_eq!(list[1].state, JobState::Failed);
 }
+
+#[test]
+fn terminal_history_is_bounded_without_evicting_running_jobs() {
+    let jobs = JobManager::new();
+    let (active, _) = jobs.spawn_job("active");
+    for i in 0..300 {
+        let (id, _) = jobs.spawn_job(format!("finished {i}"));
+        jobs.complete_job(id);
+    }
+    let list = jobs.list_jobs();
+    assert_eq!(list.len(), 257);
+    assert_eq!(list[0].id, active);
+    assert_eq!(list[0].state, JobState::Running);
+    assert!(list.windows(2).all(|w| w[0].id < w[1].id));
+    jobs.clear_completed();
+    assert_eq!(jobs.list_jobs().len(), 1);
+}
+#[test]
+fn token_cancellation_wins_failure_and_utf8_labels_are_bounded() {
+    let jobs = JobManager::new();
+    let (id, token) = jobs.spawn_job("é".repeat(1000));
+    token.cancel();
+    jobs.fail_job(id);
+    let info = jobs.list_jobs().pop().unwrap();
+    assert_eq!(info.state, JobState::Cancelled);
+    assert!(info.label.len() <= 1024);
+    assert!(info.label.chars().all(|c| c == 'é'));
+}
