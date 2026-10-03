@@ -647,6 +647,15 @@ pub const SURFACES: &[SurfaceEntry] = &[
         shortcut: None,
     },
     SurfaceEntry {
+        id: "ptnd.action.raster.create_cmyk",
+        kind: SurfaceKind::Action,
+        scope: SurfaceScope::V1Required,
+        status: SurfaceStatus::Wired,
+        label: "ptnd.text.workflow.cmyk_new_layer",
+        action: None,
+        shortcut: None,
+    },
+    SurfaceEntry {
         id: "ptnd.action.object.clip_mask.create",
         kind: SurfaceKind::Action,
         scope: SurfaceScope::V1Required,
@@ -1349,6 +1358,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
 /// behavior: an `ActionId` constant in `actions.rs` is a declaration, not an
 /// implementation. A surface claiming `Wired` MUST bind one of these (15.C/15.G).
 pub const LIVE_ACTIONS: &[&str] = &[
+    "ptnd.action.raster.create_cmyk",
     "ptnd.action.edit.copy",
     "ptnd.action.edit.cut",
     "ptnd.action.edit.delete",

@@ -9,7 +9,7 @@ use krilla::num::NormalizedF32;
 use krilla::page::PageSettings;
 use krilla::paint::{Fill, FillRule, LineCap, LineJoin, Paint, Stroke, StrokeDash};
 use krilla::Document as KrillaDocument;
-use petunia_design_document::Document;
+use petunia_design_document::{Document, ShapeKind};
 use petunia_design_foundation::PetuniaError;
 use serde::{Deserialize, Serialize};
 
@@ -361,21 +361,56 @@ pub fn export_document_pdf_cancellable(
     if included.is_empty() {
         return Err(invalid("no surfaces enabled for PDF export"));
     }
-    let mut profile = None;
+    let mut profile: Option<petunia_design_color::IccProfile> = None;
+    let mut admit_profile = |next: &petunia_design_color::IccProfile| -> Result<(), PetuniaError> {
+        if !next.is_press_profile() {
+            return Err(invalid("PDF press profile must be a CMYK output profile"));
+        }
+        if profile.as_ref().is_some_and(|p| p.id() != next.id()) {
+            return Err(invalid("PDF content has different press profiles; explicitly convert native layers/surfaces to a common target"));
+        }
+        profile = Some(next.clone());
+        Ok(())
+    };
     for surface in &included {
         if let Some(next) = &surface.cmyk_profile {
-            if !next.is_press_profile() {
-                return Err(invalid("PDF press profile must be a CMYK output profile"));
+            admit_profile(next)?;
+        }
+        for object in surface.objects() {
+            check_cancelled(cancellation)?;
+            match &object.shape {
+                Some(ShapeKind::Raster { layer }) if layer.is_cmyk() => admit_profile(
+                    layer
+                        .cmyk_profile()
+                        .ok_or_else(|| invalid("PDF native layer ICC profile missing"))?,
+                )?,
+                Some(ShapeKind::Image {
+                    data: Some(source), ..
+                }) => {
+                    let image = petunia_design_raster::ImageCache::shared()
+                        .prepare(source, &|| cancellation.is_cancelled())
+                        .map_err(|e| invalid(e.to_string()))?;
+                    if image.source_format().is_cmyk() {
+                        let next = petunia_design_color::IccProfile::new(
+                            "Embedded PDF CMYK profile".into(),
+                            std::sync::Arc::new(
+                                image
+                                    .icc_profile()
+                                    .ok_or_else(|| invalid("PDF native image ICC profile missing"))?
+                                    .to_vec(),
+                            ),
+                        )?;
+                        admit_profile(&next)?;
+                    }
+                }
+                _ => {}
             }
-            if profile.is_some_and(|p: &petunia_design_color::IccProfile| p.id() != next.id()) {
-                return Err(invalid("PDF surfaces have different press profiles; explicitly convert to a common target"));
-            }
-            profile = Some(next);
         }
     }
     let settings = krilla::SerializeSettings {
         no_device_cs: true,
         cmyk_profile: profile
+            .as_ref()
             .map(|p| {
                 krilla::icc::ICCProfile::new(p.bytes())
                     .ok_or_else(|| invalid("PDF ICC profile rejected"))
@@ -502,6 +537,22 @@ pub fn export_document_pdf_cancellable(
                     .ok_or_else(|| invalid("PDF raster size"))?,
             );
             issue(writer.report,"PAGE_RASTERIZED",format!("Surface {} rendered at {} DPI; vector/editable/font/ink semantics are rasterized",surface.name,options.raster_fallback_dpi),FidelityGrade::DestructiveDegradation);
+            let mut native_ink = surface.objects().iter().any(|object| matches!(&object.shape, Some(ShapeKind::Raster { layer }) if layer.is_cmyk()));
+            for object in surface.objects() {
+                if let Some(ShapeKind::Image {
+                    data: Some(source), ..
+                }) = &object.shape
+                {
+                    native_ink |= petunia_design_raster::ImageCache::shared()
+                        .prepare(source, &|| cancellation.is_cancelled())
+                        .map_err(|e| invalid(e.to_string()))?
+                        .source_format()
+                        .is_cmyk();
+                }
+            }
+            if native_ink {
+                issue(writer.report, "CMYK_PAGE_CONVERTED_TO_RGB", "Native process ink was explicitly converted to the RGB composite by page rasterization; ink separations are not preserved".into(), FidelityGrade::DestructiveDegradation);
+            }
         } else {
             let mut scope = ScopedSurface::new(&mut canvas);
             let canvas = &mut scope;
@@ -801,8 +852,26 @@ impl PageWriter<'_> {
             let data = data
                 .as_ref()
                 .ok_or_else(|| invalid("PDF linked image is unavailable"))?;
-            let raw = crate::import_raster(data.as_slice(), 128 * 1024 * 1024)?;
-            let image = image_from_rgba(raw.width, raw.height, raw.format, &raw.data)?;
+            let decoded = petunia_design_raster::decode_image(data.as_slice(), Default::default())
+                .map_err(|e| invalid(e.to_string()))?;
+            let image = if decoded.format.is_cmyk() {
+                let profile = petunia_design_color::IccProfile::new(
+                    "Embedded PDF image profile".into(),
+                    decoded
+                        .icc_profile
+                        .ok_or_else(|| invalid("PDF CMYK image profile missing"))?,
+                )?;
+                image_from_cmyka(
+                    decoded.width,
+                    decoded.height,
+                    decoded.format,
+                    &decoded.data,
+                    &profile,
+                )?
+            } else {
+                let raw = crate::import_raster(data.as_slice(), 128 * 1024 * 1024)?;
+                image_from_rgba(raw.width, raw.height, raw.format, &raw.data)?
+            };
             if let Some(coverage) = &geometry {
                 out.push_clip_path(coverage, &rule(node));
             }
@@ -818,37 +887,51 @@ impl PageWriter<'_> {
                 out.pop();
             }
         } else if let Some(ShapeKind::Raster { layer }) = &source.shape {
-            let mut data = Vec::new();
-            let sixteen =
-                layer.tiles().format.bit_depth() == petunia_design_raster::BitDepth::Sixteen;
-            let count =
-                layer.width() as usize * layer.height() as usize * if sixteen { 8 } else { 4 };
-            data.try_reserve_exact(count)
-                .map_err(|_| invalid("PDF raster allocation"))?;
-            for y in 0..layer.height() {
-                check_cancelled(self.cancellation)?;
-                for x in 0..layer.width() {
-                    for value in layer.pixel(i64::from(x), i64::from(y)) {
-                        if sixteen {
-                            data.extend_from_slice(
-                                &((value * 65535.).round() as u16).to_le_bytes(),
-                            );
-                        } else {
-                            data.push((value * 255.).round() as u8);
+            let image = if layer.is_cmyk() {
+                let data = layer.cmyka_bytes(&|| self.cancellation.is_cancelled())?;
+                let profile = layer
+                    .cmyk_profile()
+                    .ok_or_else(|| invalid("PDF CMYK raster profile missing"))?;
+                image_from_cmyka(
+                    layer.width(),
+                    layer.height(),
+                    layer.tiles().format,
+                    &data,
+                    profile,
+                )?
+            } else {
+                let mut data = Vec::new();
+                let sixteen =
+                    layer.tiles().format.bit_depth() == petunia_design_raster::BitDepth::Sixteen;
+                let count =
+                    layer.width() as usize * layer.height() as usize * if sixteen { 8 } else { 4 };
+                data.try_reserve_exact(count)
+                    .map_err(|_| invalid("PDF raster allocation"))?;
+                for y in 0..layer.height() {
+                    check_cancelled(self.cancellation)?;
+                    for x in 0..layer.width() {
+                        for value in layer.pixel(i64::from(x), i64::from(y))? {
+                            if sixteen {
+                                data.extend_from_slice(
+                                    &((value * 65535.).round() as u16).to_le_bytes(),
+                                );
+                            } else {
+                                data.push((value * 255.).round() as u8);
+                            }
                         }
                     }
                 }
-            }
-            let image = image_from_rgba(
-                layer.width(),
-                layer.height(),
-                if sixteen {
-                    petunia_design_raster::PixelFormat::Rgba16
-                } else {
-                    petunia_design_raster::PixelFormat::Rgba8
-                },
-                &data,
-            )?;
+                image_from_rgba(
+                    layer.width(),
+                    layer.height(),
+                    if sixteen {
+                        petunia_design_raster::PixelFormat::Rgba16
+                    } else {
+                        petunia_design_raster::PixelFormat::Rgba8
+                    },
+                    &data,
+                )?
+            };
             if let Some(coverage) = &geometry {
                 out.push_clip_path(coverage, &rule(node));
             }
@@ -989,6 +1072,7 @@ struct PdfImage {
     width: u32,
     height: u32,
     sixteen: bool,
+    cmyk: bool,
     digest: [u8; 32],
 }
 impl std::hash::Hash for PdfImage {
@@ -997,6 +1081,7 @@ impl std::hash::Hash for PdfImage {
         self.width.hash(h);
         self.height.hash(h);
         self.sixteen.hash(h);
+        self.cmyk.hash(h);
     }
 }
 impl krilla::image::CustomImage for PdfImage {
@@ -1020,7 +1105,11 @@ impl krilla::image::CustomImage for PdfImage {
         Some(&self.profile)
     }
     fn color_space(&self) -> krilla::image::ImageColorspace {
-        krilla::image::ImageColorspace::Rgb
+        if self.cmyk {
+            krilla::image::ImageColorspace::Cmyk
+        } else {
+            krilla::image::ImageColorspace::Rgb
+        }
     }
 }
 fn image_from_rgba(
@@ -1060,9 +1149,71 @@ fn image_from_rgba(
         width,
         height,
         sixteen,
+        cmyk: false,
         digest: Sha256::digest(data).into(),
     };
     krilla::image::Image::from_custom(image, true).map_err(invalid)
+}
+
+fn image_from_cmyka(
+    width: u32,
+    height: u32,
+    format: petunia_design_raster::PixelFormat,
+    data: &[u8],
+    profile: &petunia_design_color::IccProfile,
+) -> Result<krilla::image::Image, PetuniaError> {
+    use sha2::{Digest, Sha256};
+    if !format.is_cmyk() || !profile.is_press_profile() {
+        return Err(invalid("PDF native CMYK layout/profile mismatch"));
+    }
+    let bpp = format.bytes_per_pixel();
+    let count = u64::from(width) * u64::from(height);
+    if width == 0
+        || height == 0
+        || count > 16_777_216
+        || data.len() > 128 * 1024 * 1024
+        || count as usize * bpp != data.len()
+    {
+        return Err(invalid("PDF native CMYK pixel budget/layout"));
+    }
+    let sixteen = format == petunia_design_raster::PixelFormat::Cmyka16;
+    let mut colors = Vec::new();
+    let mut alpha = Vec::new();
+    colors
+        .try_reserve_exact(data.len() / 5 * 4)
+        .map_err(|_| invalid("PDF CMYK color allocation"))?;
+    alpha
+        .try_reserve_exact(data.len() / 5)
+        .map_err(|_| invalid("PDF CMYK alpha allocation"))?;
+    for pixel in data.chunks_exact(bpp) {
+        if sixteen {
+            for p in pixel[..8].as_chunks::<2>().0 {
+                colors.extend_from_slice(&[p[1], p[0]]);
+            }
+            alpha.extend_from_slice(&[pixel[9], pixel[8]]);
+        } else {
+            colors.extend_from_slice(&pixel[..4]);
+            alpha.push(pixel[4]);
+        }
+    }
+    let mut hash = Sha256::new();
+    hash.update(data);
+    hash.update(profile.bytes());
+    hash.update([u8::from(sixteen), 4]);
+    krilla::image::Image::from_custom(
+        PdfImage {
+            colors: std::sync::Arc::new(colors),
+            alpha: std::sync::Arc::new(alpha),
+            profile: std::sync::Arc::new(profile.bytes().to_vec()),
+            width,
+            height,
+            sixteen,
+            cmyk: true,
+            digest: hash.finalize().into(),
+        },
+        true,
+    )
+    .map_err(invalid)
 }
 
 // Always unwind graphics state on a recoverable export error. krilla requires

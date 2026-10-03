@@ -11,6 +11,26 @@ use std::sync::{
     Arc, OnceLock,
 };
 
+/// The current RGB composite proof cannot preserve authored process ink.
+/// This metadata check is safe on the UI thread; encoded images are checked
+/// separately on the worker, without decoding artwork during panel reads.
+pub fn has_native_ink(surface: &Surface) -> bool {
+    use petunia_design_document::{Paint, ShapeKind};
+    let native = |paint: &Paint| match paint {
+        Paint::Solid(token) => token.trim().starts_with("cmyk("),
+        Paint::LinearGradient(g) => g.stops.iter().any(|s| s.color.trim().starts_with("cmyk(")),
+        Paint::RadialGradient(g) => g.stops.iter().any(|s| s.color.trim().starts_with("cmyk(")),
+        Paint::None => false,
+    };
+    surface.objects().iter().any(|object| {
+        matches!(&object.shape, Some(ShapeKind::Raster { layer }) if layer.is_cmyk()) || {
+            let appearance = object.effective_appearance();
+            appearance.fills.iter().any(|f| native(&f.paint))
+                || appearance.strokes.iter().any(|s| native(&s.paint))
+        }
+    })
+}
+
 /// Process-local identity prevents same-revision tabs from sharing results.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PreviewSourceId(u64);
@@ -354,6 +374,18 @@ impl PreviewController {
                     return Err(JobFailure::Failed(
                         "ICC soft proof requires loaded CMYK press and RGB monitor profiles".into(),
                     ));
+                }
+                if request.soft_proof {
+                    let mut native = has_native_ink(&request.source.surface)
+                        || request.source.raster_edit.as_ref().is_some_and(|draft| draft.layer.is_cmyk());
+                    for object in request.source.surface.objects() {
+                        context.check_cancelled()?;
+                        if let Some(petunia_design_document::ShapeKind::Image { data: Some(source), .. }) = &object.shape {
+                            native |= petunia_design_raster::ImageCache::shared().prepare(source, &|| context.cancellation().is_cancelled())
+                                .map_err(|e| JobFailure::Failed(e.to_string()))?.source_format().is_cmyk();
+                        }
+                    }
+                    if native { return Err(JobFailure::Failed("direct native ink proof and whole-page separations are unavailable; RGB composite proof would discard authored C/M/Y/K".into())); }
                 }
                 let render = request.render;
                 if u64::from(render.width) * u64::from(render.height)

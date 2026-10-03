@@ -26,6 +26,7 @@ fn bounded_history_payload(changes: &ChangeSet) -> (ChangeSet, usize) {
         let bytes = match shape {
             Some(ShapeKind::Raster { layer }) => layer
                 .resident_bytes()
+                .saturating_add(layer.cmyk_profile().map_or(0, |p| p.bytes().len()))
                 .saturating_add(layer.tiles().resident_tile_count() * 64)
                 .saturating_add(256),
             Some(ShapeKind::Image {
@@ -51,6 +52,16 @@ fn bounded_history_payload(changes: &ChangeSet) -> (ChangeSet, usize) {
                     ) => a
                         .tiles()
                         .changed_retained_bytes(b.tiles())
+                        .saturating_add(
+                            if a.cmyk_profile().map(|p| p.id()) == b.cmyk_profile().map(|p| p.id())
+                            {
+                                0
+                            } else {
+                                a.cmyk_profile()
+                                    .map_or(0, |p| p.bytes().len())
+                                    .saturating_add(b.cmyk_profile().map_or(0, |p| p.bytes().len()))
+                            },
+                        )
                         .saturating_add(512),
                     (
                         Some(ShapeKind::Image { data: Some(a), .. }),

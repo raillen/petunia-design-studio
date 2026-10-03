@@ -209,7 +209,7 @@ impl BrushDab {
                 }
 
                 let src_color = [self.color[0], self.color[1], self.color[2], dab_alpha];
-                let dst_color = tile_map.get_pixel(px, py);
+                let dst_color = tile_map.get_pixel(px, py)?;
                 let out_color = self.blend_mode.blend(src_color, dst_color);
 
                 if out_color != dst_color && !tile_map.set_pixel(px, py, out_color) {
@@ -242,12 +242,12 @@ mod tests {
         };
         dab.stamp_onto(&mut map).unwrap();
 
-        let center = map.get_pixel(64, 64);
+        let center = map.get_pixel(64, 64).unwrap();
         assert!((center[0] - 1.0).abs() < 0.01);
         assert!((center[3] - 1.0).abs() < 0.01);
 
         // Outside radius is untouched
-        let outside = map.get_pixel(10, 10);
+        let outside = map.get_pixel(10, 10).unwrap();
         assert_eq!(outside[3], 0.0);
     }
 }

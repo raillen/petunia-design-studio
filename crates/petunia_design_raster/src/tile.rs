@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use petunia_design_foundation::PetuniaError;
 use petunia_design_geometry::GRect;
 use serde::{Deserialize, Serialize};
 
@@ -78,15 +79,19 @@ impl Tile {
 
     /// Reads straight RGBA `[0.0, 1.0]`, converting the storage alpha mode.
     /// Sixteen-bit channels use canonical little-endian bytes.
-    #[must_use]
-    pub fn get_pixel_normalized(&self, lx: usize, ly: usize) -> [f32; 4] {
+    pub fn get_pixel_normalized(&self, lx: usize, ly: usize) -> Result<[f32; 4], PetuniaError> {
+        if self.format.is_cmyk() {
+            return Err(PetuniaError::invalid_input(
+                "CMYK ink requires typed five-channel access",
+            ));
+        }
         if lx >= TILE_SIZE || ly >= TILE_SIZE {
-            return [0.0, 0.0, 0.0, 0.0];
+            return Ok([0.0; 4]);
         }
         let bpp = self.format.bytes_per_pixel();
         let offset = (ly * TILE_SIZE + lx) * bpp;
         if offset + bpp > self.data.len() {
-            return [0.0, 0.0, 0.0, 0.0];
+            return Ok([0.0; 4]);
         }
 
         let mut color = match self.format {
@@ -118,27 +123,38 @@ impl Tile {
                 let v = f32::from(v_raw) / 65535.0;
                 [v, v, v, 1.0]
             }
+            PixelFormat::Cmyka8 | PixelFormat::Cmyka16 => unreachable!("checked typed access"),
         };
         if self.alpha_mode == AlphaMode::Premultiplied && self.format.channels() == 4 {
             if color[3] == 0.0 {
-                return [0.0; 4];
+                return Ok([0.0; 4]);
             }
             for channel in 0..3 {
                 color[channel] = (color[channel] / color[3]).clamp(0.0, 1.0);
             }
         }
-        color
+        Ok(color)
     }
 
     /// Writes straight RGBA, converting to the declared storage alpha mode.
-    pub fn set_pixel_normalized(&mut self, lx: usize, ly: usize, color: [f32; 4]) {
+    pub fn set_pixel_normalized(
+        &mut self,
+        lx: usize,
+        ly: usize,
+        color: [f32; 4],
+    ) -> Result<(), PetuniaError> {
+        if self.format.is_cmyk() {
+            return Err(PetuniaError::invalid_input(
+                "RGB writes cannot replace CMYK ink",
+            ));
+        }
         if lx >= TILE_SIZE || ly >= TILE_SIZE {
-            return;
+            return Ok(());
         }
         let bpp = self.format.bytes_per_pixel();
         let offset = (ly * TILE_SIZE + lx) * bpp;
         if offset + bpp > self.data.len() {
-            return;
+            return Ok(());
         }
 
         let mut color = color.map(|v| {
@@ -180,7 +196,66 @@ impl Tile {
                 let v = (color[0].clamp(0.0, 1.0) * 65535.0).round() as u16;
                 data[offset..offset + 2].copy_from_slice(&v.to_le_bytes());
             }
+            PixelFormat::Cmyka8 | PixelFormat::Cmyka16 => unreachable!("checked typed access"),
         }
+        Ok(())
+    }
+
+    /// Literal unit ink channels followed by alpha. Transparent pixels may
+    /// retain ink; reading/displaying them never rewrites authored samples.
+    pub fn get_cmyka(&self, lx: usize, ly: usize) -> Result<[f32; 5], PetuniaError> {
+        if !self.format.is_cmyk() || self.alpha_mode != AlphaMode::Straight {
+            return Err(PetuniaError::invalid_input(
+                "CMYK access requires straight CMYKA storage",
+            ));
+        }
+        if lx >= TILE_SIZE || ly >= TILE_SIZE {
+            return Ok([0.; 5]);
+        }
+        let bpp = self.format.bytes_per_pixel();
+        let offset = (ly * TILE_SIZE + lx) * bpp;
+        let bytes = self
+            .data
+            .get(offset..offset + bpp)
+            .ok_or_else(|| PetuniaError::invalid_input("truncated CMYK tile"))?;
+        let mut pixel = [0.; 5];
+        for (index, sample) in pixel.iter_mut().enumerate() {
+            *sample = if self.format == PixelFormat::Cmyka8 {
+                f32::from(bytes[index]) / 255.
+            } else {
+                f32::from(u16::from_le_bytes([bytes[index * 2], bytes[index * 2 + 1]])) / 65535.
+            };
+        }
+        Ok(pixel)
+    }
+    pub fn set_cmyka(&mut self, lx: usize, ly: usize, pixel: [f32; 5]) -> Result<(), PetuniaError> {
+        if !self.format.is_cmyk()
+            || self.alpha_mode != AlphaMode::Straight
+            || pixel
+                .iter()
+                .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+        {
+            return Err(PetuniaError::invalid_input("invalid straight CMYKA pixel"));
+        }
+        if lx >= TILE_SIZE || ly >= TILE_SIZE {
+            return Ok(());
+        }
+        let bpp = self.format.bytes_per_pixel();
+        let offset = (ly * TILE_SIZE + lx) * bpp;
+        let data = Arc::make_mut(&mut self.data);
+        let bytes = data
+            .get_mut(offset..offset + bpp)
+            .ok_or_else(|| PetuniaError::invalid_input("truncated CMYK tile"))?;
+        for (index, value) in pixel.into_iter().enumerate() {
+            if self.format == PixelFormat::Cmyka8 {
+                bytes[index] = (value * 255.).round() as u8;
+            } else {
+                bytes[index * 2..index * 2 + 2]
+                    .copy_from_slice(&((value * 65535.).round() as u16).to_le_bytes());
+            }
+        }
+        self.state = TileState::ResidentWorkingDirty;
+        Ok(())
     }
 }
 
@@ -267,6 +342,11 @@ impl TileMap {
 
     /// Checks the storage contract before admitting a layer to the document.
     pub fn validate(&self) -> Result<(), petunia_design_foundation::PetuniaError> {
+        if self.format.is_cmyk() && self.alpha_mode != AlphaMode::Straight {
+            return Err(PetuniaError::invalid_input(
+                "CMYK ink must not be premultiplied by alpha",
+            ));
+        }
         if self.tiles.len() > MAX_RESIDENT_TILES || self.resident_bytes() > MAX_TILE_BYTES {
             return Err(petunia_design_foundation::PetuniaError::invalid_input(
                 "raster tile budget exceeded",
@@ -316,13 +396,17 @@ impl TileMap {
     }
 
     /// Reads a global pixel coordinate. Returns transparent if tile is absent.
-    #[must_use]
-    pub fn get_pixel(&self, px: i64, py: i64) -> [f32; 4] {
+    pub fn get_pixel(&self, px: i64, py: i64) -> Result<[f32; 4], PetuniaError> {
+        if self.format.is_cmyk() {
+            return Err(PetuniaError::invalid_input(
+                "CMYK ink requires typed five-channel access",
+            ));
+        }
         let Some(coord) = TileCoord::from_pixel(px, py) else {
-            return [0.0; 4];
+            return Ok([0.0; 4]);
         };
         let Some(tile) = self.tiles.get(&coord) else {
-            return [0.0, 0.0, 0.0, 0.0];
+            return Ok([0.0; 4]);
         };
         let size = TILE_SIZE as i64;
         let lx = px.rem_euclid(size) as usize;
@@ -332,6 +416,9 @@ impl TileMap {
 
     /// Writes a pixel at global layer coordinates, allocating tile if absent.
     pub fn set_pixel(&mut self, px: i64, py: i64, color: [f32; 4]) -> bool {
+        if self.format.is_cmyk() {
+            return false;
+        }
         let Some(coord) = TileCoord::from_pixel(px, py) else {
             return false;
         };
@@ -341,8 +428,48 @@ impl TileMap {
         let Some(tile) = self.get_or_create_tile(coord) else {
             return false;
         };
-        tile.set_pixel_normalized(lx, ly, color);
-        true
+        tile.set_pixel_normalized(lx, ly, color).is_ok()
+    }
+
+    pub fn get_cmyka(&self, px: i64, py: i64) -> Result<[f32; 5], PetuniaError> {
+        if !self.format.is_cmyk() || self.alpha_mode != AlphaMode::Straight {
+            return Err(PetuniaError::invalid_input(
+                "CMYK read requires straight CMYKA storage",
+            ));
+        }
+        let Some(coord) = TileCoord::from_pixel(px, py) else {
+            return Ok([0.; 5]);
+        };
+        let Some(tile) = self.get_tile(coord) else {
+            return Ok([0.; 5]);
+        };
+        tile.get_cmyka(
+            px.rem_euclid(TILE_SIZE as i64) as usize,
+            py.rem_euclid(TILE_SIZE as i64) as usize,
+        )
+    }
+    pub fn set_cmyka(&mut self, px: i64, py: i64, pixel: [f32; 5]) -> Result<(), PetuniaError> {
+        if !self.format.is_cmyk() || self.alpha_mode != AlphaMode::Straight {
+            return Err(PetuniaError::invalid_input(
+                "CMYK write requires straight CMYKA storage",
+            ));
+        }
+        if pixel
+            .iter()
+            .any(|v| !v.is_finite() || !(0.0..=1.).contains(v))
+        {
+            return Err(PetuniaError::invalid_input("CMYK channel range"));
+        }
+        let coord = TileCoord::from_pixel(px, py)
+            .ok_or_else(|| PetuniaError::invalid_input("CMYK tile coordinate overflow"))?;
+        let tile = self
+            .get_or_create_tile(coord)
+            .ok_or_else(|| PetuniaError::invalid_input("CMYK tile allocation budget exceeded"))?;
+        tile.set_cmyka(
+            px.rem_euclid(TILE_SIZE as i64) as usize,
+            py.rem_euclid(TILE_SIZE as i64) as usize,
+            pixel,
+        )
     }
 
     /// Computes the bounding box enclosing all resident non-empty tiles.
@@ -386,6 +513,10 @@ impl TileMap {
                     .0
                     .iter()
                     .any(|pixel| pixel[6] != 0 || pixel[7] != 0),
+                // White/pure-C/pure-M/pure-Y artwork has K=0. Alpha is lane five.
+                PixelFormat::Cmyka8 | PixelFormat::Cmyka16 => {
+                    tile.data.iter().any(|sample| *sample != 0)
+                }
             }
         });
         self.commit_retaining_tiles();
@@ -414,7 +545,7 @@ fn bounded_tile_bytes<'de, D: serde::Deserializer<'de>>(
             f.write_str("a bounded tile byte array")
         }
         fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<u8>, A::Error> {
-            let max = TILE_SIZE * TILE_SIZE * 8;
+            let max = TILE_SIZE * TILE_SIZE * 10;
             let mut bytes = Vec::with_capacity(seq.size_hint().unwrap_or(0).min(max));
             while let Some(byte) = seq.next_element::<u8>()? {
                 if bytes.len() == max {
@@ -484,7 +615,7 @@ mod tests {
     fn sparse_tile_map_absent_tiles_are_transparent() {
         let map = TileMap::new(PixelFormat::Rgba8, AlphaMode::Straight);
         assert_eq!(map.resident_tile_count(), 0);
-        assert_eq!(map.get_pixel(10, 10), [0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(map.get_pixel(10, 10).unwrap(), [0.0, 0.0, 0.0, 0.0]);
     }
 
     #[test]
@@ -493,7 +624,7 @@ mod tests {
         map.set_pixel(130, 10, [1.0, 0.5, 0.0, 1.0]); // Falls into TileCoord { x: 1, y: 0 }
         assert_eq!(map.resident_tile_count(), 1);
 
-        let px = map.get_pixel(130, 10);
+        let px = map.get_pixel(130, 10).unwrap();
         assert!((px[0] - 1.0).abs() < 0.01);
         assert!((px[1] - 0.5).abs() < 0.01);
         assert!((px[2] - 0.0).abs() < 0.01);
@@ -504,7 +635,7 @@ mod tests {
     fn deep_color_16bit_precision_preserved() {
         let mut map = TileMap::new(PixelFormat::Rgba16, AlphaMode::Straight);
         map.set_pixel(0, 0, [0.123_45, 0.678_91, 0.999_99, 1.0]);
-        let px = map.get_pixel(0, 0);
+        let px = map.get_pixel(0, 0).unwrap();
         assert!((px[0] - 0.123_45).abs() < 0.0001);
         assert!((px[1] - 0.678_91).abs() < 0.0001);
     }

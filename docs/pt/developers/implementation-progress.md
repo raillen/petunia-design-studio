@@ -1,6 +1,12 @@
 # Registro de execução da implementação
 
-## 2026-10-03: contrato atual de correções
+## 2026-10-03: continuação CMYK nativo
+
+O [ADR-011](/pt/developers/adr/ADR-011-native-cmyk-raster) implementa raster de cinco canais 8/16-bit, atribuição/conversão ICC imutável, schema 6/índice 3, pintura/preenchimento nativos, importação TIFF editável, inspeção TAC/separação de camada, TIFF nativo de camada e PDF CMYK ICC. Interface e CLI estão integrados. PDF regular exige perfil de impressão comum entre superfícies/camadas/imagens CMYK incluídas; perfis diferentes exigem conversão explícita. Prova/overprint de página, DeviceLink, PDF/X-4 e aceitação do release completo continuam abertos.
+
+**Evidência automatizada final:** após a implementação, `cargo xtask gauntlet` passou **930 testes do workspace**, sem falhas/testes ignorados, com formatação, Clippy estrito, arquitetura, conformidade CLI e quatro projetos de exemplo. `cargo xtask ui-gauntlet` passou **64 testes desktop**, já incluídos no total. Documentação passou com **33/33 páginas EN/pt-BR** e zero links quebrados. A verificação independente pypdf/Poppler confirmou tintas, alpha e bytes do ICC original em quatro PDFs de camada/imagem 8/16-bit. O [registro de execução](/implementation/native-cmyk-v1.json) contém logs, capturas, hashes dos artefatos e limites. Os 904 testes abaixo pertencem à baseline ADR-010 já integrada.
+
+## Histórico: contrato ADR-010 integrado
 
 Esta atualização substitui os resumos antigos de continuações não validadas abaixo. ADR-010 implementa correções limitadas de texto, histórico, histograma, ICC e PDF. A validação final começa somente após a implementação. Comandos/resultados reais são registrados em `/implementation/mvp-v1-corrections.json`; fontes presentes não implicam resultado. Aceitação humana/hardware do MVP e escopo completo da v1 continuam abertos.
 

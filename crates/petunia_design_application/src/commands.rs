@@ -212,6 +212,11 @@ pub enum Command {
         surface: SurfaceId,
         profile: Option<petunia_design_color::IccProfile>,
     },
+    /// Assigns a pixel layer's ICC profile without changing its ink bytes.
+    AssignRasterCmykProfile {
+        id: ObjectId,
+        profile: petunia_design_color::IccProfile,
+    },
     /// Sets whether a surface is included in batch exports.
     SetSurfaceExportEnabled { surface: SurfaceId, enabled: bool },
     /// Adds a layout guide to a surface.
@@ -585,6 +590,9 @@ pub fn execute(
         } => mutator.set_surface_background(*surface, background.clone()),
         Command::SetSurfaceCmykProfile { surface, profile } => {
             mutator.set_surface_cmyk_profile(*surface, profile.clone())
+        }
+        Command::AssignRasterCmykProfile { id, profile } => {
+            mutator.assign_raster_cmyk_profile(*id, profile.clone())
         }
         Command::SetSurfaceExportEnabled { surface, enabled } => {
             mutator.set_surface_export_enabled(*surface, *enabled)

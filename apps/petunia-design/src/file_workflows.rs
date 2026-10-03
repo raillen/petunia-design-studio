@@ -29,6 +29,7 @@ pub enum FilePrompt {
         revision: u64,
         surface: petunia_design_foundation::SurfaceId,
         purpose: ProfilePurpose,
+        object: Option<petunia_design_foundation::ObjectId>,
     },
     Open,
     Recover,
@@ -177,11 +178,24 @@ pub fn request_profile(ui: &UiShell, purpose: ProfilePurpose) {
     let shell = ui.shell.peek();
     if let Some(session) = shell.bridge.session() {
         if let Some(surface) = session.active_surface() {
+            let object = if purpose == ProfilePurpose::Press
+                && session.selection.selected_ids.len() == 1
+            {
+                session.selection.selected_ids.first().copied().filter(|id| {
+                    matches!(
+                        session.document().find_object(*id).and_then(|o| o.shape.as_ref()),
+                        Some(petunia_design_document::ShapeKind::Raster { layer }) if layer.is_cmyk()
+                    )
+                })
+            } else {
+                None
+            };
             ui.file_prompt.clone().set(Some(FilePrompt::Profile {
                 target: session.identity(),
                 revision: session.current_revision(),
                 surface,
                 purpose,
+                object,
             }));
         }
     }
@@ -189,6 +203,18 @@ pub fn request_profile(ui: &UiShell, purpose: ProfilePurpose) {
 pub fn toggle_proof(ui: &UiShell) {
     if *ui.soft_proof.peek() {
         ui.soft_proof.clone().set(false);
+        return;
+    }
+    let native_ink = ui.shell.peek().bridge.session().is_some_and(|session| {
+        session
+            .active_surface()
+            .and_then(|id| session.document().surface(id).ok())
+            .is_some_and(petunia_design_application::preview::has_native_ink)
+    });
+    if native_ink {
+        ui.file_error
+            .clone()
+            .set(Some(ui.text("native_proof_unavailable")));
         return;
     }
     let has_press = ui.shell.peek().bridge.session().is_some_and(|session| {

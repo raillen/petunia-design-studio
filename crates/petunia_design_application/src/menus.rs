@@ -325,6 +325,10 @@ pub const MENU_BAR: &[MenuFamily] = &[
         label: "ptnd.text.menu.layer",
         personas: &[],
         nodes: &[
+            node(item(
+                "ptnd.action.raster.create_cmyk",
+                "ptnd.text.workflow.cmyk_new_layer",
+            )),
             group(
                 "ptnd.menu.layer.arrange",
                 "ptnd.text.layer.arrange",
@@ -476,10 +480,8 @@ pub const MENU_BAR: &[MenuFamily] = &[
         label: "ptnd.text.menu.image",
         personas: &[PERSONA_PHOTO],
         nodes: &[
-            // No image *command* is offered here, because none exists yet:
-            // `file.place` stays in File where users look for it, and inventing
-            // placeholder commands would be the fake UI 15.F §2 forbids. What
-            // the mode can really do today is pick an image tool.
+            // Layer creation is in the shared Layer menu; this family holds
+            // the Photo persona's editing tools.
             group(
                 "ptnd.menu.image.tools",
                 "ptnd.text.panel.transform",
@@ -551,6 +553,8 @@ pub const MENU_BAR: &[MenuFamily] = &[
 pub struct ActionContext {
     /// A document is open in the active session.
     pub has_document: bool,
+    /// Native creation has a selected-layer or active-surface press profile.
+    pub has_cmyk_layer_profile: bool,
     /// Number of selected objects.
     pub selection_count: usize,
     /// The history can undo.
@@ -573,6 +577,7 @@ impl Default for ActionContext {
     fn default() -> Self {
         Self {
             has_document: false,
+            has_cmyk_layer_profile: false,
             selection_count: 0,
             can_undo: false,
             can_redo: false,
@@ -806,6 +811,15 @@ pub fn availability(action_id: &str, ctx: &ActionContext) -> Availability {
             }
         }
         "ptnd.action.edit.preferences" => Availability::ENABLED,
+        "ptnd.action.raster.create_cmyk" => {
+            if !ctx.has_document {
+                Availability::blocked("ptnd.text.blocked.no_document")
+            } else if !ctx.has_cmyk_layer_profile {
+                Availability::blocked("ptnd.text.blocked.cmyk_profile_required")
+            } else {
+                Availability::ENABLED
+            }
+        }
         "ptnd.action.edit.select_all" | "ptnd.action.select.invert" => {
             if ctx.has_document {
                 Availability::ENABLED
@@ -1018,6 +1032,7 @@ mod tests {
     fn context() -> ActionContext {
         ActionContext {
             has_document: true,
+            has_cmyk_layer_profile: true,
             selection_count: 3,
             can_undo: true,
             can_redo: true,
@@ -1031,6 +1046,27 @@ mod tests {
 
     fn every_item() -> impl Iterator<Item = &'static MenuItem> {
         MENU_BAR.iter().flat_map(MenuFamily::items)
+    }
+
+    #[test]
+    fn native_layer_menu_requires_an_available_press_profile() {
+        let action = "ptnd.action.raster.create_cmyk";
+        let mut ctx = ActionContext::default();
+        assert_eq!(
+            availability(action, &ctx).reason,
+            Some("ptnd.text.blocked.no_document")
+        );
+        ctx.has_document = true;
+        assert_eq!(
+            availability(action, &ctx).reason,
+            Some("ptnd.text.blocked.cmyk_profile_required")
+        );
+        ctx.has_cmyk_layer_profile = true;
+        assert!(availability(action, &ctx).enabled);
+        ctx.persona = PERSONA_PHOTO;
+        assert!(command_index(&ctx)
+            .iter()
+            .any(|item| item.action_id == action && item.enabled));
     }
 
     #[test]

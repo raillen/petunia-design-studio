@@ -1369,7 +1369,8 @@ mod workspace_tests {
             PixelFormat::Rgba8,
             AlphaMode::Straight,
         );
-        tile.set_pixel_normalized(10, 10, [1.0, 0.0, 0.0, 1.0]);
+        tile.set_pixel_normalized(10, 10, [1.0, 0.0, 0.0, 1.0])
+            .unwrap();
         let rgba8 = match tile.format {
             PixelFormat::Rgba8 => tile.data.as_ref().clone(),
             _ => vec![],
@@ -2476,5 +2477,154 @@ mod object_edit_ui_tests {
             click_label(&mut runner, &ui.text("cancel"));
         }
         assert_eq!(selected, vec![text]);
+    }
+}
+
+#[cfg(test)]
+mod native_cmyk_ui_tests {
+    use super::*;
+    use freya_testing::prelude::*;
+    use std::{cell::RefCell, rc::Rc, sync::Arc};
+    fn mount(with_profile: bool) -> (TestingRunner, UiShell) {
+        let seen = Rc::new(RefCell::new(None));
+        let observed = seen.clone();
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                use_init_theme(theme::petunia_theme);
+                let shell = use_state(move || {
+                    let mut shell = PetuniaShell::new(400., 600.);
+                    shell.new_document("Native ink").unwrap();
+                    if with_profile {
+                        let surface = shell.bridge.active_surface().unwrap();
+                        let profile = petunia_design_color::IccProfile::new(
+                            "Synthetic press".into(),
+                            Arc::new(
+                                include_bytes!("../../../fixtures/color/synthetic-cmyk.icc")
+                                    .to_vec(),
+                            ),
+                        )
+                        .unwrap();
+                        shell
+                            .bridge
+                            .submit_command(petunia_design_application::CommandRequest::new(
+                                petunia_design_application::Command::SetSurfaceCmykProfile {
+                                    surface,
+                                    profile: Some(profile),
+                                },
+                            ))
+                            .unwrap();
+                    }
+                    shell
+                });
+                let ui = UiShell::fresh(shell);
+                observed.replace(Some(ui.clone()));
+                rect()
+                    .width(Size::Fill)
+                    .height(Size::Fill)
+                    .background(theme::SURFACE_PANEL)
+                    .padding(Gaps::new_all(8.))
+                    .child(dock::ColorPanel {
+                        ui,
+                        target_fill: use_state(|| true),
+                    })
+            },
+            (400., 600.).into(),
+            |_| {},
+            1.,
+        );
+        runner.sync_and_update();
+        let ui = seen.borrow().clone().unwrap();
+        (runner, ui)
+    }
+    fn click(runner: &mut TestingRunner, text: &str) {
+        let node = runner
+            .find_many(|node, el| {
+                Label::try_downcast(el)
+                    .filter(|label| label.text == text)
+                    .map(|_| node)
+            })
+            .pop()
+            .unwrap_or_else(|| panic!("Missing {text}"));
+        let area = node.layout().area;
+        runner.click_cursor((
+            f64::from(area.min_x() + area.width() / 2.),
+            f64::from(area.min_y() + area.height() / 2.),
+        ));
+        runner.sync_and_update();
+    }
+    fn capture(runner: &mut TestingRunner, name: &str) {
+        if let Some(directory) = std::env::var_os("PETUNIA_UI_EVIDENCE_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            runner.render_to_file(directory.join(format!("{name}.png")));
+        }
+    }
+    #[test]
+    fn native_layer_button_requires_profile_and_creates_an_editable_layer() {
+        let (mut runner, ui) = mount(false);
+        click(&mut runner, &ui.text("cmyk_new_layer"));
+        assert!(ui
+            .shell
+            .peek()
+            .bridge
+            .session()
+            .unwrap()
+            .document()
+            .surfaces()[0]
+            .objects()
+            .is_empty());
+        let (mut runner, ui) = mount(true);
+        click(&mut runner, &ui.text("cmyk_new_layer"));
+        let shell = ui.shell.peek();
+        let session = shell.bridge.session().unwrap();
+        let id = session.selection.selected_ids[0];
+        assert!(
+            matches!(session.find_object(id).unwrap().shape.as_ref(), Some(petunia_design_document::ShapeKind::Raster { layer }) if layer.is_cmyk())
+        );
+        drop(shell);
+        capture(&mut runner, "native-layer");
+        crate::file_workflows::request_profile(&ui, crate::file_workflows::ProfilePurpose::Press);
+        assert!(
+            matches!(ui.file_prompt.peek().as_ref(), Some(crate::file_workflows::FilePrompt::Profile { object: Some(target), .. }) if *target == id)
+        );
+        crate::file_workflows::toggle_proof(&ui);
+        assert!(!*ui.soft_proof.peek());
+        assert!(ui.file_error.peek().is_some());
+    }
+    #[test]
+    fn cmyk_color_panel_sets_native_brush_ink_instead_of_an_ignored_fill() {
+        let (mut runner, ui) = mount(true);
+        click(&mut runner, &ui.text("cmyk_new_layer"));
+        click(&mut runner, "CMYK");
+        let before = ui.shell.peek().bridge.session().unwrap().document().clone();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while ui
+            .shell
+            .peek()
+            .tools
+            .photo_brush_tool()
+            .brush_settings()
+            .ink
+            .is_none()
+        {
+            assert!(std::time::Instant::now() < deadline);
+            runner.sync_and_update();
+            click(&mut runner, &ui.text("brush_apply"));
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(
+            ui.shell
+                .peek()
+                .tools
+                .photo_brush_tool()
+                .brush_settings()
+                .ink,
+            Some([0., 0.85, 0.7, 0.])
+        );
+        assert_eq!(
+            ui.shell.peek().bridge.session().unwrap().document(),
+            &before
+        );
+        capture(&mut runner, "native-brush-ink");
     }
 }

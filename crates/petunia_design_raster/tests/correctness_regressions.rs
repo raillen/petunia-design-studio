@@ -8,12 +8,12 @@ fn eraser_removes_coverage_independently_of_its_color_alpha() {
         let mut eraser = BrushDab::eraser_dab(0.0, 0.0);
         eraser.opacity = 0.5;
         eraser.stamp_onto(&mut tiles).unwrap();
-        let pixel = tiles.get_pixel(0, 0);
+        let pixel = tiles.get_pixel(0, 0).unwrap();
         assert!((pixel[3] - 0.5).abs() < 0.005);
         assert!((pixel[0] - 1.0).abs() < 0.005);
         eraser.opacity = 1.0;
         eraser.stamp_onto(&mut tiles).unwrap();
-        assert_eq!(tiles.get_pixel(0, 0), [0.0; 4]);
+        assert_eq!(tiles.get_pixel(0, 0).unwrap(), [0.0; 4]);
     }
 }
 
@@ -42,8 +42,9 @@ fn straight_and_premultiplied_storage_have_the_same_blending_result() {
         dab.stamp_onto(&mut premul).unwrap();
         for (a, b) in straight
             .get_pixel(0, 0)
+            .unwrap()
             .into_iter()
-            .zip(premul.get_pixel(0, 0))
+            .zip(premul.get_pixel(0, 0).unwrap())
         {
             assert!((a - b).abs() < 0.015);
         }
@@ -53,8 +54,9 @@ fn straight_and_premultiplied_storage_have_the_same_blending_result() {
         eraser.stamp_onto(&mut premul).unwrap();
         for (a, b) in straight
             .get_pixel(0, 0)
+            .unwrap()
             .into_iter()
-            .zip(premul.get_pixel(0, 0))
+            .zip(premul.get_pixel(0, 0).unwrap())
         {
             assert!((a - b).abs() < 0.015);
         }
@@ -68,12 +70,14 @@ fn sixteen_bit_channels_are_little_endian_and_zero_alpha_has_no_hidden_premul_co
         PixelFormat::Rgba16,
         AlphaMode::Straight,
     );
-    tile.set_pixel_normalized(0, 0, [f32::from(0x1234_u16) / 65535.0, 0.0, 0.0, 1.0]);
+    tile.set_pixel_normalized(0, 0, [f32::from(0x1234_u16) / 65535.0, 0.0, 0.0, 1.0])
+        .unwrap();
     assert_eq!(&tile.data[..2], &[0x34, 0x12]);
     tile.alpha_mode = AlphaMode::Premultiplied;
-    tile.set_pixel_normalized(0, 0, [1.0, 1.0, 1.0, 0.0]);
+    tile.set_pixel_normalized(0, 0, [1.0, 1.0, 1.0, 0.0])
+        .unwrap();
     assert_eq!(&tile.data[..8], &[0; 8]);
-    assert_eq!(tile.get_pixel_normalized(0, 0), [0.0; 4]);
+    assert_eq!(tile.get_pixel_normalized(0, 0).unwrap(), [0.0; 4]);
 }
 
 #[test]
@@ -88,6 +92,6 @@ fn invalid_or_unbounded_dabs_and_coordinate_wrap_cannot_modify_tiles() {
         assert_eq!(tiles, expected);
     }
     assert!(!tiles.set_pixel(i64::MAX, 0, [0.0, 1.0, 0.0, 1.0]));
-    assert_eq!(tiles.get_pixel(i64::MAX, 0), [0.0; 4]);
+    assert_eq!(tiles.get_pixel(i64::MAX, 0).unwrap(), [0.0; 4]);
     assert_eq!(tiles, expected);
 }

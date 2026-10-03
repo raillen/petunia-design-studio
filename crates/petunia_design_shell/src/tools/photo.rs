@@ -60,6 +60,8 @@ pub struct PhotoBrushSettings {
     pub opacity: f32,
     /// Straight sRGB foreground color used by pixel and mask painting.
     pub color: [f32; 4],
+    /// Optional literal C/M/Y/K foreground, used on native ink layers.
+    pub ink: Option<[f32; 4]>,
 }
 
 impl Default for PhotoBrushSettings {
@@ -70,6 +72,7 @@ impl Default for PhotoBrushSettings {
             flow: 1.0,
             opacity: 1.0,
             color: [0.1, 0.1, 0.1, 1.0],
+            ink: None,
         }
     }
 }
@@ -167,6 +170,7 @@ impl PhotoTool {
                         opacity: self.brush_settings.opacity,
                         flow: self.brush_settings.flow,
                         color: self.brush_settings.color,
+                        ink: self.brush_settings.ink,
                         erase: self.kind == PhotoToolKind::Eraser,
                     };
                     let mut stroke = petunia_design_application::raster_edit::RasterStroke::begin(

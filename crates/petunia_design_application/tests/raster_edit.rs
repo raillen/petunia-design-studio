@@ -23,13 +23,14 @@ fn brush() -> RasterBrush {
         opacity: 1.0,
         color: [1.0, 0.0, 0.0, 1.0],
         erase: false,
+        ink: None,
     }
 }
 fn pixel(s: &DocumentSession, x: i64, y: i64) -> [f32; 4] {
     let Some(ShapeKind::Raster { layer }) = &s.document().surfaces()[0].objects()[0].shape else {
         panic!("raster expected")
     };
-    layer.pixel(x, y)
+    layer.pixel(x, y).unwrap()
 }
 #[test]
 fn click_and_drag_publish_one_reversible_creation() {

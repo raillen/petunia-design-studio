@@ -38,7 +38,10 @@ fn gray16_png_import_and_tile_adapter_share_little_endian_samples() {
         .unwrap();
     let raw = import_raster(&bytes, 1024 * 1024).unwrap();
     assert_eq!(raw.format, PixelFormat::Rgba16);
-    assert_eq!(raw.to_rgba16(), vec![0x1234, 0x1234, 0x1234, 65535]);
+    assert_eq!(
+        raw.to_rgba16().unwrap(),
+        vec![0x1234, 0x1234, 0x1234, 65535]
+    );
     let tile_image = RawRasterImage::from_rgba16(128, 128, &[0x1234; 128 * 128 * 4]).unwrap();
     let tile = tile_image
         .to_tile(petunia_design_raster::TileCoord::new(0, 0))
@@ -78,11 +81,12 @@ fn premultiplied_tiles_export_straight_alpha_without_darkening() {
     use petunia_design_raster::{AlphaMode, Tile, TileCoord};
     for format in [PixelFormat::Rgba8, PixelFormat::Rgba16] {
         let mut tile = Tile::new_empty(TileCoord::new(0, 0), format, AlphaMode::Premultiplied);
-        tile.set_pixel_normalized(0, 0, [1.0, 0.5, 0.0, 0.5]);
+        tile.set_pixel_normalized(0, 0, [1.0, 0.5, 0.0, 0.5])
+            .unwrap();
         let raw = RawRasterImage::from_tile(&tile);
-        assert_eq!(&raw.to_rgba8()[..4], &[255, 128, 0, 128]);
+        assert_eq!(&raw.to_rgba8().unwrap()[..4], &[255, 128, 0, 128]);
         let straight = raw.to_tile(TileCoord::new(0, 0)).unwrap();
         assert_eq!(straight.alpha_mode, AlphaMode::Straight);
-        assert!((straight.get_pixel_normalized(0, 0)[0] - 1.0).abs() < 0.0001);
+        assert!((straight.get_pixel_normalized(0, 0).unwrap()[0] - 1.0).abs() < 0.0001);
     }
 }
