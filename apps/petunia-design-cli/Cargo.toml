@@ -24,3 +24,6 @@ petunia_design_platform = { path = "../../crates/petunia_design_platform" }
 petunia_design_extension = { path = "../../crates/petunia_design_extension" }
 petunia_design_mcp = { path = "../../crates/petunia_design_mcp" }
 serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"

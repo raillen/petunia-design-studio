@@ -24,7 +24,7 @@ fn snapshot_copies_only_the_touched_tile_payload() {
         &old.tiles().get_tile(TileCoord::new(1, 0)).unwrap().data,
         &layer.tiles().get_tile(TileCoord::new(1, 0)).unwrap().data
     ));
-    assert_eq!(old.pixel(2, 1), [0.0; 4]);
+    assert_eq!(old.pixel(2, 1).unwrap(), [0.0; 4]);
 }
 #[test]
 fn commit_changes_lifecycle_without_copying_pixels() {
@@ -51,7 +51,7 @@ fn sixteen_bit_layer_and_coordinate_sequences_roundtrip() {
     let bytes = serde_json::to_vec(&layer).unwrap();
     let restored: RasterLayer = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(layer, restored);
-    assert!((restored.pixel(200, 50)[0] - 0.12345).abs() < 0.00002);
+    assert!((restored.pixel(200, 50).unwrap()[0] - 0.12345).abs() < 0.00002);
 }
 #[test]
 fn finite_layer_edges_never_allocate_outside_tiles() {
@@ -72,8 +72,8 @@ fn writing_zero_to_absent_pixel_or_mask_is_sparse() {
 fn masks_expose_coverage_alpha_and_preserve_deep_samples() {
     let mut layer = RasterLayer::new(16, 16, RasterLayerKind::Mask, BitDepth::Sixteen).unwrap();
     layer.set_pixel(4, 4, [0.0, 0.0, 0.0, 0.12345]).unwrap();
-    assert!((layer.pixel(4, 4)[3] - 0.12345).abs() < 0.00002);
-    assert_eq!(layer.pixel(4, 4)[..3], [1.0; 3]);
+    assert!((layer.pixel(4, 4).unwrap()[3] - 0.12345).abs() < 0.00002);
+    assert_eq!(layer.pixel(4, 4).unwrap()[..3], [1.0; 3]);
 }
 #[test]
 fn malformed_storage_and_edge_padding_are_rejected_at_admission() {
@@ -82,7 +82,7 @@ fn malformed_storage_and_edge_padding_are_rejected_at_admission() {
         PixelFormat::Rgba8,
         AlphaMode::Straight,
     );
-    tile.set_pixel_normalized(2, 2, [1.0; 4]);
+    tile.set_pixel_normalized(2, 2, [1.0; 4]).unwrap();
     let map =
         TileMap::from_tiles(PixelFormat::Rgba8, AlphaMode::Straight, [Arc::new(tile)]).unwrap();
     assert!(RasterLayer::from_tiles(1, 1, RasterLayerKind::Pixels, map).is_err());
@@ -139,8 +139,8 @@ fn world_circle_is_preserved_under_nonuniform_layer_scaling() {
             |_, _| Ok(1.0),
         )
         .unwrap();
-    assert_eq!(layer.pixel(20, 26)[3], 1.0);
-    assert_eq!(layer.pixel(23, 20)[3], 0.0);
+    assert_eq!(layer.pixel(20, 26).unwrap()[3], 1.0);
+    assert_eq!(layer.pixel(23, 20).unwrap()[3], 0.0);
 }
 #[test]
 fn overlapping_dabs_do_not_exceed_master_stroke_opacity() {
@@ -165,7 +165,7 @@ fn overlapping_dabs_do_not_exceed_master_stroke_opacity() {
             )
             .unwrap();
     }
-    assert!((layer.pixel(10, 10)[3] - 0.5).abs() < 0.00002);
+    assert!((layer.pixel(10, 10).unwrap()[3] - 0.5).abs() < 0.00002);
 }
 #[test]
 fn dab_budget_failure_precedes_pixel_writes() {
@@ -192,14 +192,14 @@ fn dab_budget_failure_precedes_pixel_writes() {
 fn opaque_masks_are_sparse_and_keep_erased_tiles_after_commit() {
     let mut mask = RasterLayer::opaque_mask(129, 3, BitDepth::Sixteen).unwrap();
     assert_eq!(mask.resident_bytes(), 0);
-    assert_eq!(mask.pixel(128, 2), [1.; 4]);
-    assert_eq!(mask.pixel(129, 2), [0.; 4]);
+    assert_eq!(mask.pixel(128, 2).unwrap(), [1.; 4]);
+    assert_eq!(mask.pixel(129, 2).unwrap(), [0.; 4]);
     let original = mask.clone();
     mask.set_pixel(128, 2, [1., 1., 1., 0.]).unwrap();
     mask.commit();
-    assert_eq!(original.pixel(128, 2), [1.; 4]);
-    assert_eq!(mask.pixel(128, 2)[3], 0.);
-    assert_eq!(mask.pixel(127, 2)[3], 1.);
+    assert_eq!(original.pixel(128, 2).unwrap(), [1.; 4]);
+    assert_eq!(mask.pixel(128, 2).unwrap()[3], 0.);
+    assert_eq!(mask.pixel(127, 2).unwrap()[3], 1.);
     let restored: RasterLayer =
         serde_json::from_slice(&serde_json::to_vec(&mask).unwrap()).unwrap();
     assert_eq!(restored, mask);

@@ -95,3 +95,5 @@ Decisions behind this shape: [ADR index](/developers/adr/) · [ADR-001](/develop
 ## 2026-10-03 contract update
 
 [ADR-010](/developers/adr/ADR-010-text-histogram-icc-and-pdf) governs draft text, composition histograms, immutable ICC resources (schema 5), guarded profile assignment and faithful subset PDF. Professional print and hardware acceptance remain open.
+
+[ADR-011](/developers/adr/ADR-011-native-cmyk-raster) extends color/raster persistence to schema 6/index 3 and native five-lane ink storage. Disposable ICC display tiles stay outside canonical documents. Native layer TIFF and ICC CMYK PDF preserve original samples; direct native page proof remains disabled.

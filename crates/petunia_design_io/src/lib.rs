@@ -8,7 +8,11 @@
 //! terms, reported as explicit errors.
 
 pub mod atomic_output;
+pub mod cmyk_tiff;
 pub mod image_io;
+mod raster_display;
+pub use cmyk_tiff::{export_cmyk_tiff, import_cmyk_tiff, write_cmyk_tiff};
+pub use raster_display::{display_raster_layer, import_display_raster};
 mod package;
 pub mod pdf;
 mod svg;

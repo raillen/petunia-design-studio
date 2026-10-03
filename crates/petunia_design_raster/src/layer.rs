@@ -1,6 +1,7 @@
 //! Canonical, bounded sparse pixel and coverage-mask layers. Cloning a working
 //! layer shares all resident tiles until a pixel in that tile changes.
 use crate::{AlphaMode, BitDepth, BlendMode, BrushDab, PixelFormat, TileMap, TILE_SIZE};
+use petunia_design_color::IccProfile;
 use petunia_design_foundation::PetuniaError;
 use petunia_design_geometry::{GAffine, GPoint};
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,8 @@ pub struct RasterLayer {
     #[serde(default)]
     default_coverage: u16,
     tiles: TileMap,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    profile: Option<IccProfile>,
 }
 #[derive(Deserialize)]
 struct LayerWire {
@@ -33,6 +36,8 @@ struct LayerWire {
     #[serde(default)]
     default_coverage: u16,
     tiles: TileMap,
+    #[serde(default)]
+    profile: Option<IccProfile>,
 }
 impl TryFrom<LayerWire> for RasterLayer {
     type Error = PetuniaError;
@@ -43,6 +48,7 @@ impl TryFrom<LayerWire> for RasterLayer {
             kind: wire.kind,
             default_coverage: wire.default_coverage,
             tiles: wire.tiles,
+            profile: wire.profile,
         };
         layer.validate()?;
         layer.validate_padding()?;
@@ -68,6 +74,7 @@ impl RasterLayer {
             kind,
             default_coverage: 0,
             tiles: TileMap::new(format, AlphaMode::Straight),
+            profile: None,
         };
         layer.validate()?;
         Ok(layer)
@@ -84,6 +91,7 @@ impl RasterLayer {
             kind,
             default_coverage: 0,
             tiles,
+            profile: None,
         };
         layer.validate()?;
         layer.validate_padding()?;
@@ -109,6 +117,94 @@ impl RasterLayer {
     pub fn default_coverage(&self) -> u16 {
         self.default_coverage
     }
+    pub fn cmyk_profile(&self) -> Option<&IccProfile> {
+        self.profile.as_ref()
+    }
+    pub fn is_cmyk(&self) -> bool {
+        self.tiles.format.is_cmyk()
+    }
+    pub fn cmyka_pixel(&self, x: i64, y: i64) -> Result<[f32; 5], PetuniaError> {
+        if !self.is_cmyk() {
+            return Err(PetuniaError::invalid_input(
+                "native ink read requires a CMYK layer",
+            ));
+        }
+        if x < 0 || y < 0 || x >= i64::from(self.width) || y >= i64::from(self.height) {
+            return Ok([0.; 5]);
+        }
+        self.tiles.get_cmyka(x, y)
+    }
+    pub fn set_cmyka_pixel(
+        &mut self,
+        x: i64,
+        y: i64,
+        pixel: [f32; 5],
+    ) -> Result<bool, PetuniaError> {
+        if !self.is_cmyk()
+            || self.profile.is_none()
+            || pixel
+                .iter()
+                .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+        {
+            return Err(PetuniaError::invalid_input(
+                "native ink write requires valid CMYKA and an ICC profile",
+            ));
+        }
+        if x < 0 || y < 0 || x >= i64::from(self.width) || y >= i64::from(self.height) {
+            return Ok(false);
+        }
+        let scale = if self.tiles.format == PixelFormat::Cmyka8 {
+            255.
+        } else {
+            65535.
+        };
+        let pixel = pixel.map(|v| (v * scale).round() / scale);
+        if self.cmyka_pixel(x, y)? == pixel {
+            return Ok(false);
+        }
+        self.tiles.set_cmyka(x, y, pixel)?;
+        Ok(true)
+    }
+    /// Profile assignment preserves every resident ink/alpha byte and shares
+    /// the original tiles. Conversion is a separate explicit operation.
+    pub fn assign_cmyk_profile(&self, profile: IccProfile) -> Result<Self, PetuniaError> {
+        if !self.is_cmyk() || !profile.is_press_profile() {
+            return Err(PetuniaError::invalid_input(
+                "CMYK layer requires an ICC output profile",
+            ));
+        }
+        let mut next = self.clone();
+        next.profile = Some(profile);
+        next.validate()?;
+        Ok(next)
+    }
+    pub fn new_cmyk(
+        width: u32,
+        height: u32,
+        depth: BitDepth,
+        profile: IccProfile,
+    ) -> Result<Self, PetuniaError> {
+        let format = match depth {
+            BitDepth::Eight => PixelFormat::Cmyka8,
+            BitDepth::Sixteen => PixelFormat::Cmyka16,
+        };
+        let layer = Self {
+            width,
+            height,
+            kind: RasterLayerKind::Pixels,
+            default_coverage: 0,
+            tiles: TileMap::new(format, AlphaMode::Straight),
+            profile: Some(profile),
+        };
+        layer.validate()?;
+        Ok(layer)
+    }
+    /// Native package descriptor: binaries are restored before publication.
+    pub fn without_resources(&self) -> Self {
+        let mut descriptor = self.without_tiles();
+        descriptor.profile = None;
+        descriptor
+    }
     /// Descriptor-only copy for the native binary resource index.
     pub fn without_tiles(&self) -> Self {
         Self {
@@ -117,6 +213,7 @@ impl RasterLayer {
             kind: self.kind,
             default_coverage: self.default_coverage,
             tiles: TileMap::new(self.tiles.format, self.tiles.alpha_mode),
+            profile: self.profile.clone(),
         }
     }
     pub fn width(&self) -> u32 {
@@ -130,6 +227,9 @@ impl RasterLayer {
     }
     pub fn tiles(&self) -> &TileMap {
         &self.tiles
+    }
+    pub(crate) fn tiles_mut(&mut self) -> &mut TileMap {
+        &mut self.tiles
     }
     pub fn resident_bytes(&self) -> usize {
         self.tiles.resident_bytes()
@@ -159,9 +259,22 @@ impl RasterLayer {
                 "raster layer dimensions exceed the pixel budget",
             ));
         }
-        if (self.kind == RasterLayerKind::Pixels) != (self.tiles.format.channels() == 4) {
+        if (self.kind == RasterLayerKind::Pixels) != (self.tiles.format.channels() >= 4) {
             return Err(PetuniaError::invalid_input(
                 "pixel/mask layer format mismatch",
+            ));
+        }
+        if self.is_cmyk() {
+            if self.profile.as_ref().is_some_and(|p| !p.is_press_profile())
+                || (self.profile.is_none() && self.tiles.resident_tile_count() != 0)
+            {
+                return Err(PetuniaError::invalid_input(
+                    "CMYK samples require an assigned ICC output profile",
+                ));
+            }
+        } else if self.profile.is_some() {
+            return Err(PetuniaError::invalid_input(
+                "CMYK ICC profile on a non-CMYK layer",
             ));
         }
         if self.kind == RasterLayerKind::Mask && self.tiles.alpha_mode != AlphaMode::Straight {
@@ -207,24 +320,34 @@ impl RasterLayer {
         Ok(())
     }
     /// Straight RGBA for pixels; white with coverage alpha for masks.
-    pub fn pixel(&self, x: i64, y: i64) -> [f32; 4] {
+    pub fn pixel(&self, x: i64, y: i64) -> Result<[f32; 4], PetuniaError> {
+        if self.is_cmyk() {
+            return Err(PetuniaError::invalid_input(
+                "CMYK ink requires ICC display conversion or native access",
+            ));
+        }
         if x < 0 || y < 0 || x >= i64::from(self.width) || y >= i64::from(self.height) {
-            return [0.0; 4];
+            return Ok([0.0; 4]);
         }
         let coord = crate::TileCoord::from_pixel(x, y).expect("admitted plane coordinates");
         if self.kind == RasterLayerKind::Mask && self.tiles.get_tile(coord).is_none() {
-            return [1., 1., 1., f32::from(self.default_coverage) / 65535.];
+            return Ok([1., 1., 1., f32::from(self.default_coverage) / 65535.]);
         }
-        let pixel = self.tiles.get_pixel(x, y);
+        let pixel = self.tiles.get_pixel(x, y)?;
         if self.kind == RasterLayerKind::Mask {
-            [1.0, 1.0, 1.0, pixel[0]]
+            Ok([1.0, 1.0, 1.0, pixel[0]])
         } else {
-            pixel
+            Ok(pixel)
         }
     }
     /// Bounded edit of one canonical pixel or coverage value. No tile is
     /// allocated to write zero into already absent storage.
     pub fn set_pixel(&mut self, x: i64, y: i64, color: [f32; 4]) -> Result<bool, PetuniaError> {
+        if self.is_cmyk() {
+            return Err(PetuniaError::invalid_input(
+                "RGB writes cannot replace CMYK ink",
+            ));
+        }
         if x < 0 || y < 0 || x >= i64::from(self.width) || y >= i64::from(self.height) {
             return Ok(false);
         }
@@ -239,7 +362,7 @@ impl RasterLayer {
         } else {
             color
         };
-        let current = self.pixel(x, y);
+        let current = self.pixel(x, y)?;
         let current = if self.kind == RasterLayerKind::Mask {
             [current[3], current[3], current[3], 1.]
         } else {
@@ -289,8 +412,68 @@ impl RasterLayer {
         accumulation: &mut RasterLayer,
         master_opacity: f32,
         remaining_work: &mut usize,
+        selection: impl FnMut(i64, i64) -> Result<f32, PetuniaError>,
+    ) -> Result<bool, PetuniaError> {
+        self.stamp_with_ink(
+            dab,
+            None,
+            pixels_to_world,
+            original,
+            accumulation,
+            master_opacity,
+            remaining_work,
+            selection,
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn stamp_cmyk(
+        &mut self,
+        dab: &BrushDab,
+        ink: [f32; 4],
+        pixels_to_world: GAffine,
+        original: &RasterLayer,
+        accumulation: &mut RasterLayer,
+        master_opacity: f32,
+        remaining_work: &mut usize,
+        selection: impl FnMut(i64, i64) -> Result<f32, PetuniaError>,
+    ) -> Result<bool, PetuniaError> {
+        self.stamp_with_ink(
+            dab,
+            Some(ink),
+            pixels_to_world,
+            original,
+            accumulation,
+            master_opacity,
+            remaining_work,
+            selection,
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn stamp_with_ink(
+        &mut self,
+        dab: &BrushDab,
+        ink: Option<[f32; 4]>,
+        pixels_to_world: GAffine,
+        original: &RasterLayer,
+        accumulation: &mut RasterLayer,
+        master_opacity: f32,
+        remaining_work: &mut usize,
         mut selection: impl FnMut(i64, i64) -> Result<f32, PetuniaError>,
     ) -> Result<bool, PetuniaError> {
+        if self.is_cmyk() != ink.is_some()
+            || self.tiles.format != original.tiles.format
+            || self.profile != original.profile
+            || ink.is_some_and(|p| p.iter().any(|v| !v.is_finite() || !(0.0..=1.0).contains(v)))
+            || (self.is_cmyk()
+                && !matches!(
+                    dab.blend_mode,
+                    BlendMode::Normal | BlendMode::DestinationOut
+                ))
+        {
+            return Err(PetuniaError::invalid_input(
+                "native ink brush format/profile/blend mismatch",
+            ));
+        }
         if self.width != original.width
             || self.height != original.height
             || self.kind != original.kind
@@ -366,11 +549,30 @@ impl RasterLayer {
                 } else {
                     dab.color[3]
                 };
-                let old_coverage = accumulation.pixel(x, y)[3];
+                let old_coverage = accumulation.pixel(x, y)?[3];
                 let cumulative = 1.0 - (1.0 - old_coverage) * (1.0 - coverage * source_alpha);
                 accumulation.set_pixel(x, y, [1.0, 1.0, 1.0, cumulative.clamp(0.0, 1.0)])?;
                 let coverage = cumulative * master_opacity;
-                let dst = original.pixel(x, y);
+                if let Some(ink) = ink {
+                    let mut dst = original.cmyka_pixel(x, y)?;
+                    if dab.blend_mode == BlendMode::DestinationOut {
+                        // Erasing coverage never edits the four ink channels.
+                        dst[4] *= 1.0 - coverage;
+                    } else {
+                        let alpha = coverage + dst[4] * (1.0 - coverage);
+                        if alpha > 0. {
+                            for c in 0..4 {
+                                dst[c] = ((ink[c] * coverage + dst[c] * dst[4] * (1.0 - coverage))
+                                    / alpha)
+                                    .clamp(0., 1.);
+                            }
+                        }
+                        dst[4] = alpha;
+                    }
+                    changed |= self.set_cmyka_pixel(x, y, dst)?;
+                    continue;
+                }
+                let dst = original.pixel(x, y)?;
                 let result = if self.kind == RasterLayerKind::Mask {
                     let value = if dab.blend_mode == BlendMode::DestinationOut {
                         dst[3] * (1.0 - coverage)

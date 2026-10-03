@@ -22,10 +22,19 @@ pub struct RasterBrush {
     pub opacity: f32,
     pub flow: f32,
     pub color: [f32; 4],
+    /// Literal process ink, when supplied. RGB brushes are converted once at
+    /// stroke admission through the selected layer's ICC profile.
+    pub ink: Option<[f32; 4]>,
     pub erase: bool,
 }
 impl RasterBrush {
     fn validate(&self) -> Result<(), PetuniaError> {
+        if self
+            .ink
+            .is_some_and(|p| p.iter().any(|v| !v.is_finite() || !(0.0..=1.0).contains(v)))
+        {
+            return Err(PetuniaError::invalid_input("invalid native ink brush"));
+        }
         if !self.radius.is_finite()
             || !(0.1..=256.0).contains(&self.radius)
             || !self.hardness.is_finite()
@@ -145,10 +154,11 @@ pub struct RasterStroke {
     last: Option<(GPoint, f64)>,
     remaining_work: usize,
     changed: bool,
+    failed: bool,
     preview: Arc<PreviewSource>,
 }
 impl RasterStroke {
-    pub fn begin(session: &DocumentSession, brush: RasterBrush) -> Result<Self, PetuniaError> {
+    pub fn begin(session: &DocumentSession, mut brush: RasterBrush) -> Result<Self, PetuniaError> {
         brush.validate()?;
         let surface = session
             .active_surface()
@@ -231,6 +241,25 @@ impl RasterStroke {
             .inverse()
             .ok_or_else(|| PetuniaError::invalid_input("singular paint frame"))?;
         let selection = SelectionStencil::prepare(&session.raster_selection, inverse)?;
+        if working.is_cmyk() {
+            if brush.ink.is_none() {
+                let profile = working.cmyk_profile().ok_or_else(|| {
+                    PetuniaError::invalid_input("paint target CMYK profile missing")
+                })?;
+                brush.ink = Some(
+                    petunia_design_color::rgb_to_cmyk(
+                        &petunia_design_color::IccProfile::srgb()?,
+                        profile,
+                        &[[brush.color[0], brush.color[1], brush.color[2]]],
+                        Default::default(),
+                    )?[0],
+                );
+            }
+        } else if brush.ink.is_some() {
+            return Err(PetuniaError::invalid_input(
+                "literal ink painting requires a native CMYK layer",
+            ));
+        }
         let original = working.clone();
         let accumulation = RasterLayer::new(
             working.width(),
@@ -253,6 +282,7 @@ impl RasterStroke {
             last: None,
             remaining_work: STROKE_WORK,
             changed: false,
+            failed: false,
             preview: PreviewSource::capture(source, session.current_revision()),
         })
     }
@@ -265,6 +295,16 @@ impl RasterStroke {
         self.preview.clone()
     }
     pub fn sample(&mut self, point: GPoint, pressure: f64) -> Result<(), PetuniaError> {
+        if self.failed {
+            return Err(PetuniaError::invalid_input(
+                "failed raster gesture cannot continue",
+            ));
+        }
+        let result = self.sample_inner(point, pressure);
+        self.failed |= result.is_err();
+        result
+    }
+    fn sample_inner(&mut self, point: GPoint, pressure: f64) -> Result<(), PetuniaError> {
         if !point.x.is_finite()
             || !point.y.is_finite()
             || !pressure.is_finite()
@@ -326,15 +366,28 @@ impl RasterStroke {
                     BlendMode::Normal
                 },
             };
-            event_changed |= self.working.stamp(
-                &dab,
-                self.pixels_to_world,
-                &self.original,
-                &mut self.accumulation,
-                self.brush.opacity,
-                &mut self.remaining_work,
-                |x, y| self.selection.coverage(x, y),
-            )?;
+            event_changed |= if let Some(ink) = self.brush.ink {
+                self.working.stamp_cmyk(
+                    &dab,
+                    ink,
+                    self.pixels_to_world,
+                    &self.original,
+                    &mut self.accumulation,
+                    self.brush.opacity,
+                    &mut self.remaining_work,
+                    |x, y| self.selection.coverage(x, y),
+                )?
+            } else {
+                self.working.stamp(
+                    &dab,
+                    self.pixels_to_world,
+                    &self.original,
+                    &mut self.accumulation,
+                    self.brush.opacity,
+                    &mut self.remaining_work,
+                    |x, y| self.selection.coverage(x, y),
+                )?
+            };
         }
         self.last = Some((point, pressure));
         self.changed |= event_changed;
@@ -367,6 +420,21 @@ impl RasterStroke {
         tolerance: f32,
         cancelled: &dyn Fn() -> bool,
     ) -> Result<(), PetuniaError> {
+        if self.failed {
+            return Err(PetuniaError::invalid_input(
+                "failed raster gesture cannot continue",
+            ));
+        }
+        let result = self.flood_fill_inner(world, tolerance, cancelled);
+        self.failed |= result.is_err();
+        result
+    }
+    fn flood_fill_inner(
+        &mut self,
+        world: GPoint,
+        tolerance: f32,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<(), PetuniaError> {
         if self.brush.erase
             || !world.x.is_finite()
             || !world.y.is_finite()
@@ -386,7 +454,16 @@ impl RasterStroke {
             return Ok(());
         }
         let (sx, sy) = (p.x.floor() as usize, p.y.floor() as usize);
-        let seed = self.original.pixel(sx as i64, sy as i64);
+        let seed_ink = if self.original.is_cmyk() {
+            Some(self.original.cmyka_pixel(sx as i64, sy as i64)?)
+        } else {
+            None
+        };
+        let seed = if seed_ink.is_none() {
+            self.original.pixel(sx as i64, sy as i64)?
+        } else {
+            [0.; 4]
+        };
         let mut visited = vec![0u8; (width * height).div_ceil(8)];
         let mut stack = vec![(sx, sy)];
         let mut work = 0usize;
@@ -406,17 +483,20 @@ impl RasterStroke {
             if visited[index / 8] & (1 << (index % 8)) != 0 {
                 return Ok(false);
             }
-            let pixel = self.original.pixel(x as i64, y as i64);
-            let same = if seed[3] == 0.0 && pixel[3] == 0.0 {
-                true
+            let same = if let Some(seed) = seed_ink {
+                let pixel = self.original.cmyka_pixel(x as i64, y as i64)?;
+                (seed[4] == 0. && pixel[4] == 0.)
+                    || (0..5).all(|c| (seed[c] - pixel[c]).abs() <= tolerance)
             } else {
-                (0..4).all(|channel| (pixel[channel] - seed[channel]).abs() <= tolerance)
+                let pixel = self.original.pixel(x as i64, y as i64)?;
+                (seed[3] == 0.0 && pixel[3] == 0.0)
+                    || (0..4).all(|channel| (pixel[channel] - seed[channel]).abs() <= tolerance)
             };
             Ok(same && selection.coverage(x as i64, y as i64)? > 0.0)
         };
         while let Some((x, y)) = stack.pop() {
             if cancelled() {
-                return Err(PetuniaError::invalid_input("pixel fill was cancelled"));
+                return Err(PetuniaError::cancelled("pixel fill was cancelled"));
             }
             if !matches(&mut self.selection, x, y, &visited, &mut work)? {
                 continue;
@@ -437,7 +517,21 @@ impl RasterStroke {
                 let coverage = self.selection.coverage(x as i64, y as i64)?
                     * self.brush.opacity
                     * self.brush.color[3];
-                let original = self.original.pixel(x as i64, y as i64);
+                if let Some(ink) = self.brush.ink {
+                    let mut dst = self.original.cmyka_pixel(x as i64, y as i64)?;
+                    let alpha = coverage + dst[4] * (1.0 - coverage);
+                    if alpha > 0. {
+                        for c in 0..4 {
+                            dst[c] = ((ink[c] * coverage + dst[c] * dst[4] * (1.0 - coverage))
+                                / alpha)
+                                .clamp(0., 1.);
+                        }
+                    }
+                    dst[4] = alpha;
+                    self.changed |= self.working.set_cmyka_pixel(x as i64, y as i64, dst)?;
+                    continue;
+                }
+                let original = self.original.pixel(x as i64, y as i64)?;
                 let result = if self.working.kind() == RasterLayerKind::Mask {
                     let luminance = 0.2126 * self.brush.color[0]
                         + 0.7152 * self.brush.color[1]
@@ -477,6 +571,11 @@ impl RasterStroke {
         Ok(())
     }
     pub fn commit(mut self, session: &mut DocumentSession) -> Result<ChangeSet, PetuniaError> {
+        if self.failed {
+            return Err(PetuniaError::invalid_input(
+                "failed/cancelled raster gesture cannot be committed",
+            ));
+        }
         if !self.belongs_to(session) {
             return Err(PetuniaError::invalid_input(
                 "paint draft is stale; canonical pixels were not changed",

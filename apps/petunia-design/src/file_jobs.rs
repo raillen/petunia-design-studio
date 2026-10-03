@@ -44,6 +44,7 @@ enum Operation {
         target: ClipboardTarget,
         path: PathBuf,
         purpose: ProfilePurpose,
+        object: Option<ObjectId>,
     },
     ListRecovery {
         directory: PathBuf,
@@ -85,6 +86,7 @@ enum Outcome {
         target: ClipboardTarget,
         path: PathBuf,
         purpose: ProfilePurpose,
+        object: Option<ObjectId>,
         profile: petunia_design_color::IccProfile,
     },
     RecoveryList {
@@ -120,6 +122,7 @@ enum Outcome {
         path: PathBuf,
         source: Arc<petunia_design_raster::EncodedImage>,
         size: [u32; 2],
+        layer: Option<Arc<petunia_design_raster::RasterLayer>>,
     },
     Export {
         path: PathBuf,
@@ -154,6 +157,7 @@ pub fn prompt(ui: &UiShell, prompt: &FilePrompt, path: &Path) -> Result<(), Petu
             revision,
             surface,
             purpose,
+            object,
         } => enqueue(
             ui,
             Operation::Profile {
@@ -164,6 +168,7 @@ pub fn prompt(ui: &UiShell, prompt: &FilePrompt, path: &Path) -> Result<(), Petu
                 },
                 path: path.to_path_buf(),
                 purpose: *purpose,
+                object: *object,
             },
         ),
         FilePrompt::Open => enqueue(
@@ -469,6 +474,7 @@ fn run(
             target,
             path,
             purpose,
+            object,
         } => {
             let profile = petunia_design_color::IccProfile::read(&path).map_err(failed)?;
             let expected = match purpose {
@@ -486,6 +492,7 @@ fn run(
             Outcome::Profile {
                 target,
                 path,
+                object,
                 purpose,
                 profile,
             }
@@ -567,16 +574,53 @@ fn run(
             path,
         } => {
             let source = Arc::new(petunia_design_io::read_encoded_image(&path).map_err(failed)?);
-            let image = petunia_design_raster::ImageCache::shared()
-                .prepare(&source, &|| context.cancellation().is_cancelled())
-                .map_err(|e| JobFailure::Failed(e.to_string()))?;
+            // Inspect TIFF on the worker before the generic display cache can
+            // replace native process ink with an RGB derivative.
+            let native =
+                if source.as_slice().starts_with(b"II") || source.as_slice().starts_with(b"MM") {
+                    let decoded =
+                        petunia_design_raster::decode_image(source.as_slice(), Default::default())
+                            .map_err(|e| JobFailure::Failed(e.to_string()))?;
+                    if decoded.format.is_cmyk() {
+                        let profile = petunia_design_color::IccProfile::new(
+                            "Embedded CMYK TIFF profile".into(),
+                            decoded.icc_profile.ok_or_else(|| {
+                                JobFailure::Failed("CMYK TIFF profile missing".into())
+                            })?,
+                        )
+                        .map_err(failed)?;
+                        Some(Arc::new(
+                            petunia_design_raster::RasterLayer::from_cmyka_bytes(
+                                decoded.width,
+                                decoded.height,
+                                decoded.format,
+                                profile,
+                                &decoded.data,
+                            )
+                            .map_err(failed)?,
+                        ))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+            let size = if let Some(layer) = &native {
+                [layer.width(), layer.height()]
+            } else {
+                let image = petunia_design_raster::ImageCache::shared()
+                    .prepare(&source, &|| context.cancellation().is_cancelled())
+                    .map_err(|e| JobFailure::Failed(e.to_string()))?;
+                [image.width(), image.height()]
+            };
             Outcome::Place {
                 target,
                 revision,
                 surface,
                 path,
                 source,
-                size: [image.width(), image.height()],
+                size,
+                layer: native,
             }
         }
         Operation::Export { document, request } => {
@@ -598,19 +642,33 @@ fn publish(ui: &UiShell, outcome: Outcome) -> Result<PathBuf, PetuniaError> {
             path,
             purpose,
             profile,
+            object,
         } => {
             match purpose {
                 ProfilePurpose::Press => {
-                    ui.shell
-                        .clone()
-                        .write()
-                        .bridge
-                        .assign_prepared_cmyk_profile(
-                            target.session,
-                            target.revision,
-                            target.surface,
-                            profile,
-                        )?;
+                    if let Some(object) = object {
+                        ui.shell
+                            .clone()
+                            .write()
+                            .bridge
+                            .assign_prepared_cmyk_layer_profile(
+                                target.session,
+                                target.revision,
+                                object,
+                                profile,
+                            )?;
+                    } else {
+                        ui.shell
+                            .clone()
+                            .write()
+                            .bridge
+                            .assign_prepared_cmyk_profile(
+                                target.session,
+                                target.revision,
+                                target.surface,
+                                profile,
+                            )?;
+                    }
                 }
                 ProfilePurpose::Monitor => {
                     ui.monitor_profile.clone().set(Some(profile));
@@ -711,15 +769,26 @@ fn publish(ui: &UiShell, outcome: Outcome) -> Result<PathBuf, PetuniaError> {
             path,
             source,
             size,
+            layer,
         } => {
-            ui.shell.clone().write().bridge.place_prepared_image(
-                target,
-                revision,
-                surface,
-                path.clone(),
-                source,
-                size,
-            )?;
+            if let Some(layer) = layer {
+                ui.shell.clone().write().bridge.place_prepared_cmyk_layer(
+                    target,
+                    revision,
+                    surface,
+                    path.clone(),
+                    layer,
+                )?;
+            } else {
+                ui.shell.clone().write().bridge.place_prepared_image(
+                    target,
+                    revision,
+                    surface,
+                    path.clone(),
+                    source,
+                    size,
+                )?;
+            }
             ui.place_image_open.clone().set(false);
             Ok(path)
         }

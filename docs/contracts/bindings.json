@@ -212,5 +212,18 @@
       "docs/08 19 тАФ Microcopy, Labels, Naming, States, Units & 3db9bb7d023f817a8786c1aa38209a4a.md",
       "docs/08 20 тАФ UX, Usability, Information Architecture, C 3db9bb7d023f81c38d98c1ddc9a6956d.md"
     ]
+  },
+  {
+    "contract_id": "raster.native-cmyk",
+    "scope": "V1 Required",
+    "sources": [
+      "docs/developers/adr/ADR-011-native-cmyk-raster.md",
+      "docs/pt/developers/adr/ADR-011-native-cmyk-raster.md"
+    ],
+    "implementation": [
+      "crates/petunia_design_raster/src/cmyk.rs",
+      "crates/petunia_design_io/src/cmyk_tiff.rs",
+      "apps/petunia-design-cli/src/native_cli.rs"
+    ]
   }
 ]

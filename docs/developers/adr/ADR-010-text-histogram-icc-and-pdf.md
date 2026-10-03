@@ -4,6 +4,8 @@
 **Date:** 2026-10-03
 **Scope:** Milestone Required (MVP corrections); V1 Required (bounded color/PDF foundation).
 
+Native raster/resource/interchange statements below describe the ADR-010 baseline and are superseded by [ADR-011](/developers/adr/ADR-011-native-cmyk-raster). Native process proof and professional print release acceptance remain open.
+
 ## Context
 
 The earlier MVP continuations were merged without executing their deferred tests. Text editing did not share artwork caret geometry, histograms could synthesize statistics, named press profiles did not establish an ICC conversion, and PDF export could substitute geometry or omit document semantics. A connected handler is not evidence that a product task or professional print workflow is complete.

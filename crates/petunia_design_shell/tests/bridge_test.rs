@@ -825,3 +825,70 @@ fn admitted_icc_assignment_preserves_tab_identity_revision_and_undo() {
         .assign_prepared_cmyk_profile(target, revision, surface, profile)
         .is_err());
 }
+#[test]
+fn native_layer_placement_and_profile_assignment_keep_the_captured_tab_and_object() {
+    let profile = petunia_design_color::IccProfile::new(
+        "Synthetic press".into(),
+        Arc::new(include_bytes!("../../../fixtures/color/synthetic-cmyk.icc").to_vec()),
+    )
+    .unwrap();
+    let layer = Arc::new(
+        petunia_design_raster::RasterLayer::from_cmyka_bytes(
+            1,
+            1,
+            petunia_design_raster::PixelFormat::Cmyka8,
+            profile.clone(),
+            &[0, 0, 0, 255, 255],
+        )
+        .unwrap(),
+    );
+    let mut shell = PetuniaShell::new(800., 600.);
+    shell.new_document("Target").unwrap();
+    let session = shell.bridge.session().unwrap();
+    let target = session.identity();
+    let revision = session.current_revision();
+    let surface = session.active_surface().unwrap();
+    shell.new_document("Other").unwrap();
+    let other = shell.bridge.session().unwrap().document().clone();
+    shell
+        .bridge
+        .place_prepared_cmyk_layer(
+            target,
+            revision,
+            surface,
+            "original.tif".into(),
+            layer.clone(),
+        )
+        .unwrap();
+    assert_eq!(shell.bridge.session().unwrap().document(), &other);
+    shell.bridge.switch_session(0).unwrap();
+    let session = shell.bridge.session().unwrap();
+    let id = session.selection.selected_ids[0];
+    let revision = session.current_revision();
+    let baseline = session.document().clone();
+    assert!(
+        matches!(&session.find_object(id).unwrap().shape, Some(ShapeKind::Raster { layer: admitted }) if admitted.cmyka_pixel(0, 0).unwrap() == [0., 0., 0., 1., 1.])
+    );
+    shell.bridge.set_selection(vec![]);
+    let assigned = petunia_design_color::IccProfile::new(
+        "New label".into(),
+        Arc::new(profile.bytes().to_vec()),
+    )
+    .unwrap();
+    shell
+        .bridge
+        .assign_prepared_cmyk_layer_profile(target, revision, id, assigned.clone())
+        .unwrap();
+    shell.bridge.undo().unwrap();
+    assert_eq!(shell.bridge.session().unwrap().document(), &baseline);
+    shell.bridge.redo().unwrap();
+    assert!(shell
+        .bridge
+        .assign_prepared_cmyk_layer_profile(target, revision, id, assigned)
+        .is_err());
+    shell.bridge.close_session(true).unwrap();
+    assert!(shell
+        .bridge
+        .place_prepared_cmyk_layer(target, revision, surface, "stale.tif".into(), layer)
+        .is_err());
+}

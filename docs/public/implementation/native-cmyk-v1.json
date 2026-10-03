@@ -1,0 +1,566 @@
+{
+  "schema_version": 1,
+  "contract": "ADR-011",
+  "scope": "V1 Required",
+  "recorded_at_utc": "2026-10-03T16:15:31.490754+00:00",
+  "base_commit": "7dec1bc57c82e5937c7f509f8f3b6e7ad9874c24",
+  "branch": "work/v1-native-cmyk-2026-10-03",
+  "status": "Final automated gates passed; release acceptance remains open",
+  "validation_order": "Implementation completed before tests. Final verification failures were corrected before the recorded successful runs.",
+  "release_status": {
+    "mvp": "Automated integration gates passed; human and hardware release acceptance remains open.",
+    "v1": "Native CMYK raster and bounded ICC TIFF/PDF increment implemented; complete V1 acceptance remains open."
+  },
+  "environment": {
+    "os": "Linux x86_64",
+    "rust_toolchain": "1.98.1",
+    "gui": "Freya 0.5.0-rc.7 / Skia headless TestingRunner",
+    "build_jobs": 2,
+    "debug_info": false,
+    "incremental": false,
+    "native_dependencies": "CI dependencies in .github/workflows/ci.yml; native development/runtime packages extracted for this execution.",
+    "fonts": [
+      "DejaVu Sans",
+      "Noto Sans",
+      "Noto Arabic",
+      "Noto Sans CJK"
+    ],
+    "independent_pdf_reader": "pypdf 6.10.0 + Poppler"
+  },
+  "checks": [
+    {
+      "command": "cargo xtask gauntlet",
+      "exit_code": 0,
+      "log": "native-cmyk/gauntlet.log",
+      "gates": [
+        "cargo fmt --all --check",
+        "cargo clippy --workspace --all-targets --locked -- -D warnings",
+        "cargo test --workspace --locked",
+        "architecture boundaries",
+        "headless CLI conformance",
+        "four MVP project fixtures",
+        "EN/pt-BR parity and VitePress dead-link build"
+      ]
+    },
+    {
+      "command": "cargo xtask ui-gauntlet",
+      "exit_code": 0,
+      "tests_passed": 64,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log": "native-cmyk/ui-gauntlet.log"
+    },
+    {
+      "command": "python3 scripts/verify-native-cmyk-pdf.py docs/public/implementation/native-cmyk/artifacts",
+      "exit_code": 0,
+      "files_verified": 4,
+      "log": "native-cmyk/independent-pdf.log"
+    },
+    {
+      "command": "node scripts/generate-implementation-reference.js --check && cargo xtask docs",
+      "exit_code": 0,
+      "log": "native-cmyk/docs.log"
+    }
+  ],
+  "workspace_tests": {
+    "passed": 930,
+    "failed": 0,
+    "ignored": 0,
+    "targets": 104,
+    "includes": "Unit, integration and Rust documentation tests; desktop tests and four project scenarios are subsets, not additional totals."
+  },
+  "native_regressions": {
+    "added_since_merged_baseline": 26,
+    "focused_files": {
+      "crates/petunia_design_raster/tests/native_cmyk.rs": 7,
+      "crates/petunia_design_io/tests/native_cmyk.rs": 8,
+      "crates/petunia_design_application/tests/native_cmyk.rs": 5,
+      "apps/petunia-design-cli/tests/native_cmyk.rs": 2
+    },
+    "additional_integration_cases": [
+      "one native layer menu profile-availability regression",
+      "one captured-session native placement/profile-assignment bridge regression",
+      "two actual Freya color-panel interactions"
+    ]
+  },
+  "documentation": {
+    "canonical_pages": 33,
+    "pt_br_mirrors": 33,
+    "parity": "zero drift",
+    "build": "passed",
+    "dead_links": "zero (ignoreDeadLinks false)"
+  },
+  "independent_pdf_verification": [
+    {
+      "file": "native-Cmyka8.pdf",
+      "inks": 4,
+      "bits_per_component": 8,
+      "soft_mask_bits": 8,
+      "icc_sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+      "ink_samples_exact": true,
+      "alpha_samples_exact": true,
+      "reader": "pypdf 6.10.0",
+      "independent_render": "Poppler"
+    },
+    {
+      "file": "native-Cmyka16.pdf",
+      "inks": 4,
+      "bits_per_component": 16,
+      "soft_mask_bits": 16,
+      "icc_sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+      "ink_samples_exact": true,
+      "alpha_samples_exact": true,
+      "reader": "pypdf 6.10.0",
+      "independent_render": "Poppler"
+    },
+    {
+      "file": "image-Cmyka8.pdf",
+      "inks": 4,
+      "bits_per_component": 8,
+      "soft_mask_bits": 8,
+      "icc_sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+      "ink_samples_exact": true,
+      "alpha_samples_exact": true,
+      "reader": "pypdf 6.10.0",
+      "independent_render": "Poppler"
+    },
+    {
+      "file": "image-Cmyka16.pdf",
+      "inks": 4,
+      "bits_per_component": 16,
+      "soft_mask_bits": 16,
+      "icc_sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+      "ink_samples_exact": true,
+      "alpha_samples_exact": true,
+      "reader": "pypdf 6.10.0",
+      "independent_render": "Poppler"
+    }
+  ],
+  "visual_review": {
+    "status": "Reviewed native color-panel and workspace captures, plus native CMYK Poppler rendering.",
+    "native_panel": "Production theme background; localized channels and actual native brush ink settings.",
+    "scope": "Headless fixture interactions and independent rendering; no physical print, calibrated-display or assistive-technology certification."
+  },
+  "contracts": {
+    "native_schema": 6,
+    "binary_resource_index": 3,
+    "icc_fixture": {
+      "path": "fixtures/color/synthetic-cmyk.icc",
+      "sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+      "status": "Project-owned synthetic engineering profile; not a printer characterization."
+    },
+    "reference_sha256": "f2aee9c82757de926c61e3618968f20c2caf094d52a0e9bc4be6fcdd0fb41ce5"
+  },
+  "verification_fixes": [
+    "Deflate TIFF output uses the codec write_data compressor lifecycle, preserving exact samples and cancellation/atomic output.",
+    "The PDF common CMYK color-space profile preserves original ICC bytes when the backend omits an individual image profile.",
+    "Native layer creation is reachable in the shared Layer menu; availability requires the selected-layer/active-surface press profile.",
+    "Failed or cancelled raster gestures cannot commit partial drafts.",
+    "Legacy binary-resource regression now verifies the admission reason rather than pinning the obsolete current schema."
+  ],
+  "limitations": [
+    "MVP release and full V1 acceptance remain open.",
+    "TIFF export and TAC/separation inspection operate on one authored layer, before masks/effects/opacity/page composition.",
+    "Regular PDF requires a common press profile across included CMYK surfaces, layers and encoded images; differing profiles require explicit conversion.",
+    "RGB-composite proof is blocked for native ink; direct whole-page ink proof/composition, overprint/spot parity and page separations remain unavailable.",
+    "DeviceLink/press-specific black policy, PDF/X-4 and advanced typography remain V1 Required.",
+    "Physical tablet/IME, accessibility, installation, long sessions, representative user projects, calibrated displays and production printing require external acceptance."
+  ],
+  "prumo": {
+    "available": false,
+    "evidence": "command -v prumo returned no executable; no Prumo execution is claimed."
+  },
+  "source_files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "5b1a013a62cb44782303f286a61ee83715ed7da7d585030367e1dc561c07733d"
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "2106dcf76bc888a3c87cd7bb048556542881df13b58d8fc047e9645db7de7bd1"
+    },
+    {
+      "path": "apps/petunia-design-cli/Cargo.toml",
+      "sha256": "f0a1f1e912470330c0f9c3403bbbb9a7bd94bcd1ee16a79eee5034431ee0d61c"
+    },
+    {
+      "path": "apps/petunia-design-cli/src/main.rs",
+      "sha256": "add81caf0feebf9f06f18fd4a74c2c282b0a29baf60e0c359d3f966eaacb6064"
+    },
+    {
+      "path": "apps/petunia-design-cli/src/native_cli.rs",
+      "sha256": "5a1484b5fa2b3bf88d1aa7f645926677c5b8d3ec412981f333f977c9f9f052cc"
+    },
+    {
+      "path": "apps/petunia-design-cli/tests/native_cmyk.rs",
+      "sha256": "819af80dd30a046fc0bc849624ac1445bed42d53f29f157d57037454fc49b6c4"
+    },
+    {
+      "path": "apps/petunia-design/src/dock.rs",
+      "sha256": "b1ae5bff69856cc64e08055e474df05acc2dd4bd2c2f62bdddfb6b1e7ffa8b54"
+    },
+    {
+      "path": "apps/petunia-design/src/file_jobs.rs",
+      "sha256": "187a37560c526aaf2b4503993a1b3fbe907795534e3a7c060a8c561ee884aafa"
+    },
+    {
+      "path": "apps/petunia-design/src/file_workflows.rs",
+      "sha256": "6e3d005240abc0b27d9dcfd14701cc80a1b9bdaadbb37aa4ec3829f565c77c9b"
+    },
+    {
+      "path": "apps/petunia-design/src/main.rs",
+      "sha256": "c6a905293969085efa8c763aa2e918c621e8ea2a33d4d6e4bf8a43b78f87bae6"
+    },
+    {
+      "path": "crates/petunia_design_application/src/actions.rs",
+      "sha256": "0e61e65e2fd5fccac3183d5564d3959f6e3adc483ffd38628f2e09152e0f58e5"
+    },
+    {
+      "path": "crates/petunia_design_application/src/commands.rs",
+      "sha256": "0e0670a8eaab3a8356c353d51f5dbd46764032e20b9a4f60cd92956beee664d6"
+    },
+    {
+      "path": "crates/petunia_design_application/src/history.rs",
+      "sha256": "1dafc7ba44725ffdc8cde50e96d1201e96d7fe17830b3d75edec63efb80df2fd"
+    },
+    {
+      "path": "crates/petunia_design_application/src/menus.rs",
+      "sha256": "8ea2d36d18fbeeee42f822acc7de4ec5fd1d210e3fea45b9cdef52f98c78cff9"
+    },
+    {
+      "path": "crates/petunia_design_application/src/preview.rs",
+      "sha256": "9c34b7299589ce36ee9b76e784d8326bc19d2c23eec78205fe3dd42b8179b00e"
+    },
+    {
+      "path": "crates/petunia_design_application/src/raster_edit.rs",
+      "sha256": "926072eacaaf2dca4d7be4f29dc93fa32ddddc1bb16d35ce30f145c713db3f1a"
+    },
+    {
+      "path": "crates/petunia_design_application/src/session.rs",
+      "sha256": "e549756d6da39b7a66c39f4c841e70533da3fb607f95dd514874ae2ff0897eb1"
+    },
+    {
+      "path": "crates/petunia_design_application/src/surfaces.rs",
+      "sha256": "a141105284f81be7011b997f899ea435c7e195ffbe56debcaf7b4cc1f9d75f89"
+    },
+    {
+      "path": "crates/petunia_design_application/tests/native_cmyk.rs",
+      "sha256": "815311358d0032a5930cc9895c0520de7420c8e915e5989278b8101a959b47c1"
+    },
+    {
+      "path": "crates/petunia_design_application/tests/raster_edit.rs",
+      "sha256": "770afea1d679715a3ff418bda23191fd0a366b23c08221b70b81b80a3a96983c"
+    },
+    {
+      "path": "crates/petunia_design_color/src/icc.rs",
+      "sha256": "6009b6ff7952c892aa8cbb9fdd7991214e51aa11ee13ccfc1761291559acbaad"
+    },
+    {
+      "path": "crates/petunia_design_document/src/document.rs",
+      "sha256": "d4ba5d01696a6313b09656e184b66d52ac7e15acb303e173e0203ee523b7c578"
+    },
+    {
+      "path": "crates/petunia_design_document/src/mutator.rs",
+      "sha256": "e1b367838c1c3f0660f511d25986da629b2d43b6f8b0f70f2bab617d68603a7e"
+    },
+    {
+      "path": "crates/petunia_design_document/src/validation.rs",
+      "sha256": "8f4873c7db0815618b4601da95d5ff1aaddf6314f5e0ba92508ef786204307b7"
+    },
+    {
+      "path": "crates/petunia_design_foundation/src/diagnostics.rs",
+      "sha256": "a1640c3f964ad3c3fb64078ef80158bd4b2a8879b4d187843c851c487af72efd"
+    },
+    {
+      "path": "crates/petunia_design_foundation/src/lib.rs",
+      "sha256": "3b6b0824824890b7b465338631f1309e77be63c4da26089c4e0dd0d0c8bf0ba4"
+    },
+    {
+      "path": "crates/petunia_design_io/Cargo.toml",
+      "sha256": "44f51cee6d0041f23ffb653eec2fc3080a155a86ca1b95fe201bc27ae023f060"
+    },
+    {
+      "path": "crates/petunia_design_io/src/binary_resources.rs",
+      "sha256": "49e77ede919d980a1f1bddfcd7fcc3ca03ea305b586cfe1fb7fabc56aeb53a8b"
+    },
+    {
+      "path": "crates/petunia_design_io/src/cmyk_tiff.rs",
+      "sha256": "78ab9570274a94e8f506fd15dddefeb7193b400c98e21bddd6039ed0cf509e1a"
+    },
+    {
+      "path": "crates/petunia_design_io/src/image_io.rs",
+      "sha256": "94acd1549d62b88e147f94ff2da693a7b9e02c5161045d7abaecd79c5cdf10d4"
+    },
+    {
+      "path": "crates/petunia_design_io/src/lib.rs",
+      "sha256": "9918d00c33dcfdaf90523b47e3b6856fd228f4cbabcdfe3e225ce3848cc2fc71"
+    },
+    {
+      "path": "crates/petunia_design_io/src/pdf.rs",
+      "sha256": "476830497224f9e7ea8504e18e7a1bb24210a9929ae659ac5d23da1fba9cc67a"
+    },
+    {
+      "path": "crates/petunia_design_io/src/raster_display.rs",
+      "sha256": "a53c42710747fbceb65de91b653d44f3193f70017aa832ce4e5b7457e0beebcb"
+    },
+    {
+      "path": "crates/petunia_design_io/src/svg_scene.rs",
+      "sha256": "371836be98e184ae0a30c41f0ff06a53cf785ef3090af8c22a4de46734a53bae"
+    },
+    {
+      "path": "crates/petunia_design_io/tests/binary_resources.rs",
+      "sha256": "47554a116cf873abebd368ca839e1303014bc44c37fc55471cf478036594d897"
+    },
+    {
+      "path": "crates/petunia_design_io/tests/image_admission.rs",
+      "sha256": "17f63596d5f95a58f10e303aedcfc907537315b37498166c18e79653f9f1d3a5"
+    },
+    {
+      "path": "crates/petunia_design_io/tests/native_cmyk.rs",
+      "sha256": "9a977a45e8ec90b2249141e7ef562508ce504db3cf42a2c87c477c4e9888cd6f"
+    },
+    {
+      "path": "crates/petunia_design_raster/Cargo.toml",
+      "sha256": "56181e7446e90b2ad3f3cfcc2d282d2f351e29da0821db369a327170dadb250d"
+    },
+    {
+      "path": "crates/petunia_design_raster/src/brush.rs",
+      "sha256": "358d332f0f2bbb686e6a94a88afaea9d447793c6007030f445d2129429a4c026"
+    },
+    {
+      "path": "crates/petunia_design_raster/src/cmyk.rs",
+      "sha256": "0e04df5f51c9b2fac0762518a202b2f6c31e0630b4937d420958b3f88e65f141"
+    },
+    {
+      "path": "crates/petunia_design_raster/src/cmyk_tiff.rs",
+      "sha256": "25c29489d26a2496f1bae809b62b0b0601fd18fe82042be13dd8102361fdaf2a"
+    },
+    {
+      "path": "crates/petunia_design_raster/src/image_assets.rs",
+      "sha256": "50bfe93cc51d0c590905f850e789e54dbd52a29ad466d73f3132466307df4ac7"
+    },
+    {
+      "path": "crates/petunia_design_raster/src/image_cache.rs",
+      "sha256": "288d57fc38cea964c76ed0b87973ab5342b5edb51ca65d1a8f083d77b45a7ddf"
+    },
+    {
+      "path": "crates/petunia_design_raster/src/layer.rs",
+      "sha256": "c807a81db9817d451d0c370021dbe0c008b6ed45713855d5eb2ad7e97f416b16"
+    },
+    {
+      "path": "crates/petunia_design_raster/src/lib.rs",
+      "sha256": "fc7f121740f1c520a4aabeb0cf7025d67aa7ae36a1733c9e363887762ea95f5a"
+    },
+    {
+      "path": "crates/petunia_design_raster/src/pixel.rs",
+      "sha256": "88cd56ad3c4692d39767863f5e3bec7a79056b2b729aede2a4f3093cdfe82acc"
+    },
+    {
+      "path": "crates/petunia_design_raster/src/tile.rs",
+      "sha256": "818c6a3062bac61d0cc16143caeceb0752586105e547cd739b612d05b2100f64"
+    },
+    {
+      "path": "crates/petunia_design_raster/tests/correctness_regressions.rs",
+      "sha256": "6643710ff15a4ee47028a5a4fb970bdab4cb5204193cef694e5f6a6fe384b78f"
+    },
+    {
+      "path": "crates/petunia_design_raster/tests/native_cmyk.rs",
+      "sha256": "e7f611cd062a118f1b85d2a47d8a21311b2a8f833476c116e7bcbe6966221fba"
+    },
+    {
+      "path": "crates/petunia_design_raster/tests/persistent_layers.rs",
+      "sha256": "a9717e84b796fcff8488114bc2e6cef11f05e7aa14ffa5e6884ec4caa8880946"
+    },
+    {
+      "path": "crates/petunia_design_render/src/cpu_renderer.rs",
+      "sha256": "3bc015a2da03e5055f9e82d0dd6d06ab31be77c1483ca2bf6a28c048805164fa"
+    },
+    {
+      "path": "crates/petunia_design_resources/src/file_workflow_strings.rs",
+      "sha256": "c6018b0cbc5ad17e8ed86e4c1d4e22f5a5e7cccafdccb4763d17f247fdfc1dee"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/bridge/gui_bridge.rs",
+      "sha256": "f1784b969067973821d52454cc91cb9f7c7a72227e4e9938449aa94aab3fa858"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/context_toolbar.rs",
+      "sha256": "0dfc4fb073cad1a0d2737ccaa48cd799ea6e80c5c585298537ba7764c865a370"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/menu/mod.rs",
+      "sha256": "ff16a3b6fd5a98448e4a9ca46f5144ce3b8777ecb44484d0b26901a3948a33fc"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/photo.rs",
+      "sha256": "daa6ff0bc95cac0f37d67c0e9375d9e32b0c072387e66f882ee0d1b9834576a9"
+    },
+    {
+      "path": "crates/petunia_design_shell/src/tools/pixel_fill.rs",
+      "sha256": "a69be12dc51536f46462cc27d0d992cc758a20c61f91639a419ae1d06994e45c"
+    },
+    {
+      "path": "crates/petunia_design_shell/tests/bridge_test.rs",
+      "sha256": "52332b57fcc682f67b11d188e1456dcab41d4e9cbace28b626d22e55fb4ce598"
+    },
+    {
+      "path": "crates/petunia_design_shell/tests/tools_test.rs",
+      "sha256": "7a07f16d6b4cef0fc5f862398ce39bf2a8bb66276962e49b0c85971c21a9985a"
+    },
+    {
+      "path": "scripts/generate-implementation-reference.js",
+      "sha256": "f4b8236b86faf21d9f16ed65123d5ada7124a551d73bab73297f858d3156a952"
+    },
+    {
+      "path": "scripts/verify-native-cmyk-pdf.py",
+      "sha256": "b1458d420d28284b6ffed4e18ece79bd9aa2af308dad0b71ce4ff23d5a2daff6"
+    },
+    {
+      "path": "fixtures/color/synthetic-cmyk.icc",
+      "sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "native-cmyk/artifacts/image-Cmyka16-images.txt",
+      "bytes": 372,
+      "sha256": "de699e8aa4bc422d229f3a92df84b4fb695d9f1f8d46970e4b44e949f1433c3c"
+    },
+    {
+      "path": "native-cmyk/artifacts/image-Cmyka16-poppler.png",
+      "bytes": 2704,
+      "sha256": "70ab591fbf515e3fa96a75741eb653b7f4d17e1097ba5cf055f4d8d76ea33af4"
+    },
+    {
+      "path": "native-cmyk/artifacts/image-Cmyka16.pdf",
+      "bytes": 3551,
+      "sha256": "1c0322bc57f136199ad078ade1eeb88733062e72c473e3ad5f0a225f2d57976f"
+    },
+    {
+      "path": "native-cmyk/artifacts/image-Cmyka8-images.txt",
+      "bytes": 372,
+      "sha256": "f8f2a47901abc069a950ca8f488f8ffa0d8048011512ffffe1caea05929124e1"
+    },
+    {
+      "path": "native-cmyk/artifacts/image-Cmyka8-poppler.png",
+      "bytes": 3800,
+      "sha256": "47b23ee29e1d85ba1ebe6f4cecb76638ae33d74e3c02f424497ae2f76c55b3f5"
+    },
+    {
+      "path": "native-cmyk/artifacts/image-Cmyka8.pdf",
+      "bytes": 3535,
+      "sha256": "6eceb78ae0b01a53cc4093b57b96aed36ddc6892434a3d40d05ae10597b8aec6"
+    },
+    {
+      "path": "native-cmyk/artifacts/independent-pdf.json",
+      "bytes": 1315,
+      "sha256": "6546ecdda2b6b1d42a4dee44da8cdb9d4f6096602c3f86672a0194a6dc1daf34"
+    },
+    {
+      "path": "native-cmyk/artifacts/native-Cmyka16-images.txt",
+      "bytes": 372,
+      "sha256": "de699e8aa4bc422d229f3a92df84b4fb695d9f1f8d46970e4b44e949f1433c3c"
+    },
+    {
+      "path": "native-cmyk/artifacts/native-Cmyka16-poppler.png",
+      "bytes": 2704,
+      "sha256": "70ab591fbf515e3fa96a75741eb653b7f4d17e1097ba5cf055f4d8d76ea33af4"
+    },
+    {
+      "path": "native-cmyk/artifacts/native-Cmyka16.pdf",
+      "bytes": 3551,
+      "sha256": "1c0322bc57f136199ad078ade1eeb88733062e72c473e3ad5f0a225f2d57976f"
+    },
+    {
+      "path": "native-cmyk/artifacts/native-Cmyka16.tif",
+      "bytes": 1121,
+      "sha256": "13d77588b4d72060446795a701c15fd9a3e7e9d32ec5385370be89953c8360e0"
+    },
+    {
+      "path": "native-cmyk/artifacts/native-Cmyka8-images.txt",
+      "bytes": 372,
+      "sha256": "f8f2a47901abc069a950ca8f488f8ffa0d8048011512ffffe1caea05929124e1"
+    },
+    {
+      "path": "native-cmyk/artifacts/native-Cmyka8-poppler.png",
+      "bytes": 3800,
+      "sha256": "47b23ee29e1d85ba1ebe6f4cecb76638ae33d74e3c02f424497ae2f76c55b3f5"
+    },
+    {
+      "path": "native-cmyk/artifacts/native-Cmyka8.pdf",
+      "bytes": 3535,
+      "sha256": "6eceb78ae0b01a53cc4093b57b96aed36ddc6892434a3d40d05ae10597b8aec6"
+    },
+    {
+      "path": "native-cmyk/artifacts/native-Cmyka8.tif",
+      "bytes": 1109,
+      "sha256": "029689dfd26f0cfb44d970985780246185761f26f24ef1ca0383108b2f41e901"
+    },
+    {
+      "path": "native-cmyk/docs.log",
+      "bytes": 991,
+      "sha256": "840742deaf168b0ab263c2e18c3f620b936ac314d04a3b608ed66b34509b723e"
+    },
+    {
+      "path": "native-cmyk/gauntlet.log",
+      "bytes": 89192,
+      "sha256": "650c0440917e268c1869f970ba32ac5efc6f4c0200244d821832a2fdb57379e8"
+    },
+    {
+      "path": "native-cmyk/independent-pdf.log",
+      "bytes": 1315,
+      "sha256": "6546ecdda2b6b1d42a4dee44da8cdb9d4f6096602c3f86672a0194a6dc1daf34"
+    },
+    {
+      "path": "native-cmyk/ui/edit-text.png",
+      "bytes": 32862,
+      "sha256": "91091cdc3953ceecc357638952312cf6260e7bfb13c6560285dc014337e8ce53"
+    },
+    {
+      "path": "native-cmyk/ui/edit-transform.png",
+      "bytes": 50903,
+      "sha256": "7a25c1df29ecb2d87e1549d07c369c883807a85832d0178905f6153b46fb8b23"
+    },
+    {
+      "path": "native-cmyk/ui/native-brush-ink.png",
+      "bytes": 38221,
+      "sha256": "5c49f93f35df6e3fff9b16238dc7b98d788f69ea975822542d2a0588393f2cbb"
+    },
+    {
+      "path": "native-cmyk/ui/native-layer.png",
+      "bytes": 33566,
+      "sha256": "43f1994da35fc14e0265d30941d1e2330d3fdda0c1afb698c5276ee1d38cdb76"
+    },
+    {
+      "path": "native-cmyk/ui/new-document.png",
+      "bytes": 51154,
+      "sha256": "5ee28cccb490da25fceaf389865eccb2e3764a3f0927f094b578c50bc28ab4cb"
+    },
+    {
+      "path": "native-cmyk/ui/open-document.png",
+      "bytes": 30442,
+      "sha256": "4f7bd026cc39e012544d30a11255a8da4214e42cb1e28e5928bd0230927025d0"
+    },
+    {
+      "path": "native-cmyk/ui/rename-layer.png",
+      "bytes": 30919,
+      "sha256": "76dd75a74a4bc44d0db8f60d2bfcff664a7d890840b0271c3b01745ca47df93b"
+    },
+    {
+      "path": "native-cmyk/ui/transform-error.png",
+      "bytes": 50030,
+      "sha256": "a9410caecafa05fbc4cb061c4ceb243aaff08d70b26eae39dd2560160d3e0c7f"
+    },
+    {
+      "path": "native-cmyk/ui/workspace.png",
+      "bytes": 58476,
+      "sha256": "a7133d16b614c9627d3317c092f7ea0527aef5ffc05b8547bbdff600ca3412ab"
+    },
+    {
+      "path": "native-cmyk/ui-gauntlet.log",
+      "bytes": 6121,
+      "sha256": "f4ba84d146da76973c825fc3ca351bf761d2de97341bab9f7bab5824eb4eca6c"
+    }
+  ],
+  "log_format": "Text logs preserve command output; only extra terminal blank lines are removed."
+}

@@ -610,6 +610,13 @@ impl Context<'_> {
                     .ok_or_else(|| RenderError::Invalid("singular raster sampling frame".into()))?;
                 let (_permit, coverage) =
                     self.path_mask(&layer, &path, local_to_layer, fill_rule)?;
+                let _ink_derivatives = self.reserve(if source.is_cmyk() {
+                    petunia_design_raster::RasterDisplaySampler::MAX_CACHE_BYTES + 8192
+                } else {
+                    0
+                })?;
+                let mut sampler = petunia_design_raster::RasterDisplaySampler::new(source)
+                    .map_err(|e| RenderError::Invalid(e.to_string()))?;
                 let width = layer.pixmap.width() as usize;
                 for (index, output) in layer
                     .pixmap
@@ -630,7 +637,7 @@ impl Context<'_> {
                         (index % width) as f64 + 0.5,
                         (index / width) as f64 + 0.5,
                     ));
-                    let pixel = sample_raster(source, point);
+                    let pixel = sample_raster(&mut sampler, point)?;
                     for channel in 0..4 {
                         output[channel] =
                             (pixel[channel] * mask * 255.0).round().clamp(0.0, 255.0) as u8;
@@ -1436,6 +1443,8 @@ pub fn composite_raster_preview(
     let inverse = pixels_to_world
         .inverse()
         .ok_or_else(|| RenderError::Invalid("singular raster preview".into()))?;
+    let mut sampler = petunia_design_raster::RasterDisplaySampler::new(source)
+        .map_err(|e| RenderError::Invalid(e.to_string()))?;
     let width = output.width as usize;
     for (index, pixel) in output.data.as_chunks_mut::<4>().0.iter_mut().enumerate() {
         if index % width == 0 && cancellation.is_cancelled() {
@@ -1449,7 +1458,7 @@ pub fn composite_raster_preview(
                 + ((index / width) as f64 + 0.5) * request.viewport.height()
                     / f64::from(request.height),
         );
-        let src = sample_raster(source, inverse.apply(world));
+        let src = sample_raster(&mut sampler, inverse.apply(world))?;
         let dst_alpha = f32::from(pixel[3]) / 255.0;
         let alpha = src[3] + dst_alpha * (1.0 - src[3]);
         if alpha > 0.0 {
@@ -1468,13 +1477,16 @@ pub fn composite_raster_preview(
 
 /// Bilinear premultiplied sampling with padded edges inside the pixel frame.
 /// Coverage clips the frame; taps must not introduce a transparent fringe.
-fn sample_raster(source: &petunia_design_raster::RasterLayer, point: GPoint) -> [f32; 4] {
+fn sample_raster(
+    source: &mut petunia_design_raster::RasterDisplaySampler<'_>,
+    point: GPoint,
+) -> Result<[f32; 4], RenderError> {
     if point.x < 0.0
         || point.y < 0.0
         || point.x >= f64::from(source.width())
         || point.y >= f64::from(source.height())
     {
-        return [0.0; 4];
+        return Ok([0.0; 4]);
     }
     let x = point.x - 0.5;
     let y = point.y - 0.5;
@@ -1489,18 +1501,20 @@ fn sample_raster(source: &petunia_design_raster::RasterLayer, point: GPoint) -> 
         (0, 1, (1.0 - fx) * fy),
         (1, 1, fx * fy),
     ] {
-        let p = source.pixel(
-            x0.saturating_add(dx)
-                .clamp(0, i64::from(source.width()) - 1),
-            y0.saturating_add(dy)
-                .clamp(0, i64::from(source.height()) - 1),
-        );
+        let p = source
+            .pixel(
+                x0.saturating_add(dx)
+                    .clamp(0, i64::from(source.width()) - 1),
+                y0.saturating_add(dy)
+                    .clamp(0, i64::from(source.height()) - 1),
+            )
+            .map_err(|e| RenderError::Invalid(e.to_string()))?;
         for c in 0..3 {
             result[c] += p[c] * p[3] * weight;
         }
         result[3] += p[3] * weight;
     }
-    result
+    Ok(result)
 }
 
 fn node_fill_rule(node: &RenderNode) -> sk::FillRule {

@@ -3322,6 +3322,7 @@ dependencies = [
  "petunia_design_resources",
  "petunia_design_text",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -3442,6 +3443,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror 2.0.20",
+ "tiff",
  "zip",
 ]
 
@@ -3492,6 +3494,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.20",
+ "tiff",
 ]
 
 [[package]]

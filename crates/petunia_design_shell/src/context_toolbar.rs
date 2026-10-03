@@ -687,6 +687,7 @@ mod tests {
     fn context() -> ActionContext {
         ActionContext {
             has_document: true,
+            has_cmyk_layer_profile: false,
             selection_count: 0,
             can_undo: false,
             can_redo: false,

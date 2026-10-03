@@ -4,6 +4,8 @@ This proposal starts from baseline `73447647a34f5b4be209415c36e6965c5f71b9b9` an
 
 Linux is primary. Portability belongs in platform/resource contracts; other platforms should not consume the effort needed to finish Linux workflows. Keep Freya/Skia unless concrete testing shows an insurmountable blocker; avoid another preference-driven GUI migration.
 
+Current V1-B increment: [ADR-011](/developers/adr/ADR-011-native-cmyk-raster) implements native ink raster and bounded ICC TIFF/PDF interchange. It does not close the full V1-B/V1-C gates.
+
 ## Implementation and evidence rules
 
 1. All writes follow Action→Command→DocumentMutator→ChangeSet with atomic expected-revision commit and undo/redo. Gesture previews are not separately persisted documents. One confirmed gesture creates one history operation; Esc cancels without residue.

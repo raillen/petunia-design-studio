@@ -4,6 +4,8 @@
 **Data:** 2026-10-03
 **Escopo:** Milestone Required (correções do MVP); V1 Required (base limitada de cor/PDF).
 
+As afirmações abaixo sobre raster/recursos/intercâmbio descrevem a baseline do ADR-010 e são substituídas pelo [ADR-011](/pt/developers/adr/ADR-011-native-cmyk-raster). A prova direta nativa e a aceitação de impressão profissional permanecem abertas.
+
 ## Contexto
 
 As continuações anteriores do MVP foram integradas sem executar os testes adiados. A edição de texto não compartilhava a geometria de caret da arte, histogramas podiam sintetizar estatísticas, nomes de perfis de impressão não estabeleciam conversão ICC e PDF podia substituir geometria ou omitir semântica. Um handler conectado não comprova uma tarefa do produto nem um fluxo profissional de impressão.

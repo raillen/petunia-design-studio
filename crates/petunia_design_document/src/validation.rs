@@ -337,6 +337,11 @@ fn validate_resource_budget(document: &Document) -> Result<(), PetuniaError> {
                 .saturating_add(object.name.capacity());
             match &object.shape {
                 Some(ShapeKind::Raster { layer }) => {
+                    if let Some(profile) = layer.cmyk_profile() {
+                        if profiles.insert(profile.id()) {
+                            bytes = bytes.saturating_add(profile.bytes().len());
+                        }
+                    }
                     if layers.insert(std::sync::Arc::as_ptr(layer)) {
                         bytes = bytes.saturating_add(layer.tiles().resident_tile_count() * 96);
                         for (_, tile) in layer.tiles().tiles() {
