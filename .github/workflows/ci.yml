@@ -15,7 +15,7 @@ jobs:
           toolchain: 1.98.1
           components: rustfmt, clippy
       - name: Linux native rendering dependencies
-        run: sudo apt-get update && sudo apt-get install -y pkg-config poppler-utils libfontconfig1-dev libfreetype6-dev libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxinerama-dev libwayland-dev libxkbcommon-dev
+        run: sudo apt-get update && sudo apt-get install -y pkg-config cmake ninja-build clang libssl-dev libdbus-1-dev fonts-dejavu-core fonts-noto-core fonts-noto-cjk poppler-utils libfontconfig1-dev libfreetype6-dev libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxinerama-dev libwayland-dev libxkbcommon-dev
       - name: Fast deterministic gate
         run: cargo xtask verify
 

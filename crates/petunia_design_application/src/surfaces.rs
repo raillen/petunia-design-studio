@@ -638,9 +638,13 @@ pub const SURFACES: &[SurfaceEntry] = &[
         shortcut: None,
     },
     SurfaceEntry {
-        id: "ptnd.action.object.pixel_mask.create", kind: SurfaceKind::Action,
-        scope: SurfaceScope::MilestoneRequired, status: SurfaceStatus::Wired,
-        label: "ptnd.text.object.pixel_mask", action: None, shortcut: None,
+        id: "ptnd.action.object.pixel_mask.create",
+        kind: SurfaceKind::Action,
+        scope: SurfaceScope::MilestoneRequired,
+        status: SurfaceStatus::Wired,
+        label: "ptnd.text.object.pixel_mask",
+        action: None,
+        shortcut: None,
     },
     SurfaceEntry {
         id: "ptnd.action.object.clip_mask.create",
@@ -1096,7 +1100,7 @@ pub const SURFACES: &[SurfaceEntry] = &[
         status: SurfaceStatus::Wired,
         label: "ptnd.text.tool.pixel_fill",
         action: Some("ptnd.tool.photo.fill"),
-        shortcut: Some("G"),
+        shortcut: Some("Shift+G"),
     },
     SurfaceEntry {
         id: "ptnd.tool.photo.eraser",
@@ -1361,6 +1365,7 @@ pub const LIVE_ACTIONS: &[&str] = &[
     "ptnd.action.file.open",
     "ptnd.action.file.place",
     "ptnd.action.file.quit",
+    "ptnd.action.file.recover",
     "ptnd.action.file.save",
     "ptnd.action.file.save_as",
     "ptnd.action.object.align",

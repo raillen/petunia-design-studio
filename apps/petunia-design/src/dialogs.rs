@@ -8,7 +8,6 @@ use freya::prelude::*;
 
 use petunia_design_application::{ActionId, ActionRequest};
 
-use crate::actions::run_action_token;
 use crate::chrome::{app_icon, tool_label, tool_shortcut, tool_summary, with_tooltip};
 use crate::theme;
 use crate::ui_state::{default_tool_rail, RailColumns, ToolGroupConfig, UiShell};
@@ -80,7 +79,6 @@ fn palette_row(
     palette_open: &mut State<bool>,
 ) -> impl IntoElement {
     let token = item.action_token.clone();
-    let mut shell = ui.shell;
     let mut palette_open = *palette_open;
     let mut palette_query = ui.palette_query;
     let mut active_tool = ui.active_tool;
@@ -1189,7 +1187,6 @@ impl Component for ExportDialog {
                 )
             });
         let failure = ui.text("failed");
-        let shell = ui.shell;
         let export_ui = ui.clone();
         let cancel_ui = ui.clone();
         let close_ui = ui.clone();
@@ -1199,7 +1196,7 @@ impl Component for ExportDialog {
             .child(PopupTitle::new(ui.text("export")))
             .child(PopupContent::new().child(rect().direction(Direction::Vertical).width(Size::fill()).spacing(theme::SPACE_2)
                 .child(label().text(ui.text("format")))
-                .child(rect().direction(Direction::Horizontal).spacing(theme::SPACE_1).children(["png","svg"].into_iter().map(|fmt| {
+                .child(rect().direction(Direction::Horizontal).spacing(theme::SPACE_1).children(["png","svg","pdf"].into_iter().map(|fmt| {
                     let selected=active_format==fmt;
                     Button::new().on_press(move |_| {
                         format.set(fmt.to_string());

@@ -19,4 +19,4 @@ pub use namespace::{
 pub use numeric::{parse_numeric_input, NumericFieldKind, NumericParseError};
 
 /// Canonical native schema version emitted by this workspace build.
-pub const NATIVE_SCHEMA_VERSION: u32 = 4;
+pub const NATIVE_SCHEMA_VERSION: u32 = 5;

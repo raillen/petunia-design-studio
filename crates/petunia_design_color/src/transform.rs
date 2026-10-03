@@ -1,7 +1,6 @@
 //! Display transform facade. moxcms stays inside [`moxcms_adapter`].
 //!
-//! ICC-profile transforms are `POST_V1`: the entry point exists with an
-//! explicit disabled reason instead of a silent fallback.
+//! Named profiles require bytes; checked transforms are exposed in `icc`.
 
 use petunia_design_foundation::PetuniaError;
 
@@ -22,7 +21,7 @@ pub fn transform_via_profile(
     _intent: RenderingIntent,
 ) -> Result<Srgb, PetuniaError> {
     Err(PetuniaError::capability_unavailable(
-        "ICC profile transforms are POST_V1: no profile registry in this build",
+        "ICC transform requires profile bytes; a profile name is insufficient",
     ))
 }
 
@@ -50,14 +49,14 @@ mod tests {
     use crate::Lab;
 
     #[test]
-    fn profile_path_is_explicitly_post_v1() {
+    fn profile_name_cannot_stand_in_for_profile_bytes() {
         let err = transform_via_profile(
             &ColorValue::Registration,
             "sRGB",
             RenderingIntent::Perceptual,
         )
-        .expect_err("must be POST_V1");
-        assert!(err.to_string().contains("POST_V1"));
+        .expect_err("must require profile bytes");
+        assert!(err.to_string().contains("profile bytes"));
     }
 
     #[test]

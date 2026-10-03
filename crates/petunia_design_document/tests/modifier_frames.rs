@@ -76,7 +76,10 @@ fn schema_one_and_two_migrate_parent_parameters_without_changing_source() {
             {"id":3,"kind":{"type":"TransparentGradient","start":[100,200],"end":[200,300],"stops":[{"offset":0,"opacity":1},{"offset":1,"opacity":0}]},"enabled":true}
         ]);
         let doc = Document::from_json(&wire.to_string()).unwrap();
-        assert_eq!(doc.schema_version(), 3);
+        assert_eq!(
+            doc.schema_version(),
+            petunia_design_foundation::NATIVE_SCHEMA_VERSION
+        );
         bounds(&doc, GRect::new(110.0, 210.0, 160.0, 240.0));
         close(
             doc.opacity_at_world(ID, GPoint::new(150.0, 250.0)).unwrap(),

@@ -311,7 +311,18 @@ fn validate_resource_budget(document: &Document) -> Result<(), PetuniaError> {
     let mut layers = HashSet::new();
     let mut images = HashSet::new();
     let mut paths = HashSet::new();
+    let mut profiles = HashSet::new();
     for surface in document.surfaces() {
+        if let Some(profile) = &surface.cmyk_profile {
+            if !profile.is_press_profile() {
+                return Err(invalid(
+                    "surface ICC press profile must be a CMYK output profile",
+                ));
+            }
+            if profiles.insert(profile.id()) {
+                bytes = bytes.saturating_add(profile.bytes().len());
+            }
+        }
         bytes = bytes.saturating_add(surface.name.capacity());
         if bytes > MAX_DOCUMENT_RESOURCE_BYTES {
             return Err(invalid("surface label budget exceeded"));

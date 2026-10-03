@@ -450,7 +450,7 @@ fn shape(node: roxmltree::Node<'_, '_>) -> Result<GPath, PetuniaError> {
                 return Err(invalid("invalid SVG points"));
             }
             let mut path = GPath::new();
-            for (i, p) in values.chunks_exact(2).enumerate() {
+            for (i, p) in values.as_chunks::<2>().0.iter().enumerate() {
                 path.push(if i == 0 {
                     PathVerb::MoveTo(GPoint::new(p[0], p[1]))
                 } else {

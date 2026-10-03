@@ -2652,6 +2652,32 @@ impl<'doc> DocumentMutator<'doc> {
         Ok(changes)
     }
 
+    /// Assigns an actual CMYK profile without changing any ink numbers.
+    pub fn set_surface_cmyk_profile(
+        &mut self,
+        id: SurfaceId,
+        profile: Option<petunia_design_color::IccProfile>,
+    ) -> Result<ChangeSet, PetuniaError> {
+        if profile.as_ref().is_some_and(|p| !p.is_press_profile()) {
+            return Err(PetuniaError::invalid_input(
+                "surface press profile must be an ICC CMYK output profile",
+            ));
+        }
+        let surface = self.document.surface_mut(id)?;
+        let previous = surface.cmyk_profile.clone();
+        if previous == profile {
+            return Ok(ChangeSet::empty());
+        }
+        surface.cmyk_profile = profile.clone();
+        let mut changes = ChangeSet::empty();
+        changes.push(Change::SurfaceCmykProfileChanged {
+            id,
+            previous,
+            next: profile,
+        });
+        Ok(changes)
+    }
+
     /// Sets inclusion in batch export, with reversible history.
     pub fn set_surface_export_enabled(
         &mut self,
@@ -3347,6 +3373,9 @@ impl<'doc> DocumentMutator<'doc> {
                 Change::SurfaceBackgroundChanged { id, previous, .. } => {
                     let surf = self.document.surface_mut(id)?;
                     surf.background = previous;
+                }
+                Change::SurfaceCmykProfileChanged { id, previous, .. } => {
+                    self.set_surface_cmyk_profile(id, previous)?;
                 }
                 Change::SurfaceExportEnabledChanged { id, previous, .. } => {
                     self.document.surface_mut(id)?.export_enabled = previous;

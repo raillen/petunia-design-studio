@@ -38,13 +38,23 @@ pub fn use_canvas_preview(
     snapshot: &CanvasSnapshot,
     channel: usize,
     soft_proof: bool,
+    proof_settings: Option<petunia_design_color::IccProofSettings>,
 ) -> (Option<PresentedPreview>, Option<String>) {
-    use_canvas_preview_with_background(snapshot, channel, soft_proof, false)
+    use_canvas_preview_inner(snapshot, channel, soft_proof, proof_settings, false)
 }
 pub fn use_canvas_preview_with_background(
     snapshot: &CanvasSnapshot,
     channel: usize,
     soft_proof: bool,
+    transparent: bool,
+) -> (Option<PresentedPreview>, Option<String>) {
+    use_canvas_preview_inner(snapshot, channel, soft_proof, None, transparent)
+}
+fn use_canvas_preview_inner(
+    snapshot: &CanvasSnapshot,
+    channel: usize,
+    soft_proof: bool,
+    proof_settings: Option<petunia_design_color::IccProofSettings>,
     transparent: bool,
 ) -> (Option<PresentedPreview>, Option<String>) {
     let next = snapshot
@@ -53,6 +63,7 @@ pub fn use_canvas_preview_with_background(
         .map(|source| {
             PreviewRequest::from_camera(source.clone(), &snapshot.camera, channel, soft_proof).map(
                 |mut request| {
+                    request.proof_settings = proof_settings.clone();
                     request.transparent_artboard = transparent;
                     request
                 },
@@ -128,6 +139,7 @@ pub fn use_canvas_preview_with_background(
             next.source.id() == frame.request.source.id()
                 && next.channel == frame.request.channel
                 && next.soft_proof == frame.request.soft_proof
+                && next.proof_settings == frame.request.proof_settings
                 && next.transparent_artboard == frame.request.transparent_artboard
         })
     });

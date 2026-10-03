@@ -23,8 +23,8 @@ use std::{
 use petunia_design_document::{Document, Surface};
 use petunia_design_foundation::{PetuniaError, SurfaceId};
 use petunia_design_io::{
-    export_document_pdf, export_document_svg, export_png_rgba8_at_dpi, PdfExportOptions,
-    RawRasterImage,
+    export_document_pdf_cancellable, export_document_svg, export_png_rgba8_at_dpi,
+    PdfExportOptions, RawRasterImage,
 };
 use petunia_design_render::{CpuRenderer, RenderRequest, RenderSurface};
 use serde::{Deserialize, Serialize};
@@ -234,7 +234,11 @@ pub fn export_document_cancellable(
             export_enabled(document),
         ),
         ExportFormat::Pdf => {
-            let (bytes, report) = export_document_pdf(document, &PdfExportOptions::default())?;
+            let (bytes, report) = export_document_pdf_cancellable(
+                document,
+                &PdfExportOptions::default(),
+                cancellation,
+            )?;
             degradations.extend(report.degradations.iter().map(|item| item.code.clone()));
             (bytes, export_enabled(document))
         }
@@ -291,12 +295,6 @@ fn resolve_surface(
 /// Renders exactly the artboard region and encodes straight RGBA as PNG.
 /// Negative/far-away origins do not affect allocation size. Unsupported content
 /// fails before writing a destination file.
-fn render_surface_png(
-    surface: &Surface,
-    dpi: f64,
-) -> Result<(Vec<u8>, Vec<petunia_design_io::DegradationItem>), PetuniaError> {
-    render_surface_png_cancellable(surface, dpi, &CancellationToken::new())
-}
 fn render_surface_png_cancellable(
     surface: &Surface,
     dpi: f64,
@@ -486,20 +484,54 @@ mod tests {
         assert!(export_document(&document, &request).is_err());
     }
 
-    #[test]
-    fn crop_keeps_the_surface_rect_when_it_is_offset() {
-        let buffer = PixelBufferRgba8::with_fill(20, 20, [9, 9, 9, 255]);
-        let cropped = crop_surface_rect(&buffer, [4.0, 6.0, 8.0, 8.0]);
-        assert_eq!(cropped.width, 8);
-        assert_eq!(cropped.height, 8);
-        assert_eq!(cropped.data.len(), 8 * 8 * 4);
-        assert_eq!(cropped.get_pixel(0, 0), Some([9, 9, 9, 255]));
+    fn export_small_region(origin: [f64; 2]) {
+        let mut session = DocumentSession::new("Small region");
+        let surface = SurfaceId::new(1);
+        session
+            .execute_command(CommandRequest::new(Command::CreateSurface {
+                id: surface,
+                name: "Region".into(),
+            }))
+            .unwrap();
+        session
+            .execute_command(CommandRequest::new(Command::SetSurfaceGeometry {
+                surface,
+                origin,
+                dimensions: [8., 8.],
+            }))
+            .unwrap();
+        let id = session.next_object_id();
+        session
+            .transact(
+                "Square",
+                create_shape_commands(
+                    surface,
+                    id,
+                    "Square",
+                    ShapeKind::Rectangle {
+                        corner_radii: [0.; 4],
+                    },
+                    Some([origin[0], origin[1], 8., 8.]),
+                    Some("#090909".into()),
+                    None,
+                ),
+            )
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let request = ExportRequest::new(ExportFormat::Png, dir.path().join("region.png"));
+        export_document(session.document(), &request).unwrap();
+        let image =
+            petunia_design_io::import_raster(&std::fs::read(&request.path).unwrap(), 1024 * 1024)
+                .unwrap();
+        assert_eq!((image.width, image.height), (8, 8));
+        assert_eq!(&image.data[..4], &[9, 9, 9, 255]);
     }
-
     #[test]
-    fn crop_is_identity_when_the_surface_fills_the_buffer() {
-        let buffer = PixelBufferRgba8::with_fill(5, 5, [1, 2, 3, 4]);
-        let cropped = crop_surface_rect(&buffer, [0.0, 0.0, 5.0, 5.0]);
-        assert_eq!(cropped, buffer);
+    fn direct_export_allocates_only_the_offset_artboard_region() {
+        export_small_region([-4000., 6000.]);
+    }
+    #[test]
+    fn direct_export_handles_a_region_at_the_world_origin() {
+        export_small_region([0., 0.]);
     }
 }

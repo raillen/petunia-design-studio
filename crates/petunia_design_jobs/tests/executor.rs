@@ -6,9 +6,8 @@ use std::time::{Duration, Instant};
 fn result<T>(handle: &JobHandle<T>, revision: u64) -> Result<T, JobFailure> {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        match handle.try_result(revision)? {
-            Some(value) => return Ok(value),
-            None => {}
+        if let Some(value) = handle.try_result(revision)? {
+            return Ok(value);
         }
         assert!(Instant::now() < deadline, "worker failed to finish");
         std::thread::yield_now();

@@ -9,7 +9,7 @@ use krilla::num::NormalizedF32;
 use krilla::page::PageSettings;
 use krilla::paint::{Fill, FillRule, LineCap, LineJoin, Paint, Stroke, StrokeDash};
 use krilla::Document as KrillaDocument;
-use petunia_design_document::{Document, DocumentObject, Surface};
+use petunia_design_document::Document;
 use petunia_design_foundation::PetuniaError;
 use serde::{Deserialize, Serialize};
 
@@ -53,605 +53,1081 @@ pub struct PreflightReport {
     pub passed: bool,
 }
 
-/// Options controlling vector PDF export.
+/// Strict, scene-based export. Rasterization is admitted only by an explicit
+/// option, and does not change any editable source in the document.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PdfExportOptions {
-    /// Author metadata tag.
     pub author: Option<String>,
-    /// Title metadata tag.
     pub title: Option<String>,
-    /// Software creator metadata tag (defaults to "Petunia Design Studio").
     pub creator: String,
-    /// Default page width in points (default: 595.28 pt / A4).
     pub default_page_width: f32,
-    /// Default page height in points (default: 841.89 pt / A4).
     pub default_page_height: f32,
-    /// Whether to proceed with export if non-blocking degradations are present.
     pub allow_degradations: bool,
+    pub raster_fallback_dpi: f64,
+    pub include_bleed: bool,
 }
-
 impl Default for PdfExportOptions {
     fn default() -> Self {
         Self {
             author: None,
             title: None,
-            creator: "Petunia Design Studio".to_string(),
+            creator: "Petunia Design Studio".into(),
             default_page_width: 595.28,
             default_page_height: 841.89,
-            allow_degradations: true,
+            allow_degradations: false,
+            raster_fallback_dpi: 300.,
+            include_bleed: false,
         }
     }
 }
+fn invalid(reason: impl Into<String>) -> PetuniaError {
+    PetuniaError::invalid_input(reason)
+}
+fn unit(value: f64) -> Result<NormalizedF32, PetuniaError> {
+    if !value.is_finite() {
+        return Err(invalid("nonfinite PDF opacity"));
+    }
+    NormalizedF32::new(value as f32).ok_or_else(|| invalid("PDF opacity outside 0–1"))
+}
+fn number(value: f64) -> Result<f32, PetuniaError> {
+    if !value.is_finite() || value.abs() > 10_000_000. {
+        return Err(invalid("PDF coordinate budget exceeded"));
+    }
+    Ok(value as f32)
+}
+fn transform(frame: petunia_design_geometry::GAffine) -> Result<Transform, PetuniaError> {
+    let [a, b, c, d, e, f] = frame.coeffs;
+    Ok(Transform::from_row(
+        number(a)?,
+        number(b)?,
+        number(c)?,
+        number(d)?,
+        number(e)?,
+        number(f)?,
+    ))
+}
+fn path(
+    geometry: &petunia_design_geometry::GPath,
+) -> Result<Option<krilla::geom::Path>, PetuniaError> {
+    use petunia_design_geometry::PathVerb;
+    let mut builder = PathBuilder::new();
+    for verb in &geometry.verbs {
+        match *verb {
+            PathVerb::MoveTo(p) => builder.move_to(number(p.x)?, number(p.y)?),
+            PathVerb::LineTo(p) => builder.line_to(number(p.x)?, number(p.y)?),
+            PathVerb::QuadTo(c, p) => {
+                builder.quad_to(number(c.x)?, number(c.y)?, number(p.x)?, number(p.y)?)
+            }
+            PathVerb::CubicTo(a, b, p) => builder.cubic_to(
+                number(a.x)?,
+                number(a.y)?,
+                number(b.x)?,
+                number(b.y)?,
+                number(p.x)?,
+                number(p.y)?,
+            ),
+            PathVerb::Close => builder.close(),
+        }
+    }
+    Ok(builder.finish())
+}
+fn rule(node: &petunia_design_render::RenderNode) -> FillRule {
+    if node.prepared_text().is_some()
+        || node.source().fill_rule == petunia_design_geometry::FillRule::NonZero
+    {
+        FillRule::NonZero
+    } else {
+        FillRule::EvenOdd
+    }
+}
+fn blend(mode: petunia_design_document::BlendMode) -> krilla::blend::BlendMode {
+    use krilla::blend::BlendMode as P;
+    use petunia_design_document::BlendMode as D;
+    match mode {
+        D::Normal => P::Normal,
+        D::Multiply => P::Multiply,
+        D::Screen => P::Screen,
+        D::Overlay => P::Overlay,
+        D::Darken => P::Darken,
+        D::Lighten => P::Lighten,
+        D::ColorDodge => P::ColorDodge,
+        D::ColorBurn => P::ColorBurn,
+        D::HardLight => P::HardLight,
+        D::SoftLight => P::SoftLight,
+        D::Difference => P::Difference,
+        D::Exclusion => P::Exclusion,
+        D::Hue => P::Hue,
+        D::Saturation => P::Saturation,
+        D::Color => P::Color,
+        D::Luminosity => P::Luminosity,
+    }
+}
+fn issue(report: &mut PreflightReport, code: &str, description: String, grade: FidelityGrade) {
+    report.degradations.push(DegradationItem {
+        code: code.into(),
+        description,
+        grade,
+    });
+}
+fn checked_color(
+    token: &str,
+    has_cmyk_profile: bool,
+    report: &mut PreflightReport,
+) -> Result<krilla::color::Color, PetuniaError> {
+    use krilla::color::{separation, RegularColor};
+    let t = petunia_design_foundation::normalized(token);
+    let t = t.trim();
+    if let Some(ink) = petunia_design_color::icc::parse_cmyk_token(t)? {
+        if !has_cmyk_profile {
+            return Err(invalid("PDF CMYK requires an assigned ICC press profile"));
+        }
+        if ink
+            .iter()
+            .any(|v| (*v * 255. - (*v * 255.).round()).abs() > 1e-5)
+        {
+            issue(
+                report,
+                "CMYK_QUANTIZED_8",
+                format!("{t}: PDF backend quantizes process color to 8-bit channels"),
+                FidelityGrade::Approximate,
+            );
+        }
+        let [c, m, y, k] = ink.map(|v| (v * 255.).round() as u8);
+        return Ok(cmyk::Color::new(c, m, y, k).into());
+    }
+    if let Some(inner) = t.strip_prefix("spot(").and_then(|s| s.strip_suffix(')')) {
+        let (name, fallback) = inner
+            .split_once(',')
+            .ok_or_else(|| invalid("PDF spot requires a name and fallback"))?;
+        let name = name.trim();
+        if name.is_empty() || name.len() > 512 || name.chars().any(char::is_control) {
+            return Err(invalid("invalid PDF spot name"));
+        }
+        let color = checked_color(fallback.trim(), has_cmyk_profile, report)?;
+        let krilla::color::Color::Regular(color) = color else {
+            return Err(invalid("nested PDF spot fallback"));
+        };
+        return Ok(separation::Color::new(
+            255,
+            separation::SeparationSpace::new(
+                separation::SeparationColorant::Custom(name.into()),
+                color,
+            ),
+        )
+        .into());
+    }
+    if t == "registration" {
+        return Ok(separation::Color::new(
+            255,
+            separation::SeparationSpace::new(
+                separation::SeparationColorant::AllColorants,
+                RegularColor::from(cmyk::Color::new(255, 255, 255, 255)),
+            ),
+        )
+        .into());
+    }
+    let known = matches!(
+        t,
+        "ptnd.red/500"
+            | "ptnd.blue/500"
+            | "ptnd.green/500"
+            | "ptnd.yellow/500"
+            | "ptnd.gray/900"
+            | "ptnd.gray/500"
+            | "ptnd.white"
+            | "ptnd.black"
+            | "ptnd.purple/500"
+            | "ptnd.cyan/500"
+    ) || t == "transparent"
+        || t.starts_with('#')
+        || t.starts_with("rgb(")
+        || t.starts_with("gray(")
+        || t.starts_with("lab(");
+    if !known {
+        issue(
+            report,
+            "COLOR_TOKEN_SUBSTITUTED",
+            format!("Unregistered color {t}; neutral fallback matches the document renderer"),
+            FidelityGrade::Approximate,
+        );
+    }
+    let rgb = petunia_design_document::resolve_color_to_rgb(t).map(|v| (v * 255.).round() as u8);
+    Ok(rgb::Color::new(rgb[0], rgb[1], rgb[2]).into())
+}
+fn paint(
+    value: &petunia_design_document::Paint,
+    has_profile: bool,
+    report: &mut PreflightReport,
+) -> Result<Option<Paint>, PetuniaError> {
+    use krilla::paint::{LinearGradient, RadialGradient, SpreadMethod, Stop};
+    use petunia_design_document::Paint as D;
+    let mut stops =
+        |stops: &[petunia_design_document::GradientStop]| -> Result<Vec<Stop>, PetuniaError> {
+            let mut result = Vec::with_capacity(stops.len());
+            for stop in stops {
+                result.push(Stop {
+                    offset: unit(stop.offset)?,
+                    color: checked_color(&stop.color, has_profile, report)?,
+                    opacity: unit(
+                        stop.opacity
+                            * f64::from(
+                                petunia_design_document::resolve_color_to_rgba(&stop.color)[3],
+                            ),
+                    )?,
+                });
+            }
+            result.sort_by(|a, b| a.offset.get().total_cmp(&b.offset.get()));
+            if result.len() < 2 {
+                return Err(invalid("PDF gradient requires at least two stops"));
+            }
+            // PDF shading stops must use one common color space. Preserve process
+            // ink values; reject mixed spaces rather than guessing conversions.
+            if result
+                .iter()
+                .any(|stop| matches!(stop.color, krilla::color::Color::Special(_)))
+                || result.windows(2).any(|p| match (&p[0].color, &p[1].color) {
+                    (krilla::color::Color::Regular(a), krilla::color::Color::Regular(b)) => {
+                        std::mem::discriminant(a) != std::mem::discriminant(b)
+                    }
+                    _ => true,
+                })
+            {
+                return Err(invalid("PDF gradient uses mixed color spaces"));
+            }
+            Ok(result)
+        };
+    Ok(match value {
+        D::None => None,
+        D::Solid(token) => Some(checked_color(token, has_profile, report)?.into()),
+        D::LinearGradient(g) => Some(
+            LinearGradient {
+                x1: number(g.start[0])?,
+                y1: number(g.start[1])?,
+                x2: number(g.end[0])?,
+                y2: number(g.end[1])?,
+                transform: Transform::identity(),
+                spread_method: SpreadMethod::Pad,
+                stops: stops(&g.stops)?,
+                anti_alias: true,
+            }
+            .into(),
+        ),
+        D::RadialGradient(g) => Some(
+            RadialGradient {
+                fx: number(g.center[0])?,
+                fy: number(g.center[1])?,
+                fr: 0.,
+                cx: number(g.center[0])?,
+                cy: number(g.center[1])?,
+                cr: number(g.radius)?,
+                transform: Transform::identity(),
+                spread_method: SpreadMethod::Pad,
+                stops: stops(&g.stops)?,
+                anti_alias: true,
+            }
+            .into(),
+        ),
+    })
+}
 
-/// Exports selected surfaces, reporting fidelity losses in the supported subset.
+/// Export without publishing partially generated bytes after cancellation.
 pub fn export_document_pdf(
     document: &Document,
     options: &PdfExportOptions,
 ) -> Result<(Vec<u8>, PreflightReport), PetuniaError> {
+    export_document_pdf_cancellable(
+        document,
+        options,
+        &petunia_design_jobs::CancellationToken::new(),
+    )
+}
+pub fn export_document_pdf_cancellable(
+    document: &Document,
+    options: &PdfExportOptions,
+    cancellation: &petunia_design_jobs::CancellationToken,
+) -> Result<(Vec<u8>, PreflightReport), PetuniaError> {
     document.validate()?;
-    let mut krilla_doc = KrillaDocument::new();
-    let mut report = PreflightReport {
-        surfaces: document
-            .surfaces()
-            .iter()
-            .filter(|s| s.export_enabled)
-            .count(),
-        objects: 0,
-        degradations: Vec::new(),
-        passed: true,
-    };
-
-    if document.surfaces().is_empty() {
-        // PDF requires at least one page
-        let page_settings =
-            PageSettings::from_wh(options.default_page_width, options.default_page_height)
-                .ok_or_else(|| PetuniaError::invalid_input("Invalid default page dimensions"))?;
-        let page = krilla_doc.start_page_with(page_settings);
-        page.finish();
-        let bytes = krilla_doc
-            .finish()
-            .map_err(|e| PetuniaError::io(format!("Failed to finalize PDF document: {e:?}")))?;
-        return Ok((bytes, report));
-    }
-
-    if report.surfaces == 0 {
-        return Err(PetuniaError::invalid_input(
-            "no surfaces enabled for PDF export",
-        ));
-    }
-    for surface in document.surfaces().iter().filter(|s| s.export_enabled) {
-        export_surface_page(&mut krilla_doc, surface, options, &mut report)?;
-    }
-
-    let has_loss = report.degradations.iter().any(|d| {
-        matches!(
-            d.grade,
-            FidelityGrade::Approximate
-                | FidelityGrade::DestructiveDegradation
-                | FidelityGrade::Unsupported
-        )
-    });
-
-    if has_loss && !options.allow_degradations {
-        report.passed = false;
-        return Err(PetuniaError::invalid_input(
-            "PDF export aborted due to blocking preflight degradations",
-        ));
-    }
-
-    let bytes = krilla_doc
-        .finish()
-        .map_err(|e| PetuniaError::io(format!("Failed to finalize PDF document: {e:?}")))?;
-
-    Ok((bytes, report))
-}
-
-fn export_surface_page(
-    krilla_doc: &mut KrillaDocument,
-    surface: &Surface,
-    _options: &PdfExportOptions,
-    report: &mut PreflightReport,
-) -> Result<(), PetuniaError> {
-    let width = surface.dimensions[0] as f32;
-    let height = surface.dimensions[1] as f32;
-    let origin = surface.origin.map(|v| v as f32);
-    if ![width, height, origin[0], origin[1]]
-        .iter()
-        .all(|v| v.is_finite())
+    if !options.raster_fallback_dpi.is_finite()
+        || !(36.0..=1200.0).contains(&options.raster_fallback_dpi)
     {
-        return Err(PetuniaError::invalid_input(
-            "surface exceeds PDF coordinate range",
-        ));
+        return Err(invalid("PDF fallback DPI must be 36–1200"));
     }
-
-    let page_settings = PageSettings::from_wh(width, height).ok_or_else(|| {
-        PetuniaError::invalid_input(format!("Invalid surface dimensions {width}x{height}"))
-    })?;
-
-    let mut page = krilla_doc.start_page_with(page_settings);
-    let mut krilla_surface = page.surface();
-    krilla_surface.push_transform(&Transform::from_translate(-origin[0], -origin[1]));
-
-    for (i, obj) in surface.objects().iter().enumerate() {
-        report.objects += 1;
-        export_object(&mut krilla_surface, surface, obj, i, width, height, report);
+    let included: Vec<_> = document
+        .surfaces()
+        .iter()
+        .filter(|s| s.export_enabled)
+        .collect();
+    if included.is_empty() {
+        return Err(invalid("no surfaces enabled for PDF export"));
     }
-    krilla_surface.pop();
-
-    krilla_surface.finish();
-    page.finish();
-    Ok(())
-}
-
-fn export_object(
-    krilla_surface: &mut krilla::surface::Surface,
-    surface: &Surface,
-    obj: &DocumentObject,
-    index: usize,
-    page_w: f32,
-    page_h: f32,
-    report: &mut PreflightReport,
-) {
-    if !obj.visible {
-        return;
-    }
-    // Mask boundaries are clip sources, never painted content (10.5).
-    if obj.is_clip_mask {
-        return;
-    }
-    let label = if obj.name.is_empty() {
-        format!("object `{}`", obj.id)
-    } else {
-        format!("'{}'", obj.name)
-    };
-
-    let eff = obj.effective_appearance();
-    let entry_opacity = eff
-        .primary_fill()
-        .map(|f| f.opacity)
-        .or_else(|| eff.primary_stroke().map(|s| s.opacity))
-        .unwrap_or(1.0);
-    let total_opacity = (obj.sampled_opacity() * entry_opacity).clamp(0.0, 1.0);
-    if total_opacity <= 0.0 {
-        return;
-    }
-
-    // Geometry: canonical outline; legacy grid fallback when unbounded so
-    // old headless fixtures keep exporting (F-13).
-    let outline = obj.evaluated_path();
-    if matches!(
-        &obj.shape,
-        Some(petunia_design_document::ShapeKind::Text {
-            on_path: Some(_),
-            ..
-        })
-    ) {
-        report.degradations.push(DegradationItem {
-            code: "TEXT_ON_PATH_FLATTENED".to_string(),
-            description: format!(
-                "{label} text-on-path exported along its span bounds (curved glyph layout requires font shaping)"
-            ),
-            grade: FidelityGrade::Approximate,
-        });
-    }
-    let mut pb = PathBuilder::new();
-    let mut has_geometry = false;
-    for verb in &outline.verbs {
-        has_geometry = true;
-        match verb {
-            petunia_design_geometry::PathVerb::MoveTo(p) => pb.move_to(p.x as f32, p.y as f32),
-            petunia_design_geometry::PathVerb::LineTo(p) => pb.line_to(p.x as f32, p.y as f32),
-            petunia_design_geometry::PathVerb::QuadTo(c, p) => {
-                pb.quad_to(c.x as f32, c.y as f32, p.x as f32, p.y as f32);
+    let mut profile = None;
+    for surface in &included {
+        if let Some(next) = &surface.cmyk_profile {
+            if !next.is_press_profile() {
+                return Err(invalid("PDF press profile must be a CMYK output profile"));
             }
-            petunia_design_geometry::PathVerb::CubicTo(c1, c2, p) => pb.cubic_to(
-                c1.x as f32,
-                c1.y as f32,
-                c2.x as f32,
-                c2.y as f32,
-                p.x as f32,
-                p.y as f32,
-            ),
-            petunia_design_geometry::PathVerb::Close => pb.close(),
+            if profile.is_some_and(|p: &petunia_design_color::IccProfile| p.id() != next.id()) {
+                return Err(invalid("PDF surfaces have different press profiles; explicitly convert to a common target"));
+            }
+            profile = Some(next);
         }
     }
-    if !has_geometry {
-        report.degradations.push(DegradationItem {
-            code: "GEOMETRY_FALLBACK_RECT".to_string(),
-            description: format!(
-                "{label} has no vector outline (e.g. un-outlined text): exported as bounds rect"
-            ),
-            grade: FidelityGrade::Approximate,
-        });
-        // Legacy index-grid fallback rect.
-        let x = (index as f32 * 40.0).min(page_w - 80.0);
-        let y = (index as f32 * 40.0).min(page_h - 80.0);
-        pb.push_rect(
-            KrillaRect::from_xywh(x + 20.0, y + 20.0, 60.0, 60.0)
-                .unwrap_or_else(|| KrillaRect::from_xywh(0.0, 0.0, 10.0, 10.0).unwrap()),
-        );
-    }
-    let krilla_path = match pb.finish() {
-        Some(p) => p,
-        None => return,
+    let settings = krilla::SerializeSettings {
+        no_device_cs: true,
+        cmyk_profile: profile
+            .map(|p| {
+                krilla::icc::ICCProfile::new(p.bytes())
+                    .ok_or_else(|| invalid("PDF ICC profile rejected"))
+            })
+            .transpose()?,
+        ..Default::default()
     };
-
-    // Fill from the appearance stack: primary entry; gradients are sampled
-    // at center with an explicit degradation (vector gradients POST_V1).
-    let (fill_paint, _fill_entry_alpha) = match eff.primary_fill() {
-        Some(entry) => match &entry.paint {
-            petunia_design_document::Paint::None => (None, 1.0),
-            petunia_design_document::Paint::Solid(token) => {
-                let (paint, _) = resolve_fill_paint(Some(token.as_ref()), report);
-                (Some(paint), entry.opacity as f32)
-            }
-            petunia_design_document::Paint::LinearGradient(g) => {
-                report.degradations.push(DegradationItem {
-                    code: "GRADIENT_FLATTENED".to_string(),
-                    description: format!("{label} linear gradient sampled at center stop"),
-                    grade: FidelityGrade::Approximate,
-                });
-                (
-                    sample_gradient_paint(g.sample_rgba(0.5)),
-                    entry.opacity as f32,
-                )
-            }
-            petunia_design_document::Paint::RadialGradient(g) => {
-                report.degradations.push(DegradationItem {
-                    code: "GRADIENT_FLATTENED".to_string(),
-                    description: format!("{label} radial gradient sampled at center stop"),
-                    grade: FidelityGrade::Approximate,
-                });
-                (
-                    sample_gradient_paint(g.sample_rgba(0.5)),
-                    entry.opacity as f32,
-                )
-            }
-        },
-        None => match obj.fill.as_deref() {
-            Some(token) => {
-                let (paint, _) = resolve_fill_paint(Some(token), report);
-                (Some(paint), 1.0)
-            }
-            None => (None, 1.0),
-        },
-    };
-    if eff.fills.iter().filter(|f| f.visible).count() > 1 {
-        report.degradations.push(DegradationItem {
-            code: "MULTI_FILL_FLATTENED".to_string(),
-            description: format!("{label} exports only its primary fill; secondary fills omitted"),
-            grade: FidelityGrade::Approximate,
-        });
+    let mut output = KrillaDocument::new_with(settings);
+    let mut metadata = krilla::metadata::Metadata::new().creator(options.creator.clone());
+    if let Some(title) = &options.title {
+        metadata = metadata.title(title.clone());
     }
-
-    // Stroke from the primary stroke entry (centered; alignment approximated).
-    let krilla_stroke = eff.primary_stroke().and_then(|entry| match &entry.paint {
-        petunia_design_document::Paint::None => None,
-        petunia_design_document::Paint::Solid(token) => {
-            let (paint, _) = resolve_fill_paint(Some(token.as_ref()), report);
-            if entry.alignment != petunia_design_document::StrokeAlignment::Center {
-                report.degradations.push(DegradationItem {
-                    code: "STROKE_ALIGNMENT_APPROXIMATED".to_string(),
-                    description: format!("{label} stroke alignment exported as centered"),
-                    grade: FidelityGrade::EquivalentAppearance,
-                });
+    if let Some(author) = &options.author {
+        metadata = metadata.authors(vec![author.clone()]);
+    }
+    output.set_metadata(metadata);
+    let mut report = PreflightReport {
+        surfaces: included.len(),
+        objects: included.iter().map(|s| s.objects().len()).sum(),
+        passed: true,
+        degradations: Vec::new(),
+    };
+    for surface in included {
+        check_cancelled(cancellation)?;
+        let scene = petunia_design_render::RenderSurface::extract_cancellable(surface, &|| {
+            cancellation.is_cancelled()
+        })
+        .map_err(|e| invalid(e.to_string()))?;
+        let mut writer = PageWriter {
+            scene: &scene,
+            has_profile: surface.cmyk_profile.is_some(),
+            report: &mut report,
+            origin: [surface.origin[0], surface.origin[1]],
+            cancellation,
+            fonts: std::collections::HashMap::new(),
+        };
+        let mut rasterize = false;
+        for id in scene.roots() {
+            rasterize |= writer.preflight(*id, 0)?;
+        }
+        let bleed = if options.include_bleed {
+            surface.bleed
+        } else {
+            petunia_design_document::Bleed::ZERO
+        };
+        let width = surface.dimensions[0] + bleed.left + bleed.right;
+        let height = surface.dimensions[1] + bleed.top + bleed.bottom;
+        writer.origin = [
+            surface.origin[0] - bleed.left,
+            surface.origin[1] - bleed.top,
+        ];
+        let media = KrillaRect::from_xywh(0., 0., number(width)?, number(height)?)
+            .ok_or_else(|| invalid("invalid PDF media box"))?;
+        let trim = KrillaRect::from_xywh(
+            number(bleed.left)?,
+            number(bleed.top)?,
+            number(surface.dimensions[0])?,
+            number(surface.dimensions[1])?,
+        )
+        .ok_or_else(|| invalid("invalid PDF trim box"))?;
+        let settings = PageSettings::from_wh(number(width)?, number(height)?)
+            .ok_or_else(|| invalid("invalid PDF page"))?
+            .with_crop_box(Some(media))
+            .with_bleed_box(Some(media))
+            .with_trim_box(Some(trim));
+        if rasterize && !options.allow_degradations {
+            return Err(invalid("PDF contains effects/modifiers requiring explicit rasterization; export PNG or allow degradations"));
+        }
+        let mut page = output.start_page_with(settings);
+        let mut canvas = page.surface();
+        if rasterize {
+            let scale = options.raster_fallback_dpi / 72.;
+            let pw = (width * scale).ceil();
+            let ph = (height * scale).ceil();
+            if pw * ph > petunia_design_render::RenderLimits::default().max_output_pixels as f64 {
+                return Err(invalid("PDF fallback pixel budget exceeded"));
             }
-            let dash = if entry.dash_array.is_empty() {
-                None
-            } else {
-                Some(StrokeDash {
-                    array: entry.dash_array.iter().map(|d| *d as f32).collect(),
-                    offset: entry.dash_offset as f32,
-                })
+            let bg = surface.background_rgba8()?;
+            let request = petunia_design_render::RenderRequest {
+                viewport: petunia_design_geometry::GRect::new(
+                    surface.origin[0] - bleed.left,
+                    surface.origin[1] - bleed.top,
+                    surface.origin[0] + surface.dimensions[0] + bleed.right,
+                    surface.origin[1] + surface.dimensions[1] + bleed.bottom,
+                ),
+                width: pw as u32,
+                height: ph as u32,
+                background: [0; 4],
             };
-            Some(Stroke {
+            let mut backdrop = petunia_design_render::PixelBufferRgba8::with_fill(
+                request.width,
+                request.height,
+                [0; 4],
+            );
+            for y in 0..request.height {
+                check_cancelled(cancellation)?;
+                let wy = request.viewport.y0
+                    + (f64::from(y) + 0.5) * request.viewport.height() / f64::from(request.height);
+                if wy < surface.origin[1] || wy >= surface.origin[1] + surface.dimensions[1] {
+                    continue;
+                }
+                for x in 0..request.width {
+                    let wx = request.viewport.x0
+                        + (f64::from(x) + 0.5) * request.viewport.width()
+                            / f64::from(request.width);
+                    if wx >= surface.origin[0] && wx < surface.origin[0] + surface.dimensions[0] {
+                        let offset = (y as usize * request.width as usize + x as usize) * 4;
+                        backdrop.data[offset..offset + 4].copy_from_slice(&bg);
+                    }
+                }
+            }
+            let pixels = petunia_design_render::CpuRenderer::default()
+                .render_over_cancellable(&scene, request, &backdrop, cancellation)
+                .map_err(|e| invalid(e.to_string()))?;
+            let image = image_from_rgba(
+                pixels.width,
+                pixels.height,
+                petunia_design_raster::PixelFormat::Rgba8,
+                &pixels.data,
+            )?;
+            canvas.draw_image(
+                image,
+                krilla::geom::Size::from_wh(number(width)?, number(height)?)
+                    .ok_or_else(|| invalid("PDF raster size"))?,
+            );
+            issue(writer.report,"PAGE_RASTERIZED",format!("Surface {} rendered at {} DPI; vector/editable/font/ink semantics are rasterized",surface.name,options.raster_fallback_dpi),FidelityGrade::DestructiveDegradation);
+        } else {
+            let mut scope = ScopedSurface::new(&mut canvas);
+            let canvas = &mut scope;
+            if let Some(background) = &surface.background {
+                canvas.set_fill(Some(Fill {
+                    paint: checked_color(background, writer.has_profile, writer.report)?.into(),
+                    opacity: unit(f64::from(
+                        petunia_design_document::resolve_color_to_rgba(background)[3],
+                    ))?,
+                    rule: FillRule::NonZero,
+                }));
+                let geometry = petunia_design_geometry::GPath::rect(
+                    petunia_design_geometry::GRect::new(
+                        bleed.left,
+                        bleed.top,
+                        bleed.left + surface.dimensions[0],
+                        bleed.top + surface.dimensions[1],
+                    ),
+                    0.,
+                    0.,
+                );
+                if let Some(path) = path(&geometry)? {
+                    canvas.draw_path(&path);
+                }
+                canvas.set_fill(None);
+            }
+            for id in scene.roots() {
+                writer.node(canvas, *id, 0, false)?;
+            }
+        }
+        canvas.finish();
+        page.finish();
+    }
+    if !options.allow_degradations
+        && report.degradations.iter().any(|d| {
+            matches!(
+                d.grade,
+                FidelityGrade::Approximate
+                    | FidelityGrade::DestructiveDegradation
+                    | FidelityGrade::Unsupported
+            )
+        })
+    {
+        return Err(invalid(format!(
+            "PDF preflight rejected: {}",
+            report
+                .degradations
+                .iter()
+                .map(|d| d.code.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )));
+    }
+    check_cancelled(cancellation)?;
+    let bytes = output
+        .finish()
+        .map_err(|e| PetuniaError::io(format!("finalize PDF: {e:?}")))?;
+    if bytes.len() > 256 * 1024 * 1024 {
+        return Err(invalid("PDF output byte budget exceeded"));
+    }
+    check_cancelled(cancellation)?;
+    Ok((bytes, report))
+}
+fn check_cancelled(token: &petunia_design_jobs::CancellationToken) -> Result<(), PetuniaError> {
+    if token.is_cancelled() {
+        Err(invalid("PDF export cancelled"))
+    } else {
+        Ok(())
+    }
+}
+struct PageWriter<'a> {
+    scene: &'a petunia_design_render::RenderSurface,
+    has_profile: bool,
+    report: &'a mut PreflightReport,
+    origin: [f64; 2],
+    cancellation: &'a petunia_design_jobs::CancellationToken,
+    fonts:
+        std::collections::HashMap<(petunia_design_foundation::ObjectId, usize), krilla::text::Font>,
+}
+impl PageWriter<'_> {
+    fn preflight(
+        &mut self,
+        id: petunia_design_foundation::ObjectId,
+        depth: usize,
+    ) -> Result<bool, PetuniaError> {
+        check_cancelled(self.cancellation)?;
+        if depth >= 128 {
+            return Err(invalid("PDF hierarchy depth budget"));
+        }
+        let node = self
+            .scene
+            .node(id)
+            .ok_or_else(|| invalid("missing PDF node"))?;
+        let source = node.source();
+        if !source.visible {
+            return Ok(false);
+        }
+        let app = source.effective_appearance();
+        let mut rasterize = app.effects.iter().any(|e| e.visible)
+            || app.adjustments.iter().any(|a| a.visible)
+            || app.strokes.iter().any(|s| {
+                s.visible && s.alignment != petunia_design_document::StrokeAlignment::Center
+            })
+            || source.modifiers.iter().any(|m| {
+                m.enabled
+                    && matches!(
+                        m.kind,
+                        petunia_design_document::ModifierKind::TransparentGradient { .. }
+                    )
+            })
+            || source.mask_mode == petunia_design_document::MaskMode::Luminance;
+        for value in app
+            .fills
+            .iter()
+            .filter(|f| f.visible)
+            .map(|f| &f.paint)
+            .chain(app.strokes.iter().filter(|s| s.visible).map(|s| &s.paint))
+        {
+            let _ = paint(value, self.has_profile, self.report)?;
+        }
+        if let Some(text) = node.prepared_text() {
+            if text.missing_family() {
+                issue(
+                    self.report,
+                    "FONT_SUBSTITUTED",
+                    format!(
+                        "{} uses a fallback font; missing requested family",
+                        source.name
+                    ),
+                    FidelityGrade::Approximate,
+                );
+            }
+            if text.fonts().iter().any(|f| !f.subset_embedding_allowed) {
+                return Err(invalid(format!(
+                    "{}: font permissions prohibit subset embedding",
+                    source.name
+                )));
+            }
+            if source.modifiers.iter().any(|m| m.enabled) {
+                rasterize = true;
+            }
+            if source.text_style.flow == petunia_design_document::TextFlow::Frame
+                && source.bounds.is_some_and(|b| text.flow_height() > b[3])
+            {
+                issue(
+                    self.report,
+                    "TEXT_OVERSET",
+                    format!("{} has text clipped by its frame height", source.name),
+                    FidelityGrade::EquivalentAppearance,
+                );
+            }
+        }
+        for child in source.children.iter().copied() {
+            rasterize |= self.preflight(child, depth + 1)?;
+        }
+        Ok(rasterize)
+    }
+    fn clip(
+        &mut self,
+        out: &mut ScopedSurface,
+        id: petunia_design_foundation::ObjectId,
+        mode: petunia_design_document::MaskMode,
+        depth: usize,
+    ) -> Result<(), PetuniaError> {
+        let mask = self
+            .scene
+            .node(id)
+            .ok_or_else(|| invalid("missing PDF mask"))?;
+        if mode == petunia_design_document::MaskMode::Vector {
+            let geometry = if mask.source().visible {
+                mask.geometry().transformed(
+                    petunia_design_geometry::GAffine::translate(-self.origin[0], -self.origin[1])
+                        .after(mask.local_to_world()),
+                )
+            } else {
+                petunia_design_geometry::GPath::new()
+            };
+            // PDF's W n with an empty path is a genuinely empty clip.
+            let clip = path(&geometry)?.unwrap_or_else(|| {
+                let mut b = PathBuilder::new();
+                b.move_to(0., 0.);
+                b.line_to(0., 0.);
+                b.close();
+                b.finish().expect("empty clip path")
+            });
+            out.push_clip_path(&clip, &rule(mask));
+        } else {
+            let mut builder = out.stream_builder();
+            let mut content = builder.surface();
+            self.node(&mut content, id, depth + 1, true)?;
+            content.finish();
+            let stream = builder.finish();
+            out.push_mask(krilla::mask::Mask::new(
+                stream,
+                krilla::mask::MaskType::Alpha,
+            ));
+        }
+        Ok(())
+    }
+    fn node(
+        &mut self,
+        out: &mut krilla::surface::Surface,
+        id: petunia_design_foundation::ObjectId,
+        depth: usize,
+        as_mask: bool,
+    ) -> Result<(), PetuniaError> {
+        use petunia_design_document::{ContainerRole, MaskMode, ShapeKind, TextFlow};
+        check_cancelled(self.cancellation)?;
+        if depth >= 128 {
+            return Err(invalid("PDF composition depth budget"));
+        }
+        let node = self
+            .scene
+            .node(id)
+            .ok_or_else(|| invalid("missing PDF object"))?;
+        let source = node.source();
+        if !source.visible || (source.is_clip_mask && !as_mask) {
+            return Ok(());
+        }
+        let app = source.effective_appearance();
+        let mut scope = ScopedSurface::new(out);
+        let out = &mut scope;
+        out.push_blend_mode(blend(app.blend_mode));
+        out.push_opacity(unit(app.opacity)?);
+        out.push_isolated();
+        let mut clip_count = 0;
+        if let Some(mask_id) = source.clip_mask_id {
+            let grouped = source
+                .parent
+                .and_then(|id| self.scene.node(id))
+                .is_some_and(|n| {
+                    n.source().role == Some(ContainerRole::ClipGroup)
+                        && n.children().contains(&mask_id)
+                });
+            if !grouped {
+                let mask = self
+                    .scene
+                    .node(mask_id)
+                    .ok_or_else(|| invalid("PDF mask reference missing"))?;
+                let mode = if mask.source().mask_mode != MaskMode::Vector {
+                    mask.source().mask_mode
+                } else {
+                    source.mask_mode
+                };
+                self.clip(out, mask_id, mode, depth)?;
+                clip_count += 1;
+            }
+        }
+        if source.role == Some(ContainerRole::ClipGroup) {
+            let masks: Vec<_> = source
+                .children
+                .iter()
+                .copied()
+                .filter(|id| {
+                    self.scene
+                        .node(*id)
+                        .is_some_and(|n| n.source().is_clip_mask)
+                })
+                .collect();
+            if masks.len() != 1 {
+                return Err(invalid("PDF clip group requires one mask"));
+            }
+            self.clip(
+                out,
+                masks[0],
+                self.scene
+                    .node(masks[0])
+                    .expect("admitted mask")
+                    .source()
+                    .mask_mode,
+                depth,
+            )?;
+            clip_count += 1;
+        }
+        out.push_transform(&transform(
+            petunia_design_geometry::GAffine::translate(-self.origin[0], -self.origin[1])
+                .after(node.local_to_world()),
+        )?);
+        let geometry = path(node.geometry())?;
+        let frame_clip =
+            node.prepared_text().is_some() && source.text_style.flow == TextFlow::Frame;
+        if frame_clip {
+            let [_, _, w, h] = source
+                .bounds
+                .ok_or_else(|| invalid("PDF text frame missing"))?;
+            let clip = path(&petunia_design_geometry::GPath::rect(
+                petunia_design_geometry::GRect::new(0., 0., w, h),
+                0.,
+                0.,
+            ))?
+            .ok_or_else(|| invalid("empty PDF text frame"))?;
+            out.push_clip_path(&clip, &FillRule::NonZero);
+        }
+        out.set_fill(None);
+        out.set_stroke(None);
+        if let Some(ShapeKind::Image { data, .. }) = &source.shape {
+            let data = data
+                .as_ref()
+                .ok_or_else(|| invalid("PDF linked image is unavailable"))?;
+            let raw = crate::import_raster(data.as_slice(), 128 * 1024 * 1024)?;
+            let image = image_from_rgba(raw.width, raw.height, raw.format, &raw.data)?;
+            if let Some(coverage) = &geometry {
+                out.push_clip_path(coverage, &rule(node));
+            }
+            let [_, _, w, h] = source
+                .bounds
+                .ok_or_else(|| invalid("PDF image bounds missing"))?;
+            out.draw_image(
+                image,
+                krilla::geom::Size::from_wh(number(w)?, number(h)?)
+                    .ok_or_else(|| invalid("PDF image dimensions"))?,
+            );
+            if geometry.is_some() {
+                out.pop();
+            }
+        } else if let Some(ShapeKind::Raster { layer }) = &source.shape {
+            let mut data = Vec::new();
+            let sixteen =
+                layer.tiles().format.bit_depth() == petunia_design_raster::BitDepth::Sixteen;
+            let count =
+                layer.width() as usize * layer.height() as usize * if sixteen { 8 } else { 4 };
+            data.try_reserve_exact(count)
+                .map_err(|_| invalid("PDF raster allocation"))?;
+            for y in 0..layer.height() {
+                check_cancelled(self.cancellation)?;
+                for x in 0..layer.width() {
+                    for value in layer.pixel(i64::from(x), i64::from(y)) {
+                        if sixteen {
+                            data.extend_from_slice(
+                                &((value * 65535.).round() as u16).to_le_bytes(),
+                            );
+                        } else {
+                            data.push((value * 255.).round() as u8);
+                        }
+                    }
+                }
+            }
+            let image = image_from_rgba(
+                layer.width(),
+                layer.height(),
+                if sixteen {
+                    petunia_design_raster::PixelFormat::Rgba16
+                } else {
+                    petunia_design_raster::PixelFormat::Rgba8
+                },
+                &data,
+            )?;
+            if let Some(coverage) = &geometry {
+                out.push_clip_path(coverage, &rule(node));
+            }
+            let [_, _, w, h] = source
+                .bounds
+                .ok_or_else(|| invalid("PDF raster bounds missing"))?;
+            out.draw_image(
+                image,
+                krilla::geom::Size::from_wh(number(w)?, number(h)?)
+                    .ok_or_else(|| invalid("PDF raster dimensions"))?,
+            );
+            if geometry.is_some() {
+                out.pop();
+            }
+        } else {
+            for fill in app.fills.iter().filter(|f| f.visible) {
+                out.push_blend_mode(blend(fill.blend_mode));
+                out.set_fill(
+                    paint(&fill.paint, self.has_profile, self.report)?.map(|paint| Fill {
+                        paint,
+                        opacity: unit(fill.opacity * paint_alpha(&fill.paint))
+                            .expect("validated fill opacity"),
+                        rule: rule(node),
+                    }),
+                );
+                self.draw(out, node, geometry.as_ref())?;
+                out.pop();
+            }
+        }
+        out.set_fill(None);
+        for stroke in app.strokes.iter().filter(|s| s.visible && s.width > 0.) {
+            let Some(paint) = paint(&stroke.paint, self.has_profile, self.report)? else {
+                continue;
+            };
+            out.set_stroke(Some(Stroke {
                 paint,
-                width: entry.width.max(0.0) as f32,
-                miter_limit: entry.miter_limit as f32,
-                line_cap: match entry.cap {
+                width: number(stroke.width)?,
+                miter_limit: number(stroke.miter_limit)?,
+                opacity: unit(stroke.opacity * paint_alpha(&stroke.paint))?,
+                line_cap: match stroke.cap {
                     petunia_design_document::StrokeCap::Butt => LineCap::Butt,
                     petunia_design_document::StrokeCap::Round => LineCap::Round,
                     petunia_design_document::StrokeCap::Square => LineCap::Square,
                 },
-                line_join: match entry.join {
+                line_join: match stroke.join {
                     petunia_design_document::StrokeJoin::Miter => LineJoin::Miter,
                     petunia_design_document::StrokeJoin::Round => LineJoin::Round,
                     petunia_design_document::StrokeJoin::Bevel => LineJoin::Bevel,
                 },
-                opacity: NormalizedF32::new(entry.opacity as f32).unwrap_or(NormalizedF32::ONE),
-                dash,
-            })
+                dash: if stroke.dash_array.is_empty() {
+                    None
+                } else {
+                    Some(StrokeDash {
+                        array: stroke
+                            .dash_array
+                            .iter()
+                            .map(|v| number(*v))
+                            .collect::<Result<_, _>>()?,
+                        offset: number(stroke.dash_offset)?,
+                    })
+                },
+            }));
+            out.push_blend_mode(blend(stroke.blend_mode));
+            self.draw(out, node, geometry.as_ref())?;
+            out.pop();
         }
-        _ => {
-            report.degradations.push(DegradationItem {
-                code: "GRADIENT_STROKE_FLATTENED".to_string(),
-                description: format!("{label} gradient stroke omitted"),
-                grade: FidelityGrade::Approximate,
-            });
-            None
+        out.set_stroke(None);
+        out.set_fill(None);
+        if frame_clip {
+            out.pop();
         }
-    });
-    if eff.strokes.iter().filter(|s| s.visible).count() > 1 {
-        report.degradations.push(DegradationItem {
-            code: "MULTI_STROKE_FLATTENED".to_string(),
-            description: format!(
-                "{label} exports only its primary stroke; secondary strokes omitted"
-            ),
-            grade: FidelityGrade::Approximate,
-        });
-    }
-
-    // Effects are not vector-exportable: explicit degradation per entry.
-    for effect in eff.effects.iter().filter(|e| e.visible) {
-        let kind = match &effect.kind {
-            petunia_design_document::EffectKind::DropShadow { .. } => "drop shadow",
-            petunia_design_document::EffectKind::InnerShadow { .. } => "inner shadow",
-            petunia_design_document::EffectKind::GaussianBlur { .. } => "gaussian blur",
-            petunia_design_document::EffectKind::Sharpen { .. } => "sharpen",
-            petunia_design_document::EffectKind::Noise { .. } => "noise",
-        };
-        report.degradations.push(DegradationItem {
-            code: "EFFECT_NOT_EXPORTED".to_string(),
-            description: format!("{label} {kind} effect omitted from vector PDF"),
-            grade: FidelityGrade::Approximate,
-        });
-    }
-
-    // Non-normal blend modes on export: PDF supports them, pass through is
-    // out of scope for the headless exporter — record and export as Normal.
-    let stack_blend = eff.blend_mode;
-    if stack_blend != petunia_design_document::BlendMode::Normal {
-        report.degradations.push(DegradationItem {
-            code: "BLEND_MODE_FLATTENED".to_string(),
-            description: format!("{label} blend mode {stack_blend:?} exported as Normal"),
-            grade: FidelityGrade::Approximate,
-        });
-    }
-
-    let opacity_f32 = NormalizedF32::new(total_opacity as f32).unwrap_or(NormalizedF32::ONE);
-
-    // Rotation about the bounds top-left, matching the document model
-    // (`local_transform = T(origin) * R`). krilla angles are degrees.
-    let rotation_guard = match obj.bounds {
-        Some(b) if obj.rotation.abs() > f64::EPSILON => {
-            krilla_surface.push_transform(&Transform::from_rotate_at(
-                obj.rotation.to_degrees() as f32,
-                b[0] as f32,
-                b[1] as f32,
-            ));
-            1
+        out.pop();
+        for child in source.children.iter().copied() {
+            self.node(out, child, depth + 1, as_mask)?;
         }
-        _ => 0,
-    };
-
-    // Clip content to its mask outline via a real PDF clip path (10.5).
-    // Mask boundaries carry vector shapes through `to_path`; un-outlinable
-    // masks (e.g. text) degrade explicitly instead of clipping wrongly.
-    let mut clip_guard = false;
-    if let Some(mask_id) = obj.clip_mask_id {
-        if let Some(mask) = surface.objects().iter().find(|o| o.id == mask_id) {
-            let mask_verbs = mask.evaluated_path().verbs;
-            if mask_verbs.is_empty() {
-                report.degradations.push(DegradationItem {
-                    code: "CLIP_MASK_UNOUTLINABLE".to_string(),
-                    description: format!("{label} mask has no vector outline: drawn unclipped"),
-                    grade: FidelityGrade::Approximate,
-                });
-            } else {
-                let mut clip_pb = PathBuilder::new();
-                for verb in &mask_verbs {
-                    match verb {
-                        petunia_design_geometry::PathVerb::MoveTo(p) => {
-                            clip_pb.move_to(p.x as f32, p.y as f32);
-                        }
-                        petunia_design_geometry::PathVerb::LineTo(p) => {
-                            clip_pb.line_to(p.x as f32, p.y as f32);
-                        }
-                        petunia_design_geometry::PathVerb::QuadTo(c, p) => {
-                            clip_pb.quad_to(c.x as f32, c.y as f32, p.x as f32, p.y as f32);
-                        }
-                        petunia_design_geometry::PathVerb::CubicTo(c1, c2, p) => clip_pb.cubic_to(
-                            c1.x as f32,
-                            c1.y as f32,
-                            c2.x as f32,
-                            c2.y as f32,
-                            p.x as f32,
-                            p.y as f32,
-                        ),
-                        petunia_design_geometry::PathVerb::Close => clip_pb.close(),
-                    }
+        for _ in 0..clip_count {
+            out.pop();
+        }
+        out.pop();
+        out.pop();
+        out.pop();
+        Ok(())
+    }
+    fn draw(
+        &mut self,
+        out: &mut krilla::surface::Surface,
+        node: &petunia_design_render::RenderNode,
+        geometry: Option<&krilla::geom::Path>,
+    ) -> Result<(), PetuniaError> {
+        if let Some(text) = node.prepared_text() {
+            let Some(petunia_design_document::ShapeKind::Text {
+                content, font_size, ..
+            }) = &node.source().shape
+            else {
+                return Err(invalid("prepared PDF text source missing"));
+            };
+            for glyph in text.glyphs() {
+                check_cancelled(self.cancellation)?;
+                let key = (node.id(), glyph.font_resource);
+                if let std::collections::hash_map::Entry::Vacant(entry) = self.fonts.entry(key) {
+                    let source = &text.fonts()[glyph.font_resource];
+                    let font = krilla::text::Font::new(
+                        krilla::Data::from(source.bytes.clone()),
+                        source.face_index,
+                    )
+                    .ok_or_else(|| invalid("PDF font parser rejected shaped face"))?;
+                    entry.insert(font);
                 }
-                if let Some(clip_path) = clip_pb.finish() {
-                    krilla_surface.push_clip_path(&clip_path, &FillRule::NonZero);
-                    clip_guard = true;
-                }
-            }
-        } else {
-            report.degradations.push(DegradationItem {
-                code: "CLIP_MASK_MISSING".to_string(),
-                description: format!("{label} references unknown mask: drawn unclipped"),
-                grade: FidelityGrade::Approximate,
-            });
-        }
-    }
-
-    if let Some(paint) = fill_paint {
-        krilla_surface.set_fill(Some(Fill {
-            paint,
-            opacity: opacity_f32,
-            rule: FillRule::NonZero,
-        }));
-    } else {
-        krilla_surface.set_fill(None);
-    }
-    krilla_surface.set_stroke(krilla_stroke);
-    krilla_surface.draw_path(&krilla_path);
-
-    krilla_surface.set_fill(None);
-    krilla_surface.set_stroke(None);
-    for _ in 0..rotation_guard {
-        krilla_surface.pop();
-    }
-    if clip_guard {
-        krilla_surface.pop();
-    }
-}
-
-/// Samples a gradient center color into an sRGB paint for export flattening.
-fn sample_gradient_paint(sample: Option<([f32; 3], f32)>) -> Option<Paint> {
-    let (rgb, _) = sample?;
-    Some(
-        rgb::Color::new(
-            (rgb[0].clamp(0.0, 1.0) * 255.0).round() as u8,
-            (rgb[1].clamp(0.0, 1.0) * 255.0).round() as u8,
-            (rgb[2].clamp(0.0, 1.0) * 255.0).round() as u8,
-        )
-        .into(),
-    )
-}
-
-fn resolve_fill_paint(fill: Option<&str>, report: &mut PreflightReport) -> (Paint, NormalizedF32) {
-    let fill = match fill {
-        Some(f) => f,
-        None => return (rgb::Color::new(128, 128, 128).into(), NormalizedF32::ONE),
-    };
-
-    // Check for CMYK specification: cmyk(c, m, y, k) where values are 0-100 or 0-255
-    if fill.starts_with("cmyk(") && fill.ends_with(')') {
-        let inner = &fill[5..fill.len() - 1];
-        let parts: Vec<&str> = inner.split(',').map(str::trim).collect();
-        if parts.len() == 4 {
-            if let (Ok(c), Ok(m), Ok(y), Ok(k)) = (
-                parts[0].parse::<f32>(),
-                parts[1].parse::<f32>(),
-                parts[2].parse::<f32>(),
-                parts[3].parse::<f32>(),
-            ) {
-                let c_u8 = ((c.clamp(0.0, 100.0) / 100.0) * 255.0 + 0.5) as u8;
-                let m_u8 = ((m.clamp(0.0, 100.0) / 100.0) * 255.0 + 0.5) as u8;
-                let y_u8 = ((y.clamp(0.0, 100.0) / 100.0) * 255.0 + 0.5) as u8;
-                let k_u8 = ((k.clamp(0.0, 100.0) / 100.0) * 255.0 + 0.5) as u8;
-                return (
-                    cmyk::Color::new(c_u8, m_u8, y_u8, k_u8).into(),
-                    NormalizedF32::ONE,
+                let item = krilla::text::KrillaGlyph {
+                    glyph_id: krilla::text::GlyphId::new(u32::from(glyph.glyph_id)),
+                    text_range: glyph.source_range[0]..glyph.source_range[1],
+                    x_advance: glyph.advance / *font_size as f32,
+                    x_offset: 0.,
+                    y_offset: 0.,
+                    y_advance: 0.,
+                    location: None,
+                };
+                out.draw_glyphs(
+                    krilla::geom::Point::from_xy(number(glyph.origin.x)?, number(glyph.origin.y)?),
+                    &[item],
+                    self.fonts[&key].clone(),
+                    content,
+                    *font_size as f32,
+                    false,
                 );
             }
+        } else if let Some(geometry) = geometry {
+            out.draw_path(geometry);
+        }
+        Ok(())
+    }
+}
+#[derive(Clone)]
+struct PdfImage {
+    colors: std::sync::Arc<Vec<u8>>,
+    alpha: std::sync::Arc<Vec<u8>>,
+    profile: std::sync::Arc<Vec<u8>>,
+    width: u32,
+    height: u32,
+    sixteen: bool,
+    digest: [u8; 32],
+}
+impl std::hash::Hash for PdfImage {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.digest.hash(h);
+        self.width.hash(h);
+        self.height.hash(h);
+        self.sixteen.hash(h);
+    }
+}
+impl krilla::image::CustomImage for PdfImage {
+    fn color_channel(&self) -> &[u8] {
+        &self.colors
+    }
+    fn alpha_channel(&self) -> Option<&[u8]> {
+        Some(&self.alpha)
+    }
+    fn bits_per_component(&self) -> krilla::image::BitsPerComponent {
+        if self.sixteen {
+            krilla::image::BitsPerComponent::Sixteen
+        } else {
+            krilla::image::BitsPerComponent::Eight
         }
     }
-
-    // Check for hex color #RRGGBB
-    if fill.starts_with('#') {
-        let hex = fill.trim_start_matches('#');
-        if hex.len() == 6 {
-            if let (Ok(r), Ok(g), Ok(b)) = (
-                u8::from_str_radix(&hex[0..2], 16),
-                u8::from_str_radix(&hex[2..4], 16),
-                u8::from_str_radix(&hex[4..6], 16),
-            ) {
-                return (rgb::Color::new(r, g, b).into(), NormalizedF32::ONE);
+    fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+    fn icc_profile(&self) -> Option<&[u8]> {
+        Some(&self.profile)
+    }
+    fn color_space(&self) -> krilla::image::ImageColorspace {
+        krilla::image::ImageColorspace::Rgb
+    }
+}
+fn image_from_rgba(
+    width: u32,
+    height: u32,
+    format: petunia_design_raster::PixelFormat,
+    data: &[u8],
+) -> Result<krilla::image::Image, PetuniaError> {
+    use sha2::{Digest, Sha256};
+    let sixteen = match format {
+        petunia_design_raster::PixelFormat::Rgba8 => false,
+        petunia_design_raster::PixelFormat::Rgba16 => true,
+        _ => return Err(invalid("PDF image requires straight RGBA")),
+    };
+    let channels = if sixteen { 8 } else { 4 };
+    let count = u64::from(width) * u64::from(height);
+    if count > 16_777_216 || count as usize * channels != data.len() {
+        return Err(invalid("PDF image pixel budget/layout"));
+    }
+    let mut colors = Vec::with_capacity(data.len() / 4 * 3);
+    let mut alpha = Vec::with_capacity(data.len() / 4);
+    for pixel in data.chunks_exact(channels) {
+        if sixteen {
+            for channel in pixel[..6].as_chunks::<2>().0.iter() {
+                colors.extend_from_slice(&[channel[1], channel[0]]);
             }
+            alpha.extend_from_slice(&[pixel[7], pixel[6]]);
+        } else {
+            colors.extend_from_slice(&pixel[..3]);
+            alpha.push(pixel[3]);
         }
     }
+    let image = PdfImage {
+        colors: std::sync::Arc::new(colors),
+        alpha: std::sync::Arc::new(alpha),
+        profile: std::sync::Arc::new(petunia_design_color::IccProfile::srgb()?.bytes().to_vec()),
+        width,
+        height,
+        sixteen,
+        digest: Sha256::digest(data).into(),
+    };
+    krilla::image::Image::from_custom(image, true).map_err(invalid)
+}
 
-    // Check for semantic tokens
-    match fill {
-        "ptnd.red/500" => (rgb::Color::new(239, 68, 68).into(), NormalizedF32::ONE),
-        "ptnd.blue/500" => (rgb::Color::new(59, 130, 246).into(), NormalizedF32::ONE),
-        "ptnd.green/500" => (rgb::Color::new(34, 197, 94).into(), NormalizedF32::ONE),
-        "ptnd.yellow/500" => (rgb::Color::new(234, 179, 8).into(), NormalizedF32::ONE),
-        _ => {
-            report.degradations.push(DegradationItem {
-                code: "COLOR_TOKEN_SUBSTITUTED".to_string(),
-                description: format!(
-                    "Semantic color token '{fill}' approximated to fallback neutral RGB"
-                ),
-                grade: FidelityGrade::Unsupported,
-            });
-            (rgb::Color::new(140, 140, 140).into(), NormalizedF32::ONE)
+// Always unwind graphics state on a recoverable export error. krilla requires
+// balanced pushes even when Surface is dropped before finish().
+struct ScopedSurface<'s, 'd> {
+    surface: &'s mut krilla::surface::Surface<'d>,
+    depth: usize,
+}
+impl<'s, 'd> ScopedSurface<'s, 'd> {
+    fn new(surface: &'s mut krilla::surface::Surface<'d>) -> Self {
+        Self { surface, depth: 0 }
+    }
+    fn push_transform(&mut self, t: &Transform) {
+        self.surface.push_transform(t);
+        self.depth += 1;
+    }
+    fn push_clip_path(&mut self, p: &krilla::geom::Path, rule: &FillRule) {
+        self.surface.push_clip_path(p, rule);
+        self.depth += 1;
+    }
+    fn push_blend_mode(&mut self, b: krilla::blend::BlendMode) {
+        self.surface.push_blend_mode(b);
+        self.depth += 1;
+    }
+    fn push_opacity(&mut self, o: NormalizedF32) {
+        self.surface.push_opacity(o);
+        self.depth += 1;
+    }
+    fn push_isolated(&mut self) {
+        self.surface.push_isolated();
+        self.depth += 1;
+    }
+    fn push_mask(&mut self, m: krilla::mask::Mask) {
+        self.surface.push_mask(m);
+        self.depth += 1;
+    }
+    fn pop(&mut self) {
+        self.surface.pop();
+        self.depth -= 1;
+    }
+}
+impl<'s, 'd> std::ops::Deref for ScopedSurface<'s, 'd> {
+    type Target = krilla::surface::Surface<'d>;
+    fn deref(&self) -> &Self::Target {
+        self.surface
+    }
+}
+impl std::ops::DerefMut for ScopedSurface<'_, '_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.surface
+    }
+}
+impl Drop for ScopedSurface<'_, '_> {
+    fn drop(&mut self) {
+        while self.depth > 0 {
+            self.pop();
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use petunia_design_document::DocumentMutator;
-    use petunia_design_foundation::IdGenerator;
-
-    #[test]
-    fn export_document_emits_valid_pdf_stream() {
-        let mut gen = IdGenerator::new();
-        let mut doc = Document::new();
-        let s_id = gen.next_surface();
-        let mut mutator = DocumentMutator::new(&mut doc);
-        mutator.add_surface(s_id, "Page 1").unwrap();
-
-        let mut obj1 = DocumentObject::new(gen.next_object(), "Rect");
-        obj1.fill = Some("ptnd.red/500".to_string());
-        mutator.add_object(s_id, obj1).unwrap();
-
-        let mut obj2 = DocumentObject::new(gen.next_object(), "CmykBox");
-        obj2.fill = Some("cmyk(0, 100, 100, 0)".to_string()); // Pure red in CMYK
-        mutator.add_object(s_id, obj2).unwrap();
-
-        let options = PdfExportOptions::default();
-        let (bytes, report) = export_document_pdf(&doc, &options).unwrap();
-
-        assert!(!bytes.is_empty());
-        assert!(
-            bytes.starts_with(b"%PDF-"),
-            "Must start with PDF magic bytes"
-        );
-        assert_eq!(report.surfaces, 1);
-        assert_eq!(report.objects, 2);
-        assert!(report.passed);
-    }
-
-    #[test]
-    fn multipage_document_exports_multiple_pages() {
-        let mut gen = IdGenerator::new();
-        let mut doc = Document::new();
-        let mut mutator = DocumentMutator::new(&mut doc);
-
-        let s1 = gen.next_surface();
-        mutator.add_surface(s1, "Cover").unwrap();
-        let mut obj1 = DocumentObject::new(gen.next_object(), "Header");
-        obj1.fill = Some("#3b82f6".to_string());
-        mutator.add_object(s1, obj1).unwrap();
-
-        let s2 = gen.next_surface();
-        mutator.add_surface(s2, "Content").unwrap();
-        let mut obj2 = DocumentObject::new(gen.next_object(), "Body");
-        obj2.fill = Some("#10b981".to_string());
-        mutator.add_object(s2, obj2).unwrap();
-
-        let options = PdfExportOptions::default();
-        let (bytes, report) = export_document_pdf(&doc, &options).unwrap();
-
-        assert!(bytes.starts_with(b"%PDF-"));
-        assert_eq!(report.surfaces, 2);
-        assert_eq!(report.objects, 2);
-        assert!(report.passed);
-    }
-
-    #[test]
-    fn unknown_token_records_degradation() {
-        let mut gen = IdGenerator::new();
-        let mut doc = Document::new();
-        let s1 = gen.next_surface();
-        let mut mutator = DocumentMutator::new(&mut doc);
-        mutator.add_surface(s1, "Page").unwrap();
-
-        let mut obj = DocumentObject::new(gen.next_object(), "Box");
-        obj.fill = Some("custom.unregistered/color".to_string());
-        mutator.add_object(s1, obj).unwrap();
-
-        let options = PdfExportOptions::default();
-        let (bytes, report) = export_document_pdf(&doc, &options).unwrap();
-
-        assert!(bytes.starts_with(b"%PDF-"));
-        assert_eq!(report.degradations.len(), 1);
-        assert_eq!(report.degradations[0].code, "COLOR_TOKEN_SUBSTITUTED");
-        assert_eq!(report.degradations[0].grade, FidelityGrade::Unsupported);
+fn paint_alpha(paint: &petunia_design_document::Paint) -> f64 {
+    match paint {
+        petunia_design_document::Paint::Solid(token) => {
+            f64::from(petunia_design_document::resolve_color_to_rgba(token)[3])
+        }
+        _ => 1.,
     }
 }

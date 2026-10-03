@@ -257,7 +257,7 @@ fn cmyk_jpeg_is_rejected_before_lossy_library_preview() {
 }
 
 #[test]
-fn profiles_remain_in_raw_decode_but_require_a_cmm_for_preparation() {
+fn raw_decode_retains_profiles_and_preparation_rejects_invalid_icc_bytes() {
     let mut bytes = Vec::new();
     let mut encoder = image::codecs::png::PngEncoder::new(&mut bytes);
     encoder.set_icc_profile(vec![7; 128]).unwrap();
@@ -269,7 +269,7 @@ fn profiles_remain_in_raw_decode_but_require_a_cmm_for_preparation() {
     assert_eq!(decoded.icc_profile.unwrap().as_slice(), &[7; 128]);
     assert!(matches!(
         cache(1024, 4).prepare(&source, &|| false),
-        Err(ImageAssetError::Unsupported(_))
+        Err(ImageAssetError::Invalid(_))
     ));
 }
 

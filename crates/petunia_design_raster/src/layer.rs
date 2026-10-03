@@ -170,7 +170,7 @@ impl RasterLayer {
             ));
         }
         self.tiles.validate()?;
-        for (coord, tile) in self.tiles.tiles() {
+        for (coord, _tile) in self.tiles.tiles() {
             if coord.x < 0
                 || coord.y < 0
                 || coord.x as u32 >= self.width.div_ceil(TILE_SIZE as u32)
@@ -280,6 +280,7 @@ impl RasterLayer {
     /// This preserves the brush shape under rotation/nonuniform object scaling.
     /// The caller supplies a prepared selection stencil, never polygon tests
     /// per pixel. Failures affect only the caller's disposable working layer.
+    #[allow(clippy::too_many_arguments)] // Explicit coordinates, brush and coverage lanes.
     pub fn stamp(
         &mut self,
         dab: &BrushDab,

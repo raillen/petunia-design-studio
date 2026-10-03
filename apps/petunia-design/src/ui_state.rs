@@ -278,6 +278,10 @@ pub struct HoverTarget {
 /// identity so the diffing pass treats one shared instance as equal.
 #[derive(Clone)]
 pub struct UiShell {
+    pub canvas_text: State<Option<crate::canvas_text::Draft>>,
+    pub text_clipboard: State<Option<crate::canvas_text::ClipboardRequest>>,
+    pub canvas_text_source:
+        State<Option<std::sync::Arc<petunia_design_application::preview::PreviewSource>>>,
     pub close_target: State<Option<petunia_design_application::session::SessionIdentity>>,
     pub typography_edit: State<Option<crate::typography::Draft>>,
     pub object_edit: State<Option<crate::object_edits::ObjectEdit>>,
@@ -317,6 +321,8 @@ pub struct UiShell {
     pub overwrite_conflict_path: State<String>,
     pub dock_width: State<f32>,
     pub soft_proof: State<bool>,
+    pub proof_options: State<petunia_design_color::IccTransformOptions>,
+    pub monitor_profile: State<Option<petunia_design_color::IccProfile>>,
     pub channel_view: State<usize>,
     pub left_dock_open: State<bool>,
     pub left_dock_width: State<f32>,
@@ -328,7 +334,10 @@ pub struct UiShell {
 
 impl PartialEq for UiShell {
     fn eq(&self, other: &Self) -> bool {
-        self.typography_edit == other.typography_edit
+        self.canvas_text == other.canvas_text
+            && self.text_clipboard == other.text_clipboard
+            && self.canvas_text_source == other.canvas_text_source
+            && self.typography_edit == other.typography_edit
             && self.object_edit == other.object_edit
             && self.close_target == other.close_target
             && self.file_job == other.file_job
@@ -361,6 +370,8 @@ impl PartialEq for UiShell {
             && self.overwrite_conflict_open == other.overwrite_conflict_open
             && self.overwrite_conflict_path == other.overwrite_conflict_path
             && self.dock_width == other.dock_width
+            && self.proof_options == other.proof_options
+            && self.monitor_profile == other.monitor_profile
             && self.soft_proof == other.soft_proof
             && self.channel_view == other.channel_view
             && self.left_dock_open == other.left_dock_open
@@ -414,6 +425,11 @@ impl UiShell {
         bottom_dock_tab: State<usize>,
     ) -> Self {
         Self {
+            proof_options: use_state(Default::default),
+            monitor_profile: use_state(|| None),
+            canvas_text: use_state(|| None),
+            text_clipboard: use_state(|| None),
+            canvas_text_source: use_state(|| None),
             object_edit: use_state(|| None),
             typography_edit: use_state(|| None),
             close_target: use_state(|| None),

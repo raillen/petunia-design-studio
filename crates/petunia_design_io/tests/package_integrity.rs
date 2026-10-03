@@ -17,23 +17,36 @@ fn fixture(name: &str) -> Document {
 }
 
 #[test]
-fn concurrent_saves_publish_a_complete_package_without_temporary_collisions() {
+fn competing_saves_reject_busy_writers_and_publish_a_complete_package() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("concurrent.PTND");
     let barrier = Arc::new(Barrier::new(4));
     let docs: Vec<_> = (0..4).map(|i| fixture(&format!("writer {i}"))).collect();
-    std::thread::scope(|scope| {
+    let results = std::thread::scope(|scope| {
+        let mut handles = Vec::new();
         for doc in &docs {
             let barrier = barrier.clone();
             let path = &path;
-            scope.spawn(move || {
+            handles.push(scope.spawn(move || {
                 barrier.wait();
-                save_package(doc, path).unwrap();
-            });
+                save_package(doc, path)
+            }));
         }
+        handles
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .collect::<Vec<_>>()
     });
+    assert!(results.iter().any(Result::is_ok));
+    for error in results.into_iter().filter_map(Result::err) {
+        assert!(matches!(
+            error,
+            petunia_design_foundation::PetuniaError::Io { .. }
+        ));
+    }
     assert!(docs.contains(&open_package(&path).unwrap().document));
-    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    // The stable lock inode is intentionally retained between publications.
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
 }
 
 #[test]
@@ -49,7 +62,7 @@ fn invalid_save_preserves_previous_file() {
     let invalid: Document = serde_json::from_value(value).unwrap();
     assert!(save_package(&invalid, &path).is_err());
     assert_eq!(std::fs::read(&path).unwrap(), before);
-    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
 }
 
 fn write_raw_package(path: &std::path::Path, manifest: &[u8], document: &[u8]) {
@@ -81,11 +94,12 @@ fn compressed_oversized_manifest_and_schema_mismatch_are_rejected() {
 }
 
 #[test]
-fn schema_one_package_opens_and_is_written_as_schema_three() {
+fn schema_one_package_opens_and_is_written_as_current_schema() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("migrated.PTND");
     let mut manifest = PackageManifest::current();
     manifest.schema_version = 1;
+    manifest.binary_resources = false;
     let mut value = serde_json::to_value(fixture("old")).unwrap();
     value["schema_version"] = 1.into();
     write_raw_package(
@@ -94,7 +108,10 @@ fn schema_one_package_opens_and_is_written_as_schema_three() {
         &serde_json::to_vec(&value).unwrap(),
     );
     let opened = open_package(&path).unwrap();
-    assert_eq!(opened.document.schema_version(), 3);
+    assert_eq!(
+        opened.document.schema_version(),
+        petunia_design_foundation::NATIVE_SCHEMA_VERSION
+    );
     save_package(&opened.document, &path).unwrap();
     assert_eq!(open_package(&path).unwrap().document, opened.document);
 }
@@ -121,13 +138,17 @@ fn schema_two_modifier_package_migrates_and_preserves_editable_parameters() {
     wire["surfaces"][0]["objects"][0]["modifiers"] = serde_json::json!([{"id":1,"kind":{"type":"CropRect","rect":[110,210,50,30]},"enabled":true}]);
     let mut manifest = PackageManifest::current();
     manifest.schema_version = 2;
+    manifest.binary_resources = false;
     write_raw_package(
         &path,
         &serde_json::to_vec(&manifest).unwrap(),
         &serde_json::to_vec(&wire).unwrap(),
     );
     let opened = open_package(&path).unwrap();
-    assert_eq!(opened.document.schema_version(), 3);
+    assert_eq!(
+        opened.document.schema_version(),
+        petunia_design_foundation::NATIVE_SCHEMA_VERSION
+    );
     assert!(matches!(
         opened.document.find_object(id).unwrap().modifiers[0].space,
         ModifierSpace::Local {

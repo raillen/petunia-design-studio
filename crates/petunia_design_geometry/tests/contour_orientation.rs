@@ -1,6 +1,5 @@
-//! Glyph contour normalization support; regression sources not executed yet.
-use petunia_design_geometry::boolean::FillRule;
-use petunia_design_geometry::{GPath, GPoint, GRect, PathVerb};
+//! Glyph contour normalization regressions.
+use petunia_design_geometry::{FillRule, GPath, GPoint, GRect, PathVerb};
 #[test]
 fn reversing_compound_contours_preserves_nonzero_counters() {
     let mut p = GPath::rect(GRect::new(0.0, 0.0, 20.0, 20.0), 0.0, 0.0);

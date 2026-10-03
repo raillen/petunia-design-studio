@@ -9,13 +9,16 @@ mod actions;
 mod appearance;
 mod canvas_paint;
 mod canvas_preview;
+mod canvas_text;
 mod chrome;
+mod color_ui;
 mod dialogs;
 mod dock;
 mod export_preview;
 mod file_dialogs;
 mod file_jobs;
 mod file_workflows;
+mod histogram_ui;
 mod object_edit_dialog;
 mod object_edits;
 mod recovery;
@@ -51,6 +54,7 @@ fn map_cursor_affordance(affordance: CursorAffordance) -> CursorIcon {
     }
 }
 
+#[cfg(test)]
 use crate::actions::run_action_id;
 use crate::appearance::AppearanceBar;
 use crate::chrome::{
@@ -84,8 +88,7 @@ fn main() {
     );
 }
 
-/// Seeds two overlapping demo shapes on the default artboard for instant testing of
-/// Shape Builder, Gradient, Node, and Select tools without manual setup.
+/// Starts an empty document; examples are created explicitly by the user.
 fn app() -> impl IntoElement {
     use_init_theme(theme::petunia_theme);
 
@@ -185,6 +188,7 @@ impl Component for Workspace {
     fn render(&self) -> impl IntoElement {
         let mut shell = self.0.shell;
         recovery::use_recovery(&self.0);
+        canvas_text::use_clipboard(&self.0);
         let modifiers = self.0.modifiers;
         let mut gesture_tick = use_state(|| 0u64);
         let ruler_drag = use_state(|| None::<(petunia_design_document::GuideOrientation, f64)>);
@@ -199,11 +203,30 @@ impl Component for Workspace {
                 }
             }
         });
-        let snapshot = shell.read().canvas_snapshot();
+        let mut snapshot = shell.read().canvas_snapshot();
+        snapshot.preview_source =
+            canvas_text::use_projection(&self.0, snapshot.preview_source.clone());
+        if *self.0.canvas_text_source.peek() != snapshot.preview_source {
+            self.0
+                .canvas_text_source
+                .clone()
+                .set(snapshot.preview_source.clone());
+        }
         let (preview, preview_error) = canvas_preview::use_canvas_preview(
             &snapshot,
             *self.0.channel_view.read(),
             *self.0.soft_proof.read(),
+            snapshot
+                .preview_source
+                .as_ref()
+                .and_then(|source| source.surface_snapshot().cmyk_profile.clone())
+                .zip(self.0.monitor_profile.read().clone())
+                .map(|(proof, monitor)| petunia_design_color::IccProofSettings {
+                    proof,
+                    monitor,
+                    options: *self.0.proof_options.read(),
+                    proof_intent: self.0.proof_options.read().intent,
+                }),
         );
         let cursor_icon = map_cursor_affordance(snapshot.overlays.cursor);
         let in_flight_guide = *ruler_drag.read();
@@ -223,6 +246,8 @@ impl Component for Workspace {
             ));
             let text_obj_id = text_obj.id;
             let edit_ui = self.0.clone();
+            let apply_ui = self.0.clone();
+            let mut cancel_edit = self.0.canvas_text;
             Some(
                 rect()
                     .position(
@@ -245,19 +270,32 @@ impl Component for Workspace {
                         Button::new()
                             .on_press(move |event: Event<PressEventData>| {
                                 event.stop_propagation();
-                                object_edit_dialog::request(
-                                    &edit_ui,
-                                    text_obj_id,
-                                    object_edits::EditKind::Text,
-                                );
+                                canvas_text::request(&edit_ui, text_obj_id);
+                                a11y_id.request_focus();
                             })
                             .child(label().text(self.0.text("edit_text")).font_size(11.)),
-                    ),
+                    )
+                    .maybe(canvas_text::is_active(&self.0), |element| {
+                        element
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| canvas_text::apply(&apply_ui))
+                                    .child(self.0.text("edit_apply")),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| cancel_edit.set(None))
+                                    .child(self.0.text("cancel")),
+                            )
+                            .child(label().text(self.0.text("text_canvas_hint")).font_size(10.))
+                    }),
             )
         } else {
             None
         };
 
+        let text_overlay = canvas_text::overlay(&self.0, snapshot.preview_source.as_ref());
+        let editing = canvas_text::is_active(&self.0);
         let mut workspace_container = rect()
             .width(Size::flex(1.0))
             .height(Size::fill())
@@ -265,11 +303,31 @@ impl Component for Workspace {
             .cursor(cursor_icon)
             .a11y_id(a11y_id)
             .a11y_focusable(true)
+            .a11y_role(if editing {
+                AccessibilityRole::MultilineTextInput
+            } else {
+                AccessibilityRole::GenericContainer
+            })
+            .on_ime_preedit({
+                let ui = self.0.clone();
+                move |event| canvas_text::preedit(&ui, &event)
+            })
             .on_global_pointer_press({
+                let edit_ui = self.0.clone();
                 move |event: Event<PointerEventData>| {
                     if *is_pointer_down.peek() {
                         is_pointer_down.set(false);
                         let location = event.element_location();
+                        if canvas_text::pointer(
+                            &edit_ui,
+                            PointerPhase::Up,
+                            shell
+                                .peek()
+                                .view_camera()
+                                .screen_to_doc(GPoint::new(location.x, location.y)),
+                        ) {
+                            return;
+                        }
                         let button = event
                             .button()
                             .and_then(|b| pointer_button(Some(b)))
@@ -309,11 +367,24 @@ impl Component for Workspace {
                     *self.0.soft_proof.read(),
                     *self.0.channel_view.read(),
                     preview,
+                    text_overlay,
                 )
                 .on_pointer_down({
-                    move |event| {
+                    let edit_ui = self.0.clone();
+                    move |event: Event<PointerEventData>| {
                         a11y_id.request_focus();
                         is_pointer_down.set(true);
+                        let location = event.element_location();
+                        if canvas_text::pointer(
+                            &edit_ui,
+                            PointerPhase::Down,
+                            shell
+                                .peek()
+                                .view_camera()
+                                .screen_to_doc(GPoint::new(location.x, location.y)),
+                        ) {
+                            return;
+                        }
                         dispatch_workspace_pointer(
                             shell,
                             modifiers,
@@ -326,7 +397,19 @@ impl Component for Workspace {
                     }
                 })
                 .on_pointer_move({
-                    move |event| {
+                    let edit_ui = self.0.clone();
+                    move |event: Event<PointerEventData>| {
+                        let location = event.element_location();
+                        if canvas_text::pointer(
+                            &edit_ui,
+                            PointerPhase::Move,
+                            shell
+                                .peek()
+                                .view_camera()
+                                .screen_to_doc(GPoint::new(location.x, location.y)),
+                        ) {
+                            return;
+                        }
                         dispatch_workspace_pointer(
                             shell,
                             modifiers,
@@ -339,6 +422,7 @@ impl Component for Workspace {
                     }
                 })
                 .on_mouse_up({
+                    let edit_ui = self.0.clone();
                     move |event: Event<MouseEventData>| {
                         event.prevent_default();
                         if *is_pointer_down.peek() {
@@ -346,6 +430,16 @@ impl Component for Workspace {
                             let button =
                                 pointer_button(event.button).unwrap_or(PointerButton::Primary);
                             let location = event.element_location;
+                            if canvas_text::pointer(
+                                &edit_ui,
+                                PointerPhase::Up,
+                                shell
+                                    .peek()
+                                    .view_camera()
+                                    .screen_to_doc(GPoint::new(location.x, location.y)),
+                            ) {
+                                return;
+                            }
                             dispatch_workspace_at(
                                 shell,
                                 modifiers,
@@ -360,10 +454,21 @@ impl Component for Workspace {
                     }
                 })
                 .on_touch_end({
+                    let edit_ui = self.0.clone();
                     move |event: Event<TouchEventData>| {
                         if *is_pointer_down.peek() {
                             is_pointer_down.set(false);
                             let location = event.element_location;
+                            if canvas_text::pointer(
+                                &edit_ui,
+                                PointerPhase::Up,
+                                shell
+                                    .peek()
+                                    .view_camera()
+                                    .screen_to_doc(GPoint::new(location.x, location.y)),
+                            ) {
+                                return;
+                            }
                             dispatch_workspace_at(
                                 shell,
                                 modifiers,
@@ -378,10 +483,21 @@ impl Component for Workspace {
                     }
                 })
                 .on_touch_cancel({
+                    let edit_ui = self.0.clone();
                     move |event: Event<TouchEventData>| {
                         if *is_pointer_down.peek() {
                             is_pointer_down.set(false);
                             let location = event.element_location;
+                            if canvas_text::pointer(
+                                &edit_ui,
+                                PointerPhase::Cancel,
+                                shell
+                                    .peek()
+                                    .view_camera()
+                                    .screen_to_doc(GPoint::new(location.x, location.y)),
+                            ) {
+                                return;
+                            }
                             dispatch_workspace_at(
                                 shell,
                                 modifiers,
@@ -539,8 +655,9 @@ fn dispatch_workspace_with_pressure(
     screen: GPoint,
     pressure: f64,
 ) {
-    // 1. Middle mouse button pan navigation
-    if button == PointerButton::Middle {
+    // Move events have no pressed button in Freya. Continue captured navigation
+    // until release/cancel instead of letting Select/Brush consume the drag.
+    if button == PointerButton::Middle || middle_pan_last.peek().is_some() {
         match phase {
             PointerPhase::Down => {
                 middle_pan_last.set(Some(screen));
@@ -670,6 +787,9 @@ fn dispatch_workspace_key(ui: &UiShell, event: &Event<KeyboardEventData>) {
     // Popups own typing and shortcuts. Delete, Space and letters must never
     // edit the canvas behind an open file or configuration dialog.
     if ui.has_modal() || *ui.palette_open.peek() {
+        return;
+    }
+    if canvas_text::key(ui, event) {
         return;
     }
     let mut shell = ui.shell;
@@ -945,6 +1065,33 @@ mod workspace_tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    fn seed_shapes(shell: &mut PetuniaShell) {
+        use petunia_design_application::{Command, CommandRequest};
+        let surface = shell.bridge.active_surface().unwrap();
+        for (name, bounds) in [
+            ("Rectangle A", [260., 180., 220., 160.]),
+            ("Rectangle B", [440., 260., 180., 120.]),
+        ] {
+            let id = shell.bridge.next_object_id().unwrap();
+            shell
+                .bridge
+                .submit_command(CommandRequest::new(Command::CreateShapeObject {
+                    surface,
+                    id,
+                    name: name.into(),
+                    shape: petunia_design_document::ShapeKind::Rectangle {
+                        corner_radii: [0.; 4],
+                    },
+                    bounds: Some(bounds),
+                    fill: Some("#3498db".into()),
+                    stroke: None,
+                    stroke_width: 0.,
+                }))
+                .unwrap();
+        }
+        shell.bridge.clear_selection();
+    }
+
     #[test]
     fn pointer_drag_creates_a_shape_through_the_shell() {
         let seen: Rc<RefCell<Option<State<PetuniaShell>>>> = Rc::new(RefCell::new(None));
@@ -988,6 +1135,7 @@ mod workspace_tests {
                 let shell = use_state(|| {
                     let mut shell = PetuniaShell::new(800., 600.);
                     shell.new_document("Test").expect("document opens");
+                    seed_shapes(&mut shell);
                     shell.set_active_tool(ToolKind::Select);
                     shell
                 });
@@ -1101,6 +1249,7 @@ mod workspace_tests {
                 let shell = use_state(|| {
                     let mut shell = PetuniaShell::new(800., 600.);
                     shell.new_document("Test").expect("document opens");
+                    seed_shapes(&mut shell);
                     shell.set_active_tool(ToolKind::Select);
                     shell
                 });
@@ -1193,6 +1342,7 @@ mod workspace_tests {
     fn group_and_ungroup_actions_work_on_selection() {
         let mut shell = PetuniaShell::new(800., 600.);
         shell.new_document("Test").expect("document opens");
+        seed_shapes(&mut shell);
 
         // Select all objects
         let _ = run_action_id(&mut shell, "ptnd.action.edit.select_all");
@@ -1640,9 +1790,11 @@ mod workspace_tests {
 
         let (mut runner, ()) = TestingRunner::new(
             move || {
+                use_init_theme(theme::petunia_theme);
                 let shell = use_state(|| {
                     let mut s = PetuniaShell::new(1280., 800.);
                     s.new_document("DockLayoutDoc").expect("doc opens");
+                    seed_shapes(&mut s);
                     s
                 });
                 let ui = UiShell::fresh(shell);
@@ -1689,25 +1841,54 @@ mod workspace_tests {
         let ui = seen.borrow().clone().expect("ui mounted");
         assert_eq!(*ui.dock_tab.read(), 0, "initial tab is Camadas (0)");
 
-        // Click Propriedades tab (roughly 960 + 120 = 1080)
-        runner.click_cursor((1080., 120.));
-        runner.sync_and_update();
-        assert_eq!(*ui.dock_tab.read(), 1, "switches to Propriedades (1)");
-
-        // Click Cores tab (roughly 960 + 200 = 1160)
-        runner.click_cursor((1160., 120.));
-        runner.sync_and_update();
-        assert_eq!(*ui.dock_tab.read(), 2, "switches to Cores (2)");
-
-        // Click Histórico tab (roughly 960 + 270 = 1230)
-        runner.click_cursor((1230., 120.));
-        runner.sync_and_update();
-        assert_eq!(*ui.dock_tab.read(), 3, "switches to Histórico (3)");
-
-        // Click Camadas tab (roughly 960 + 40 = 1000)
-        runner.click_cursor((1000., 120.));
-        runner.sync_and_update();
-        assert_eq!(*ui.dock_tab.read(), 0, "switches back to Camadas (0)");
+        for (title, index) in [
+            ("Propriedades", 1),
+            ("Cores", 2),
+            ("Histórico", 3),
+            ("Navegador", 4),
+            ("Camadas", 0),
+        ] {
+            let area = runner
+                .find(|node, element| {
+                    Label::try_downcast(element)
+                        .filter(|label| label.text == title)
+                        .map(|_| node)
+                })
+                .unwrap()
+                .layout()
+                .area;
+            assert!(area.max_x() <= 1280. && area.height() < 25.);
+            runner.click_cursor((
+                f64::from(area.min_x() + area.width() / 2.),
+                f64::from(area.min_y() + area.height() / 2.),
+            ));
+            runner.sync_and_update();
+            assert_eq!(*ui.dock_tab.read(), index);
+        }
+        if let Some(directory) = std::env::var_os("PETUNIA_UI_EVIDENCE_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            runner.poll(
+                std::time::Duration::from_millis(16),
+                std::time::Duration::from_millis(500),
+            );
+            let path = directory.join("workspace.png");
+            runner.render_to_file(&path);
+            let pixels =
+                petunia_design_io::import_raster(&std::fs::read(path).unwrap(), 8 * 1024 * 1024)
+                    .unwrap();
+            assert!(
+                pixels
+                    .data
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .filter(|pixel| pixel[..3] == [52, 152, 219])
+                    .count()
+                    > 1000,
+                "canvas must display the rendered artwork before capture"
+            );
+        }
     }
 
     #[test]
@@ -1854,6 +2035,88 @@ mod workflow_ui_tests {
             std::fs::create_dir_all(&directory).unwrap();
             runner.render_to_file(directory.join(format!("{name}.png")));
         }
+    }
+
+    fn canvas_text_fixture(ui: &UiShell) -> petunia_design_foundation::ObjectId {
+        let mut state = ui.shell;
+        let mut shell = state.write();
+        let surface = shell.bridge.active_surface().unwrap();
+        let id = shell.bridge.next_object_id().unwrap();
+        shell
+            .bridge
+            .submit_all(
+                "Text fixture",
+                vec![
+                    petunia_design_application::Command::CreateObject {
+                        surface,
+                        id,
+                        name: "Text".into(),
+                    },
+                    petunia_design_application::Command::SetBounds {
+                        id,
+                        bounds: Some([0., 0., 100., 100.]),
+                        rotation: 0.,
+                    },
+                    petunia_design_application::Command::SetShape {
+                        id,
+                        shape: Some(petunia_design_document::ShapeKind::Text {
+                            content: "Original".into(),
+                            font_family: "DejaVu Sans".into(),
+                            font_size: 12.,
+                            line_height: 1.2,
+                            letter_spacing: 0.,
+                            on_path: None,
+                        }),
+                    },
+                ],
+            )
+            .unwrap();
+        id
+    }
+    #[test]
+    fn canvas_typing_is_a_draft_and_commit_is_one_undoable_command() {
+        let (mut runner, ui) = mount();
+        let id = canvas_text_fixture(&ui);
+        let before = ui.shell.peek().bridge.session().unwrap().document().clone();
+        crate::canvas_text::request(&ui, id);
+        runner.sync_and_update();
+        runner.write_text(" Petúnia");
+        runner.sync_and_update();
+        assert_eq!(
+            ui.shell.peek().bridge.session().unwrap().document(),
+            &before
+        );
+        assert_eq!(
+            ui.canvas_text.peek().as_ref().unwrap().buffer.content(),
+            "Original Petúnia"
+        );
+        crate::canvas_text::apply(&ui);
+        assert!(ui.canvas_text.peek().is_none());
+        let mut state = ui.shell;
+        state.write().bridge.undo().unwrap();
+        assert_eq!(state.peek().bridge.session().unwrap().document(), &before);
+    }
+    #[test]
+    fn escape_cancels_canvas_text_and_tab_switch_does_not_consume_other_tab_keys() {
+        let (mut runner, ui) = mount();
+        let id = canvas_text_fixture(&ui);
+        let before = ui.shell.peek().bridge.session().unwrap().document().clone();
+        crate::canvas_text::request(&ui, id);
+        runner.write_text(" draft");
+        runner.press_key(Key::Named(NamedKey::Escape));
+        assert!(ui.canvas_text.peek().is_none());
+        assert_eq!(
+            ui.shell.peek().bridge.session().unwrap().document(),
+            &before
+        );
+        crate::canvas_text::request(&ui, id);
+        ui.shell.clone().write().new_document("Second").unwrap();
+        assert!(!crate::canvas_text::is_active(&ui));
+        runner.write_text("v");
+        assert_eq!(
+            ui.canvas_text.peek().as_ref().unwrap().buffer.content(),
+            "Original"
+        );
     }
     #[test]
     fn new_menu_prompt_and_cancel_create_no_tab() {

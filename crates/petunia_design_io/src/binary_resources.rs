@@ -1,11 +1,11 @@
-//! PTND schema 4 resource index. Pixels/source images are binary ZIP entries;
+//! PTND schemas 4–5 resource index. Pixels/source images are binary ZIP entries;
 //! JSON holds descriptors only. SHA-256 addresses verify bytes and deduplicate
 //! shared assets. Stable object IDs associate descriptors with canonical shapes.
+use petunia_design_color::IccProfile;
 use petunia_design_document::{Document, DocumentMutator, ShapeKind};
-use petunia_design_foundation::{ObjectId, PetuniaError};
+use petunia_design_foundation::{ObjectId, PetuniaError, SurfaceId};
 use petunia_design_raster::{
-    AlphaMode, EncodedImage, PixelFormat, RasterLayer, RasterLayerKind, Tile, TileCoord, TileMap,
-    TileState,
+    AlphaMode, EncodedImage, PixelFormat, RasterLayerKind, Tile, TileCoord, TileMap, TileState,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -27,6 +27,15 @@ const MAX_OBJECT_BINDINGS: usize = 100_000;
 struct ResourceIndex {
     version: u32,
     bindings: Vec<Binding>,
+    #[serde(default)]
+    profiles: Vec<ProfileBinding>,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileBinding {
+    surface: SurfaceId,
+    name: String,
+    asset: String,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type", deny_unknown_fields)]
@@ -56,12 +65,14 @@ struct TileReference {
 enum Asset {
     Image(Arc<EncodedImage>),
     Tile(Arc<Tile>),
+    Profile(IccProfile),
 }
 impl Asset {
     fn bytes(&self) -> &[u8] {
         match self {
             Self::Image(image) => image.as_slice(),
             Self::Tile(tile) => &tile.data,
+            Self::Profile(profile) => profile.bytes(),
         }
     }
 }
@@ -106,6 +117,18 @@ pub(crate) fn write(
     let mut assets = BTreeMap::new();
     let mut bytes = 0usize;
     let mut replacements = Vec::new();
+    let mut profiles = Vec::new();
+    for surface in document.surfaces() {
+        if let Some(profile) = &surface.cmyk_profile {
+            let asset = insert_asset(&mut assets, Asset::Profile(profile.clone()), &mut bytes)?;
+            profiles.push(ProfileBinding {
+                surface: surface.id,
+                name: profile.name().to_owned(),
+                asset,
+            });
+            DocumentMutator::new(&mut metadata).set_surface_cmyk_profile(surface.id, None)?;
+        }
+    }
     for object in document.surfaces().iter().flat_map(|s| s.objects()) {
         match &object.shape {
             Some(ShapeKind::Image {
@@ -163,8 +186,9 @@ pub(crate) fn write(
         }
     }
     let index = ResourceIndex {
-        version: 1,
+        version: 2,
         bindings,
+        profiles,
     };
     // Bound descriptors before ZIP publication. This allocation never contains pixel bytes.
     let index_bytes =
@@ -222,6 +246,15 @@ pub(crate) fn read(
     document: &mut Document,
     archive: &mut zip::ZipArchive<File>,
 ) -> Result<(), PetuniaError> {
+    if document
+        .surfaces()
+        .iter()
+        .any(|surface| surface.cmyk_profile.is_some())
+    {
+        return Err(PetuniaError::invalid_input(
+            "ICC profiles must be bound binary resources",
+        ));
+    }
     let mut names = HashSet::new();
     for name in archive.file_names() {
         if !names.insert(name.to_string()) {
@@ -231,7 +264,11 @@ pub(crate) fn read(
     let index_bytes = read_bytes(archive, INDEX_PATH, MAX_INDEX_BYTES)?;
     let index: ResourceIndex = serde_json::from_slice(&index_bytes)
         .map_err(|e| PetuniaError::invalid_input(format!("native resource index: {e}")))?;
-    if index.version != 1 || index.bindings.len() > MAX_OBJECT_BINDINGS {
+    if !matches!(index.version, 1 | 2)
+        || index.bindings.len() > MAX_OBJECT_BINDINGS
+        || index.profiles.len() > 1024
+        || (index.version == 1 && !index.profiles.is_empty())
+    {
         return Err(PetuniaError::invalid_input(
             "unsupported or oversized native resource index",
         ));
@@ -282,6 +319,25 @@ pub(crate) fn read(
                 .and_modify(|value| *value = (*value).min(limit))
                 .or_insert(limit);
         }
+    }
+    let mut profiled_surfaces = HashSet::new();
+    for profile in &index.profiles {
+        if !profiled_surfaces.insert(profile.surface)
+            || !valid_key(&profile.asset)
+            || profile.name.len() > 512
+            || profile.name.is_empty()
+            || document
+                .surface(profile.surface)
+                .map_or(true, |s| s.cmyk_profile.is_some())
+        {
+            return Err(PetuniaError::invalid_input(
+                "invalid or duplicate ICC surface binding",
+            ));
+        }
+        requirements
+            .entry(profile.asset.clone())
+            .and_modify(|v| *v = (*v).min(4 * 1024 * 1024))
+            .or_insert(4 * 1024 * 1024);
     }
     if requirements.len() > MAX_RESOURCE_ENTRIES {
         return Err(PetuniaError::invalid_input(
@@ -445,7 +501,16 @@ pub(crate) fn read(
         }
     }
     drop(lookup);
-    DocumentMutator::new(document).set_shapes_bulk(replacements)?;
+    let mut mutator = DocumentMutator::new(document);
+    mutator.set_shapes_bulk(replacements)?;
+    for binding in index.profiles {
+        let bytes = binaries
+            .get(&binding.asset)
+            .ok_or_else(|| PetuniaError::invalid_input("missing ICC resource"))?
+            .clone();
+        let profile = IccProfile::new(binding.name, bytes)?;
+        mutator.set_surface_cmyk_profile(binding.surface, Some(profile))?;
+    }
     for object in document.surfaces().iter().flat_map(|s| s.objects()) {
         if matches!(
             object.shape,

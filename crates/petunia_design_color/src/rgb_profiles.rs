@@ -43,7 +43,7 @@ pub fn convert_rgba_to_srgb(
     let target = ColorProfile::new_srgb();
     let row_samples = width as usize * 4;
     let row_bytes = row_samples * if sixteen { 2 } else { 1 };
-    if data.len() % row_bytes != 0 {
+    if !data.len().is_multiple_of(row_bytes) {
         return Err(invalid("ICC pixel buffer layout"));
     }
     if cancelled() {
@@ -59,7 +59,7 @@ pub fn convert_rgba_to_srgb(
             if cancelled() {
                 return Err(invalid("ICC conversion cancelled"));
             }
-            for (sample, bytes) in source.iter_mut().zip(row.chunks_exact(2)) {
+            for (sample, bytes) in source.iter_mut().zip(row.as_chunks::<2>().0.iter()) {
                 *sample = u16::from_le_bytes([bytes[0], bytes[1]]);
             }
             transform
@@ -69,7 +69,7 @@ pub fn convert_rgba_to_srgb(
             for pixel in 0..width as usize {
                 output[pixel * 4 + 3] = source[pixel * 4 + 3];
             }
-            for (bytes, sample) in row.chunks_exact_mut(2).zip(output.iter()) {
+            for (bytes, sample) in row.as_chunks_mut::<2>().0.iter_mut().zip(output.iter()) {
                 bytes.copy_from_slice(&sample.to_le_bytes());
             }
         }

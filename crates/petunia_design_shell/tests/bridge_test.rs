@@ -784,3 +784,44 @@ fn preview_source_changes_on_revision_and_session_replacement() {
     let other = shell.canvas_snapshot().preview_source.unwrap();
     assert_ne!(edited.id(), other.id());
 }
+
+#[test]
+fn admitted_icc_assignment_preserves_tab_identity_revision_and_undo() {
+    use petunia_design_color::IccProfile;
+    let profile = IccProfile::new(
+        "Synthetic press".into(),
+        Arc::new(include_bytes!("../../../fixtures/color/synthetic-cmyk.icc").to_vec()),
+    )
+    .unwrap();
+    let mut shell = PetuniaShell::new(800., 600.);
+    shell.new_document("Target").unwrap();
+    let session = shell.bridge.session().unwrap();
+    let target = session.identity();
+    let revision = session.current_revision();
+    let surface = session.active_surface().unwrap();
+    let baseline = session.document().clone();
+    shell.new_document("Other").unwrap();
+    let other = shell.bridge.session().unwrap().document().clone();
+    shell
+        .bridge
+        .assign_prepared_cmyk_profile(target, revision, surface, profile.clone())
+        .unwrap();
+    assert_eq!(shell.bridge.session().unwrap().document(), &other);
+    shell.bridge.switch_session(0).unwrap();
+    assert_eq!(
+        shell.bridge.session().unwrap().document().surfaces()[0].cmyk_profile,
+        Some(profile.clone())
+    );
+    shell.bridge.undo().unwrap();
+    assert_eq!(shell.bridge.session().unwrap().document(), &baseline);
+    shell.bridge.redo().unwrap();
+    assert!(shell
+        .bridge
+        .assign_prepared_cmyk_profile(target, revision, surface, profile.clone())
+        .is_err());
+    shell.bridge.close_session(true).unwrap();
+    assert!(shell
+        .bridge
+        .assign_prepared_cmyk_profile(target, revision, surface, profile)
+        .is_err());
+}

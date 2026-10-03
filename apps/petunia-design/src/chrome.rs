@@ -293,7 +293,7 @@ impl Component for DocumentTabStrip {
         let snapping = session.is_some_and(|s| s.view.snapping_enabled);
         let rulers_on = session.is_some_and(|s| s.view.rulers_visible);
         let soft_proof = *ui.soft_proof.read();
-        let mut soft_proof_toggle = ui.soft_proof;
+        let proof_ui = ui.clone();
         let channel_idx = *ui.channel_view.read();
         let mut channel_toggle = ui.channel_view;
         let channel_label = match channel_idx {
@@ -466,15 +466,14 @@ impl Component for DocumentTabStrip {
                             .padding(Gaps::new_symmetric(2., 5.))
                             .corner_radius(CornerRadius::new_all(3.))
                             .on_press(move |_| {
-                                let current = *soft_proof_toggle.read();
-                                soft_proof_toggle.set(!current);
+                                crate::file_workflows::toggle_proof(&proof_ui);
                             })
                             .child(
                                 label()
                                     .text(if soft_proof {
-                                        "Prova: SWOP"
+                                        "Prova ICC"
                                     } else {
-                                        "Prova: Off"
+                                        "Prova ICC: Off"
                                     })
                                     .color(if soft_proof {
                                         theme::ACCENT_BLOOM
@@ -1746,7 +1745,6 @@ fn menu_item(ui: UiShell, item: &MenuItemPresentation) -> impl IntoElement {
     } else {
         item.disabled_reason.clone()
     };
-    let mut shell = ui.shell;
     let mut open_family = ui.open_family;
     let mut active_tool = ui.active_tool;
     let mut tool_rail = ui.tool_rail;

@@ -2,9 +2,11 @@
 //! a document. Stable session identities keep a save tied to the requested tab.
 use freya::prelude::WritableUtils;
 use petunia_design_application::session::SessionIdentity;
+#[cfg(test)]
 use petunia_design_application::{ActionId, ActionRequest};
 use petunia_design_foundation::PetuniaError;
 use petunia_design_shell::PetuniaShell;
+#[cfg(test)]
 use std::path::{Path, PathBuf};
 
 use crate::ui_state::UiShell;
@@ -15,8 +17,19 @@ pub enum SaveIntent {
     CloseOne,
     CloseAll,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProfilePurpose {
+    Press,
+    Monitor,
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FilePrompt {
+    Profile {
+        target: SessionIdentity,
+        revision: u64,
+        surface: petunia_design_foundation::SurfaceId,
+        purpose: ProfilePurpose,
+    },
     Open,
     Recover,
     Save {
@@ -131,6 +144,9 @@ pub fn complete_prompt(
     path: &Path,
 ) -> Result<Option<FilePrompt>, PetuniaError> {
     match prompt {
+        FilePrompt::Profile { .. } => Err(PetuniaError::invalid_input(
+            "ICC admission is an asynchronous file workflow",
+        )),
         FilePrompt::Recover => {
             shell.bridge.dispatch_action(ActionRequest::new(
                 ActionId::new("ptnd.action.file.recover"),
@@ -154,6 +170,42 @@ pub fn complete_prompt(
             }
         }
     }
+}
+
+/// Request a native ICC picker scoped to the current document/revision.
+pub fn request_profile(ui: &UiShell, purpose: ProfilePurpose) {
+    let shell = ui.shell.peek();
+    if let Some(session) = shell.bridge.session() {
+        if let Some(surface) = session.active_surface() {
+            ui.file_prompt.clone().set(Some(FilePrompt::Profile {
+                target: session.identity(),
+                revision: session.current_revision(),
+                surface,
+                purpose,
+            }));
+        }
+    }
+}
+pub fn toggle_proof(ui: &UiShell) {
+    if *ui.soft_proof.peek() {
+        ui.soft_proof.clone().set(false);
+        return;
+    }
+    let has_press = ui.shell.peek().bridge.session().is_some_and(|session| {
+        session
+            .active_surface()
+            .and_then(|id| session.document().surface(id).ok())
+            .is_some_and(|surface| surface.cmyk_profile.is_some())
+    });
+    if !has_press {
+        request_profile(ui, ProfilePurpose::Press);
+        return;
+    }
+    if ui.monitor_profile.peek().is_none() {
+        request_profile(ui, ProfilePurpose::Monitor);
+        return;
+    }
+    ui.soft_proof.clone().set(true);
 }
 
 /// New configuration is validated before creating a tab. A domain rejection

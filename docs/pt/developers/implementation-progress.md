@@ -1,9 +1,17 @@
 # Registro de execução da implementação
 
+## 2026-10-03: contrato atual de correções
+
+Esta atualização substitui os resumos antigos de continuações não validadas abaixo. ADR-010 implementa correções limitadas de texto, histórico, histograma, ICC e PDF. A validação final começa somente após a implementação. Comandos/resultados reais são registrados em `/implementation/mvp-v1-corrections.json`; fontes presentes não implicam resultado. Aceitação humana/hardware do MVP e escopo completo da v1 continuam abertos.
+
+**Evidência automatizada final:** `cargo xtask gauntlet` passou: **904 testes do workspace**, zero falhas/testes ignorados, formatação, Clippy estrito, arquitetura, conformidade CLI, quatro projetos de exemplo, 32/32 páginas EN/pt-BR e build VitePress sem links quebrados. `cargo xtask ui-gauntlet` passou 62 testes desktop (incluídos no total do workspace). O [registro de execução](/implementation/mvp-v1-corrections.json) contém logs, hashes dos artefatos e limites de aceitação.
+
+[ADR-010](/pt/developers/adr/ADR-010-text-histogram-icc-and-pdf)
+
 **Escopo: Milestone Required (MVP) e V1 Required.** O usuário autorizou executar o [plano](/pt/developers/implementation-roadmap-2026-09-30). O trabalho partiu da baseline auditada `73447647a34f5b4be209415c36e6965c5f71b9b9`; achados e probes da baseline conservam a evidência histórica. Este registro descreve implementação, não anuncia release. **MVP, V1 e o plano completo continuam inacabados.** Candidatos/pesquisas futuros mantêm seus critérios de admissão.
 
 
-## Continuação atual do MVP: pixels persistentes e fluxos nativos (validação adiada)
+## Registro histórico do MVP: pixels persistentes e fluxos nativos (antes da validação final)
 
 [ADR-009](/pt/developers/adr/ADR-009-persistent-raster-and-native-workflows) introduz PTND binário no esquema 4 e planos esparsos editáveis RGBA/cobertura, incluindo máscaras opacas sem alocação do plano inteiro. Pincel/borracha/seleção/preenchimento publicam transações únicas com guardas; imagens originais permanecem intactas. O alfa do ClipGroup aplica uma vez. Payloads e fontes são compartilhados por snapshots/histórico/duplicação e admitidos por cotas explícitas.
 
@@ -11,7 +19,7 @@ Arquivos/codecs da UI agora usam worker limitado com guardas de aba/revisão. Sa
 
 Estilos uniformes e fluxo artístico/quadro persistem. Glifos preparados pelo worker fornecem seleção do texto artístico excedente e diagnóstico de fonte ausente/excesso no quadro. Rascunhos nativos multilinha fornecem edição/IME; integrar exatamente o cursor no canvas continua pendente. SVG de saída usa a cena compartilhada e preserva máscaras/pinturas/transforms/glifos suportados e pixels incorporados de 8/16 bits; entrada SVG básica estrita rejeita construções indisponíveis. Derivados de imagens ICC RGB usam moxcms limitado para sRGB sem regravar originais. PNG tem prévia transparente real e cancelamento. PDF fica fora do seletor MVP com motivo V1.
 
-**O código atual está sem validação.** Novas fontes de regressão foram escritas sem rodar testes, builds ou gates. Referências/checks gerados distinguem contagem de fontes de resultados. O gate original permanece aberto: cursor/IME no canvas, pressão nativa da caneta, configuração de perfil do display, histograma da composição real, performance agregada de caches/histórico, quatro projetos de tarefa e evidência Linux/backends/acessibilidade/instalação. A nuvem não fornece evidência física de mesa digitalizadora/monitor calibrado/usuários. Implementar estes subsistemas não conclui o MVP inteiro nem a V1.
+**Situação registrada antes da validação de 2026-10-03.** Novas fontes de regressão foram escritas sem rodar testes, builds ou gates. Referências/checks gerados distinguem contagem de fontes de resultados. O gate original permanece aberto: cursor/IME no canvas, pressão nativa da caneta, configuração de perfil do display, histograma da composição real, performance agregada de caches/histórico, quatro projetos de tarefa e evidência Linux/backends/acessibilidade/instalação. A nuvem não fornece evidência física de mesa digitalizadora/monitor calibrado/usuários. Implementar estes subsistemas não conclui o MVP inteiro nem a V1.
 
 Seções anteriores são registros históricos das etapas; ADR-009 substitui suas pendências de esquema/recursos/entrada ICC e fluxos.
 

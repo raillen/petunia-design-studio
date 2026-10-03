@@ -27,7 +27,10 @@ fn legacy_schema_migrates_without_changing_world_geometry() {
     value["surfaces"][0]["objects"][0]["shape"] =
         serde_json::to_value(ShapeKind::Path(old.clone())).unwrap();
     let migrated = Document::from_json(&value.to_string()).unwrap();
-    assert_eq!(migrated.schema_version(), 3);
+    assert_eq!(
+        migrated.schema_version(),
+        petunia_design_foundation::NATIVE_SCHEMA_VERSION
+    );
     assert_eq!(
         migrated.evaluated_path_world(ObjectId::new(2)).unwrap(),
         old

@@ -56,6 +56,9 @@ pub struct Surface {
     /// Background color token reference (e.g. `ptnd.white`) or hex string. None = transparent.
     #[serde(default = "default_surface_bg")]
     pub background: Option<String>,
+    /// Assigned ICC press profile. Assignment preserves authored C/M/Y/K.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cmyk_profile: Option<petunia_design_color::IccProfile>,
     /// Per-side bleed configuration.
     #[serde(default)]
     pub bleed: crate::surface_metadata::Bleed,
@@ -81,6 +84,7 @@ impl Surface {
             origin: [0.0, 0.0],
             dimensions: [800.0, 600.0],
             background: Some("ptnd.white".to_string()),
+            cmyk_profile: None,
             bleed: crate::surface_metadata::Bleed::ZERO,
             margins: crate::surface_metadata::Margins::ZERO,
             guides: Vec::new(),
@@ -97,6 +101,29 @@ impl Surface {
             self.dimensions[0],
             self.dimensions[1],
         ]
+    }
+
+    /// Managed straight-alpha background, derived without changing its token.
+    pub fn background_rgba8(&self) -> Result<[u8; 4], PetuniaError> {
+        let Some(token) = self.background.as_deref() else {
+            return Ok([0; 4]);
+        };
+        let color = crate::resolve_color_to_rgba(token);
+        let rgb = if let Some(ink) = petunia_design_color::icc::parse_cmyk_token(token)? {
+            let profile = self.cmyk_profile.as_ref().ok_or_else(|| {
+                PetuniaError::invalid_input("CMYK background has no assigned ICC press profile")
+            })?;
+            petunia_design_color::icc::CmykDisplayTransform::new(profile, Default::default())?
+                .convert(ink)?
+        } else {
+            [color[0], color[1], color[2]]
+        };
+        Ok([
+            (rgb[0] * 255.).round() as u8,
+            (rgb[1] * 255.).round() as u8,
+            (rgb[2] * 255.).round() as u8,
+            (color[3] * 255.).round() as u8,
+        ])
     }
 
     /// Extended bounds `[x, y, w, h]` including bleed area.
@@ -542,6 +569,11 @@ impl Document {
             )));
         }
         for surface in &mut doc.surfaces {
+            if doc.schema_version < 5 && surface.cmyk_profile.is_some() {
+                return Err(PetuniaError::invalid_input(
+                    "ICC press assignment requires native schema 5",
+                ));
+            }
             for object in &mut surface.objects {
                 if doc.schema_version >= 3
                     && object

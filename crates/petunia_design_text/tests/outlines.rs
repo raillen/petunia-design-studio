@@ -10,7 +10,10 @@ fn spec(text: &str) -> TextFrameSpec {
         line_height: 1.2,
         letter_spacing: 0.0,
         width: 400.0,
-        weight: 400, italic: false, alignment: Default::default(), wrap: true,
+        weight: 400,
+        italic: false,
+        alignment: Default::default(),
+        wrap: true,
     }
 }
 #[test]
@@ -125,4 +128,50 @@ fn oversized_text_and_family_receive_resource_reasons() {
         prepare_text(&s, &|| false),
         Err(TextRenderError::Limit(_))
     ));
+}
+
+#[test]
+fn caret_hit_and_selection_share_ligature_and_empty_line_layout() {
+    let s = spec("fi\n\nabc");
+    let text = prepare_text(&s, &|| false).unwrap();
+    let a = text.caret_rect(0);
+    let b = text.caret_rect(1);
+    let c = text.caret_rect(2);
+    assert!(a.x0 < b.x0 && b.x0 < c.x0);
+    for offset in 0..=2 {
+        let caret = text.caret_rect(offset);
+        assert_eq!(
+            text.offset_at_point(petunia_design_geometry::GPoint::new(
+                caret.x0,
+                (caret.y0 + caret.y1) / 2.
+            )),
+            offset
+        );
+    }
+    let blank = text.caret_rect(3);
+    assert_eq!(
+        text.offset_at_point(petunia_design_geometry::GPoint::new(
+            30.,
+            (blank.y0 + blank.y1) / 2.
+        )),
+        3
+    );
+    let rectangles = text.selection_rects(0..2);
+    assert!(!rectangles.is_empty());
+    let bounds = rectangles
+        .into_iter()
+        .reduce(|a, b| a.union(b).unwrap())
+        .unwrap();
+    assert!((bounds.width() - (c.x0 - a.x0)).abs() < 0.1);
+}
+#[test]
+fn the_pdf_font_resource_is_the_same_face_used_for_outline_preparation() {
+    let text = prepare_text(&spec("Petúnia fi אבג"), &|| false).unwrap();
+    assert!(!text.fonts().is_empty());
+    for glyph in text.glyphs() {
+        let font = &text.fonts()[glyph.font_resource];
+        assert!(font.subset_embedding_allowed);
+        let face = ttf_parser::Face::parse(&font.bytes, font.face_index).unwrap();
+        assert!(glyph.glyph_id < face.number_of_glyphs());
+    }
 }

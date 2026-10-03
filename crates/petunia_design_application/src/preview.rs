@@ -21,6 +21,7 @@ pub struct PreviewSource {
     revision: u64,
     surface: Arc<Surface>,
     raster_edit: Option<RasterPreview>,
+    text_edit: Option<(petunia_design_foundation::ObjectId, String)>,
     prepared: Arc<OnceLock<Arc<RenderSurface>>>,
 }
 #[derive(Clone)]
@@ -61,6 +62,7 @@ impl PreviewSource {
             revision,
             surface: Arc::new(surface.clone()),
             raster_edit: None,
+            text_edit: None,
             prepared: Arc::new(OnceLock::new()),
         })
     }
@@ -77,6 +79,7 @@ impl PreviewSource {
             revision: self.revision,
             surface: self.surface.clone(),
             prepared: Arc::new(OnceLock::new()),
+            text_edit: self.text_edit.clone(),
             raster_edit: Some(RasterPreview {
                 target,
                 layer,
@@ -87,6 +90,35 @@ impl PreviewSource {
     /// Worker-produced immutable glyph/scene data; no shaping on UI reads.
     pub fn prepared_scene(&self) -> Option<Arc<RenderSurface>> {
         self.prepared.get().cloned()
+    }
+    /// Derived text draft through the document mutation boundary. Neither the
+    /// live session nor its history is touched; shaping stays on the worker.
+    pub fn with_text_edit(
+        &self,
+        target: petunia_design_foundation::ObjectId,
+        content: String,
+    ) -> Result<Arc<Self>, petunia_design_foundation::PetuniaError> {
+        use petunia_design_document::ShapeKind;
+        if content.len() > 64 * 1024 {
+            return Err(petunia_design_foundation::PetuniaError::invalid_input(
+                "text draft exceeds 64 KiB",
+            ));
+        }
+        if !self.surface.objects().iter().any(|object| {
+            object.id == target && matches!(object.shape, Some(ShapeKind::Text { .. }))
+        }) {
+            return Err(petunia_design_foundation::PetuniaError::not_found(
+                "text draft target",
+            ));
+        }
+        Ok(Arc::new(Self {
+            id: next_source_id(),
+            revision: self.revision,
+            surface: self.surface.clone(),
+            raster_edit: self.raster_edit.clone(),
+            text_edit: Some((target, content)),
+            prepared: Arc::new(OnceLock::new()),
+        }))
     }
     /// Cache identity, distinct from canonical `SurfaceId`.
     pub fn id(&self) -> PreviewSourceId {
@@ -100,6 +132,84 @@ impl PreviewSource {
     pub fn surface_id(&self) -> petunia_design_foundation::SurfaceId {
         self.surface.id
     }
+    pub fn surface_snapshot(&self) -> &Surface {
+        &self.surface
+    }
+    /// Reuses worker-prepared glyph/geometry data across viewport and analyses.
+    pub fn prepare_scene(
+        &self,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<Arc<RenderSurface>, RenderError> {
+        if cancelled() {
+            return Err(RenderError::Cancelled);
+        }
+        if let Some(scene) = self.prepared_scene() {
+            return Ok(scene);
+        }
+        let document = if let Some((target, content)) = &self.text_edit {
+            let mut document = petunia_design_document::Document::new();
+            let mut mutator = petunia_design_document::DocumentMutator::new(&mut document);
+            mutator.attach_surface(self.surface.as_ref().clone());
+            let mut shape = self
+                .surface
+                .objects()
+                .iter()
+                .find(|o| o.id == *target)
+                .and_then(|o| o.shape.clone())
+                .ok_or_else(|| RenderError::Invalid("text draft target missing".into()))?;
+            let petunia_design_document::ShapeKind::Text { content: text, .. } = &mut shape else {
+                return Err(RenderError::Invalid(
+                    "text draft target changed kind".into(),
+                ));
+            };
+            *text = content.clone();
+            mutator
+                .set_shape(*target, Some(shape))
+                .map_err(|e| RenderError::Invalid(e.to_string()))?;
+            document
+                .validate()
+                .map_err(|e| RenderError::Invalid(e.to_string()))?;
+            Some(document)
+        } else {
+            None
+        };
+        let surface = document
+            .as_ref()
+            .map_or(self.surface.as_ref(), |doc| &doc.surfaces()[0]);
+        let mut scene = RenderSurface::extract_cancellable(surface, cancelled)?;
+        if let Some(edit) = self
+            .raster_edit
+            .as_ref()
+            .filter(|edit| edit.target.is_some())
+        {
+            scene = scene
+                .with_raster_preview(edit.target.expect("filtered target"), edit.layer.clone())?;
+        }
+        let scene = Arc::new(scene);
+        if cancelled() {
+            return Err(RenderError::Cancelled);
+        }
+        let _ = self.prepared.set(scene.clone());
+        Ok(self.prepared_scene().unwrap_or(scene))
+    }
+    /// Disposable new-layer artwork is shared by canvas and pixel analyses.
+    pub fn composite_draft(
+        &self,
+        pixels: &mut PixelBufferRgba8,
+        render: RenderRequest,
+        token: &petunia_design_jobs::CancellationToken,
+    ) -> Result<(), RenderError> {
+        if let Some(edit) = self.raster_edit.as_ref().filter(|e| e.target.is_none()) {
+            petunia_design_render::composite_raster_preview(
+                pixels,
+                render,
+                &edit.layer,
+                edit.pixels_to_world,
+                token,
+            )?;
+        }
+        Ok(())
+    }
 }
 /// A complete presentation key, including viewport and display mode.
 #[derive(Clone, Debug, PartialEq)]
@@ -108,6 +218,7 @@ pub struct PreviewRequest {
     pub render: RenderRequest,
     pub channel: usize,
     pub soft_proof: bool,
+    pub proof_settings: Option<petunia_design_color::IccProofSettings>,
     pub transparent_artboard: bool,
 }
 impl PreviewRequest {
@@ -149,6 +260,7 @@ impl PreviewRequest {
             },
             channel,
             soft_proof,
+            proof_settings: None,
             transparent_artboard: false,
         })
     }
@@ -198,6 +310,7 @@ impl PreviewController {
                 next.source.id() != frame.request.source.id()
                     || next.channel != frame.request.channel
                     || next.soft_proof != frame.request.soft_proof
+                    || next.proof_settings != frame.request.proof_settings
                     || next.transparent_artboard != frame.request.transparent_artboard
             })
         }) {
@@ -237,9 +350,9 @@ impl PreviewController {
             request.source.revision(),
             move |context| {
                 context.check_cancelled()?;
-                if request.soft_proof {
+                if request.soft_proof && request.proof_settings.is_none() {
                     return Err(JobFailure::Failed(
-                        "ICC soft proof requires an available color-management engine".into(),
+                        "ICC soft proof requires loaded CMYK press and RGB monitor profiles".into(),
                     ));
                 }
                 let render = request.render;
@@ -258,29 +371,10 @@ impl PreviewController {
                 }
                 let scene = match scene {
                     Some(scene) => scene,
-                    None => Arc::new(
-                        RenderSurface::extract_cancellable(&request.source.surface, &|| {
-                            context.cancellation().is_cancelled()
-                        })
+                    None => request
+                        .source
+                        .prepare_scene(&|| context.cancellation().is_cancelled())
                         .map_err(render_failure)?,
-                    ),
-                };
-                let scene = if let Some(edit) = request
-                    .source
-                    .raster_edit
-                    .as_ref()
-                    .filter(|edit| edit.target.is_some())
-                {
-                    Arc::new(
-                        scene
-                            .with_raster_preview(
-                                edit.target.expect("filtered target"),
-                                edit.layer.clone(),
-                            )
-                            .map_err(render_failure)?,
-                    )
-                } else {
-                    scene
                 };
                 let count = (u64::from(render.width) * u64::from(render.height) * 4) as usize;
                 let mut data = Vec::new();
@@ -289,8 +383,17 @@ impl PreviewController {
                 data.resize(count, 0);
                 let [x, y, w, h] = scene.bounds();
                 let v = render.viewport;
-                // Artboard gray matches the canvas. Root blend modes must see it
+                // Canonical artboard background. Root blend modes must see it
                 // during CPU composition, not after a transparent render is uploaded.
+                let background = if request.transparent_artboard {
+                    [0; 4]
+                } else {
+                    request
+                        .source
+                        .surface
+                        .background_rgba8()
+                        .map_err(|e| JobFailure::Failed(e.to_string()))?
+                };
                 for row in 0..render.height {
                     context.check_cancelled()?;
                     let py = v.y0 + (f64::from(row) + 0.5) * v.height() / f64::from(render.height);
@@ -302,13 +405,7 @@ impl PreviewController {
                             v.x0 + (f64::from(col) + 0.5) * v.width() / f64::from(render.width);
                         if px >= x && px < x + w {
                             let offset = (row as usize * render.width as usize + col as usize) * 4;
-                            data[offset..offset + 4].copy_from_slice(&if request
-                                .transparent_artboard
-                            {
-                                [0; 4]
-                            } else {
-                                [0xe2, 0xe4, 0xe8, 255]
-                            });
+                            data[offset..offset + 4].copy_from_slice(&background);
                         }
                     }
                 }
@@ -320,24 +417,22 @@ impl PreviewController {
                 let mut pixels = CpuRenderer::default()
                     .render_over_cancellable(&scene, render, &backdrop, context.cancellation())
                     .map_err(render_failure)?;
-                if let Some(edit) = request
+                request
                     .source
-                    .raster_edit
-                    .as_ref()
-                    .filter(|edit| edit.target.is_none())
-                {
-                    petunia_design_render::composite_raster_preview(
-                        &mut pixels,
-                        render,
-                        &edit.layer,
-                        edit.pixels_to_world,
-                        context.cancellation(),
-                    )
+                    .composite_draft(&mut pixels, render, context.cancellation())
                     .map_err(render_failure)?;
+                if request.soft_proof {
+                    request
+                        .proof_settings
+                        .as_ref()
+                        .expect("preflighted ICC proof")
+                        .apply_rgba8(&mut pixels.data, &|| context.cancellation().is_cancelled())
+                        .map_err(|e| JobFailure::Failed(e.to_string()))?;
+                    context.check_cancelled()?;
                 }
                 for row in pixels.data.chunks_exact_mut(render.width as usize * 4) {
                     context.check_cancelled()?;
-                    for pixel in row.chunks_exact_mut(4) {
+                    for pixel in row.as_chunks_mut::<4>().0.iter_mut() {
                         match request.channel {
                             1..=3 => {
                                 let c = pixel[request.channel - 1];

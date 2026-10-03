@@ -60,7 +60,11 @@ fn strict_pdf_export_rejects_approximation_and_missing_color_values() {
         ..PdfExportOptions::default()
     };
     assert!(export_document_pdf(&doc, &strict).is_err());
-    let (_, report) = export_document_pdf(&doc, &PdfExportOptions::default()).unwrap();
+    let permissive = PdfExportOptions {
+        allow_degradations: true,
+        ..Default::default()
+    };
+    let (_, report) = export_document_pdf(&doc, &permissive).unwrap();
     assert!(report
         .degradations
         .iter()

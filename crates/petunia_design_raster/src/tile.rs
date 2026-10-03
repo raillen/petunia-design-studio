@@ -374,10 +374,17 @@ impl TileMap {
                 PixelFormat::Gray8 | PixelFormat::Gray16 => {
                     tile.data.iter().any(|value| *value != 0)
                 }
-                PixelFormat::Rgba8 => tile.data.chunks_exact(4).any(|pixel| pixel[3] != 0),
+                PixelFormat::Rgba8 => tile
+                    .data
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .any(|pixel| pixel[3] != 0),
                 PixelFormat::Rgba16 => tile
                     .data
-                    .chunks_exact(8)
+                    .as_chunks::<8>()
+                    .0
+                    .iter()
                     .any(|pixel| pixel[6] != 0 || pixel[7] != 0),
             }
         });

@@ -41,7 +41,12 @@ fn ellipse_has_transparent_corners_and_antialiased_edges() {
         .unwrap();
     assert_eq!(pixels.get_pixel(10, 10).unwrap()[3], 0);
     assert_eq!(pixels.get_pixel(20, 20).unwrap(), [255, 0, 0, 255]);
-    assert!(pixels.data.chunks_exact(4).any(|p| p[3] > 0 && p[3] < 255));
+    assert!(pixels
+        .data
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .any(|p| p[3] > 0 && p[3] < 255));
 }
 
 #[test]
@@ -195,7 +200,7 @@ fn alpha_and_luminance_masks_use_distinct_sample_semantics() {
 #[test]
 fn transparency_modifier_is_sampled_per_pixel() {
     let mut o = rect(2, [0.0, 0.0, 20.0, 20.0], "#ff0000");
-    let mut modifier = ModifierItem::new(
+    let mut modifier = ModifierItem::enabled(
         1,
         ModifierKind::TransparentGradient {
             start: [0.0, 0.0],

@@ -6,6 +6,15 @@ const crypto = require('node:crypto');
 const root = path.resolve(__dirname, '..');
 const read = (name) => fs.readFileSync(path.join(root, name), 'utf8');
 const files = [
+  'crates/petunia_design_text/src/editing.rs',
+  'crates/petunia_design_text/src/outlines.rs',
+  'crates/petunia_design_color/src/icc.rs',
+  'crates/petunia_design_application/src/histogram.rs',
+  'crates/petunia_design_application/src/transaction.rs',
+  'crates/petunia_design_io/src/pdf.rs',
+  'apps/petunia-design/src/canvas_text.rs',
+  'apps/petunia-design/src/color_ui.rs',
+  'apps/petunia-design/src/histogram_ui.rs',
   'crates/petunia_design_raster/src/layer.rs',
   'crates/petunia_design_application/src/raster_edit.rs',
   'crates/petunia_design_application/src/clipboard.rs',
@@ -81,6 +90,11 @@ const files = [
   'apps/petunia-design/src/main.rs',
 ];
 const tests = [
+  'crates/petunia_design_text/tests/editing.rs',
+  'crates/petunia_design_color/tests/icc.rs',
+  'crates/petunia_design_application/tests/histogram.rs',
+  'crates/petunia_design_application/tests/mvp_projects.rs',
+  'crates/petunia_design_io/tests/pdf_fidelity.rs',
   'crates/petunia_design_raster/tests/persistent_layers.rs',
   'crates/petunia_design_application/tests/raster_edit.rs',
   'crates/petunia_design_application/tests/clipboard_fragments.rs',
@@ -122,18 +136,18 @@ const tests = [
   'crates/petunia_design_testkit/src/bin/canvas_benchmark.rs',
 ];
 const reference = {
-  contract: 'ADR-009', related_contracts: ['ADR-008', 'ADR-007', 'ADR-006', 'ADR-005', 'ADR-004', 'ADR-003', 'ADR-002'], scope: 'Milestone Required',
+  contract: 'ADR-010', related_contracts: ['ADR-009', 'ADR-008', 'ADR-007', 'ADR-006', 'ADR-005', 'ADR-004', 'ADR-003', 'ADR-002'], scope: 'Milestone Required',
   schema_version: Number(read('crates/petunia_design_foundation/src/lib.rs').match(/NATIVE_SCHEMA_VERSION: u32 = (\d+)/)[1]),
   rust_toolchain: read('rust-toolchain.toml').match(/channel = "([^"]+)"/)[1],
   gui: { runtime: 'Freya/Skia', version: read('apps/petunia-design/Cargo.toml').match(/freya\s*=\s*"([^"]+)"/)?.[1] ?? 'see Cargo.lock' },
-  sources: files.map((file) => ({ path: file, sha256: crypto.createHash('sha256').update(read(file)).digest('hex') })),
+  sources: [...new Set(files)].map((file) => ({ path: file, sha256: crypto.createHash('sha256').update(read(file)).digest('hex') })),
   tests: tests.map((file) => ({ path: file, count: [...read(file).matchAll(/#\[test\]/g)].length })),
-  validation_results: 'checks.json',
+  validation_results: 'mvp-v1-corrections.json',
   ui_workflow_validation_results: 'uiux-file-workflows.json',
   ui_object_edit_validation_results: 'uiux-object-edits.json',
-  current_validation_status: 'not_run; user deferred validation until all MVP features are implemented',
+  current_validation_status: 'automated validation results are recorded in mvp-v1-corrections.json; release acceptance remains separate',
   integration_regressions: [{ path: 'crates/petunia_design_shell/tests/tools_test.rs', cases: ['perspective_drag_on_rotated_object_preserves_untouched_world_corners'] }, { path: 'crates/petunia_design_shell/tests/bridge_test.rs', cases: ['preview_source_is_shared_across_selection_and_camera_changes', 'preview_source_changes_on_revision_and_session_replacement'] }],
-  limitations: ['Current implementation and regression sources are unvalidated; user deferred every gate until all MVP features are implemented.', 'Schema 4 binary resources and sparse COW pixel/mask layers are implemented; admission quotas are not a whole-process RSS cap.', 'Native Linux object clipboard requires wl-clipboard/xclip and a Wayland/X11 session; tablet pressure, display-profile setup, accessibility/install and representative user evidence remain open.', 'Native multiline drafts provide basic text editing/IME; exact in-canvas caret/selection using the artwork glyph runs is unfinished.', 'SVG import/output declare strict capability subsets; unsupported representations fail explicitly. True CMYK/proof/professional PDF remain V1 Required.', 'Histogram composition and aggregate performance/caches still require work; release benchmarks and four MVP task projects have not been accepted.', 'MVP and V1 release gates remain open.'],
+  limitations: ['MVP release and complete V1 acceptance remain open; automated checks have bounded scope.', 'ICC proof transforms the derived sRGB composition, not native four-ink raster separations.', 'Native four-plane CMYK, TAC/DeviceLink, overprint/spot parity, float process PDF colors and PDF/X-4 remain V1 Required.', 'Tablet/physical IME, calibrated display, accessibility, installation, long sessions and representative user projects require external acceptance.', 'Synthetic CMYK LUT is an engineering fixture, not a certified press profile.'],
 };
 const output = path.join(root, 'docs/public/implementation/contracts.json');
 const content = JSON.stringify(reference, null, 2) + '\n';

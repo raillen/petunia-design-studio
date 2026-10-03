@@ -105,7 +105,7 @@ fn schema_four_requires_an_explicit_binary_resource_contract() {
             *bytes = serde_json::to_vec(&value).unwrap();
         }
     });
-    assert_eq!(NATIVE_SCHEMA_VERSION, 4);
+    assert_eq!(NATIVE_SCHEMA_VERSION, 5);
     assert!(open_package(&path).is_err());
 }
 #[test]
@@ -185,4 +185,83 @@ fn opaque_sparse_mask_background_and_zero_coverage_binary_tile_roundtrip() {
     };
     assert_eq!(layer.pixel(128, 2)[3], 0.);
     assert_eq!(layer.pixel(127, 2)[3], 1.);
+}
+
+fn press_profile() -> petunia_design_color::IccProfile {
+    petunia_design_color::IccProfile::new(
+        "Synthetic press".into(),
+        Arc::new(include_bytes!("../../../fixtures/color/synthetic-cmyk.icc").to_vec()),
+    )
+    .unwrap()
+}
+#[test]
+fn icc_assignment_is_reversible_and_roundtrips_as_a_hashed_binary_resource() {
+    let mut doc = document();
+    let baseline = doc.clone();
+    let profile = press_profile();
+    let change = DocumentMutator::new(&mut doc)
+        .set_surface_cmyk_profile(SurfaceId::new(1), Some(profile.clone()))
+        .unwrap();
+    DocumentMutator::new(&mut doc).revert(&change).unwrap();
+    assert_eq!(doc, baseline);
+    DocumentMutator::new(&mut doc)
+        .set_surface_cmyk_profile(SurfaceId::new(1), Some(profile.clone()))
+        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("icc.PTND");
+    save_package(&doc, &path).unwrap();
+    assert_eq!(open_package(&path).unwrap().document, doc);
+    let mut archive = zip::ZipArchive::new(File::open(&path).unwrap()).unwrap();
+    let mut metadata = String::new();
+    archive
+        .by_name("document/document.json")
+        .unwrap()
+        .read_to_string(&mut metadata)
+        .unwrap();
+    assert!(!metadata.contains("cmyk_profile"));
+    let mut index = String::new();
+    archive
+        .by_name("resources/index.json")
+        .unwrap()
+        .read_to_string(&mut index)
+        .unwrap();
+    let value: serde_json::Value = serde_json::from_str(&index).unwrap();
+    let asset = value["profiles"][0]["asset"].as_str().unwrap();
+    let mut bytes = Vec::new();
+    archive
+        .by_name(&format!("resources/{asset}.bin"))
+        .unwrap()
+        .read_to_end(&mut bytes)
+        .unwrap();
+    assert_eq!(bytes, profile.bytes());
+    drop(archive);
+    rewrite(&path, |name, bytes| {
+        if name == format!("resources/{asset}.bin") {
+            bytes[36] ^= 1;
+        }
+    });
+    assert!(open_package(&path).is_err());
+}
+#[test]
+fn old_schema_four_resource_index_migrates_without_inventing_an_icc_profile() {
+    let doc = document();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("v4.PTND");
+    save_package(&doc, &path).unwrap();
+    rewrite(&path, |name, bytes| {
+        if name == "manifest.json" || name == "document/document.json" {
+            let mut value: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+            value["schema_version"] = 4.into();
+            *bytes = serde_json::to_vec(&value).unwrap();
+        }
+        if name == "resources/index.json" {
+            let mut value: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+            value["version"] = 1.into();
+            value.as_object_mut().unwrap().remove("profiles");
+            *bytes = serde_json::to_vec(&value).unwrap();
+        }
+    });
+    let restored = open_package(&path).unwrap().document;
+    assert_eq!(restored, doc);
+    assert!(restored.surfaces()[0].cmyk_profile.is_none());
 }

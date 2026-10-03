@@ -20,7 +20,6 @@ fn fixture() -> DocumentSession {
         object.fill = Some("#ff0000".into());
         mutator.add_object(surface, object).unwrap();
     }
-    drop(mutator);
     let mut session = DocumentSession::with_document("Source", document);
     session
         .execute_command(CommandRequest::new(Command::GroupObjects {
@@ -80,7 +79,6 @@ fn paste_from_another_artboard_uses_its_origin_and_keeps_the_source() {
     mutator
         .set_surface_geometry(target, [1000., -500.], [300., 300.])
         .unwrap();
-    drop(mutator);
     let mut destination = DocumentSession::with_document("Target", document);
     destination
         .paste_clipboard_fragment(target, objects, [0., 0.])

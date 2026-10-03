@@ -10,8 +10,8 @@ pub enum RenderingIntent {
     Perceptual,
     /// Preserve in-gamut colors exactly, clip the rest.
     RelativeColorimetric,
-    /// Map white point, then clip.
+    /// Favor saturation, allowing hue/lightness changes.
     Saturation,
-    /// Preserve out-of-gamut relationships at hue cost.
+    /// Preserve absolute colorimetry, including source paper white.
     AbsoluteColorimetric,
 }
