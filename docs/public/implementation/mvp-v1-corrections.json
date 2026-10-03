@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "contract": "ADR-010",
+  "recorded_at_utc": "2026-10-03T05:41:54.531221+00:00",
+  "base_commit": "cf84404db09748a93c0c414f346aa767e5952301",
+  "branch": "work/mvp-v1-corrections-2026-10-03",
+  "validation_order": "Implementation completed before running tests; corrections were made from final verification failures.",
+  "release_status": {
+    "mvp": "Automated implementation gates passed; human and hardware acceptance remains open.",
+    "v1": "Bounded ICC/PDF foundation implemented; complete V1 remains open."
+  },
+  "environment": {
+    "os": "Linux x86_64",
+    "rust_toolchain": "1.98.1",
+    "gui": "Freya 0.5.0-rc.7 / Skia headless TestingRunner",
+    "build_jobs": 2,
+    "debug_info": false,
+    "incremental": false,
+    "pdf_interoperability": "Poppler pdfinfo, pdffonts, pdftotext and pdftoppm",
+    "fonts": [
+      "DejaVu Sans",
+      "Noto Sans",
+      "Noto Arabic fallback",
+      "Noto Sans CJK"
+    ],
+    "native_dependencies": "See .github/workflows/ci.yml; native headers extracted into the execution environment."
+  },
+  "checks": [
+    {
+      "command": "cargo xtask gauntlet",
+      "exit_code": 0,
+      "gates": [
+        "cargo fmt --all --check",
+        "cargo clippy --workspace --all-targets --locked -- -D warnings",
+        "cargo test --workspace --locked",
+        "architecture boundaries (including Freya)",
+        "headless CLI conformance",
+        "four MVP project fixtures",
+        "EN/pt-BR documentation parity and VitePress build"
+      ],
+      "log": "corrections/gauntlet.log"
+    },
+    {
+      "command": "cargo xtask ui-gauntlet",
+      "exit_code": 0,
+      "tests_passed": 62,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log": "corrections/ui-gauntlet.log"
+    },
+    {
+      "command": "node scripts/generate-implementation-reference.js --check",
+      "exit_code": 0
+    }
+  ],
+  "workspace_tests": {
+    "passed": 904,
+    "failed": 0,
+    "ignored": 0,
+    "targets": 100,
+    "includes": "Unit, integration and Rust documentation tests; the 62 desktop tests and four project scenarios are subsets of this total."
+  },
+  "documentation": {
+    "canonical_pages": 32,
+    "pt_br_mirrors": 32,
+    "parity": "zero drift",
+    "build": "passed",
+    "dead_links": "zero (ignoreDeadLinks false)"
+  },
+  "project_scenarios": [
+    "Logo: vector commands, cancellation, history, native roundtrip, SVG/PNG/PDF",
+    "Poster: Unicode text, history, native roundtrip, SVG/PNG/PDF",
+    "Masked painting: persistent 16-bit pixels and clip group, history, native roundtrip, SVG/PNG/PDF",
+    "Multiple artboards: distinct origins and dimensions, history, native roundtrip, SVG/PNG/PDF"
+  ],
+  "visual_review": {
+    "status": "Reviewed generated captures after final UI layout correction.",
+    "canvas": "Uses the production theme, waits for the preview and asserts more than 1000 artwork pixels before capture.",
+    "pdf": "Independent Poppler render comparisons contain visible artwork and pass the mean channel error bound of 4/255.",
+    "scope": "Headless automation; does not certify physical tablet, IME, assistive technology or calibrated display behavior."
+  },
+  "icc_fixture": {
+    "path": "fixtures/color/synthetic-cmyk.icc",
+    "sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+    "status": "Project-owned synthetic engineering LUT, not a certified press reference."
+  },
+  "implementation_reference_sha256": "f2c91dba5f044df8aa5d98c60f8e46f971fa8074f23a5878d99b6a458e50f21d",
+  "artifacts": [
+    {
+      "path": "corrections/gauntlet.log",
+      "bytes": 83938,
+      "sha256": "5fd48d1dcf56d50b591eb8c8f06eb34c6f4630ef1f034862ecb7f3a4eaeda88e"
+    },
+    {
+      "path": "corrections/pdf/effects_require_explicit_degradation_and_fallback_reuses_canonical_pixels-cpu.png",
+      "bytes": 2182,
+      "sha256": "22c1496394ff6dd74a37dc41a223e7a61b278a1711ac24db34dd0537e7968551"
+    },
+    {
+      "path": "corrections/pdf/effects_require_explicit_degradation_and_fallback_reuses_canonical_pixels-poppler.png",
+      "bytes": 2257,
+      "sha256": "080b765c5fd6b64352b31d290093a821d33ee81824e8ba8fae1986800f34699f"
+    },
+    {
+      "path": "corrections/pdf/effects_require_explicit_degradation_and_fallback_reuses_canonical_pixels.pdf",
+      "bytes": 3769,
+      "sha256": "3cb55e8e4ebd8fe557740a3c4ddfd06dc71e91967c5594a6e62d3ef13421542f"
+    },
+    {
+      "path": "corrections/pdf/sixteen_bit_raster_pixels_and_alpha_are_embedded_without_a_rectangle_substitute-cpu.png",
+      "bytes": 537,
+      "sha256": "8aca59ca0dea30aa2ab7fa118584401deff10d96104ed4556a8dc8bbd4413166"
+    },
+    {
+      "path": "corrections/pdf/sixteen_bit_raster_pixels_and_alpha_are_embedded_without_a_rectangle_substitute-poppler.png",
+      "bytes": 584,
+      "sha256": "c001680c877e4dbbe7170b6b7a0804afe6e7c0cf1ebfc54e2b7640f80c42c4ba"
+    },
+    {
+      "path": "corrections/pdf/sixteen_bit_raster_pixels_and_alpha_are_embedded_without_a_rectangle_substitute.pdf",
+      "bytes": 3043,
+      "sha256": "9677f96512be4a1681044b9589cc5e99572964a736cadaacc5071c7f5cb9faf3"
+    },
+    {
+      "path": "corrections/pdf/transformed_clipped_vector_gradient_and_multiple_fills_match_an_independent_renderer-cpu.png",
+      "bytes": 3258,
+      "sha256": "f9fa2efdf0c1ca656c12eaeec0b28e9c3b916ef11d854c278bea5bc0c96dee20"
+    },
+    {
+      "path": "corrections/pdf/transformed_clipped_vector_gradient_and_multiple_fills_match_an_independent_renderer-poppler.png",
+      "bytes": 2813,
+      "sha256": "fe9fd242b2f8ed6b783c21e9d60c0ec2b1b63b28fe515ac7b9a67372199792e4"
+    },
+    {
+      "path": "corrections/pdf/transformed_clipped_vector_gradient_and_multiple_fills_match_an_independent_renderer.pdf",
+      "bytes": 3699,
+      "sha256": "7b073604dcb843b0fcf0bdc51a44368e9d1126223cdec710f26cabeec3edd3ae"
+    },
+    {
+      "path": "corrections/ui/edit-text.png",
+      "bytes": 32862,
+      "sha256": "91091cdc3953ceecc357638952312cf6260e7bfb13c6560285dc014337e8ce53"
+    },
+    {
+      "path": "corrections/ui/edit-transform.png",
+      "bytes": 50903,
+      "sha256": "7a25c1df29ecb2d87e1549d07c369c883807a85832d0178905f6153b46fb8b23"
+    },
+    {
+      "path": "corrections/ui/new-document.png",
+      "bytes": 51154,
+      "sha256": "5ee28cccb490da25fceaf389865eccb2e3764a3f0927f094b578c50bc28ab4cb"
+    },
+    {
+      "path": "corrections/ui/open-document.png",
+      "bytes": 30442,
+      "sha256": "4f7bd026cc39e012544d30a11255a8da4214e42cb1e28e5928bd0230927025d0"
+    },
+    {
+      "path": "corrections/ui/rename-layer.png",
+      "bytes": 30919,
+      "sha256": "76dd75a74a4bc44d0db8f60d2bfcff664a7d890840b0271c3b01745ca47df93b"
+    },
+    {
+      "path": "corrections/ui/transform-error.png",
+      "bytes": 50030,
+      "sha256": "a9410caecafa05fbc4cb061c4ceb243aaff08d70b26eae39dd2560160d3e0c7f"
+    },
+    {
+      "path": "corrections/ui/workspace.png",
+      "bytes": 58476,
+      "sha256": "a7133d16b614c9627d3317c092f7ea0527aef5ffc05b8547bbdff600ca3412ab"
+    },
+    {
+      "path": "corrections/ui-gauntlet.log",
+      "bytes": 5659,
+      "sha256": "f5d50015ae7c5bbb834a5a642916d8e10a2261ebb1928cf950b4b602cf97d8ba"
+    }
+  ],
+  "prumo": {
+    "available": false,
+    "status": "CLI absent; no Prumo execution claimed. Repository-owned xtask checks provide this ledger."
+  },
+  "open_acceptance": [
+    "Native four-plane CMYK raster, separations, TAC and DeviceLink black preservation",
+    "Overprint/spot parity, float process colors and PDF/X-4 OutputIntent/conformance with independent print validation",
+    "Full V1 typography including shaped text on paths, OpenType navigation and linked frames",
+    "Physical Linux IME/tablet pressure, assistive technology, calibrated monitor/print, installation and backend acceptance",
+    "Representative human MVP task acceptance, long sessions and full-path release performance measurements"
+  ]
+}

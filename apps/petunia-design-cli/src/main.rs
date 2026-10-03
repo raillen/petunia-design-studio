@@ -203,7 +203,8 @@ fn run() -> Result<(), String> {
     assert_eq!(tile_map.resident_tile_count(), 1);
 
     // 9. SVG vector export (petunia_design_io): document envelope and path roundtrip.
-    let svg_content = petunia_design_io::export_document_svg(&document).map_err(|e| format!("svg export: {e}"))?;
+    let svg_content = petunia_design_io::export_document_svg(&document)
+        .map_err(|e| format!("svg export: {e}"))?;
     assert!(svg_content.contains("<svg"));
     let path_d = petunia_design_io::export_path_d(&triangle);
     let parsed_path =
@@ -346,7 +347,7 @@ fn run() -> Result<(), String> {
     let (_simulated_srgb, gamut_status) = cmm.soft_proof(&saturated_color, &swop_ctx);
     assert!(matches!(
         gamut_status,
-        petunia_design_color::GamutStatus::OutOfGamut { .. }
+        petunia_design_color::GamutStatus::Unavailable { .. }
     ));
     let cmyk_orig = Cmyk {
         c: 0.2,

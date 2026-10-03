@@ -5,10 +5,7 @@
 
 use freya::prelude::*;
 use petunia_design_application::Command;
-use petunia_design_color::{
-    Cmyk, ColorManagementProvider, ColorValue, DefaultColorManagementProvider, GamutStatus, Lab,
-    ProofContext, Srgb,
-};
+use petunia_design_color::{Cmyk, ColorValue, Lab, Srgb};
 use petunia_design_document::ShapeKind;
 use petunia_design_foundation::ObjectId;
 use petunia_design_geometry::{OffsetCap, OffsetJoin};
@@ -105,7 +102,7 @@ fn tab_button(
     let mut tab_state = *dock_tab;
     rect()
         .height(Size::fill())
-        .padding(Gaps::new(0., theme::SPACE_2, 0., theme::SPACE_2))
+        .padding(Gaps::new(0., theme::SPACE_1 / 2., 0., theme::SPACE_1 / 2.))
         .center()
         .background(if active {
             theme::SURFACE_PANEL
@@ -144,12 +141,11 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
         .height(Size::fill())
         .spacing(theme::SPACE_2)
         .child(
-            // Header with action bar
+            // Separate title and compact actions so the minimum dock width stays usable.
             rect()
-                .direction(Direction::Horizontal)
+                .direction(Direction::Vertical)
                 .width(Size::fill())
-                .cross_align(Alignment::Center)
-                .main_align(Alignment::SpaceBetween)
+                .spacing(theme::SPACE_1)
                 .child(
                     label()
                         .text(format!("Camadas ({total_rows})"))
@@ -162,7 +158,7 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                         .spacing(theme::SPACE_1)
                         .cross_align(Alignment::Center)
                         .child(
-                            Button::new()
+                            Button::new().compact()
                                 .on_press(move |_| {
                                     let _ = run_action_token(
                                         &mut shell_for_group.write(),
@@ -172,7 +168,7 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                                 .child(label().text("Agrupar").font_size(10.)),
                         )
                         .child(
-                            Button::new()
+                            Button::new().compact()
                                 .on_press(move |_| {
                                     let _ = run_action_token(
                                         &mut shell_for_ungroup.write(),
@@ -182,7 +178,7 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                                 .child(label().text("Desagrupar").font_size(10.)),
                         )
                         .child(
-                            Button::new()
+                            Button::new().compact()
                                 .on_press(move |_| {
                                     let _ = run_action_token(
                                         &mut shell_for_front.write(),
@@ -192,7 +188,7 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                                 .child(label().text("▲ Topo").font_size(10.)),
                         )
                         .child(
-                            Button::new()
+                            Button::new().compact()
                                 .on_press(move |_| {
                                     let _ = run_action_token(
                                         &mut shell_for_back.write(),
@@ -202,7 +198,7 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
                                 .child(label().text("▼ Fundo").font_size(10.)),
                         )
                         .child(
-                            Button::new()
+                            Button::new().compact()
                                 .on_press(move |_| {
                                     let _ = run_action_token(
                                         &mut shell_for_delete.write(),
@@ -1180,7 +1176,7 @@ pub struct ColorPanel {
 impl Component for ColorPanel {
     fn render(&self) -> impl IntoElement {
         let shell = self.ui.shell;
-        let sel = shell.peek().bridge.selection();
+        let sel = shell.read().bridge.selection();
         let first_id = sel.selected_ids.first().copied();
         let is_fill = *self.target_fill.read();
         let mut mut_target_fill = self.target_fill;
@@ -1207,7 +1203,23 @@ impl Component for ColorPanel {
         // Spot state
         let spot_name = use_state(|| "PANTONE 185 C".to_string());
 
-        let (preview_color, token, color_val) = match active_mode {
+        let profile = shell
+            .read()
+            .bridge
+            .session()
+            .and_then(|session| {
+                session
+                    .active_surface()
+                    .and_then(|id| session.document().surface(id).ok())
+            })
+            .and_then(|surface| surface.cmyk_profile.clone());
+        let has_profile = profile.is_some();
+        let (icc_swatch, icc_error) = crate::color_ui::use_cmyk_swatch(
+            (active_mode == 1).then_some(profile).flatten(),
+            [*c_val.read(), *m_val.read(), *y_val.read(), *k_val.read()]
+                .map(|v| f32::from(v) / 100.),
+        );
+        let (preview_color, token, _color_val) = match active_mode {
             0 => {
                 let (r, g, b) = (*r_val.read(), *g_val.read(), *b_val.read());
                 (
@@ -1226,11 +1238,10 @@ impl Component for ColorPanel {
                 let m_f = m as f32 / 100.0;
                 let y_f = y as f32 / 100.0;
                 let k_f = k as f32 / 100.0;
-                let r = ((1.0 - (c_f + k_f).min(1.0)) * 255.0).round() as u8;
-                let g = ((1.0 - (m_f + k_f).min(1.0)) * 255.0).round() as u8;
-                let b = ((1.0 - (y_f + k_f).min(1.0)) * 255.0).round() as u8;
+                let preview =
+                    icc_swatch.map_or(Color::TRANSPARENT, |[r, g, b]| Color::from_rgb(r, g, b));
                 (
-                    Color::from_rgb(r, g, b),
+                    preview,
                     format!("cmyk({c}%, {m}%, {y}%, {k}%)"),
                     ColorValue::Cmyk(Cmyk {
                         c: c_f,
@@ -1272,12 +1283,12 @@ impl Component for ColorPanel {
             }
         };
 
-        // Gamut assessment with soft-proof provider
-        let provider = DefaultColorManagementProvider;
-        let proof_ctx = ProofContext::default();
-        let (_, gamut_status) = provider.soft_proof(&color_val, &proof_ctx);
-        let is_in_gamut = matches!(gamut_status, GamutStatus::InGamut);
+        // Gamut status requires an actual profile transform and reference data.
 
+        let press_ui = self.ui.clone();
+        let monitor_ui = self.ui.clone();
+        let options = *self.ui.proof_options.read();
+        let mut bpc_options = self.ui.proof_options;
         let mut shell_for_apply = shell;
         let token_for_apply = token.clone();
 
@@ -1286,6 +1297,98 @@ impl Component for ColorPanel {
             .width(Size::fill())
             .height(Size::fill())
             .spacing(theme::SPACE_2)
+            .child(
+                Button::new()
+                    .on_press(move |_| {
+                        crate::file_workflows::request_profile(
+                            &press_ui,
+                            crate::file_workflows::ProfilePurpose::Press,
+                        )
+                    })
+                    .child(self.ui.text("icc_assign")),
+            )
+            .child(
+                Button::new()
+                    .on_press(move |_| {
+                        crate::file_workflows::request_profile(
+                            &monitor_ui,
+                            crate::file_workflows::ProfilePurpose::Monitor,
+                        )
+                    })
+                    .child(self.ui.text("icc_monitor_choose")),
+            )
+            .child(
+                rect()
+                    .direction(Direction::Horizontal)
+                    .spacing(2.)
+                    .children(
+                        [
+                            (
+                                petunia_design_color::RenderingIntent::Perceptual,
+                                "intent_perceptual",
+                            ),
+                            (
+                                petunia_design_color::RenderingIntent::RelativeColorimetric,
+                                "intent_relative",
+                            ),
+                            (
+                                petunia_design_color::RenderingIntent::Saturation,
+                                "intent_saturation",
+                            ),
+                            (
+                                petunia_design_color::RenderingIntent::AbsoluteColorimetric,
+                                "intent_absolute",
+                            ),
+                        ]
+                        .into_iter()
+                        .map(|(intent, key)| {
+                            let mut state = self.ui.proof_options;
+                            Button::new()
+                                .on_press(move |_| {
+                                    let current = *state.peek();
+                                    state.set(petunia_design_color::IccTransformOptions {
+                                        intent,
+                                        ..current
+                                    });
+                                })
+                                .child(
+                                    label()
+                                        .text(self.ui.text(key))
+                                        .color(if options.intent == intent {
+                                            theme::TEXT_PRIMARY
+                                        } else {
+                                            theme::TEXT_SECONDARY
+                                        })
+                                        .font_size(9.),
+                                )
+                        }),
+                    ),
+            )
+            .child(
+                Button::new()
+                    .on_press(move |_| {
+                        let current = *bpc_options.peek();
+                        bpc_options.set(petunia_design_color::IccTransformOptions {
+                            black_point_compensation: !current.black_point_compensation,
+                            ..current
+                        });
+                    })
+                    .child(self.ui.text(if options.black_point_compensation {
+                        "bpc_on"
+                    } else {
+                        "bpc_off"
+                    })),
+            )
+            .maybe_child((active_mode == 1 && !has_profile).then(|| {
+                label()
+                    .text(self.ui.text("icc_missing"))
+                    .color(theme::TEXT_SECONDARY)
+            }))
+            .children(
+                icc_error
+                    .into_iter()
+                    .map(|error| label().text(error).color(theme::TEXT_ERROR)),
+            )
             .child(
                 // Target Selector: Preenchimento vs Traço
                 rect()
@@ -1374,17 +1477,9 @@ impl Component for ColorPanel {
                             )
                             .child(
                                 label()
-                                    .text(if is_in_gamut {
-                                        "✓ Em Gama (SWOP)"
-                                    } else {
-                                        "⚠️ Fora de Gama (SWOP)"
-                                    })
+                                    .text(self.ui.text("gamut_unmeasured"))
                                     .font_size(9.)
-                                    .color(if is_in_gamut {
-                                        Color::from_rgb(0x10, 0xB9, 0x81)
-                                    } else {
-                                        Color::from_rgb(0xF5, 0x9E, 0x0B)
-                                    }),
+                                    .color(theme::TEXT_SECONDARY),
                             ),
                     ),
             )
@@ -1587,6 +1682,7 @@ impl Component for ColorPanel {
             .child(
                 // Apply Button
                 Button::new()
+                    .enabled(first_id.is_some() && (active_mode != 1 || has_profile))
                     .on_press(move |_| {
                         if let Some(id) = first_id {
                             let cmd = if is_fill {
@@ -4370,232 +4466,26 @@ fn adjustment_card(
 // Histogram Widget (Spec 10.10)
 // =========================================================================
 
-fn parse_color_rgb(color_str: &str) -> Option<(f64, f64, f64)> {
-    let s = color_str.trim();
-    if let Some(hex) = s.strip_prefix('#') {
-        if hex.len() == 6 || hex.len() == 8 {
-            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            return Some((r as f64, g as f64, b as f64));
-        }
-    }
-    match s {
-        "ptnd.white" => Some((255.0, 255.0, 255.0)),
-        "ptnd.black" | "ptnd.gray/900" => Some((17.0, 24.0, 39.0)),
-        "ptnd.gray/600" => Some((75.0, 85.0, 99.0)),
-        "ptnd.gray/300" => Some((209.0, 213.0, 219.0)),
-        "ptnd.red/500" => Some((239.0, 68.0, 68.0)),
-        "ptnd.pink/500" => Some((236.0, 72.0, 153.0)),
-        "ptnd.purple/500" => Some((139.0, 92.0, 246.0)),
-        "ptnd.blue/500" => Some((59.0, 130.0, 246.0)),
-        "ptnd.cyan/500" => Some((6.0, 182.0, 212.0)),
-        "ptnd.teal/500" => Some((20.0, 184.0, 166.0)),
-        "ptnd.green/500" => Some((16.0, 185.0, 129.0)),
-        "ptnd.amber/500" => Some((245.0, 158.0, 11.0)),
-        "ptnd.bloom/500" => Some((183.0, 122.0, 255.0)),
-        _ => None,
-    }
-}
-
-fn apply_adjustments_to_rgb(
-    mut r: f64,
-    mut g: f64,
-    mut b: f64,
-    adjustments: &[petunia_design_document::adjustments::AdjustmentItem],
-) -> (f64, f64, f64) {
-    for adj in adjustments {
-        match &adj.kind {
-            petunia_design_document::adjustments::AdjustmentKind::Exposure {
-                exposure,
-                offset,
-                gamma,
-            } => {
-                let exp_mul = 2.0f64.powf(*exposure);
-                let apply_exp = |c: f64| -> f64 {
-                    let norm = (c / 255.0 * exp_mul + offset).clamp(0.0, 1.0);
-                    norm.powf(1.0 / gamma.max(0.01)) * 255.0
-                };
-                r = apply_exp(r);
-                g = apply_exp(g);
-                b = apply_exp(b);
-            }
-            petunia_design_document::adjustments::AdjustmentKind::Levels { master, .. } => {
-                let bp = master.input_black;
-                let wp = master.input_white;
-                let gamma = master.gamma.max(0.01);
-                let out_b = master.output_black;
-                let out_w = master.output_white;
-                let apply_levels = |c: f64| -> f64 {
-                    let norm = ((c - bp) / (wp - bp).max(1.0)).clamp(0.0, 1.0);
-                    let mapped = norm.powf(1.0 / gamma);
-                    out_b + mapped * (out_w - out_b)
-                };
-                r = apply_levels(r);
-                g = apply_levels(g);
-                b = apply_levels(b);
-            }
-            petunia_design_document::adjustments::AdjustmentKind::Hsl { lightness, .. } => {
-                let l_shift = *lightness * 60.0;
-                r = (r + l_shift).clamp(0.0, 255.0);
-                g = (g + l_shift).clamp(0.0, 255.0);
-                b = (b + l_shift).clamp(0.0, 255.0);
-            }
-            petunia_design_document::adjustments::AdjustmentKind::WhiteBalance {
-                temperature,
-                tint,
-            } => {
-                r = (r + *temperature * 35.0).clamp(0.0, 255.0);
-                b = (b - *temperature * 35.0).clamp(0.0, 255.0);
-                g = (g + *tint * 25.0).clamp(0.0, 255.0);
-            }
-            _ => {}
-        }
-    }
-    (r, g, b)
-}
-
+#[cfg(test)]
 pub fn compute_histogram_bins(
     shell: &PetuniaShell,
     selected_obj: Option<&petunia_design_document::DocumentObject>,
-    channel: u8, // 0: RGB, 1: R, 2: G, 3: B, 4: Luma
+    channel: u8,
 ) -> ([f32; 32], u32, u32, u32, u32) {
-    let mut centers: Vec<(f64, f64, f64)> = Vec::new();
-    let mut is_raster_sample = false;
-
-    if let Some(obj) = selected_obj {
-        let mut sampled = Vec::new();
-        if let Some(petunia_design_document::ShapeKind::Image { data, .. }) = &obj.shape {
-            if let Some(bytes) = data.as_deref() {
-                if let Ok(image) =
-                    petunia_design_raster::ImageCache::shared().prepare(bytes, &|| false)
-                {
-                    // This panel is a sampled RGBA8 display histogram, including
-                    // 16-bit sources. Originals retain their precision unchanged.
-                    let level = &image.levels()[0];
-                    let total = level.premultiplied_rgba8().len() / 4;
-                    let stride = total.div_ceil(500).max(1);
-                    for pixel in level
-                        .premultiplied_rgba8()
-                        .as_chunks::<4>()
-                        .0
-                        .iter()
-                        .step_by(stride)
-                    {
-                        if pixel[3] > 12 {
-                            let unassociate = 255.0 / f64::from(pixel[3]);
-                            sampled.push((
-                                f64::from(pixel[0]) * unassociate,
-                                f64::from(pixel[1]) * unassociate,
-                                f64::from(pixel[2]) * unassociate,
-                            ));
-                        }
-                    }
-                    is_raster_sample = !sampled.is_empty();
-                }
-            }
-        }
-
-        if sampled.is_empty() {
-            let base_rgb = obj
-                .fill
-                .as_deref()
-                .and_then(parse_color_rgb)
-                .or_else(|| obj.stroke.as_deref().and_then(parse_color_rgb))
-                .unwrap_or((140.0, 140.0, 140.0));
-            sampled.push(base_rgb);
-        }
-
-        let empty_adj = Vec::new();
-        let adjustments = obj
-            .appearance
-            .as_ref()
-            .map(|a| a.adjustments.as_slice())
-            .unwrap_or(&empty_adj);
-
-        for (r, g, b) in sampled {
-            let (adj_r, adj_g, adj_b) = apply_adjustments_to_rgb(r, g, b, adjustments);
-            centers.push((adj_r, adj_g, adj_b));
-        }
-    } else {
-        if let Some(session) = shell.bridge.session() {
-            if let Some(surf_id) = session.active_surface() {
-                if let Ok(surf) = session.surface(surf_id) {
-                    for obj in surf.objects() {
-                        let rgb = obj
-                            .fill
-                            .as_deref()
-                            .and_then(parse_color_rgb)
-                            .or_else(|| obj.stroke.as_deref().and_then(parse_color_rgb))
-                            .unwrap_or((128.0, 128.0, 128.0));
-                        centers.push(rgb);
-                    }
-                }
-            }
-        }
-        if centers.is_empty() {
-            centers.push((128.0, 128.0, 128.0));
-        }
-    }
-
-    let mut raw_bins = [0.0f32; 32];
-    let mut total_channel_sum = 0.0f64;
-    let mut total_weight = 0.0f64;
-
-    for (r, g, b) in &centers {
-        let luma = 0.299 * r + 0.587 * g + 0.114 * b;
-        let c = match channel {
-            1 => *r,
-            2 => *g,
-            3 => *b,
-            4 => luma,
-            _ => (r + g + b) / 3.0,
-        };
-        total_channel_sum += c;
-        total_weight += 1.0;
-
-        if is_raster_sample {
-            let bin_idx = ((c / 8.0).floor() as usize).clamp(0, 31);
-            raw_bins[bin_idx] += 1.0;
-        } else {
-            let sigma = 24.0;
-            for (i, bin) in raw_bins.iter_mut().enumerate() {
-                let bin_center = (i as f64) * 8.0 + 4.0;
-                let diff = (bin_center - c) / sigma;
-                let weight = (-0.5 * diff * diff).exp();
-                *bin += weight as f32;
-            }
-        }
-    }
-
-    let mean = if total_weight > 0.0 {
-        (total_channel_sum / total_weight).round() as u32
-    } else {
-        128
-    };
-
-    let max_bin = raw_bins.iter().copied().fold(0.001f32, f32::max);
-    let mut normalized_bins = [0.0f32; 32];
-    for (i, bin) in raw_bins.iter().enumerate() {
-        normalized_bins[i] = bin / max_bin;
-    }
-
-    let sum_total: f32 = raw_bins.iter().sum::<f32>().max(0.001);
-    let shadows_sum: f32 = raw_bins[0..8].iter().sum();
-    let midtones_sum: f32 = raw_bins[8..24].iter().sum();
-    let highlights_sum: f32 = raw_bins[24..32].iter().sum();
-
-    let shadows_pct = ((shadows_sum / sum_total) * 100.0).round() as u32;
-    let midtones_pct = ((midtones_sum / sum_total) * 100.0).round() as u32;
-    let highlights_pct = ((highlights_sum / sum_total) * 100.0).round() as u32;
-
-    (
-        normalized_bins,
-        mean,
-        shadows_pct,
-        midtones_pct,
-        highlights_pct,
+    use petunia_design_application::histogram::{analyze, HistogramRequest};
+    let source = shell
+        .canvas_snapshot()
+        .preview_source
+        .expect("histogram source");
+    analyze(
+        &HistogramRequest {
+            source,
+            object: selected_obj.map(|object| object.id),
+        },
+        &petunia_design_jobs::CancellationToken::new(),
     )
+    .expect("composed histogram")
+    .summary(channel)
 }
 
 #[derive(Clone, PartialEq)]
@@ -4609,13 +4499,31 @@ impl Component for HistogramWidget {
         let mut channel_state = use_state(|| 0u8);
         let channel = *channel_state.read();
 
-        let shell = self.ui.shell.peek();
-        let selected_obj = self
-            .object_id
-            .and_then(|id| shell.bridge.session().and_then(|s| s.find_object(id)));
-
-        let (bins, mean, shadows_pct, midtones_pct, highlights_pct) =
-            compute_histogram_bins(&shell, selected_obj, channel);
+        let base = self.ui.shell.read().canvas_snapshot().preview_source;
+        let source = self
+            .ui
+            .canvas_text_source
+            .read()
+            .clone()
+            .filter(|source| {
+                crate::canvas_text::is_active(&self.ui)
+                    && base.as_ref().is_some_and(|base| {
+                        source.surface_id() == base.surface_id()
+                            && source.revision() == base.revision()
+                    })
+            })
+            .or(base);
+        let request =
+            source.map(
+                |source| petunia_design_application::histogram::HistogramRequest {
+                    source,
+                    object: self.object_id,
+                },
+            );
+        let (histogram, status) = crate::histogram_ui::use_histogram(request);
+        let (bins, mean, shadows_pct, midtones_pct, highlights_pct) = histogram
+            .as_ref()
+            .map_or(([0.; 32], 0, 0, 0, 0), |h| h.summary(channel));
 
         let bar_color = match channel {
             1 => Color::from_rgb(0xEF, 0x44, 0x44), // Red
@@ -4629,6 +4537,12 @@ impl Component for HistogramWidget {
             .direction(Direction::Vertical)
             .width(Size::fill())
             .spacing(theme::SPACE_1)
+            .child(label().text(self.ui.text("histogram_scope")).font_size(10.))
+            .children(
+                status
+                    .into_iter()
+                    .map(|text| label().text(text).font_size(10.)),
+            )
             .child(
                 rect()
                     .direction(Direction::Horizontal)
@@ -4655,7 +4569,7 @@ impl Component for HistogramWidget {
                     .direction(Direction::Horizontal)
                     .cross_align(Alignment::End)
                     .children(bins.iter().enumerate().map(|(idx, &val)| {
-                        let bar_h = (val * 64.0).clamp(2.0, 64.0);
+                        let bar_h = (val * 64.0).clamp(0.0, 64.0);
                         let is_grid = idx == 8 || idx == 16 || idx == 24;
                         rect()
                             .width(Size::flex(1.0))
@@ -4671,25 +4585,37 @@ impl Component for HistogramWidget {
                     .main_align(Alignment::SpaceBetween)
                     .child(
                         label()
-                            .text(format!("Média: {}", mean))
+                            .text(format!("{}: {}", self.ui.text("histogram_mean"), mean))
                             .font_size(10.)
                             .color(theme::TEXT_SECONDARY),
                     )
                     .child(
                         label()
-                            .text(format!("Sombras: {}%", shadows_pct))
+                            .text(format!(
+                                "{}: {}%",
+                                self.ui.text("histogram_shadows"),
+                                shadows_pct
+                            ))
                             .font_size(10.)
                             .color(theme::TEXT_TERTIARY),
                     )
                     .child(
                         label()
-                            .text(format!("Meios: {}%", midtones_pct))
+                            .text(format!(
+                                "{}: {}%",
+                                self.ui.text("histogram_midtones"),
+                                midtones_pct
+                            ))
                             .font_size(10.)
                             .color(theme::TEXT_TERTIARY),
                     )
                     .child(
                         label()
-                            .text(format!("Realces: {}%", highlights_pct))
+                            .text(format!(
+                                "{}: {}%",
+                                self.ui.text("histogram_highlights"),
+                                highlights_pct
+                            ))
                             .font_size(10.)
                             .color(theme::TEXT_TERTIARY),
                     ),
@@ -5475,6 +5401,15 @@ impl Component for DiagnosticsTab {
     }
 }
 
+// Navigator swatches are metadata; the histogram uses composed pixels.
+fn parse_color_rgb(token: &str) -> Option<(f64, f64, f64)> {
+    if !token.is_ascii() || token.is_empty() {
+        return None;
+    }
+    let [r, g, b] = petunia_design_document::resolve_color_to_rgb(token);
+    Some((f64::from(r), f64::from(g), f64::from(b)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5510,49 +5445,35 @@ mod tests {
         let ui = seen.borrow().clone().unwrap();
         assert_eq!(*ui.dock_tab.read(), 0, "default active tab is Camadas (0)");
 
-        // Click on "Propriedades" tab button (roughly x=120, y=17)
-        runner.press_cursor((120., 17.));
-        runner.release_cursor((120., 17.));
-        runner.sync_and_update();
-
-        assert_eq!(
-            *ui.dock_tab.read(),
-            1,
-            "active tab should switch to Propriedades (1)"
-        );
-
-        // Click on "Cores" tab button (roughly x=200, y=17)
-        runner.press_cursor((200., 17.));
-        runner.release_cursor((200., 17.));
-        runner.sync_and_update();
-
-        assert_eq!(
-            *ui.dock_tab.read(),
-            2,
-            "active tab should switch to Cores (2)"
-        );
-
-        // Click on "Histórico" tab button (roughly x=270, y=17)
-        runner.press_cursor((270., 17.));
-        runner.release_cursor((270., 17.));
-        runner.sync_and_update();
-
-        assert_eq!(
-            *ui.dock_tab.read(),
-            3,
-            "active tab should switch to Histórico (3)"
-        );
-
-        // Switch to tab 4: Navegador
+        for (title, index) in [
+            ("Propriedades", 1),
+            ("Cores", 2),
+            ("Histórico", 3),
+            ("Navegador", 4),
+            ("Camadas", 0),
+        ] {
+            let area = runner
+                .find(|node, element| {
+                    Label::try_downcast(element)
+                        .filter(|label| label.text == title)
+                        .map(|_| node)
+                })
+                .unwrap()
+                .layout()
+                .area;
+            assert!(
+                area.min_x() >= 0. && area.max_x() <= 320.,
+                "tab must fit within the default dock"
+            );
+            assert!(area.height() < 25., "tab must stay on one line");
+            runner.click_cursor((
+                f64::from(area.min_x() + area.width() / 2.),
+                f64::from(area.min_y() + area.height() / 2.),
+            ));
+            runner.sync_and_update();
+            assert_eq!(*ui.dock_tab.read(), index);
+        }
         let mut dock_tab = ui.dock_tab;
-        dock_tab.set(4);
-        runner.sync_and_update();
-        assert_eq!(
-            *ui.dock_tab.read(),
-            4,
-            "active tab should switch to Navegador (4)"
-        );
-
         // Switch to tab 5: Tarefas
         dock_tab.set(5);
         runner.sync_and_update();
@@ -5804,8 +5725,9 @@ mod tests {
         // 1. When empty/no object selected: baseline document histogram
         let (bins, mean, shadows, midtones, highlights) = compute_histogram_bins(&shell, None, 0);
         assert_eq!(bins.len(), 32);
-        assert_eq!(mean, 128);
-        assert!(midtones > shadows && midtones > highlights);
+        assert_eq!(mean, 0);
+        assert_eq!((shadows, midtones, highlights), (0, 0, 0));
+        assert!(bins.iter().all(|bin| *bin == 0.));
 
         // 2. Add Red object
         let result = shell.bridge.submit_all(

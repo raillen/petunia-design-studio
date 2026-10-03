@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+petunia_design_text = { path = "../petunia_design_text" }
+petunia_design_jobs = { path = "../petunia_design_jobs" }
 petunia_design_foundation = { path = "../petunia_design_foundation" }
 petunia_design_document = { path = "../petunia_design_document" }
 petunia_design_geometry = { path = "../petunia_design_geometry" }

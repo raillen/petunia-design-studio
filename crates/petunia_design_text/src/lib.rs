@@ -6,10 +6,12 @@
 //! `TextOnPath`). Third-party shaping/raster engines sit behind this facade;
 //! external types do not leak into document serialization.
 
+pub mod editing;
 pub mod fonts;
 pub mod layout;
 pub mod on_path;
 pub mod outlines;
+pub use editing::{TextEditBuffer, TextSelection};
 pub mod story;
 pub use outlines::{prepare_text, FlowAlignment, PreparedText, TextFrameSpec, TextRenderError};
 

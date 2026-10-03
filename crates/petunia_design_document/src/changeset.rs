@@ -163,6 +163,12 @@ pub enum Change {
         previous: Option<String>,
         next: Option<String>,
     },
+    /// An actual ICC press profile was assigned or removed, without converting inks.
+    SurfaceCmykProfileChanged {
+        id: SurfaceId,
+        previous: Option<petunia_design_color::IccProfile>,
+        next: Option<petunia_design_color::IccProfile>,
+    },
     /// A surface's inclusion in batch export changed.
     SurfaceExportEnabledChanged {
         id: SurfaceId,

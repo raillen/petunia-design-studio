@@ -30,9 +30,11 @@ fn matrix(affine: GAffine) -> String {
     let [a, b, c, d, e, f] = affine.coeffs;
     format!("matrix({a} {b} {c} {d} {e} {f})")
 }
-fn rgb(token: &str) -> String {
-    let c = petunia_design_document::resolve_color_to_rgb(token);
-    format!("rgb({}% {}% {}%)", c[0] * 100., c[1] * 100., c[2] * 100.)
+fn paint_alpha(paint: &Paint) -> f64 {
+    match paint {
+        Paint::Solid(token) => f64::from(petunia_design_document::resolve_color_to_rgba(token)[3]),
+        _ => 1.,
+    }
 }
 fn blend(mode: BlendMode) -> &'static str {
     match mode {
@@ -56,12 +58,30 @@ fn blend(mode: BlendMode) -> &'static str {
 }
 struct Writer<'a> {
     scene: &'a RenderSurface,
+    colors: Option<petunia_design_color::CmykDisplayTransform>,
     definitions: String,
     serial: usize,
     masks: HashSet<(ObjectId, MaskMode)>,
     active_masks: HashSet<ObjectId>,
 }
 impl Writer<'_> {
+    fn rgb(&self, token: &str) -> Result<String, PetuniaError> {
+        let c = if let Some(ink) = petunia_design_color::parse_cmyk_token(token)? {
+            self.colors
+                .as_ref()
+                .ok_or_else(|| invalid("CMYK SVG export requires an assigned ICC press profile"))?
+                .convert(ink)?
+        } else {
+            petunia_design_document::resolve_color_to_rgb(token)
+        };
+        Ok(format!(
+            "rgb({}% {}% {}%)",
+            c[0] * 100.,
+            c[1] * 100.,
+            c[2] * 100.
+        ))
+    }
+
     fn id(&mut self, prefix: &str) -> String {
         self.serial += 1;
         format!("{prefix}-{}-{}", self.scene.id(), self.serial)
@@ -69,7 +89,7 @@ impl Writer<'_> {
     fn paint(&mut self, paint: &Paint) -> Result<String, PetuniaError> {
         let (opening, stops, closing) = match paint {
             Paint::None => return Ok("none".into()),
-            Paint::Solid(token) => return Ok(rgb(token)),
+            Paint::Solid(token) => return self.rgb(token),
             Paint::LinearGradient(g) => {
                 if g.stops.len() < 2 || g.start == g.end {
                     return Err(invalid(
@@ -95,12 +115,14 @@ impl Writer<'_> {
         let mut ordered: Vec<_> = stops.iter().collect();
         ordered.sort_by(|a, b| a.offset.total_cmp(&b.offset));
         for stop in ordered {
+            let color = self.rgb(&stop.color)?;
             write!(
                 self.definitions,
                 "<stop offset=\"{}\" stop-color=\"{}\" stop-opacity=\"{}\"/>",
                 stop.offset,
-                rgb(&stop.color),
+                color,
                 stop.opacity
+                    * f64::from(petunia_design_document::resolve_color_to_rgba(&stop.color)[3])
             )
             .unwrap();
         }
@@ -257,7 +279,7 @@ impl Writer<'_> {
         } else {
             for fill in app.fills.iter().filter(|f| f.visible) {
                 let paint = self.paint(&fill.paint)?;
-                write!(body,"<path d=\"{d}\" transform=\"{transform}\" fill=\"{paint}\" fill-rule=\"{}\" fill-opacity=\"{}\" style=\"mix-blend-mode:{}\"/>",rule(node),fill.opacity,blend(fill.blend_mode)).unwrap();
+                write!(body,"<path d=\"{d}\" transform=\"{transform}\" fill=\"{paint}\" fill-rule=\"{}\" fill-opacity=\"{}\" style=\"mix-blend-mode:{}\"/>",rule(node),fill.opacity*paint_alpha(&fill.paint),blend(fill.blend_mode)).unwrap();
             }
         }
         for stroke in app.strokes.iter().filter(|s| s.visible) {
@@ -285,7 +307,7 @@ impl Writer<'_> {
                     .collect::<Vec<_>>()
                     .join(" ")
             };
-            write!(body,"<path d=\"{d}\" transform=\"{transform}\" fill=\"none\" stroke=\"{paint}\" stroke-width=\"{}\" stroke-opacity=\"{}\" stroke-linecap=\"{cap}\" stroke-linejoin=\"{join}\" stroke-miterlimit=\"{}\" stroke-dasharray=\"{dash}\" stroke-dashoffset=\"{}\" style=\"mix-blend-mode:{}\"/>",stroke.width,stroke.opacity,stroke.miter_limit,stroke.dash_offset,blend(stroke.blend_mode)).unwrap();
+            write!(body,"<path d=\"{d}\" transform=\"{transform}\" fill=\"none\" stroke=\"{paint}\" stroke-width=\"{}\" stroke-opacity=\"{}\" stroke-linecap=\"{cap}\" stroke-linejoin=\"{join}\" stroke-miterlimit=\"{}\" stroke-dasharray=\"{dash}\" stroke-dashoffset=\"{}\" style=\"mix-blend-mode:{}\"/>",stroke.width,stroke.opacity*paint_alpha(&stroke.paint),stroke.miter_limit,stroke.dash_offset,blend(stroke.blend_mode)).unwrap();
         }
         if matches!(obj.shape, Some(ShapeKind::Text { .. }))
             && obj.text_style.flow == TextFlow::Frame
@@ -307,7 +329,7 @@ impl Writer<'_> {
         for (i, effect) in app.effects.iter().filter(|e| e.visible).enumerate() {
             match &effect.kind {
                 EffectKind::GaussianBlur { radius } => write!(effects,"<feGaussianBlur stdDeviation=\"{radius}\" result=\"effect-{i}\"/>").unwrap(),
-                EffectKind::DropShadow { offset, blur, opacity, color } => write!(effects,"<feDropShadow dx=\"{}\" dy=\"{}\" stdDeviation=\"{blur}\" flood-color=\"{}\" flood-opacity=\"{opacity}\" result=\"effect-{i}\"/>",offset[0],offset[1],rgb(color)).unwrap(),
+                EffectKind::DropShadow { offset, blur, opacity, color } => write!(effects,"<feDropShadow dx=\"{}\" dy=\"{}\" stdDeviation=\"{blur}\" flood-color=\"{}\" flood-opacity=\"{}\" result=\"effect-{i}\"/>",offset[0],offset[1],self.rgb(color)?,opacity*f64::from(petunia_design_document::resolve_color_to_rgba(color)[3])).unwrap(),
                 _ => return Err(unavailable(id,"effect kernel")),
             }
         }
@@ -407,11 +429,25 @@ pub(super) fn export(document: &Document) -> Result<String, PetuniaError> {
         })
         .reduce(|a, b| a.union(b).unwrap())
         .unwrap();
-    let mut output=format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}pt\" height=\"{}pt\" viewBox=\"{} {} {} {}\">\n",bounds.width(),bounds.height(),bounds.x0,bounds.y0,bounds.width(),bounds.height());
+    // A single page retains its authored physical dimensions, without the
+    // cancellation error introduced by subtracting a large world origin.
+    let [width, height] = if included.len() == 1 {
+        included[0].dimensions
+    } else {
+        [bounds.width(), bounds.height()]
+    };
+    let mut output=format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}pt\" height=\"{height}pt\" viewBox=\"{} {} {width} {height}\">\n",bounds.x0,bounds.y0);
     for surface in included {
         let scene = RenderSurface::extract(surface).map_err(|e| invalid(e.to_string()))?;
         let mut writer = Writer {
             scene: &scene,
+            colors: surface
+                .cmyk_profile
+                .as_ref()
+                .map(|profile| {
+                    petunia_design_color::CmykDisplayTransform::new(profile, Default::default())
+                })
+                .transpose()?,
             definitions: String::new(),
             serial: 0,
             masks: HashSet::new(),
@@ -424,7 +460,7 @@ pub(super) fn export(document: &Document) -> Result<String, PetuniaError> {
         let [x, y, w, h] = scene.bounds();
         let clip = writer.id("artboard");
         write!(writer.definitions,"<clipPath id=\"{clip}\" clipPathUnits=\"userSpaceOnUse\"><rect x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\"/></clipPath>").unwrap();
-        write!(output,"<defs>{}</defs><g id=\"{}\" data-name=\"{}\" clip-path=\"url(#{clip})\" style=\"isolation:isolate\">{body}</g>\n",writer.definitions,surface.id,xml(&surface.name)).unwrap();
+        writeln!(output,"<defs>{}</defs><g id=\"{}\" data-name=\"{}\" clip-path=\"url(#{clip})\" style=\"isolation:isolate\">{body}</g>",writer.definitions,surface.id,xml(&surface.name)).unwrap();
         if output.len() > 128 * 1024 * 1024 {
             return Err(invalid("SVG output byte budget exceeded"));
         }

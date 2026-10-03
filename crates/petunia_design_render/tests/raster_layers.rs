@@ -48,6 +48,31 @@ fn persistent_sixteen_bit_pixels_reach_the_shared_scene() {
         [255, 0, 0, 255]
     );
 }
+
+#[test]
+fn scaled_pixels_preserve_edge_alpha_and_ignore_legacy_shape_fill() {
+    let mut object = raster(2, RasterLayerKind::Pixels, [0., 0., 1., 0.5]);
+    object.bounds = Some([0., 0., 32., 32.]);
+    object.fill = Some("#ff0000".into());
+    let surface = Surface::with_objects(SurfaceId::new(1), "Page", vec![object]);
+    let scene = RenderSurface::extract(&surface).unwrap();
+    let pixels = CpuRenderer::default()
+        .render(
+            &scene,
+            RenderRequest {
+                viewport: GRect::new(0., 0., 32., 32.),
+                width: 32,
+                height: 32,
+                background: [0; 4],
+            },
+        )
+        .unwrap();
+    for (x, y) in [(0, 0), (16, 16), (31, 31)] {
+        let pixel = pixels.get_pixel(x, y).unwrap();
+        assert_eq!(pixel[..3], [0, 0, 255]);
+        assert!((i32::from(pixel[3]) - 128).abs() <= 1);
+    }
+}
 #[test]
 fn gray_coverage_masks_render_as_white_alpha_without_fake_color_fills() {
     let pixel = render(vec![raster(2, RasterLayerKind::Mask, [0.0, 0.0, 0.0, 0.5])])

@@ -126,7 +126,7 @@ pub fn resolve_color_to_rgb(token: &str) -> [f32; 3] {
         None => token.trim(),
     };
     if let Some(hex) = t.strip_prefix('#') {
-        if hex.len() == 6 && hex.is_ascii() {
+        if matches!(hex.len(), 6 | 8) && hex.is_ascii() {
             if let (Ok(r), Ok(g), Ok(b)) = (
                 u8::from_str_radix(&hex[0..2], 16),
                 u8::from_str_radix(&hex[2..4], 16),
@@ -139,10 +139,10 @@ pub fn resolve_color_to_rgb(token: &str) -> [f32; 3] {
                 ];
             }
         }
-        if hex.len() == 3 {
+        if matches!(hex.len(), 3 | 4) && hex.is_ascii() {
             let exp = |c: char| u8::from_str_radix(&format!("{c}{c}"), 16).unwrap_or(128);
             let chars: Vec<char> = hex.chars().collect();
-            if chars.len() == 3 {
+            if matches!(chars.len(), 3 | 4) {
                 return [
                     f32::from(exp(chars[0])) / 255.0,
                     f32::from(exp(chars[1])) / 255.0,
@@ -220,23 +220,10 @@ pub fn resolve_color_to_rgb(token: &str) -> [f32; 3] {
             let parse = |s: &str| s.trim().parse::<f32>().ok();
             if let (Some(l), Some(a), Some(b)) = (parse(parts[0]), parse(parts[1]), parse(parts[2]))
             {
-                let y = (l + 16.0) / 116.0;
-                let x = a / 500.0 + y;
-                let z = y - b / 200.0;
-                let f = |t: f32| {
-                    if t > 0.206_896_6 {
-                        t * t * t
-                    } else {
-                        (t - 16.0 / 116.0) / 7.787
-                    }
-                };
-                let xr = f(x) * 0.95047;
-                let yr = f(y);
-                let zr = f(z) * 1.08883;
-                let r = xr * 3.2406 - yr * 1.5372 - zr * 0.4986;
-                let g = -xr * 0.9689 + yr * 1.8758 + zr * 0.0415;
-                let b = xr * 0.0557 - yr * 0.2040 + zr * 1.0570;
-                return [r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0)];
+                let color =
+                    petunia_design_color::ColorValue::Lab(petunia_design_color::Lab { l, a, b })
+                        .to_srgb();
+                return [color.r, color.g, color.b];
             }
         }
     }
@@ -255,12 +242,33 @@ pub fn resolve_color_to_rgb(token: &str) -> [f32; 3] {
         "ptnd.yellow/500" => [0.918, 0.702, 0.031],
         "ptnd.gray/900" => [0.067, 0.067, 0.067],
         "ptnd.gray/500" => [0.42, 0.42, 0.42],
+        "transparent" => [0.0, 0.0, 0.0],
         "ptnd.white" => [1.0, 1.0, 1.0],
         "ptnd.black" => [0.0, 0.0, 0.0],
         "ptnd.purple/500" => [0.55, 0.30, 0.85],
         "ptnd.cyan/500" => [0.15, 0.75, 0.85],
         _ => [0.5, 0.5, 0.5],
     }
+}
+
+/// Straight RGB and explicit alpha; RGBA hex tokens never lose their coverage.
+pub fn resolve_color_to_rgba(token: &str) -> [f32; 4] {
+    let token = token.trim();
+    let rgb = resolve_color_to_rgb(token);
+    let alpha = if token == "transparent" {
+        0.
+    } else if let Some(hex) = token.strip_prefix('#').filter(|hex| hex.is_ascii()) {
+        if hex.len() == 8 {
+            u8::from_str_radix(&hex[6..8], 16).map_or(1., |v| f32::from(v) / 255.)
+        } else if hex.len() == 4 {
+            u8::from_str_radix(&hex[3..4].repeat(2), 16).map_or(1., |v| f32::from(v) / 255.)
+        } else {
+            1.
+        }
+    } else {
+        1.
+    };
+    [rgb[0], rgb[1], rgb[2], alpha]
 }
 
 /// Linear gradient definition.
@@ -470,7 +478,10 @@ impl Paint {
     pub fn sample_rgba(&self, t: f64) -> Option<([f32; 3], f32)> {
         match self {
             Self::None => None,
-            Self::Solid(token) => Some((resolve_color_to_rgb(token), 1.0)),
+            Self::Solid(token) => {
+                let c = resolve_color_to_rgba(token);
+                Some(([c[0], c[1], c[2]], c[3]))
+            }
             Self::LinearGradient(g) => g.sample_rgba(t),
             Self::RadialGradient(g) => g.sample_rgba(t),
         }
@@ -695,7 +706,7 @@ pub struct EffectItem {
 }
 
 /// Ordered, non-destructive Appearance Stack for a DocumentObject (10.4).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AppearanceStack {
     /// Ordered fill entries rendered from back to front.
     #[serde(default)]
@@ -715,6 +726,12 @@ pub struct AppearanceStack {
     /// Overall object blend mode with backdrop.
     #[serde(default)]
     pub blend_mode: BlendMode,
+}
+
+impl Default for AppearanceStack {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AppearanceStack {

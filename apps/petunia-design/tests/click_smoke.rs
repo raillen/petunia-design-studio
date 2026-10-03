@@ -34,6 +34,19 @@ mod theme;
 #[path = "../src/ui_state.rs"]
 mod ui_state;
 
+#[allow(dead_code)]
+#[path = "../src/canvas_text.rs"]
+mod canvas_text;
+#[allow(dead_code)]
+#[path = "../src/file_jobs.rs"]
+mod file_jobs;
+#[allow(dead_code)]
+#[path = "../src/object_edit_dialog.rs"]
+mod object_edit_dialog;
+#[allow(dead_code)]
+#[path = "../src/typography.rs"]
+mod typography;
+
 use chrome::{ContextToolbar, DocumentTabStrip, MenuBarRow, ToolRail};
 use petunia_design_application::tools::ToolKind;
 use ui_state::UiShell;

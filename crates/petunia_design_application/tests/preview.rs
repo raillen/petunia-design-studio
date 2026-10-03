@@ -51,7 +51,7 @@ fn preview_and_cpu_export_compose_the_same_snapshot_against_the_same_backdrop() 
     c.request(Some(r.clone()));
     let frame = finish(&mut c);
     let scene = RenderSurface::extract(&s).unwrap();
-    let backdrop = PixelBufferRgba8::with_fill(32, 32, [0xe2, 0xe4, 0xe8, 255]);
+    let backdrop = PixelBufferRgba8::with_fill(32, 32, [255, 255, 255, 255]);
     let expected = CpuRenderer::default()
         .render_over(&scene, r.render, Some(&backdrop))
         .unwrap();
@@ -100,7 +100,7 @@ fn channel_isolation_happens_after_composition_and_clears_old_display_mode() {
     );
 }
 #[test]
-fn missing_icc_engine_is_a_presentation_reason_and_clear_cancels_work() {
+fn missing_icc_profiles_is_a_presentation_reason_and_clear_cancels_work() {
     let mut r = request(&surface("#ff0000"), 1);
     r.soft_proof = true;
     let mut c = PreviewController::new().unwrap();
@@ -172,4 +172,36 @@ fn grouped_opacity_uses_the_shared_isolated_composition() {
     c.request(Some(request(&s, 0)));
     let p = finish(&mut c);
     assert_eq!(p.pixels.get_pixel(5, 5), p.pixels.get_pixel(15, 5));
+}
+
+#[test]
+fn text_drafts_share_cached_geometry_and_never_replace_authored_content() {
+    let mut s = surface("#123456");
+    let mut object = DocumentObject::new(ObjectId::new(3), "Text");
+    object.bounds = Some([0., 0., 32., 32.]);
+    object.shape = Some(ShapeKind::Text {
+        content: "old".into(),
+        font_family: "DejaVu Sans".into(),
+        font_size: 12.,
+        line_height: 1.,
+        letter_spacing: 0.,
+        on_path: None,
+    });
+    s = Surface::with_objects(s.id, "Text page", vec![object]);
+    let original = s.clone();
+    let base = PreviewSource::capture(&s, 7);
+    let draft = base.with_text_edit(ObjectId::new(3), "new".into()).unwrap();
+    assert_eq!(draft.revision(), 7);
+    assert_ne!(base.id(), draft.id());
+    let a = draft.prepare_scene(&|| false).unwrap();
+    let b = draft.prepare_scene(&|| false).unwrap();
+    assert!(Arc::ptr_eq(&a, &b));
+    let Some(ShapeKind::Text { content, .. }) = &a.node(ObjectId::new(3)).unwrap().source().shape
+    else {
+        panic!("text source missing")
+    };
+    assert_eq!(content, "new");
+    assert_eq!(s, original);
+    assert_eq!(base.surface_snapshot(), &original);
+    assert_eq!(draft.surface_snapshot(), &original);
 }

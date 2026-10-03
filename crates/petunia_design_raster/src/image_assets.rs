@@ -98,8 +98,7 @@ impl<'de> Deserialize<'de> for EncodedImage {
                         let target = bytes
                             .capacity()
                             .saturating_mul(2)
-                            .max(1)
-                            .min(EncodedImage::MAX_BYTES);
+                            .clamp(1, EncodedImage::MAX_BYTES);
                         bytes
                             .try_reserve_exact(target - bytes.len())
                             .map_err(serde::de::Error::custom)?;
@@ -168,12 +167,6 @@ pub fn decode_image(
 ) -> Result<DecodedImage, ImageAssetError> {
     decode_with_policy(bytes, limits, true)
 }
-pub(crate) fn decode_display_image(
-    bytes: &[u8],
-    limits: ImageDecodeLimits,
-) -> Result<DecodedImage, ImageAssetError> {
-    decode_with_policy(bytes, limits, false)
-}
 fn decode_with_policy(
     bytes: &[u8],
     limits: ImageDecodeLimits,
@@ -182,7 +175,8 @@ fn decode_with_policy(
     if bytes.len() > limits.max_encoded_bytes {
         return Err(ImageAssetError::Limit("encoded file bytes"));
     }
-    let format = image::guess_format(bytes).map_err(codec_error)?;
+    let format =
+        image::guess_format(bytes).map_err(|error| ImageAssetError::Invalid(error.to_string()))?;
     if !matches!(
         format,
         image::ImageFormat::Png
@@ -354,9 +348,11 @@ fn admit_display_metadata(bytes: &[u8], format: image::ImageFormat) -> Result<()
             b"cHRM" if chunk.len() == 32 => {
                 let srgb = [31270_u32, 32900, 64000, 33000, 30000, 60000, 15000, 6000];
                 non_srgb_chromaticity = chunk
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .zip(srgb)
-                    .any(|(actual, expected)| actual != expected.to_be_bytes());
+                    .any(|(actual, expected)| *actual != expected.to_be_bytes());
             }
             _ => {}
         }

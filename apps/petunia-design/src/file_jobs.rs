@@ -1,7 +1,7 @@
 //! Desktop file I/O and cold codec work run outside the UI thread. One accepted
 //! operation owns a bounded worker slot; publication keeps its captured tab.
 use crate::{
-    file_workflows::{FilePrompt, SaveIntent},
+    file_workflows::{FilePrompt, ProfilePurpose, SaveIntent},
     ui_state::UiShell,
 };
 use freya::prelude::*;
@@ -40,6 +40,11 @@ struct ClipboardTarget {
 }
 #[derive(Clone)]
 enum Operation {
+    Profile {
+        target: ClipboardTarget,
+        path: PathBuf,
+        purpose: ProfilePurpose,
+    },
     ListRecovery {
         directory: PathBuf,
     },
@@ -76,6 +81,12 @@ enum Operation {
     },
 }
 enum Outcome {
+    Profile {
+        target: ClipboardTarget,
+        path: PathBuf,
+        purpose: ProfilePurpose,
+        profile: petunia_design_color::IccProfile,
+    },
     RecoveryList {
         entries: Vec<petunia_design_io::recovery::RecoveryEntry>,
     },
@@ -138,6 +149,23 @@ pub fn prompt(ui: &UiShell, prompt: &FilePrompt, path: &Path) -> Result<(), Petu
         return Err(invalid("choose a file path"));
     }
     match prompt {
+        FilePrompt::Profile {
+            target,
+            revision,
+            surface,
+            purpose,
+        } => enqueue(
+            ui,
+            Operation::Profile {
+                target: ClipboardTarget {
+                    session: *target,
+                    revision: *revision,
+                    surface: *surface,
+                },
+                path: path.to_path_buf(),
+                purpose: *purpose,
+            },
+        ),
         FilePrompt::Open => enqueue(
             ui,
             Operation::Open {
@@ -437,6 +465,31 @@ fn run(
 ) -> Result<Outcome, JobFailure> {
     context.check_cancelled()?;
     let outcome = match operation {
+        Operation::Profile {
+            target,
+            path,
+            purpose,
+        } => {
+            let profile = petunia_design_color::IccProfile::read(&path).map_err(failed)?;
+            let expected = match purpose {
+                ProfilePurpose::Press => petunia_design_color::IccColorSpace::Cmyk,
+                ProfilePurpose::Monitor => petunia_design_color::IccColorSpace::Rgb,
+            };
+            if profile.color_space() != expected
+                || (purpose == ProfilePurpose::Press && !profile.is_press_profile())
+                || (purpose == ProfilePurpose::Monitor && !profile.is_monitor_profile())
+            {
+                return Err(JobFailure::Failed(
+                    "ICC profile channel space does not match its purpose".into(),
+                ));
+            }
+            Outcome::Profile {
+                target,
+                path,
+                purpose,
+                profile,
+            }
+        }
         Operation::ListRecovery { directory } => Outcome::RecoveryList {
             entries: petunia_design_io::recovery::RecoveryStore::new(directory)
                 .and_then(|store| store.list())
@@ -540,6 +593,32 @@ fn failed(error: PetuniaError) -> JobFailure {
 }
 fn publish(ui: &UiShell, outcome: Outcome) -> Result<PathBuf, PetuniaError> {
     match outcome {
+        Outcome::Profile {
+            target,
+            path,
+            purpose,
+            profile,
+        } => {
+            match purpose {
+                ProfilePurpose::Press => {
+                    ui.shell
+                        .clone()
+                        .write()
+                        .bridge
+                        .assign_prepared_cmyk_profile(
+                            target.session,
+                            target.revision,
+                            target.surface,
+                            profile,
+                        )?;
+                }
+                ProfilePurpose::Monitor => {
+                    ui.monitor_profile.clone().set(Some(profile));
+                }
+            }
+            ui.file_prompt.clone().set(None);
+            Ok(path)
+        }
         Outcome::RecoveryList { entries } => {
             let visible = !entries.is_empty();
             ui.recovery_entries.clone().set(entries);
@@ -679,7 +758,7 @@ pub fn use_file_jobs(ui: UiShell) {
             };
             loop {
                 match handle.try_result(0) {
-                    Ok(None) => freya::core::io::timer::timer(Duration::from_millis(16)).await,
+                    Ok(None) => timer(Duration::from_millis(16)).await,
                     result => {
                         ui.file_job.clone().set(None);
                         let result = result

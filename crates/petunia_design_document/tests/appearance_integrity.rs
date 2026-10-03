@@ -191,3 +191,20 @@ fn invalid_surface_geometry_layout_and_guides_preserve_prior_state() {
         .is_err());
     assert_eq!(writer.document(), &prior);
 }
+
+#[test]
+fn default_appearance_is_opaque_and_matches_the_explicit_constructor() {
+    assert_eq!(AppearanceStack::default(), AppearanceStack::new());
+    let mut doc = document();
+    let appearance = AppearanceStack::default().with_fill("#ff0000");
+    DocumentMutator::new(&mut doc)
+        .set_appearance(ObjectId::new(2), Some(appearance))
+        .unwrap();
+    assert_eq!(
+        doc.find_object(ObjectId::new(2))
+            .unwrap()
+            .effective_appearance()
+            .opacity,
+        1.
+    );
+}

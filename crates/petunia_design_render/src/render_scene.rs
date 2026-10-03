@@ -114,6 +114,7 @@ impl RenderNode {
 pub struct RenderSurface {
     pub(crate) id: SurfaceId,
     pub(crate) bounds: [f64; 4],
+    pub(crate) cmyk_profile: Option<petunia_design_color::IccProfile>,
     pub(crate) roots: Vec<ObjectId>,
     pub(crate) nodes: HashMap<ObjectId, RenderNode>,
 }
@@ -283,6 +284,7 @@ impl RenderSurface {
         let mut result = Self {
             id: surface.id,
             bounds: surface.bounds(),
+            cmyk_profile: surface.cmyk_profile.clone(),
             roots,
             nodes: HashMap::new(),
         };
@@ -332,6 +334,7 @@ impl RenderScene {
     }
 }
 
+#[allow(clippy::too_many_arguments)] // One traversal carries graph, frame, visibility and quotas.
 fn extract_node(
     id: ObjectId,
     parent: Option<ObjectId>,

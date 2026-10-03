@@ -40,7 +40,7 @@ fn text_is_shaped_ink_and_native_source_remains_editable() {
     let bounds = node.visual_bounds().unwrap();
     assert!(bounds.width() < 100.0 && bounds.height() < 50.0);
     let pixels = CpuRenderer::default().render(&scene, request()).unwrap();
-    assert!(pixels.data.chunks_exact(4).any(|p| p[3] > 0));
+    assert!(pixels.data.as_chunks::<4>().0.iter().any(|p| p[3] > 0));
     assert_eq!(
         pixels
             .get_pixel(
@@ -77,14 +77,14 @@ fn group_rotation_and_opacity_apply_to_glyph_ink_once() {
     o.parent = Some(group.id);
     let scene = RenderSurface::extract(&surface(vec![group, o])).unwrap();
     let p = CpuRenderer::default().render(&scene, request()).unwrap();
-    assert!(p.data.chunks_exact(4).any(|v| v[3] == 128));
-    assert!(p.data.chunks_exact(4).all(|v| v[3] <= 128));
+    assert!(p.data.as_chunks::<4>().0.iter().any(|v| v[3] == 128));
+    assert!(p.data.as_chunks::<4>().0.iter().all(|v| v[3] <= 128));
 }
 #[test]
 fn live_crop_and_blur_fold_over_glyphs_without_baking() {
     let mut o = text("HELLO");
     let source = o.shape.clone();
-    let mut crop = ModifierItem::new(
+    let mut crop = ModifierItem::enabled(
         1,
         ModifierKind::CropRect {
             rect: [0.0, 0.0, 20.0, 50.0],
@@ -97,7 +97,7 @@ fn live_crop_and_blur_fold_over_glyphs_without_baking() {
     let scene = RenderSurface::extract(&surface(vec![o.clone()])).unwrap();
     let p = CpuRenderer::default().render(&scene, request()).unwrap();
     assert_eq!(p.get_pixel(30, 20).unwrap()[3], 0);
-    assert!(p.data.chunks_exact(4).any(|p| p[3] > 0));
+    assert!(p.data.as_chunks::<4>().0.iter().any(|p| p[3] > 0));
     let mut app = o.effective_appearance();
     app.effects.push(EffectItem {
         id: 1,
@@ -132,7 +132,12 @@ fn glyph_vector_mask_retains_the_counter_hole() {
         .visual_bounds()
         .unwrap();
     let p = CpuRenderer::default().render(&scene, request()).unwrap();
-    assert!(p.data.chunks_exact(4).any(|p| p[2] == 255 && p[3] > 0));
+    assert!(p
+        .data
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .any(|p| p[2] == 255 && p[3] > 0));
     assert_eq!(
         p.get_pixel(((b.x0 + b.x1) * 0.5) as u32, ((b.y0 + b.y1) * 0.5) as u32)
             .unwrap()[3],

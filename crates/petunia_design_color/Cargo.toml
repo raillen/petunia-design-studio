@@ -7,8 +7,11 @@ license.workspace = true
 [dependencies]
 petunia_design_foundation = { path = "../petunia_design_foundation" }
 moxcms = "0.9.1"
+lcms2 = { version = "6.2.0", features = ["static"] }
+sha2 = "0.11.0"
 serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 proptest = "1"

@@ -66,3 +66,43 @@ fn document_origin_and_physical_size_are_not_rounded_or_normalized_away() {
     assert!(svg.contains("-1000 -20"));
     assert!(svg.contains("1.123456789"));
 }
+
+#[test]
+fn rgba_hex_alpha_survives_cpu_and_svg_export_without_double_application() {
+    use petunia_design_document::{Document, DocumentMutator, DocumentObject, ShapeKind};
+    use petunia_design_foundation::{ObjectId, SurfaceId};
+    let mut doc = Document::new();
+    let mut m = DocumentMutator::new(&mut doc);
+    m.add_surface(SurfaceId::new(1), "Page").unwrap();
+    let mut object = DocumentObject::new(ObjectId::new(2), "Alpha");
+    object.bounds = Some([0., 0., 10., 10.]);
+    object.shape = Some(ShapeKind::Rectangle {
+        corner_radii: [0.; 4],
+    });
+    object.fill = Some("#ff000080".into());
+    m.add_object(SurfaceId::new(1), object).unwrap();
+    let svg = export_document_svg(&doc).unwrap();
+    let xml = roxmltree::Document::parse(&svg).unwrap();
+    let alpha = xml
+        .descendants()
+        .find(|n| n.has_tag_name("path") && n.attribute("fill-opacity").is_some())
+        .unwrap()
+        .attribute("fill-opacity")
+        .unwrap()
+        .parse::<f64>()
+        .unwrap();
+    assert!((alpha - 128. / 255.).abs() < 1e-7);
+    let scene = petunia_design_render::RenderSurface::extract(&doc.surfaces()[0]).unwrap();
+    let pixels = petunia_design_render::CpuRenderer::default()
+        .render(
+            &scene,
+            petunia_design_render::RenderRequest {
+                viewport: petunia_design_geometry::GRect::new(0., 0., 10., 10.),
+                width: 10,
+                height: 10,
+                background: [0; 4],
+            },
+        )
+        .unwrap();
+    assert_eq!(pixels.get_pixel(5, 5).unwrap(), [255, 0, 0, 128]);
+}

@@ -153,27 +153,25 @@ impl RawRasterImage {
         if tile.alpha_mode == petunia_design_raster::AlphaMode::Premultiplied {
             match tile.format {
                 PixelFormat::Rgba8 => {
-                    for pixel in data.chunks_exact_mut(4) {
+                    for pixel in data.as_chunks_mut::<4>().0.iter_mut() {
                         let alpha = u32::from(pixel[3]);
                         for channel in &mut pixel[..3] {
-                            *channel = if alpha == 0 {
-                                0
-                            } else {
-                                ((u32::from(*channel) * 255 + alpha / 2) / alpha).min(255) as u8
-                            };
+                            *channel = (u32::from(*channel) * 255 + alpha / 2)
+                                .checked_div(alpha)
+                                .unwrap_or(0)
+                                .min(255) as u8;
                         }
                     }
                 }
                 PixelFormat::Rgba16 => {
-                    for pixel in data.chunks_exact_mut(8) {
+                    for pixel in data.as_chunks_mut::<8>().0.iter_mut() {
                         let alpha = u32::from(u16::from_le_bytes([pixel[6], pixel[7]]));
-                        for channel in pixel[..6].chunks_exact_mut(2) {
+                        for channel in pixel[..6].as_chunks_mut::<2>().0.iter_mut() {
                             let sample = u32::from(u16::from_le_bytes([channel[0], channel[1]]));
-                            let value = if alpha == 0 {
-                                0
-                            } else {
-                                ((sample * 65535 + alpha / 2) / alpha).min(65535) as u16
-                            };
+                            let value = (sample * 65535 + alpha / 2)
+                                .checked_div(alpha)
+                                .unwrap_or(0)
+                                .min(65535) as u16;
                             channel.copy_from_slice(&value.to_le_bytes());
                         }
                     }
@@ -394,7 +392,9 @@ pub fn export_raster(
                 && matches!(image.format, PixelFormat::Rgba16 | PixelFormat::Gray16)
             {
                 native_bytes = byte_slice
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .flat_map(|p| u16::from_le_bytes([p[0], p[1]]).to_ne_bytes())
                     .collect::<Vec<_>>();
                 native_bytes.as_slice()
@@ -635,7 +635,7 @@ mod tests {
             format: PixelFormat::Rgba8,
             alpha_mode: petunia_design_raster::AlphaMode::Straight,
             state: petunia_design_raster::TileState::ResidentWorkingDirty,
-            data: data.clone(),
+            data: data.clone().into(),
         };
 
         let image = RawRasterImage::from_tile(&tile);

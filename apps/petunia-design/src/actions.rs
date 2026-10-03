@@ -4,6 +4,7 @@
 //! check the registry availability rule, then dispatch. A blocked capability
 //! is never dispatched, even if a stale token asks for it.
 
+use freya::prelude::WritableUtils;
 use petunia_design_application::menus::{self, ActionContext};
 use petunia_design_application::tools::ToolKind;
 use petunia_design_application::{ActionId, ActionRequest};
@@ -84,6 +85,7 @@ fn run_action_token_result(
     Ok(Some(action_id))
 }
 
+#[cfg(test)]
 pub fn run_action_id(shell: &mut PetuniaShell, action_id: &str) -> Option<String> {
     menus::MENU_BAR
         .iter()

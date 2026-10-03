@@ -65,6 +65,43 @@ fn bounded_history_payload(changes: &ChangeSet) -> (ChangeSet, usize) {
             Change::ObjectAdded { object, .. } | Change::ObjectRemoved { object, .. } => {
                 strip(&mut object.shape)
             }
+            Change::SurfaceCmykProfileChanged { previous, next, .. } => {
+                let bytes = previous
+                    .as_ref()
+                    .map_or(0, |p| p.bytes().len())
+                    .saturating_add(next.as_ref().map_or(0, |p| p.bytes().len()));
+                *previous = None;
+                *next = None;
+                bytes
+            }
+            Change::BatchSurfacesAdded { surfaces } => {
+                let mut bytes = 0usize;
+                for surface in surfaces {
+                    bytes = bytes.saturating_add(
+                        surface.cmyk_profile.as_ref().map_or(0, |p| p.bytes().len()),
+                    );
+                    let mut objects = surface.objects().to_vec();
+                    for object in &mut objects {
+                        bytes = bytes.saturating_add(strip(&mut object.shape));
+                    }
+                    // Metadata-only projection; the retained ChangeSet and the
+                    // canonical document are never modified by accounting.
+                    let mut descriptor = petunia_design_document::Surface::with_objects(
+                        surface.id,
+                        surface.name.clone(),
+                        objects,
+                    );
+                    descriptor.origin = surface.origin;
+                    descriptor.dimensions = surface.dimensions;
+                    descriptor.background = surface.background.clone();
+                    descriptor.bleed = surface.bleed;
+                    descriptor.margins = surface.margins;
+                    descriptor.guides = surface.guides.clone();
+                    descriptor.export_enabled = surface.export_enabled;
+                    *surface = descriptor;
+                }
+                bytes
+            }
             _ => 0,
         };
         resources = resources.saturating_add(bytes);
@@ -392,6 +429,9 @@ impl Replayer {
                 }
                 Change::SurfaceBackgroundChanged { id, next, .. } => {
                     mutator.set_surface_background(id, next)?;
+                }
+                Change::SurfaceCmykProfileChanged { id, next, .. } => {
+                    mutator.set_surface_cmyk_profile(id, next)?;
                 }
                 Change::SurfaceExportEnabledChanged { id, next, .. } => {
                     mutator.set_surface_export_enabled(id, next)?;

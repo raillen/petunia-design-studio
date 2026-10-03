@@ -4632,6 +4632,40 @@ fn text_path_line(
     id
 }
 
+// Read-side geometry for legacy attachment descriptors. The scene renderer
+// reports shaped-path support as unavailable; this fixture does not enable it.
+fn seed_legacy_attachment(
+    bridge: &mut PetuniaDesignGuiBridge,
+    target: petunia_design_foundation::ObjectId,
+    start: f64,
+    end: f64,
+) {
+    let surface = bridge.active_surface().unwrap();
+    let id = bridge.next_object_id().unwrap();
+    bridge
+        .submit_command(CommandRequest::new(Command::CreateShapeObject {
+            surface,
+            id,
+            name: "Legacy attached text".into(),
+            bounds: Some([start * 200., 0., (end - start) * 200., 32.]),
+            shape: petunia_design_document::ShapeKind::Text {
+                content: "Text".into(),
+                font_family: "DejaVu Sans".into(),
+                font_size: 24.,
+                line_height: 1.2,
+                letter_spacing: 0.,
+                on_path: Some(petunia_design_document::TextOnPathAttachment::new(
+                    target, start, end,
+                )),
+            },
+            fill: Some("#222222".into()),
+            stroke: None,
+            stroke_width: 0.,
+        }))
+        .unwrap();
+    bridge.set_selection(vec![id]);
+}
+
 fn attached_text(
     bridge: &PetuniaDesignGuiBridge,
     id: petunia_design_foundation::ObjectId,
@@ -4675,84 +4709,101 @@ fn text_click(
 }
 
 #[test]
-fn text_click_on_path_attaches_with_span_to_end() {
+fn text_click_over_a_path_creates_renderable_straight_text() {
     let mut bridge = PetuniaDesignGuiBridge::new();
-    bridge.new_document("Text On Path").expect("doc");
-    let camera = ViewportCamera::new(1000.0, 1000.0);
+    bridge.new_document("Text over artwork").unwrap();
+    let camera = ViewportCamera::new(1000., 1000.);
     let mut snap = SnapEngine::new();
-    let mut gen = IdGenerator::new();
-    let target = text_path_line(&mut bridge, &mut gen);
+    let target = text_path_line(&mut bridge, &mut IdGenerator::new());
+    let before = bridge.session().unwrap().document().clone();
     let mut tool = TextTool::new(TextToolMode::Artistic);
-
     text_click(
         &mut tool,
         &mut bridge,
         &camera,
         &mut snap,
-        50.0,
-        0.0,
+        50.,
+        0.,
         SemanticModifiers::default(),
     );
-
-    assert_eq!(bridge.snapshot().total_objects, 2);
     let id = bridge.selection().selected_ids[0];
-    let att = attached_text(&bridge, id).expect("attached");
-    assert_eq!(att.target, target);
-    assert!((att.start - 0.25).abs() < 1e-6, "got {att:?}");
-    assert!((att.end - 1.0).abs() < 1e-6, "got {att:?}");
-    // Target path object survives untouched.
-    let target_obj = bridge
-        .session()
-        .unwrap()
-        .document()
-        .find_object(target)
-        .unwrap();
-    assert!(matches!(
-        target_obj.shape,
-        Some(petunia_design_document::ShapeKind::LocalPath { .. })
-    ));
+    assert!(attached_text(&bridge, id).is_none());
+    assert_eq!(bridge.snapshot().total_objects, 2);
+    assert_eq!(
+        bridge.session().unwrap().find_object(target),
+        before.find_object(target)
+    );
+    petunia_design_io::export_document_svg(bridge.session().unwrap().document()).unwrap();
+    bridge.undo().unwrap();
+    assert_eq!(bridge.session().unwrap().document(), &before);
+    // Alt over an unattached path reports the missing shaping capability.
+    let alt = SemanticModifiers {
+        duplicate: true,
+        ..Default::default()
+    };
+    let point = GPoint::new(50., 0.);
+    let result = tool.on_pointer_event(
+        &NormalizedPointerEvent::new(
+            PointerPhase::Down,
+            PointerButton::Primary,
+            point,
+            point,
+            alt,
+        ),
+        &mut bridge,
+        &camera,
+        &mut snap,
+    );
+    assert!(result.is_err());
+    assert_eq!(bridge.session().unwrap().document(), &before);
 }
 
 #[test]
-fn text_drag_along_path_sets_span() {
+fn text_drag_over_a_path_creates_a_frame_without_implicit_attachment() {
     let mut bridge = PetuniaDesignGuiBridge::new();
-    bridge.new_document("Text Span").expect("doc");
-    let camera = ViewportCamera::new(1000.0, 1000.0);
+    bridge.new_document("Text frame").unwrap();
+    let camera = ViewportCamera::new(1000., 1000.);
     let mut snap = SnapEngine::new();
-    let mut gen = IdGenerator::new();
-    let target = text_path_line(&mut bridge, &mut gen);
-    let mut tool = TextTool::new(TextToolMode::Artistic);
-    let plain = SemanticModifiers::default();
-
-    let p0 = GPoint::new(20.0, 0.0);
-    let p1 = GPoint::new(150.0, 0.0);
-    tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p0, p0, plain),
-        &mut bridge,
-        &camera,
-        &mut snap,
-    )
-    .unwrap();
-    tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Move, PointerButton::Primary, p1, p1, plain),
-        &mut bridge,
-        &camera,
-        &mut snap,
-    )
-    .unwrap();
-    tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Up, PointerButton::Primary, p1, p1, plain),
-        &mut bridge,
-        &camera,
-        &mut snap,
-    )
-    .unwrap();
-
+    let target = text_path_line(&mut bridge, &mut IdGenerator::new());
+    let original = bridge
+        .session()
+        .unwrap()
+        .find_object(target)
+        .unwrap()
+        .clone();
+    let mut tool = TextTool::new(TextToolMode::Frame);
+    for (phase, point) in [
+        (PointerPhase::Down, GPoint::new(20., 0.)),
+        (PointerPhase::Move, GPoint::new(150., 40.)),
+        (PointerPhase::Up, GPoint::new(150., 40.)),
+    ] {
+        tool.on_pointer_event(
+            &NormalizedPointerEvent::new(
+                phase,
+                PointerButton::Primary,
+                point,
+                point,
+                SemanticModifiers::default(),
+            ),
+            &mut bridge,
+            &camera,
+            &mut snap,
+        )
+        .unwrap();
+    }
     let id = bridge.selection().selected_ids[0];
-    let att = attached_text(&bridge, id).expect("attached");
-    assert_eq!(att.target, target);
-    assert!((att.start - 0.1).abs() < 1e-6, "got {att:?}");
-    assert!((att.end - 0.75).abs() < 1e-6, "got {att:?}");
+    assert!(attached_text(&bridge, id).is_none());
+    let obj = bridge.session().unwrap().find_object(id).unwrap();
+    assert_eq!(
+        obj.text_style.flow,
+        petunia_design_document::TextFlow::Frame
+    );
+    assert_eq!(obj.bounds, Some([20., 0., 130., 40.]));
+    assert_eq!(
+        bridge.session().unwrap().find_object(target),
+        Some(&original)
+    );
+    petunia_design_io::export_document_svg(bridge.session().unwrap().document()).unwrap();
 }
 
 #[test]
@@ -4762,10 +4813,10 @@ fn text_handle_drag_moves_start_with_one_undo() {
     let camera = ViewportCamera::new(1000.0, 1000.0);
     let mut snap = SnapEngine::new();
     let mut gen = IdGenerator::new();
-    text_path_line(&mut bridge, &mut gen);
+    let target = text_path_line(&mut bridge, &mut gen);
     let mut tool = TextTool::new(TextToolMode::Artistic);
     let plain = SemanticModifiers::default();
-    text_click(&mut tool, &mut bridge, &camera, &mut snap, 50.0, 0.0, plain);
+    seed_legacy_attachment(&mut bridge, target, 0.25, 1.0);
     let id = bridge.selection().selected_ids[0];
     assert!(tool.overlays(&camera, &bridge).text_path_handles.is_some());
 
@@ -4808,17 +4859,9 @@ fn text_alt_click_detaches() {
     let camera = ViewportCamera::new(1000.0, 1000.0);
     let mut snap = SnapEngine::new();
     let mut gen = IdGenerator::new();
-    text_path_line(&mut bridge, &mut gen);
+    let target = text_path_line(&mut bridge, &mut gen);
     let mut tool = TextTool::new(TextToolMode::Artistic);
-    text_click(
-        &mut tool,
-        &mut bridge,
-        &camera,
-        &mut snap,
-        50.0,
-        0.0,
-        SemanticModifiers::default(),
-    );
+    seed_legacy_attachment(&mut bridge, target, 0.25, 1.0);
     let id = bridge.selection().selected_ids[0];
     assert!(attached_text(&bridge, id).is_some());
 
@@ -4886,7 +4929,10 @@ fn text_on_path_svg_uses_textpath_href() {
     );
 
     let svg = petunia_design_io::export_document_svg(bridge.session().unwrap().document()).unwrap();
-    assert!(!svg.contains("<textPath"), "basic creation must not implicitly attach to a path");
+    assert!(
+        !svg.contains("<textPath"),
+        "basic creation must not implicitly attach to a path"
+    );
     assert!(
         svg.contains(&format!("id=\"{target}\"")),
         "missing href:\n{svg}"
@@ -4894,62 +4940,26 @@ fn text_on_path_svg_uses_textpath_href() {
 }
 
 #[test]
-fn text_span_uses_single_shared_flatten() {
-    // F7.3(a): the 25-sample span preview must serve every sample from ONE
-    // memoized flatten (F2 `cached_*`), never 25 re-flattens. Probe:
-    // `flatten_lookup_count` counts `cached_polygons` lookups, so the old
-    // 25× `cached_sample_at` loop reads 25 while the shared walk reads 1.
+fn legacy_attachment_handles_share_one_cached_flatten() {
     let mut bridge = PetuniaDesignGuiBridge::new();
-    bridge.new_document("Text Flatten").expect("doc");
-    let camera = ViewportCamera::new(1000.0, 1000.0);
-    let mut snap = SnapEngine::new();
-    let mut gen = IdGenerator::new();
-    text_path_line(&mut bridge, &mut gen);
-    let mut tool = TextTool::new(TextToolMode::Artistic);
-    let plain = SemanticModifiers::default();
-
-    // Arm a pending attach drag: Down on the path, then preview the span.
-    let p0 = GPoint::new(20.0, 0.0);
-    tool.on_pointer_event(
-        &NormalizedPointerEvent::new(PointerPhase::Down, PointerButton::Primary, p0, p0, plain),
-        &mut bridge,
-        &camera,
-        &mut snap,
-    )
-    .unwrap();
+    bridge.new_document("Legacy geometry").unwrap();
+    let camera = ViewportCamera::new(1000., 1000.);
+    let target = text_path_line(&mut bridge, &mut IdGenerator::new());
+    seed_legacy_attachment(&mut bridge, target, 0.1, 1.0);
+    let tool = TextTool::new(TextToolMode::Artistic);
     bridge.reset_flatten_stats();
-    let overlays = tool.overlays(&camera, &bridge);
-    assert!(
-        overlays.text_path_handles.is_some(),
-        "pending attach drag must preview the span"
-    );
-    assert_eq!(
-        bridge.flatten_lookup_count(),
-        1,
-        "span preview must fetch the flatten exactly once, got {}",
-        bridge.flatten_lookup_count()
-    );
-    assert!(
-        bridge.flatten_compute_count() <= 1,
-        "at most one real flatten per tolerance, got {}",
-        bridge.flatten_compute_count()
-    );
-    // A second identical preview hits the memo without new work.
-    let lookups = bridge.flatten_lookup_count();
+    let handles = tool.overlays(&camera, &bridge).text_path_handles.unwrap();
+    assert_eq!(handles.len(), 2);
+    assert_eq!(bridge.flatten_lookup_count(), 1);
+    assert!(bridge.flatten_compute_count() <= 1);
     let computes = bridge.flatten_compute_count();
-    let _ = tool.overlays(&camera, &bridge);
-    assert!(
-        bridge.flatten_compute_count() == computes,
-        "second preview must not re-flatten ({} -> {})",
-        computes,
-        bridge.flatten_compute_count()
+    assert_eq!(
+        tool.overlays(&camera, &bridge).text_path_handles.unwrap(),
+        handles
     );
-    assert!(
-        bridge.flatten_lookup_count() == lookups + 1,
-        "second preview is one more shared lookup, got {} -> {}",
-        lookups,
-        bridge.flatten_lookup_count()
-    );
+    assert_eq!(bridge.flatten_compute_count(), computes);
+    assert_eq!(bridge.flatten_lookup_count(), 2);
+    assert!(petunia_design_io::export_document_svg(bridge.session().unwrap().document()).is_err());
 }
 
 #[test]
@@ -4959,19 +4969,10 @@ fn text_layout_span_matches_cached_span_endpoints() {
     let mut bridge = PetuniaDesignGuiBridge::new();
     bridge.new_document("Text Layout Span").expect("doc");
     let camera = ViewportCamera::new(1000.0, 1000.0);
-    let mut snap = SnapEngine::new();
     let mut gen = IdGenerator::new();
-    text_path_line(&mut bridge, &mut gen);
-    let mut tool = TextTool::new(TextToolMode::Artistic);
-    text_click(
-        &mut tool,
-        &mut bridge,
-        &camera,
-        &mut snap,
-        50.0,
-        0.0,
-        SemanticModifiers::default(),
-    );
+    let target = text_path_line(&mut bridge, &mut gen);
+    let tool = TextTool::new(TextToolMode::Artistic);
+    seed_legacy_attachment(&mut bridge, target, 0.25, 1.0);
     let text_id = bridge.selection().selected_ids[0];
     let (target, attachment, content, family, size, spacing) = {
         let session = bridge.session().unwrap();
@@ -5036,19 +5037,9 @@ fn text_on_path_hit_resolves_layout_offset() {
     let mut bridge = PetuniaDesignGuiBridge::new();
     bridge.new_document("Text Hit").expect("doc");
     let camera = ViewportCamera::new(1000.0, 1000.0);
-    let mut snap = SnapEngine::new();
     let mut gen = IdGenerator::new();
-    text_path_line(&mut bridge, &mut gen);
-    let mut tool = TextTool::new(TextToolMode::Artistic);
-    text_click(
-        &mut tool,
-        &mut bridge,
-        &camera,
-        &mut snap,
-        50.0,
-        0.0,
-        SemanticModifiers::default(),
-    );
+    let target = text_path_line(&mut bridge, &mut gen);
+    seed_legacy_attachment(&mut bridge, target, 0.25, 1.0);
     let text_id = bridge.selection().selected_ids[0];
     let (target, attachment, content, family, size, spacing) = {
         let session = bridge.session().unwrap();
@@ -5598,17 +5589,9 @@ fn vector_crop_clips_with_one_undo() {
 }
 
 #[test]
-fn raster_tools_refuse_the_gesture_instead_of_discarding_it() {
-    // SelectionBrush, FloodSelect, Brush and Eraser need pixel layers that do
-    // not exist yet. They used to accept a drag and return an empty changeset,
-    // which reported a successful edit the document never received. They must
-    // now fail at `Down`, before any gesture state is accumulated.
-    for kind in [
-        PhotoToolKind::SelectionBrush,
-        PhotoToolKind::FloodSelect,
-        PhotoToolKind::Brush,
-        PhotoToolKind::Eraser,
-    ] {
+fn unavailable_selection_samplers_refuse_the_gesture() {
+    // Unsupported samplers fail before accumulating gesture state.
+    for kind in [PhotoToolKind::SelectionBrush, PhotoToolKind::FloodSelect] {
         let mut bridge = PetuniaDesignGuiBridge::new();
         bridge.new_document("Raster Stub").expect("doc");
         let camera = ViewportCamera::new(1000.0, 1000.0);
@@ -5654,7 +5637,7 @@ fn raster_tools_refuse_the_gesture_instead_of_discarding_it() {
 }
 
 #[test]
-fn blocked_photo_tools_are_not_exposed_as_wired() {
+fn photo_registry_distinguishes_samplers_from_implemented_pixel_tools() {
     // The rail and the menus resolve availability from the registry, so a tool
     // whose handler refuses must not be advertised as `Wired`.
     use petunia_design_application::surfaces::{SurfaceKind, SurfaceStatus, SURFACES};
@@ -5669,12 +5652,78 @@ fn blocked_photo_tools_are_not_exposed_as_wired() {
             .iter()
             .find(|entry| entry.kind == SurfaceKind::Tool && entry.action == Some(action))
             .unwrap_or_else(|| panic!("`{action}` is missing from the registry"));
-        assert!(
-            matches!(entry.status, SurfaceStatus::Disabled(_)),
-            "`{action}` refuses its gesture, so it must be Disabled, got {:?}",
-            entry.status
-        );
+        if action.ends_with(".brush") || action.ends_with(".eraser") {
+            assert_eq!(entry.status, SurfaceStatus::Wired);
+        } else {
+            assert!(matches!(entry.status, SurfaceStatus::Disabled(_)));
+        }
     }
+}
+
+#[test]
+fn photo_brush_and_eraser_commit_real_pixels_with_one_undo_each() {
+    let mut bridge = PetuniaDesignGuiBridge::new();
+    bridge.new_document("Paint").unwrap();
+    let camera = ViewportCamera::new(1000., 1000.);
+    let mut snap = SnapEngine::new();
+    let original = bridge.session().unwrap().document().clone();
+    let point = GPoint::new(10., 10.);
+    let mut brush = PhotoTool::new(PhotoToolKind::Brush);
+    for phase in [PointerPhase::Down, PointerPhase::Up] {
+        brush
+            .on_pointer_event(
+                &NormalizedPointerEvent::new(
+                    phase,
+                    PointerButton::Primary,
+                    point,
+                    point,
+                    SemanticModifiers::default(),
+                ),
+                &mut bridge,
+                &camera,
+                &mut snap,
+            )
+            .unwrap();
+        if phase == PointerPhase::Down {
+            assert_eq!(bridge.session().unwrap().document(), &original);
+        }
+    }
+    let painted = bridge.session().unwrap().document().clone();
+    let id = bridge.selection().selected_ids[0];
+    let Some(petunia_design_document::ShapeKind::Raster { layer }) =
+        &painted.find_object(id).unwrap().shape
+    else {
+        panic!("real raster layer required")
+    };
+    let before = layer.pixel(10, 10)[3];
+    assert!(before > 0.5);
+    let mut eraser = PhotoTool::new(PhotoToolKind::Eraser);
+    for phase in [PointerPhase::Down, PointerPhase::Up] {
+        eraser
+            .on_pointer_event(
+                &NormalizedPointerEvent::new(
+                    phase,
+                    PointerButton::Primary,
+                    point,
+                    point,
+                    SemanticModifiers::default(),
+                ),
+                &mut bridge,
+                &camera,
+                &mut snap,
+            )
+            .unwrap();
+    }
+    let Some(petunia_design_document::ShapeKind::Raster { layer }) =
+        &bridge.session().unwrap().find_object(id).unwrap().shape
+    else {
+        panic!("raster layer preserved")
+    };
+    assert!(layer.pixel(10, 10)[3] < before);
+    bridge.undo().unwrap();
+    assert_eq!(bridge.session().unwrap().document(), &painted);
+    bridge.undo().unwrap();
+    assert_eq!(bridge.session().unwrap().document(), &original);
 }
 
 #[test]

@@ -112,11 +112,11 @@ fn cmyk_naive_to_srgb(cmyk: Cmyk) -> Srgb {
     Srgb::clamped(r, g, b)
 }
 
-/// Closed-form CIELAB→sRGB (D65) owned by Petunia; the moxcms-assisted path
-/// in `transform` cross-checks this differentially.
+/// CIELAB D50 PCS → XYZ D50 → Bradford D65 → encoded sRGB.
+/// ICC transforms provide the independent differential reference.
 fn lab_to_srgb(lab: Lab) -> Srgb {
-    const XN: f64 = 0.950_47;
-    const ZN: f64 = 1.088_83;
+    const XN: f64 = 0.964_22;
+    const ZN: f64 = 0.825_21;
     const DELTA: f64 = 6.0 / 29.0;
 
     let fy = (f64::from(lab.l) + 16.0) / 116.0;
@@ -133,6 +133,12 @@ fn lab_to_srgb(lab: Lab) -> Srgb {
     let y = cube(fy);
     let z = ZN * cube(fz);
 
+    // Bradford adaptation from ICC D50 PCS to the sRGB D65 white.
+    let (x, y, z) = (
+        0.955_576_6 * x - 0.023_039_3 * y + 0.063_163_6 * z,
+        -0.028_289_5 * x + 1.009_941_6 * y + 0.021_007_7 * z,
+        0.012_298_2 * x - 0.020_483 * y + 1.329_909_8 * z,
+    );
     // XYZ D65 → linear sRGB.
     let r_lin = 3.240_6 * x - 1.537_2 * y - 0.498_6 * z;
     let g_lin = -0.968_9 * x + 1.875_8 * y + 0.041_5 * z;

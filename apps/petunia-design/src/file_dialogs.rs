@@ -57,6 +57,16 @@ impl Component for FileDialog {
         let busy = *picker_busy.read() || ui.file_job.read().is_some();
         let title = ui.text(if matches!(request, FilePrompt::Recover) {
             "recover_title"
+        } else if matches!(
+            request,
+            FilePrompt::Profile {
+                purpose: crate::file_workflows::ProfilePurpose::Press,
+                ..
+            }
+        ) {
+            "icc_press"
+        } else if matches!(request, FilePrompt::Profile { .. }) {
+            "icc_monitor"
         } else if saving {
             "save"
         } else {
@@ -126,14 +136,23 @@ impl Component for FileDialog {
                                         let suggestion = path.peek().clone();
                                         let browse_ui = browse_ui.clone();
                                         spawn(async move {
-                                            let mut dialog = rfd::AsyncFileDialog::new()
-                                                .set_title(caption)
-                                                .add_filter(
+                                            let mut dialog =
+                                                rfd::AsyncFileDialog::new().set_title(caption);
+                                            if matches!(expected, FilePrompt::Profile { .. }) {
+                                                dialog = dialog.add_filter(
+                                                    "ICC",
+                                                    &["icc", "icm", "ICC", "ICM"],
+                                                );
+                                            } else {
+                                                dialog = dialog.add_filter(
                                                     "Petunia",
                                                     &["PTND", "ptnd", "aubrieta", "aubri"],
                                                 );
-                                            if !saving && !matches!(expected, FilePrompt::Recover) {
-                                                dialog = dialog.add_filter("SVG", &["svg"]);
+                                                if !saving
+                                                    && !matches!(expected, FilePrompt::Recover)
+                                                {
+                                                    dialog = dialog.add_filter("SVG", &["svg"]);
+                                                }
                                             }
                                             if saving {
                                                 if let Some(name) =

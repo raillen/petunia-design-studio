@@ -11,10 +11,9 @@ Decisions are first-class documentation. Each ADR records context, decision, con
 | [ADR-005](/developers/adr/ADR-005-immutable-image-assets) | Immutable image sources, bounded decoding and shared display pyramids | Accepted contract · Milestone Required · validation pending |
 | [ADR-006](/developers/adr/ADR-006-shaped-text-and-canvas-preview) | Shaped text outlines and latest-request canvas presentation | Accepted contract · Milestone Required · validation pending |
 | [ADR-007](/developers/adr/ADR-007-desktop-file-workflows) | Desktop file workflow adapter | Accepted contract · Milestone Required · see bounded UI checks |
-
 | [ADR-008](/developers/adr/ADR-008-object-edit-drafts) | Stable object edit drafts | Accepted contract · Milestone Required · bounded UI checks |
-
 | [ADR-009](/developers/adr/ADR-009-persistent-raster-and-native-workflows) | Persistent raster, binary resources and native workflows | Accepted contract · Milestone Required · validation pending |
+| [ADR-010](/developers/adr/ADR-010-text-histogram-icc-and-pdf) | Draft text, composition histograms, ICC resources and faithful PDF | Accepted contract · Milestone Required / V1 Required · final evidence separate |
 
 ## Writing a new ADR
 

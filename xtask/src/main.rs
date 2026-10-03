@@ -18,7 +18,10 @@ fn main() {
         "fixtures" => cmd_fixtures(&root),
         "fuzz-smoke" => cmd_post_v1("fuzz-smoke", "cargo-fuzz corpus not wired in P00"),
         "bench-smoke" => cmd_bench_smoke(&root),
-        "ui-gauntlet" => cmd_post_v1("ui-gauntlet", "GPUI shell does not exist in P00"),
+        "ui-gauntlet" => run_cargo(
+            &root,
+            &["test", "-p", "petunia-design", "--bin", "petunia-design"],
+        ),
         "security" => cmd_security(&root),
         "migrations" => run_cargo(
             &root,
@@ -53,7 +56,7 @@ fn main() {
 }
 
 fn print_help() {
-    println!("xtask — Aubrieta repository facade");
+    println!("xtask — Petunia repository facade");
     println!("usage: cargo xtask <command>");
     println!("commands: verify architecture test conformance fixtures fuzz-smoke");
     println!("          bench-smoke ui-gauntlet security migrations docs");
@@ -184,6 +187,8 @@ fn cmd_architecture(root: &Path) -> i32 {
     ];
     let mut failures = 0;
     for (crate_name, forbidden) in rules {
+        let mut forbidden = forbidden.to_vec();
+        forbidden.push("freya");
         let manifest = root.join("crates").join(crate_name).join("Cargo.toml");
         let text = match std::fs::read_to_string(&manifest) {
             Ok(text) => text,
@@ -193,7 +198,7 @@ fn cmd_architecture(root: &Path) -> i32 {
                 continue;
             }
         };
-        for needle in *forbidden {
+        for needle in &forbidden {
             if text.contains(needle) {
                 eprintln!("arch: FORBIDDEN `{crate_name}` depends on `{needle}`");
                 failures += 1;
@@ -201,7 +206,7 @@ fn cmd_architecture(root: &Path) -> i32 {
         }
         // Source-level backstop: no GUI/GPU imports in domain sources.
         let src = root.join("crates").join(crate_name).join("src");
-        if let Err(error) = grep_forbidden(&src, forbidden) {
+        if let Err(error) = grep_forbidden(&src, &forbidden) {
             eprintln!("arch: {error}");
             failures += 1;
         }
@@ -256,16 +261,19 @@ fn cmd_conformance(root: &Path) -> i32 {
     run_cargo(root, &["run", "-p", "petunia-design-cli"])
 }
 
-/// Fixture presence check (P00: schema + roundtrip covered by unit tests).
+/// Four executable MVP project scenarios through commands, history and files.
 fn cmd_fixtures(root: &Path) -> i32 {
-    println!("xtask fixtures: checking tests/trees (P00: unit-level only)");
-    let dir = root.join("crates/petunia_design_document");
-    if !dir.is_dir() {
-        eprintln!("fixtures: missing {}", dir.display());
-        return 1;
-    }
-    println!("fixtures: OK (unit fixtures only in P00)");
-    0
+    println!("xtask fixtures: logo, poster, masked painting, multi-artboard workflows");
+    run_cargo(
+        root,
+        &[
+            "test",
+            "-p",
+            "petunia_design_application",
+            "--test",
+            "mvp_projects",
+        ],
+    )
 }
 
 fn cmd_bench_smoke(root: &Path) -> i32 {
@@ -356,13 +364,13 @@ fn cmd_docs(root: &Path) -> i32 {
         }
         Err(error) => {
             eprintln!("docs: node unavailable ({error}); parity unchecked");
-            return 0;
+            return 2;
         }
     }
     // Dead-link gate (ignoreDeadLinks: false): only when docs deps exist.
     if !root.join("docs/node_modules/.bin/vitepress").exists() {
-        println!("docs: OK (parity green; build unchecked — `pnpm install` in docs/)");
-        return 0;
+        eprintln!("docs: BLOCKED_EXTERNAL (install docs dependencies to verify dead links)");
+        return 2;
     }
     let manager = if root.join("docs/pnpm-lock.yaml").exists() {
         "pnpm"
@@ -408,14 +416,16 @@ fn cmd_gauntlet(root: &Path) -> i32 {
             return code;
         }
     }
-    println!("gauntlet: P00 slice green");
+    println!(
+        "gauntlet: implemented automated gates passed; human release acceptance remains separate"
+    );
     0
 }
 
 /// Explicit Post-V1 stub: normal state with a disabled reason, never a panic.
 fn cmd_post_v1(command: &str, reason: &str) -> i32 {
-    println!("xtask {command}: POST_V1 — {reason}");
-    0
+    eprintln!("xtask {command}: unavailable — {reason}; no evidence was produced");
+    2
 }
 
 fn workspace_root() -> PathBuf {
@@ -426,7 +436,16 @@ fn workspace_root() -> PathBuf {
 }
 
 fn run_cargo(root: &Path, args: &[&str]) -> i32 {
-    let status = Command::new("cargo").args(args).current_dir(root).status();
+    let mut cargo = Command::new("cargo");
+    if matches!(
+        args.first(),
+        Some(&("test" | "clippy" | "check" | "build" | "run"))
+    ) {
+        cargo.arg(args[0]).arg("--locked").args(&args[1..]);
+    } else {
+        cargo.args(args);
+    }
+    let status = cargo.current_dir(root).status();
     match status {
         Ok(status) if status.success() => 0,
         Ok(status) => status.code().unwrap_or(1),

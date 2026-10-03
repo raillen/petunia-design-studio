@@ -91,3 +91,7 @@ Undo         // History reverte o ChangeSet único (um gesto = um undo)
 4. Sem UI falsa: comportamento não declarado é implementado, desabilitado-com-motivo, oculto ou marcado experimental.
 
 Decisões por trás deste desenho: [Índice de ADRs](/pt/developers/adr/) · [ADR-001](/pt/developers/adr/ADR-001-effect-chain).
+
+## Atualização do contrato em 2026-10-03
+
+[ADR-010](/pt/developers/adr/ADR-010-text-histogram-icc-and-pdf) governa rascunhos de texto, histogramas da composição, recursos ICC imutáveis (schema 5), atribuição de perfis com precondições e o subconjunto fiel de PDF. A aceitação de impressão profissional e hardware permanece aberta.

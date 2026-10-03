@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+petunia_design_color = { path = "../petunia_design_color" }
 petunia_design_foundation = { path = "../petunia_design_foundation" }
 petunia_design_geometry = { path = "../petunia_design_geometry" }
 petunia_design_document = { path = "../petunia_design_document" }
@@ -17,3 +18,6 @@ rstar = "0.12"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"

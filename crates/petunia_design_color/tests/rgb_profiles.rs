@@ -19,7 +19,9 @@ fn rgba16_profile_conversion_keeps_deep_samples_and_alpha() {
     let mut pixels: Vec<_> = samples.iter().flat_map(|n| n.to_le_bytes()).collect();
     convert_rgba_to_srgb(&mut pixels, true, 1, &bytes, &|| false).unwrap();
     let result: Vec<_> = pixels
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|v| u16::from_le_bytes([v[0], v[1]]))
         .collect();
     assert_eq!(result[3], 1537);

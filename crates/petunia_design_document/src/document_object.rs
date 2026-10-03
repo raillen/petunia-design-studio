@@ -57,7 +57,9 @@ fn default_true() -> bool {
     true
 }
 
-fn default_fill_rule() -> petunia_design_geometry::FillRule { petunia_design_geometry::FillRule::EvenOdd }
+fn default_fill_rule() -> petunia_design_geometry::FillRule {
+    petunia_design_geometry::FillRule::EvenOdd
+}
 fn default_one() -> f64 {
     1.0
 }
@@ -612,7 +614,9 @@ impl DocumentObject {
                 return dx * dx + dy * dy <= 1.0;
             }
             if self.shape.as_ref().is_some_and(ShapeKind::is_path) {
-                return self.to_path().contains_point_with_fill(point, 0.5, self.fill_rule);
+                return self
+                    .to_path()
+                    .contains_point_with_fill(point, 0.5, self.fill_rule);
             }
             true
         } else {

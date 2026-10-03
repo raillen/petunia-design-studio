@@ -59,8 +59,16 @@ pub struct PositionedGlyph {
     pub origin: GPoint,
     pub advance: f32,
     pub font_family: String,
+    /// Index into the immutable font resources of this prepared text.
+    pub font_resource: usize,
     pub rtl: bool,
     pub bounds: [f64; 4],
+}
+#[derive(Debug)]
+pub struct PreparedFont {
+    pub bytes: Arc<Vec<u8>>,
+    pub face_index: u32,
+    pub subset_embedding_allowed: bool,
 }
 #[derive(Debug)]
 struct Residency {
@@ -77,10 +85,19 @@ impl Drop for Residency {
 pub struct PreparedText {
     outline: GPath,
     glyphs: Vec<PositionedGlyph>,
+    fonts: Vec<PreparedFont>,
     line_count: usize,
     height: f64,
     missing_family: bool,
+    lines: Vec<PreparedLine>,
+    boundaries: Vec<usize>,
     _residency: Residency,
+}
+#[derive(Clone, Debug)]
+struct PreparedLine {
+    range: [usize; 2],
+    top: f64,
+    height: f64,
 }
 impl PreparedText {
     /// Borrowed ink; scenes retain this owner rather than escaping an uncharged path.
@@ -90,6 +107,10 @@ impl PreparedText {
     /// Visual-order glyphs with source UTF-8 clusters.
     pub fn glyphs(&self) -> &[PositionedGlyph] {
         &self.glyphs
+    }
+    /// Exact font faces used by shaping, captured on the worker for export.
+    pub fn fonts(&self) -> &[PreparedFont] {
+        &self.fonts
     }
     /// Number of laid out lines, including wrapped lines.
     pub fn line_count(&self) -> usize {
@@ -120,6 +141,116 @@ impl PreparedText {
     /// Actual outline footprint, absent for whitespace.
     pub fn ink_bounds(&self) -> Option<GRect> {
         self.outline.bounding_box()
+    }
+    /// Caret geometry in the same local frame as the artwork outlines. Logical
+    /// graphemes within a ligature divide its advance; bidi reverses the edges.
+    pub fn caret_rect(&self, offset: usize) -> GRect {
+        let offset = self
+            .boundaries
+            .iter()
+            .copied()
+            .take_while(|&b| b <= offset)
+            .last()
+            .unwrap_or(0);
+        let glyph = self
+            .glyphs
+            .iter()
+            .find(|g| g.source_range[0] <= offset && offset < g.source_range[1])
+            .or_else(|| {
+                self.glyphs
+                    .iter()
+                    .rev()
+                    .find(|g| g.source_range[1] == offset)
+            });
+        if let Some(glyph) = glyph {
+            let blank = self
+                .lines
+                .iter()
+                .find(|line| line.range == [offset, offset]);
+            if let Some(line) = blank {
+                return GRect::new(0., line.top, 0., line.top + line.height);
+            }
+            let x = self.cluster_x(glyph, offset);
+            return GRect::new(x, glyph.bounds[1], x, glyph.bounds[1] + glyph.bounds[3]);
+        }
+        let line = self
+            .lines
+            .iter()
+            .find(|line| line.range[0] <= offset && offset <= line.range[1])
+            .or_else(|| self.lines.last());
+        line.map_or(GRect::new(0., 0., 0., self.height.max(1.)), |line| {
+            GRect::new(0., line.top, 0., line.top + line.height)
+        })
+    }
+    /// Visual hit → logical UTF-8 grapheme boundary, including blank paragraphs.
+    pub fn offset_at_point(&self, point: GPoint) -> usize {
+        let Some(line) = self.lines.iter().min_by(|a, b| {
+            (point.y - (a.top + a.height / 2.))
+                .abs()
+                .total_cmp(&(point.y - (b.top + b.height / 2.)).abs())
+        }) else {
+            return 0;
+        };
+        let mut best = (f64::INFINITY, line.range[0]);
+        for glyph in self
+            .glyphs
+            .iter()
+            .filter(|g| (g.bounds[1] - line.top).abs() < 0.01)
+        {
+            for &offset in self.cluster_boundaries(glyph) {
+                let distance = (point.x - self.cluster_x(glyph, offset)).abs();
+                if distance < best.0 {
+                    best = (distance, offset);
+                }
+            }
+        }
+        best.1
+    }
+    /// Rectangles are in visual order; a bidi selection can be disjoint.
+    pub fn selection_rects(&self, range: std::ops::Range<usize>) -> Vec<GRect> {
+        if range.is_empty() {
+            return Vec::new();
+        }
+        let mut result: Vec<GRect> = Vec::new();
+        for glyph in &self.glyphs {
+            let start = range.start.max(glyph.source_range[0]);
+            let end = range.end.min(glyph.source_range[1]);
+            if start >= end {
+                continue;
+            }
+            let a = self.cluster_x(glyph, start);
+            let b = self.cluster_x(glyph, end);
+            let rect = GRect::new(
+                a.min(b),
+                glyph.bounds[1],
+                a.max(b),
+                glyph.bounds[1] + glyph.bounds[3],
+            );
+            if let Some(previous) = result.last_mut().filter(|p| {
+                (p.y0 - rect.y0).abs() < 0.01 && rect.x0 <= p.x1 + 0.5 && rect.x1 >= p.x0 - 0.5
+            }) {
+                *previous = previous.union(rect).unwrap_or(rect);
+            } else {
+                result.push(rect);
+            }
+        }
+        result
+    }
+    fn cluster_x(&self, glyph: &PositionedGlyph, offset: usize) -> f64 {
+        let stops = self.cluster_boundaries(glyph);
+        let count = stops.len().saturating_sub(1).max(1);
+        let position = stops.partition_point(|&b| b < offset).min(count);
+        let fraction = position as f64 / count as f64;
+        glyph.bounds[0] + glyph.bounds[2] * if glyph.rtl { 1. - fraction } else { fraction }
+    }
+    fn cluster_boundaries(&self, glyph: &PositionedGlyph) -> &[usize] {
+        let start = self
+            .boundaries
+            .partition_point(|&b| b < glyph.source_range[0]);
+        let end = self
+            .boundaries
+            .partition_point(|&b| b <= glyph.source_range[1]);
+        &self.boundaries[start..end]
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -236,7 +367,9 @@ pub fn prepare_text(
     if let Some(hit) = hit(cache, &key) {
         return Ok(hit);
     }
-    let (outline, glyphs, lines, height, missing_family) = shape_outlines(spec, cancelled)?;
+    let (outline, glyphs, lines, height, missing_family, line_records, fonts) =
+        shape_outlines(spec, cancelled)?;
+    let boundaries: Vec<_> = crate::editing::boundaries(&spec.content).collect();
     if cancelled() {
         return Err(TextRenderError::Cancelled);
     }
@@ -253,7 +386,15 @@ pub fn prepare_text(
                     .sum::<usize>(),
             )
         })
-        .and_then(|n| n.checked_add(key.content.capacity() + key.family.capacity()))
+        .and_then(|n| {
+            n.checked_add(
+                key.content.capacity()
+                    + key.family.capacity()
+                    + boundaries.capacity() * std::mem::size_of::<usize>()
+                    + line_records.capacity() * std::mem::size_of::<PreparedLine>()
+                    + fonts.iter().map(|f| f.bytes.capacity()).sum::<usize>(),
+            )
+        })
         .ok_or(TextRenderError::Limit("prepared text bytes"))?;
     if bytes > MAX_BYTES {
         return Err(TextRenderError::Limit("prepared text bytes"));
@@ -274,9 +415,12 @@ pub fn prepare_text(
     let text = Arc::new(PreparedText {
         outline,
         glyphs,
+        fonts,
         line_count: lines,
         height,
         missing_family,
+        lines: line_records,
+        boundaries,
         _residency: Residency {
             bytes,
             account: cache.live.clone(),
@@ -294,10 +438,19 @@ pub fn prepare_text(
     Ok(text)
 }
 
+type ShapedOutlines = (
+    GPath,
+    Vec<PositionedGlyph>,
+    usize,
+    f64,
+    bool,
+    Vec<PreparedLine>,
+    Vec<PreparedFont>,
+);
 fn shape_outlines(
     spec: &TextFrameSpec,
     cancelled: &dyn Fn() -> bool,
-) -> Result<(GPath, Vec<PositionedGlyph>, usize, f64, bool), TextRenderError> {
+) -> Result<ShapedOutlines, TextRenderError> {
     let mut system = TypeSystem::lock();
     if cancelled() {
         return Err(TextRenderError::Cancelled);
@@ -346,8 +499,12 @@ fn shape_outlines(
     buffer.shape_until_scroll(&mut system, false);
     let mut combined = GPath::new();
     let mut glyphs = Vec::new();
+    let mut fonts = Vec::new();
+    let mut font_indices = HashMap::new();
+    let mut font_bytes = 0usize;
     let mut lines = 0;
     let mut height = 0.0_f64;
+    let mut line_records = Vec::new();
     let mut line_offsets: Vec<_> = cosmic_text::LineIter::new(&spec.content)
         .map(|(range, _)| range.start)
         .collect();
@@ -362,12 +519,59 @@ fn shape_outlines(
         }
         lines += 1;
         height = height.max(f64::from(run.line_top + run.line_height));
+        let line_offset = *line_offsets
+            .get(run.line_i)
+            .ok_or(TextRenderError::Invalid("invalid source paragraph"))?;
+        line_records.push(PreparedLine {
+            range: [
+                line_offset + run.glyphs.iter().map(|g| g.start).min().unwrap_or(0),
+                line_offset + run.glyphs.iter().map(|g| g.end).max().unwrap_or(0),
+            ],
+            top: f64::from(run.line_top),
+            height: f64::from(run.line_height),
+        });
         for glyph in run.glyphs {
             if cancelled() {
                 return Err(TextRenderError::Cancelled);
             }
             if glyphs.len() >= MAX_GLYPHS {
                 return Err(TextRenderError::Limit("glyph count"));
+            }
+            if let std::collections::hash_map::Entry::Vacant(e) = font_indices.entry(glyph.font_id)
+            {
+                if fonts.len() >= 64 {
+                    return Err(TextRenderError::Limit("text font resources"));
+                }
+                let font = system
+                    .db()
+                    .with_face_data(glyph.font_id, |bytes, face_index| {
+                        if bytes.len() > 16 * 1024 * 1024 {
+                            return Err(TextRenderError::Limit("font file bytes"));
+                        }
+                        let face = ttf_parser::Face::parse(bytes, face_index)
+                            .map_err(|_| TextRenderError::Invalid("invalid export font"))?;
+                        let allowed = matches!(
+                            face.permissions(),
+                            Some(
+                                ttf_parser::Permissions::Installable
+                                    | ttf_parser::Permissions::Editable
+                                    | ttf_parser::Permissions::PreviewAndPrint
+                            )
+                        ) && face.is_subsetting_allowed()
+                            && face.is_outline_embedding_allowed();
+                        Ok(PreparedFont {
+                            bytes: Arc::new(bytes.to_vec()),
+                            face_index,
+                            subset_embedding_allowed: allowed,
+                        })
+                    })
+                    .ok_or(TextRenderError::Unsupported("font resource unavailable"))??;
+                font_bytes += font.bytes.len();
+                if font_bytes > 32 * 1024 * 1024 {
+                    return Err(TextRenderError::Limit("aggregate font bytes"));
+                }
+                e.insert(fonts.len());
+                fonts.push(font);
             }
             let cluster = run
                 .text
@@ -482,6 +686,7 @@ fn shape_outlines(
                 origin,
                 advance: glyph.w,
                 font_family: family.clone(),
+                font_resource: font_indices[&glyph.font_id],
                 rtl: glyph.level.is_rtl(),
                 bounds: [
                     f64::from(glyph.x),
@@ -492,7 +697,15 @@ fn shape_outlines(
             });
         }
     }
-    Ok((combined, glyphs, lines, height, missing_family))
+    Ok((
+        combined,
+        glyphs,
+        lines,
+        height,
+        missing_family,
+        line_records,
+        fonts,
+    ))
 }
 struct Outline {
     path: GPath,

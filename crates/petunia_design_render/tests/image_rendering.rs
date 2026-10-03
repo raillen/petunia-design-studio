@@ -35,7 +35,7 @@ fn request() -> RenderRequest {
     }
 }
 fn modifier(kind: ModifierKind, size: [f64; 2]) -> ModifierItem {
-    let mut value = ModifierItem::new(1, kind);
+    let mut value = ModifierItem::enabled(1, kind);
     value.space = ModifierSpace::Local {
         reference_size: size,
     };

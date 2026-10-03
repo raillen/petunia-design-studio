@@ -187,6 +187,7 @@ impl CpuRenderer {
             cancellation,
             images: &self.images,
             prepared: RefCell::new(HashMap::new()),
+            colors: DisplayColors::new(surface.cmyk_profile.as_ref())?,
         };
         context.check_cancelled()?;
         // Capability preflight covers visible content, even if it is outside the
@@ -208,8 +209,10 @@ impl CpuRenderer {
             }
             for (source, target) in backdrop
                 .data
-                .chunks_exact(4)
-                .zip(output.pixmap.data_mut().chunks_exact_mut(4))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(output.pixmap.data_mut().as_chunks_mut::<4>().0.iter_mut())
             {
                 for c in 0..3 {
                     target[c] = ((u16::from(source[c]) * u16::from(source[3]) + 127) / 255) as u8;
@@ -278,6 +281,7 @@ struct Context<'a> {
     // Pin each admitted resource once through the complete render. Active
     // snapshots cannot evade cache residency limits by evicting their entries.
     prepared: RefCell<HashMap<ImageContentKey, Arc<PreparedImage>>>,
+    colors: DisplayColors,
 }
 
 impl Context<'_> {
@@ -607,7 +611,14 @@ impl Context<'_> {
                 let (_permit, coverage) =
                     self.path_mask(&layer, &path, local_to_layer, fill_rule)?;
                 let width = layer.pixmap.width() as usize;
-                for (index, output) in layer.pixmap.data_mut().chunks_exact_mut(4).enumerate() {
+                for (index, output) in layer
+                    .pixmap
+                    .data_mut()
+                    .as_chunks_mut::<4>()
+                    .0
+                    .iter_mut()
+                    .enumerate()
+                {
                     if index % width == 0 {
                         self.check_cancelled()?;
                     }
@@ -630,10 +641,20 @@ impl Context<'_> {
             // Existing color paints are parent-frame descriptors. Convert to
             // local explicitly; do not confuse them with local modifier frames.
             let paint_to_local = GAffine::translate(-px, -py);
-            for fill in app.fills.iter().filter(|f| f.visible) {
-                if let Some(paint) =
-                    sk_paint(&fill.paint, fill.opacity, fill.blend_mode, paint_to_local)?
-                {
+            for fill in app.fills.iter().filter(|f| {
+                f.visible
+                    && !matches!(
+                        node.source.shape,
+                        Some(ShapeKind::Image { .. } | ShapeKind::Raster { .. })
+                    )
+            }) {
+                if let Some(paint) = sk_paint(
+                    &fill.paint,
+                    fill.opacity,
+                    fill.blend_mode,
+                    paint_to_local,
+                    &self.colors,
+                )? {
                     layer
                         .pixmap
                         .fill_path(&path, &paint, fill_rule, transform, None);
@@ -645,6 +666,7 @@ impl Context<'_> {
                     stroke.opacity,
                     stroke.blend_mode,
                     paint_to_local,
+                    &self.colors,
                 )?
                 else {
                     continue;
@@ -752,9 +774,11 @@ impl Context<'_> {
                         sk::Transform::from_translate(dx as f32, dy as f32),
                         None,
                     );
-                    let rgb = petunia_design_document::resolve_color_to_rgb(color);
-                    for p in shadow.pixmap.data_mut().chunks_exact_mut(4) {
-                        let alpha = f64::from(p[3]) * opacity;
+                    let rgb = self.colors.resolve(color)?;
+                    for p in shadow.pixmap.data_mut().as_chunks_mut::<4>().0.iter_mut() {
+                        let alpha = f64::from(p[3])
+                            * opacity
+                            * f64::from(petunia_design_document::resolve_color_to_rgba(color)[3]);
                         p[0] = (f64::from(rgb[0]) * alpha).round() as u8;
                         p[1] = (f64::from(rgb[1]) * alpha).round() as u8;
                         p[2] = (f64::from(rgb[2]) * alpha).round() as u8;
@@ -837,7 +861,14 @@ impl Context<'_> {
                 )
         });
         if spatial_mask || app.opacity < 1.0 {
-            for (index, pixel) in layer.pixmap.data_mut().chunks_exact_mut(4).enumerate() {
+            for (index, pixel) in layer
+                .pixmap
+                .data_mut()
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .enumerate()
+            {
                 if index % (right - x).max(1.0) as usize == 0 {
                     self.check_cancelled()?;
                 }
@@ -921,7 +952,14 @@ impl Context<'_> {
             );
             let mask = self.render_node(mask_id, window, depth, true)?;
             let width = layer.pixmap.width() as usize;
-            for (index, pixel) in layer.pixmap.data_mut().chunks_exact_mut(4).enumerate() {
+            for (index, pixel) in layer
+                .pixmap
+                .data_mut()
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .enumerate()
+            {
                 if index % width == 0 {
                     self.check_cancelled()?;
                 }
@@ -1020,9 +1058,9 @@ impl Context<'_> {
                         }
                     }
                 }
-                for c in 0..4 {
+                for (c, channel) in rgba.iter().enumerate() {
                     pixmap.data_mut()[(y * width + x) * 4 + c] =
-                        rgba[c].round().clamp(0.0, 255.0) as u8;
+                        channel.round().clamp(0.0, 255.0) as u8;
                 }
             }
         }
@@ -1043,7 +1081,13 @@ impl Context<'_> {
             .map(PreparedAdjustment::new)
             .collect::<Result<_, _>>()?;
         let width = pixmap.width() as usize;
-        for (index, p) in pixmap.data_mut().chunks_exact_mut(4).enumerate() {
+        for (index, p) in pixmap
+            .data_mut()
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .enumerate()
+        {
             if index % width == 0 {
                 self.check_cancelled()?;
             }
@@ -1253,7 +1297,11 @@ fn closed_contours(path: &GPath) -> bool {
     closed && !open
 }
 
-fn stops(values: &[GradientStop], opacity: f64) -> Result<Vec<sk::GradientStop>, RenderError> {
+fn stops(
+    values: &[GradientStop],
+    opacity: f64,
+    colors: &DisplayColors,
+) -> Result<Vec<sk::GradientStop>, RenderError> {
     if values.is_empty() {
         return Err(RenderError::Invalid("empty gradient".into()));
     }
@@ -1265,22 +1313,25 @@ fn stops(values: &[GradientStop], opacity: f64) -> Result<Vec<sk::GradientStop>,
         return Err(RenderError::Invalid("non-finite gradient stop".into()));
     }
     sorted.sort_by(|a, b| a.offset.total_cmp(&b.offset));
-    Ok(sorted
+    sorted
         .iter()
         .map(|s| {
-            let rgb = s.resolved_rgb();
-            sk::GradientStop::new(
+            let rgb = colors.resolve(&s.color)?;
+            Ok(sk::GradientStop::new(
                 s.offset as f32,
                 sk::Color::from_rgba(
                     rgb[0],
                     rgb[1],
                     rgb[2],
-                    (s.opacity * opacity).clamp(0.0, 1.0) as f32,
+                    (s.opacity
+                        * opacity
+                        * f64::from(petunia_design_document::resolve_color_to_rgba(&s.color)[3]))
+                    .clamp(0.0, 1.0) as f32,
                 )
                 .unwrap_or(sk::Color::TRANSPARENT),
-            )
+            ))
         })
-        .collect())
+        .collect()
 }
 
 fn sk_paint(
@@ -1288,6 +1339,7 @@ fn sk_paint(
     opacity: f64,
     blend: petunia_design_document::BlendMode,
     frame: GAffine,
+    colors: &DisplayColors,
 ) -> Result<Option<sk::Paint<'static>>, RenderError> {
     if !opacity.is_finite() || !(0.0..=1.0).contains(&opacity) {
         return Err(RenderError::Invalid("invalid paint opacity".into()));
@@ -1295,16 +1347,21 @@ fn sk_paint(
     let shader = match paint {
         Paint::None => return Ok(None),
         Paint::Solid(color) => {
-            let rgb = petunia_design_document::resolve_color_to_rgb(color);
+            let rgb = colors.resolve(color)?;
             sk::Shader::SolidColor(
-                sk::Color::from_rgba(rgb[0], rgb[1], rgb[2], opacity as f32)
-                    .ok_or_else(|| RenderError::Invalid("invalid paint color".into()))?,
+                sk::Color::from_rgba(
+                    rgb[0],
+                    rgb[1],
+                    rgb[2],
+                    opacity as f32 * petunia_design_document::resolve_color_to_rgba(color)[3],
+                )
+                .ok_or_else(|| RenderError::Invalid("invalid paint color".into()))?,
             )
         }
         Paint::LinearGradient(g) => sk::LinearGradient::new(
             local_gradient_point(frame, g.start)?,
             local_gradient_point(frame, g.end)?,
-            stops(&g.stops, opacity)?,
+            stops(&g.stops, opacity, colors)?,
             sk::SpreadMode::Pad,
             sk::Transform::identity(),
         )
@@ -1315,7 +1372,7 @@ fn sk_paint(
                 center,
                 center,
                 g.radius as f32,
-                stops(&g.stops, opacity)?,
+                stops(&g.stops, opacity, colors)?,
                 sk::SpreadMode::Pad,
                 sk::Transform::identity(),
             )
@@ -1380,7 +1437,7 @@ pub fn composite_raster_preview(
         .inverse()
         .ok_or_else(|| RenderError::Invalid("singular raster preview".into()))?;
     let width = output.width as usize;
-    for (index, pixel) in output.data.chunks_exact_mut(4).enumerate() {
+    for (index, pixel) in output.data.as_chunks_mut::<4>().0.iter_mut().enumerate() {
         if index % width == 0 && cancellation.is_cancelled() {
             return Err(RenderError::Cancelled);
         }
@@ -1409,8 +1466,16 @@ pub fn composite_raster_preview(
     Ok(())
 }
 
-/// Bilinear premultiplied sampling with transparent exterior, including masks.
+/// Bilinear premultiplied sampling with padded edges inside the pixel frame.
+/// Coverage clips the frame; taps must not introduce a transparent fringe.
 fn sample_raster(source: &petunia_design_raster::RasterLayer, point: GPoint) -> [f32; 4] {
+    if point.x < 0.0
+        || point.y < 0.0
+        || point.x >= f64::from(source.width())
+        || point.y >= f64::from(source.height())
+    {
+        return [0.0; 4];
+    }
     let x = point.x - 0.5;
     let y = point.y - 0.5;
     let x0 = x.floor() as i64;
@@ -1424,7 +1489,12 @@ fn sample_raster(source: &petunia_design_raster::RasterLayer, point: GPoint) -> 
         (0, 1, (1.0 - fx) * fy),
         (1, 1, fx * fy),
     ] {
-        let p = source.pixel(x0.saturating_add(dx), y0.saturating_add(dy));
+        let p = source.pixel(
+            x0.saturating_add(dx)
+                .clamp(0, i64::from(source.width()) - 1),
+            y0.saturating_add(dy)
+                .clamp(0, i64::from(source.height()) - 1),
+        );
         for c in 0..3 {
             result[c] += p[c] * p[3] * weight;
         }
@@ -1434,9 +1504,54 @@ fn sample_raster(source: &petunia_design_raster::RasterLayer, point: GPoint) -> 
 }
 
 fn node_fill_rule(node: &RenderNode) -> sk::FillRule {
-    if matches!(node.source.shape, Some(ShapeKind::Text { .. })) || node.source.fill_rule == petunia_design_geometry::FillRule::NonZero {
+    if matches!(node.source.shape, Some(ShapeKind::Text { .. }))
+        || node.source.fill_rule == petunia_design_geometry::FillRule::NonZero
+    {
         sk::FillRule::Winding
     } else {
         sk::FillRule::EvenOdd
+    }
+}
+
+// Native CMM state is owned by a worker frame; immutable document profiles are
+// the only shared values. Paint results have a bounded per-frame cache.
+struct DisplayColors {
+    cmyk: Option<petunia_design_color::icc::CmykDisplayTransform>,
+    cache: RefCell<HashMap<String, [f32; 3]>>,
+}
+impl DisplayColors {
+    fn new(profile: Option<&petunia_design_color::IccProfile>) -> Result<Self, RenderError> {
+        let cmyk = profile
+            .map(|profile| {
+                petunia_design_color::icc::CmykDisplayTransform::new(profile, Default::default())
+            })
+            .transpose()
+            .map_err(|e| RenderError::Invalid(e.to_string()))?;
+        Ok(Self {
+            cmyk,
+            cache: RefCell::new(HashMap::new()),
+        })
+    }
+    fn resolve(&self, token: &str) -> Result<[f32; 3], RenderError> {
+        if let Some(rgb) = self.cache.borrow().get(token) {
+            return Ok(*rgb);
+        }
+        let rgb = match petunia_design_color::icc::parse_cmyk_token(token)
+            .map_err(|e| RenderError::Invalid(e.to_string()))?
+        {
+            Some(ink) => self
+                .cmyk
+                .as_ref()
+                .ok_or_else(|| {
+                    RenderError::Invalid("CMYK ink has no assigned ICC press profile".into())
+                })?
+                .convert(ink)
+                .map_err(|e| RenderError::Invalid(e.to_string()))?,
+            None => petunia_design_document::resolve_color_to_rgb(token),
+        };
+        if self.cache.borrow().len() < 4096 && token.len() <= 512 {
+            self.cache.borrow_mut().insert(token.to_owned(), rgb);
+        }
+        Ok(rgb)
     }
 }

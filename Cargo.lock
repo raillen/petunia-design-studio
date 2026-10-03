@@ -1188,6 +1188,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edf234dd1594d6dd434a8fb8cada51ddbbc593e40e4a01556a0b31c62da2775b"
 
 [[package]]
+name = "dunce"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
+
+[[package]]
 name = "easer"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2320,6 +2326,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "lcms2"
+version = "6.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80205450f4d8b4de92f18111de879f3df4a6b728915e89b73c38f7a59a81ad90"
+dependencies = [
+ "bytemuck",
+ "foreign-types",
+ "lcms2-sys",
+]
+
+[[package]]
+name = "lcms2-sys"
+version = "4.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "264db0b78119c5a37d78bb41fb355daab29b3b29430b53cd92e3da51f0ab06cc"
+dependencies = [
+ "cc",
+ "dunce",
+ "libc",
+ "pkg-config",
+]
+
+[[package]]
 name = "lebe"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3269,6 +3298,7 @@ dependencies = [
  "petunia_design_platform",
  "petunia_design_raster",
  "petunia_design_shell",
+ "petunia_design_text",
  "rfd",
  "serde_json",
 ]
@@ -3298,6 +3328,7 @@ dependencies = [
 name = "petunia_design_application"
 version = "0.1.0"
 dependencies = [
+ "petunia_design_color",
  "petunia_design_document",
  "petunia_design_foundation",
  "petunia_design_geometry",
@@ -3308,6 +3339,7 @@ dependencies = [
  "rstar",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.20",
  "tiny-skia",
 ]
@@ -3316,10 +3348,13 @@ dependencies = [
 name = "petunia_design_color"
 version = "0.1.0"
 dependencies = [
+ "lcms2",
  "moxcms 0.9.1",
  "petunia_design_foundation",
  "proptest",
  "serde",
+ "serde_json",
+ "sha2",
  "thiserror 2.0.20",
 ]
 
@@ -3327,6 +3362,7 @@ dependencies = [
 name = "petunia_design_document"
 version = "0.1.0"
 dependencies = [
+ "petunia_design_color",
  "petunia_design_foundation",
  "petunia_design_geometry",
  "petunia_design_raster",
@@ -3394,11 +3430,13 @@ dependencies = [
  "petunia_design_document",
  "petunia_design_foundation",
  "petunia_design_geometry",
+ "petunia_design_jobs",
  "petunia_design_raster",
  "petunia_design_render",
- "roxmltree",
+ "petunia_design_text",
  "png",
  "proptest",
+ "roxmltree",
  "serde",
  "serde_json",
  "sha2",
@@ -3498,6 +3536,7 @@ dependencies = [
  "petunia_design_jobs",
  "petunia_design_platform",
  "petunia_design_raster",
+ "petunia_design_render",
  "petunia_design_resources",
  "petunia_design_text",
  "proptest",
@@ -3532,6 +3571,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "ttf-parser",
+ "unicode-segmentation",
 ]
 
 [[package]]

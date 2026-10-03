@@ -213,7 +213,9 @@ impl BrushDab {
                 let out_color = self.blend_mode.blend(src_color, dst_color);
 
                 if out_color != dst_color && !tile_map.set_pixel(px, py, out_color) {
-                    return Err(PetuniaError::invalid_input("brush tile allocation budget exceeded"));
+                    return Err(PetuniaError::invalid_input(
+                        "brush tile allocation budget exceeded",
+                    ));
                 }
             }
         }

@@ -59,25 +59,13 @@ const SUBTRACTIVE: Color = Color::from_rgb(0xF0, 0x6C, 0x8D);
 
 /// Transforms an sRGB color with alpha through soft-proofing simulation and channel isolation.
 pub fn apply_color_proof_and_channels(
-    mut r: f32,
-    mut g: f32,
-    mut b: f32,
+    r: f32,
+    g: f32,
+    b: f32,
     a: f32,
-    soft_proof: bool,
+    _soft_proof: bool,
     channel_view: usize,
 ) -> (f32, f32, f32, f32) {
-    if soft_proof {
-        use petunia_design_color::proof::{
-            ColorManagementProvider, DefaultColorManagementProvider, ProofContext,
-        };
-        use petunia_design_color::{ColorValue, Srgb};
-        let provider = DefaultColorManagementProvider;
-        let ctx = ProofContext::for_profile("US Web Coated (SWOP) v2");
-        let (simulated, _) = provider.soft_proof(&ColorValue::Rgb(Srgb::clamped(r, g, b)), &ctx);
-        r = simulated.r;
-        g = simulated.g;
-        b = simulated.b;
-    }
     match channel_view {
         1 => (r, r, r, a),   // Red channel monochrome
         2 => (g, g, g, a),   // Green channel monochrome
@@ -94,6 +82,7 @@ pub fn canvas_view(
     soft_proof: bool,
     channel_view: usize,
     preview: Option<crate::canvas_preview::PresentedPreview>,
+    text_edit: crate::canvas_text::Overlay,
 ) -> Canvas {
     let on_render = RenderCallback::new(move |context: &mut CanvasContext| {
         paint_scene(
@@ -103,6 +92,7 @@ pub fn canvas_view(
             soft_proof,
             channel_view,
             preview.as_ref(),
+            &text_edit,
         );
     });
     canvas(on_render).width(Size::fill()).height(Size::fill())
@@ -116,6 +106,7 @@ fn paint_scene(
     soft_proof: bool,
     channel_view: usize,
     preview: Option<&crate::canvas_preview::PresentedPreview>,
+    text_edit: &crate::canvas_text::Overlay,
 ) {
     let canvas = context.canvas;
     paint_surface(
@@ -158,6 +149,27 @@ fn paint_scene(
         snapshot.surface.as_ref(),
         &snapshot.camera,
     );
+    let mut highlight = Paint::default();
+    highlight.set_color(Color::from_argb(75, 53, 199, 212));
+    highlight.set_anti_alias(true);
+    for path in &text_edit.selection {
+        canvas.draw_path(&build_skia_path(path, &snapshot.camera), &highlight);
+    }
+    for path in &text_edit.preedit {
+        canvas.draw_path(
+            &build_skia_path(path, &snapshot.camera),
+            &outline_paint(MARQUEE, 1.),
+        );
+    }
+    if let Some([a, b]) = text_edit.caret {
+        let a = snapshot.camera.doc_to_screen(a);
+        let b = snapshot.camera.doc_to_screen(b);
+        canvas.draw_line(
+            (a.x as f32, a.y as f32),
+            (b.x as f32, b.y as f32),
+            &outline_paint(ACCENT, 1.5),
+        );
+    }
     if let Some((orient, pos)) = in_flight_guide {
         let guide_color = Color::from_rgb(0x00, 0xE5, 0xFF);
         let guide_paint = outline_paint(guide_color, 1.5);
@@ -1155,8 +1167,9 @@ mod tests {
         assert_eq!(unproofed, (0.0, 1.0, 1.0, 1.0));
 
         let proofed = apply_color_proof_and_channels(r, g, b, a, true, 0);
-        // Press CMYK gamut compression alters the unprintable pure RGB neon cyan
-        assert_ne!(proofed.0, unproofed.0);
+        // Overlay colors are not proofed with a named/fabricated profile.
+        // Actual completed artwork is transformed by the ICC worker.
+        assert_eq!(proofed, unproofed);
         assert!(proofed.0 >= 0.0 && proofed.0 <= 1.0);
         assert!(proofed.1 >= 0.0 && proofed.1 <= 1.0);
         assert!(proofed.2 >= 0.0 && proofed.2 <= 1.0);

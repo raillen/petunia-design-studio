@@ -207,6 +207,11 @@ pub enum Command {
         surface: SurfaceId,
         background: Option<String>,
     },
+    /// Assigns a real ICC press profile while preserving C/M/Y/K numbers.
+    SetSurfaceCmykProfile {
+        surface: SurfaceId,
+        profile: Option<petunia_design_color::IccProfile>,
+    },
     /// Sets whether a surface is included in batch exports.
     SetSurfaceExportEnabled { surface: SurfaceId, enabled: bool },
     /// Adds a layout guide to a surface.
@@ -578,6 +583,9 @@ pub fn execute(
             surface,
             background,
         } => mutator.set_surface_background(*surface, background.clone()),
+        Command::SetSurfaceCmykProfile { surface, profile } => {
+            mutator.set_surface_cmyk_profile(*surface, profile.clone())
+        }
         Command::SetSurfaceExportEnabled { surface, enabled } => {
             mutator.set_surface_export_enabled(*surface, *enabled)
         }

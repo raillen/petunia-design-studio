@@ -1,0 +1,72 @@
+    Finished `dev` profile [unoptimized] target(s) in 0.09s
+     Running `target/debug/xtask ui-gauntlet`
+   Compiling petunia-design v0.1.0 (/workspace/scratch/3dcad04bba27/petunia-design-studio/apps/petunia-design)
+    Finished `test` profile [unoptimized] target(s) in 5.23s
+     Running unittests src/main.rs (target/debug/deps/petunia_design-d7ece5df9772b49c)
+
+running 62 tests
+test dialogs::prompt_tests::prompt_parses_plain_and_signed_values ... ok
+test dialogs::prompt_tests::prompt_rejects_empty_non_numeric_and_non_finite ... ok
+test canvas_paint::tests::test_soft_proof_gamut_simulation ... ok
+test canvas_paint::tests::test_channel_view_isolation ... ok
+test dock::tests::dock_color_and_swatches_and_background_tasks_panels_integrate ... ok
+test dock::tests::dock_quick_color_swatch_and_stroke_commands_mutate_object ... ok
+test dock::tests::dock_tonal_adjustments_and_live_filters_commands_mutate_object ... ok
+test dock::tests::layer_fx_drop_shadow_inner_shadow_and_blur_controls ... ok
+test dock::tests::pen_and_photo_brush_settings_and_hud_extensions ... ok
+test file_workflows::tests::invalid_new_configuration_never_creates_a_tab ... ok
+test file_workflows::tests::non_utf8_native_paths_fail_without_panicking_or_changing_the_session ... ok
+test file_workflows::tests::failed_save_preserves_tabs_dirty_state_and_active_tab ... ok
+test dock::tests::modifier_stack_inspector_and_bake_commands_mutate_object ... ok
+test file_workflows::tests::stale_prompt_never_saves_replacement_tab ... ok
+test file_workflows::tests::save_targets_inactive_tab_and_restores_active_tab ... ok
+test file_workflows::tests::save_all_waits_for_each_destination_before_closing_any_tab ... ok
+test dock::tests::bottom_dock_and_splitter_open_close_and_diagnostics ... ok
+test dock::tests::left_dock_and_splitter_open_close_and_symbol_insertion ... ok
+test object_edits::tests::clearing_text_preserves_typography_path_and_undo_redo ... ok
+test object_edits::tests::conflicting_property_is_rejected_but_unrelated_edit_is_preserved ... ok
+test object_edits::tests::draft_cannot_write_another_session_with_the_same_object_id ... ok
+test object_edits::tests::editing_only_width_preserves_exact_rotation ... ok
+test object_edits::tests::size_step_preserves_every_other_text_attribute ... ok
+test object_edits::tests::text_drafts_are_owned_by_their_object_not_shared_with_other_content ... ok
+test object_edit_ui_tests::layer_rename_button_does_not_replace_selection ... ok
+test object_edits::tests::transform_is_atomic_validates_units_and_keeps_invalid_drafts_out_of_history ... ok
+test typography::tests::invalid_or_conflicting_typography_does_not_publish ... ok
+test object_edits::tests::unchanged_properties_do_not_create_history_and_names_are_validated ... ok
+test typography::tests::typography_preserves_content_and_replays_as_one_transaction ... ok
+test dock::tests::dock_renders_all_four_tabs_and_switches ... ok
+test workflow_ui_tests::canvas_typing_is_a_draft_and_commit_is_one_undoable_command ... ok
+test dock::tests::histogram_computation_and_channel_filtering ... ok
+test workflow_ui_tests::export_request_uses_selected_dpi_and_normalizes_suffix_before_overwrite_check ... ok
+test workflow_ui_tests::close_confirmation_keeps_its_target_when_tab_indices_change ... ok
+test workflow_ui_tests::escape_cancels_canvas_text_and_tab_switch_does_not_consume_other_tab_keys ... ok
+test object_edit_ui_tests::text_cancel_and_shortcuts_leave_document_and_tools_unchanged ... ok
+test workflow_ui_tests::export_selected_dpi_produces_the_promised_png_dimensions ... ok
+test workflow_ui_tests::new_menu_prompt_and_cancel_create_no_tab ... ok
+test workspace_tests::confirm_close_safeguards_unsaved_document ... ok
+test workflow_ui_tests::save_without_destination_opens_prompt_and_cancel_preserves_document ... ok
+test workflow_ui_tests::typing_tool_shortcuts_inside_file_dialog_leaves_canvas_tool_unchanged ... ok
+test object_edit_ui_tests::rename_invalid_draft_is_visible_then_confirmation_and_undo_work ... ok
+test object_edit_ui_tests::clearing_text_remains_empty_after_reopening_and_preserves_styles ... ok
+test workspace_tests::gradient_and_measure_overlays_and_controls ... ok
+test workspace_tests::group_and_ungroup_actions_work_on_selection ... ok
+test workflow_ui_tests::open_failure_is_visible_and_preserves_existing_tab ... ok
+test workspace_tests::in_canvas_text_editor_updates_text_object ... ok
+test workspace_tests::navigator_minimap_and_dock_width_adjustments ... ok
+test workspace_tests::new_document_action_and_custom_geometry ... ok
+test workspace_tests::place_image_menu_token_requests_path_without_creating_a_placeholder ... ok
+test workflow_ui_tests::confirming_new_creates_exactly_one_configured_tab ... ok
+test workspace_tests::raster_tile_to_skia_image_converts_correctly ... ok
+test workspace_tests::pointer_drag_creates_a_shape_through_the_shell ... ok
+test workspace_tests::status_bar_tool_hints_resolve_in_both_locales_and_pluralize ... ok
+test workspace_tests::select_toggle_deselect_and_reselect_cycle ... ok
+test workspace_tests::pointer_drag_moves_shape_on_canvas ... ok
+test workspace_tests::ruler_drag_creates_horizontal_and_vertical_guides ... ok
+test workspace_tests::text_tool_click_creates_text_object_and_select_tool_can_select_it ... ok
+test object_edit_ui_tests::invalid_transform_keeps_dialog_and_values_then_applies_once ... ok
+test workspace_tests::export_document_action_dispatches_cleanly ... ok
+test workspace_tests::dialog_toggle_lifecycle_has_no_hook_panics ... ok
+test workspace_tests::full_app_dock_layout_and_click_test ... ok
+
+test result: ok. 62 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s
+

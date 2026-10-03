@@ -4,7 +4,7 @@ C4-style view of Petunia Design Studio: contexts, containers, components and the
 
 Current persistence and publication contract: [ADR-002](/developers/adr/ADR-002-local-path-and-integrity), with [generated source/test reference](/implementation/contracts.json). The [execution ledger](/developers/implementation-progress) distinguishes implemented corrections from pending milestones.
 
-Shared rendering/presentation: [ADR-006](/developers/adr/ADR-006-shaped-text-and-canvas-preview) connects shaped glyph outlines and immutable source-keyed workers to the canvas. Pixel output is unvalidated; text editing/styles, tiles and full product acceptance remain open.
+Shared rendering/presentation: [ADR-006](/developers/adr/ADR-006-shaped-text-and-canvas-preview) connects shaped glyph outlines and immutable source-keyed workers to the canvas. See ADR-010 for the current text/analysis/color/export contract and its bounded verification scope.
 
 ## Level 1 — System context
 
@@ -91,3 +91,7 @@ Undo         // History rolls back the single ChangeSet (one gesture = one undo)
 4. No fake UI: undeclared behavior is implemented, disabled-with-reason, hidden, or marked experimental.
 
 Decisions behind this shape: [ADR index](/developers/adr/) · [ADR-001](/developers/adr/ADR-001-effect-chain).
+
+## 2026-10-03 contract update
+
+[ADR-010](/developers/adr/ADR-010-text-histogram-icc-and-pdf) governs draft text, composition histograms, immutable ICC resources (schema 5), guarded profile assignment and faithful subset PDF. Professional print and hardware acceptance remain open.

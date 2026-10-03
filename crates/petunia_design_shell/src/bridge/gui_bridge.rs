@@ -94,6 +94,13 @@ impl PetuniaDesignGuiBridge {
             "petunia_design_color",
         ));
 
+        capabilities.register(petunia_design_application::CapabilityInfo::available(
+            "ptnd.export.pdf",
+            "petunia_design_io",
+        ));
+        capabilities.register(petunia_design_application::CapabilityInfo::disabled("ptnd.export.pdf-x4", "petunia_design_io", "PDF/X-4 OutputIntent, float process paints, overprint and independent print validation are not complete"));
+        capabilities.register(petunia_design_application::CapabilityInfo::disabled("ptnd.raster.cmyk", "petunia_design_raster", "persistent pixel planes currently support RGB/Gray; four-ink CMYK planes are V1 Required"));
+
         Self {
             sessions: Vec::new(),
             clipboard: Vec::new(),
@@ -343,6 +350,7 @@ impl PetuniaDesignGuiBridge {
         Ok(())
     }
     /// Publish admitted native clipboard data through the ordinary command lane.
+    #[allow(clippy::too_many_arguments)] // Captured clipboard completion guards and placement.
     pub fn complete_clipboard_fragment(
         &mut self,
         target: petunia_design_application::session::SessionIdentity,
@@ -443,6 +451,31 @@ impl PetuniaDesignGuiBridge {
         }))?;
         session.selection.select_exact(vec![id]);
         Ok(changes)
+    }
+
+    /// Publishes a worker-validated ICC assignment to its captured document.
+    /// No color conversion is implicit, and tab switching cannot retarget it.
+    pub fn assign_prepared_cmyk_profile(
+        &mut self,
+        target: petunia_design_application::session::SessionIdentity,
+        revision: u64,
+        surface: SurfaceId,
+        profile: petunia_design_color::IccProfile,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let session = self
+            .sessions
+            .iter_mut()
+            .find(|s| s.identity() == target)
+            .ok_or_else(|| PetuniaError::not_found("ICC target tab was closed"))?;
+        if session.current_revision() != revision {
+            return Err(PetuniaError::invalid_input(
+                "ICC target changed during admission; retry assignment",
+            ));
+        }
+        session.execute_command(CommandRequest::new(Command::SetSurfaceCmykProfile {
+            surface,
+            profile: Some(profile),
+        }))
     }
 
     /// Opens a project from disk, replacing the active session.

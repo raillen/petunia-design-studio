@@ -23,9 +23,9 @@ pub use adjustments::{
     AdjustmentChannel, AdjustmentItem, AdjustmentKind, ChannelLevels,
 };
 pub use appearance::{
-    resolve_color_to_rgb, AppearanceStack, BlendMode, EffectItem, EffectKind, FillItem,
-    GradientStop, LinearGradient, Paint, RadialGradient, StrokeAlignment, StrokeCap, StrokeItem,
-    StrokeJoin,
+    resolve_color_to_rgb, resolve_color_to_rgba, AppearanceStack, BlendMode, EffectItem,
+    EffectKind, FillItem, GradientStop, LinearGradient, Paint, RadialGradient, StrokeAlignment,
+    StrokeCap, StrokeItem, StrokeJoin,
 };
 pub use changeset::{Change, ChangeSet};
 pub use document::{Document, Surface};
