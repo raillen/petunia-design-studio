@@ -60,6 +60,7 @@ impl PixelFillTool {
                 flow: 1.0,
                 opacity: settings.opacity,
                 color: settings.color,
+                ink: settings.ink,
                 erase: false,
             },
         )?;

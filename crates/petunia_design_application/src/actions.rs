@@ -15,6 +15,7 @@ impl ActionId {
     pub const EDIT_PREFERENCES: &'static str = "ptnd.action.edit.preferences";
     pub const FILL_SET: &'static str = "ptnd.action.fill.set";
     pub const FILE_PLACE: &'static str = "ptnd.action.file.place";
+    pub const RASTER_CREATE_CMYK: &'static str = "ptnd.action.raster.create_cmyk";
 
     // Design Persona Tool Actions (08.24, 08.33, 10.1 - 10.7)
     pub const TOOL_SELECT: &'static str = "ptnd.tool.select";

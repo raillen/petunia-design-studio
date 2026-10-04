@@ -1,6 +1,6 @@
 //! Schema/resource regression sources; no execution during MVP implementation.
 use petunia_design_document::{Document, DocumentMutator, DocumentObject, ShapeKind};
-use petunia_design_foundation::{ObjectId, SurfaceId, NATIVE_SCHEMA_VERSION};
+use petunia_design_foundation::{ObjectId, SurfaceId};
 use petunia_design_io::{open_package, save_package};
 use petunia_design_raster::{BitDepth, RasterLayer, RasterLayerKind};
 use std::{
@@ -105,8 +105,10 @@ fn schema_four_requires_an_explicit_binary_resource_contract() {
             *bytes = serde_json::to_vec(&value).unwrap();
         }
     });
-    assert_eq!(NATIVE_SCHEMA_VERSION, 5);
-    assert!(open_package(&path).is_err());
+    assert!(open_package(&path)
+        .unwrap_err()
+        .to_string()
+        .contains("requires binary resources"));
 }
 #[test]
 fn shared_tiles_are_written_once_and_remain_shared_after_reopening() {
@@ -183,8 +185,8 @@ fn opaque_sparse_mask_background_and_zero_coverage_binary_tile_roundtrip() {
     else {
         panic!("mask source missing")
     };
-    assert_eq!(layer.pixel(128, 2)[3], 0.);
-    assert_eq!(layer.pixel(127, 2)[3], 1.);
+    assert_eq!(layer.pixel(128, 2).unwrap()[3], 0.);
+    assert_eq!(layer.pixel(127, 2).unwrap()[3], 1.);
 }
 
 fn press_profile() -> petunia_design_color::IccProfile {

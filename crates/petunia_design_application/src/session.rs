@@ -389,6 +389,27 @@ impl DocumentSession {
         self.active_surface
     }
 
+    /// Profile used by native layer creation: one selected ink layer, then
+    /// the active surface. UI availability and command admission share it.
+    pub fn native_layer_profile(&self) -> Option<&petunia_design_color::IccProfile> {
+        let surface = self.document.surface(self.active_surface?).ok()?;
+        let selected = if let [id] = self.selection.selected_ids.as_slice() {
+            surface
+                .objects()
+                .iter()
+                .find(|object| object.id == *id)
+                .and_then(|object| match &object.shape {
+                    Some(petunia_design_document::ShapeKind::Raster { layer }) => {
+                        layer.cmyk_profile()
+                    }
+                    _ => None,
+                })
+        } else {
+            None
+        };
+        selected.or(surface.cmyk_profile.as_ref())
+    }
+
     /// Switches the active editing surface.
     pub fn set_active_surface(&mut self, surface: SurfaceId) {
         if self.active_surface == Some(surface) {
@@ -934,6 +955,43 @@ impl DocumentSession {
             // Clipping masks: the first selected object is the mask boundary
             // (10.5 Table B), mirrored from `hierarchy_service` so the panel
             // and the Action lane cannot drift apart.
+            "ptnd.action.raster.create_cmyk" => {
+                let surface = self
+                    .active_surface()
+                    .ok_or_else(|| PetuniaError::not_found("no active CMYK layer surface"))?;
+                let board = self.document.surface(surface)?;
+                let profile = self.native_layer_profile().cloned().ok_or_else(|| {
+                    PetuniaError::capability_unavailable(
+                        "assign a CMYK press ICC profile before creating a native ink layer",
+                    )
+                })?;
+                let [width, height] = board.dimensions;
+                let bounds = [board.origin[0], board.origin[1], width, height];
+                let layer = petunia_design_raster::RasterLayer::new_cmyk(
+                    width.ceil() as u32,
+                    height.ceil() as u32,
+                    petunia_design_raster::BitDepth::Sixteen,
+                    profile,
+                )?;
+                let id = self.next_object_id();
+                let changes = self.transact(
+                    "Create native CMYK layer",
+                    vec![Command::CreateShapeObject {
+                        surface,
+                        id,
+                        name: "CMYK layer".into(),
+                        shape: petunia_design_document::ShapeKind::Raster {
+                            layer: std::sync::Arc::new(layer),
+                        },
+                        bounds: Some(bounds),
+                        fill: None,
+                        stroke: None,
+                        stroke_width: 0.,
+                    }],
+                )?;
+                self.selection.select_exact(vec![id]);
+                Ok(changes)
+            }
             "ptnd.action.object.pixel_mask.create" => {
                 let payload = self.with_selection_targets(&request.payload);
                 let ids = target_ids(&payload)?;

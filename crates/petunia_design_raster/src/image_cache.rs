@@ -300,7 +300,11 @@ impl ImageCache {
             account: self.live_bytes.clone(),
             bytes,
         };
-        if let Some(profile) = decoded.icc_profile.as_ref() {
+        if let Some(profile) = decoded
+            .icc_profile
+            .as_ref()
+            .filter(|_| !decoded.format.is_cmyk())
+        {
             petunia_design_color::rgb_profiles::convert_rgba_to_srgb(
                 &mut decoded.data,
                 decoded.format == PixelFormat::Rgba16,
@@ -369,6 +373,51 @@ fn linear_premultiplied(
     cancelled: &dyn Fn() -> bool,
 ) -> Result<Vec<[f32; 4]>, ImageAssetError> {
     let mut output = float_buffer(image.width as usize * image.height as usize)?;
+    if image.format.is_cmyk() {
+        let profile = petunia_design_color::IccProfile::new(
+            "Embedded CMYK image profile".into(),
+            image
+                .icc_profile
+                .clone()
+                .ok_or(ImageAssetError::Unsupported("CMYK image profile missing"))?,
+        )
+        .map_err(|e| ImageAssetError::Invalid(e.to_string()))?;
+        let transform =
+            petunia_design_color::CmykDisplayTransform::new(&profile, Default::default())
+                .map_err(|e| ImageAssetError::Invalid(e.to_string()))?;
+        let bpp = image.format.bytes_per_pixel();
+        for (samples, output) in image.data.chunks(bpp * 512).zip(output.chunks_mut(512)) {
+            if cancelled() {
+                return Err(ImageAssetError::Cancelled);
+            }
+            let mut inks = Vec::with_capacity(output.len());
+            let mut alphas = Vec::with_capacity(output.len());
+            for p in samples.chunks_exact(bpp) {
+                let sample = |index: usize| {
+                    if bpp == 5 {
+                        f32::from(p[index]) / 255.
+                    } else {
+                        f32::from(u16::from_le_bytes([p[index * 2], p[index * 2 + 1]])) / 65535.
+                    }
+                };
+                inks.push([sample(0), sample(1), sample(2), sample(3)]);
+                alphas.push(sample(4));
+            }
+            let mut rgb = vec![[0.; 3]; output.len()];
+            transform
+                .convert_batch(&inks, &mut rgb)
+                .map_err(|e| ImageAssetError::Invalid(e.to_string()))?;
+            for ((out, rgb), alpha) in output.iter_mut().zip(rgb).zip(alphas) {
+                *out = [
+                    srgb_to_linear(rgb[0]) * alpha,
+                    srgb_to_linear(rgb[1]) * alpha,
+                    srgb_to_linear(rgb[2]) * alpha,
+                    alpha,
+                ];
+            }
+        }
+        return Ok(output);
+    }
     for (i, out) in output.iter_mut().enumerate() {
         if i % image.width as usize == 0 && cancelled() {
             return Err(ImageAssetError::Cancelled);

@@ -6,6 +6,8 @@
 //! 8-bit and 16-bit depths are V1 architectural requirements.
 
 pub mod brush;
+pub mod cmyk;
+mod cmyk_tiff;
 pub mod image_assets;
 mod image_cache;
 pub mod layer;
@@ -20,4 +22,5 @@ pub use image_cache::{ImageCache, ImageCacheLimits, ImageCacheStats, ImageLevel,
 pub use pixel::{AlphaMode, BitDepth, PixelFormat};
 pub use tile::{Tile, TileCoord, TileMap, TileState, TILE_SIZE};
 
+pub use cmyk::{InkChannel, InkCoverageReport, RasterDisplaySampler};
 pub use layer::{RasterLayer, RasterLayerKind};

@@ -1,0 +1,46 @@
+[
+  {
+    "file": "native-Cmyka8.pdf",
+    "inks": 4,
+    "bits_per_component": 8,
+    "soft_mask_bits": 8,
+    "icc_sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+    "ink_samples_exact": true,
+    "alpha_samples_exact": true,
+    "reader": "pypdf 6.10.0",
+    "independent_render": "Poppler"
+  },
+  {
+    "file": "native-Cmyka16.pdf",
+    "inks": 4,
+    "bits_per_component": 16,
+    "soft_mask_bits": 16,
+    "icc_sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+    "ink_samples_exact": true,
+    "alpha_samples_exact": true,
+    "reader": "pypdf 6.10.0",
+    "independent_render": "Poppler"
+  },
+  {
+    "file": "image-Cmyka8.pdf",
+    "inks": 4,
+    "bits_per_component": 8,
+    "soft_mask_bits": 8,
+    "icc_sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+    "ink_samples_exact": true,
+    "alpha_samples_exact": true,
+    "reader": "pypdf 6.10.0",
+    "independent_render": "Poppler"
+  },
+  {
+    "file": "image-Cmyka16.pdf",
+    "inks": 4,
+    "bits_per_component": 16,
+    "soft_mask_bits": 16,
+    "icc_sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+    "ink_samples_exact": true,
+    "alpha_samples_exact": true,
+    "reader": "pypdf 6.10.0",
+    "independent_render": "Poppler"
+  }
+]

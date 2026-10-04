@@ -37,9 +37,16 @@ use petunia_design_text::{TextLayout, TextOffset, TextStory};
 
 use serde_json::json;
 use std::collections::HashMap;
+mod native_cli;
 
 fn main() {
-    if let Err(error) = run() {
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let result = if arguments.is_empty() {
+        run()
+    } else {
+        native_cli::run(&arguments)
+    };
+    if let Err(error) = result {
         eprintln!("petunia-design-cli: {error}");
         std::process::exit(1);
     }

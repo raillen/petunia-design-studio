@@ -1,6 +1,12 @@
 # Implementation execution ledger
 
-## 2026-10-03: current correction contract
+## 2026-10-03: native CMYK continuation
+
+[ADR-011](/developers/adr/ADR-011-native-cmyk-raster) introduces five-lane 8/16-bit raster, immutable ICC assignment/conversion, schema 6/index 3, native painting/fill, editable TIFF placement, layer TAC/separation inspection, native layer TIFF and ICC CMYK PDF. UI/CLI integration is implemented. Regular PDF requires a common press profile across included CMYK surfaces/layers/images; differing profiles require explicit conversion. Whole-page ink proof/overprint, DeviceLink, PDF/X-4 and full release acceptance remain open.
+
+**Final automated evidence:** after implementation, `cargo xtask gauntlet` passed **930 workspace tests**, with zero failures/ignored tests, formatting, strict Clippy, architecture, CLI conformance and four project scenarios. `cargo xtask ui-gauntlet` passed **64 desktop tests**, already included in the total. Documentation passed with **33/33 EN/pt-BR pages** and zero dead links. Independent pypdf/Poppler verification confirmed exact ink, alpha and original ICC bytes in four layer/image PDFs at 8/16-bit. [Execution ledger](/implementation/native-cmyk-v1.json) records logs, captures, artifact hashes and limits. The 904-test result below belongs to the merged ADR-010 baseline.
+
+## Historical: merged ADR-010 correction contract
 
 This update supersedes the older unvalidated continuation summaries below. ADR-010 implements bounded text, history, histogram, ICC and PDF corrections. Final validation begins only after the implementation phase. Actual commands/results are recorded in `/implementation/mvp-v1-corrections.json`; no result is inferred from source presence. MVP human/hardware acceptance and the complete V1 scope remain open.
 

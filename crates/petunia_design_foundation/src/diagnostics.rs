@@ -32,6 +32,11 @@ impl Diagnostic {
 /// Typed domain error. Libraries return this; binaries may wrap it.
 #[derive(Debug, thiserror::Error)]
 pub enum PetuniaError {
+    #[error("cancelled [{code}]: {message}")]
+    Cancelled {
+        code: DiagnosticCode,
+        message: String,
+    },
     /// Caller supplied data that violates a contract.
     #[error("invalid input [{code}]: {message}")]
     InvalidInput {
@@ -59,6 +64,12 @@ pub enum PetuniaError {
 }
 
 impl PetuniaError {
+    pub fn cancelled(message: impl Into<String>) -> Self {
+        Self::Cancelled {
+            code: DiagnosticCode("ptnd.cancelled"),
+            message: message.into(),
+        }
+    }
     /// Builds an invalid-input error explaining the violated contract.
     pub fn invalid_input(message: impl Into<String>) -> Self {
         Self::InvalidInput {
@@ -95,7 +106,8 @@ impl PetuniaError {
     #[must_use]
     pub fn code(&self) -> &DiagnosticCode {
         match self {
-            Self::InvalidInput { code, .. }
+            Self::Cancelled { code, .. }
+            | Self::InvalidInput { code, .. }
             | Self::NotFound { code, .. }
             | Self::CapabilityUnavailable { code, .. }
             | Self::Io { code, .. } => code,

@@ -241,7 +241,10 @@ pub fn rgb_to_cmyk(
     transform.transform_pixels(pixels, &mut output);
     for pixel in &mut output {
         for channel in pixel {
-            *channel /= 100.;
+            if !channel.is_finite() {
+                return Err(invalid("ICC RGB→CMYK nonfinite output"));
+            }
+            *channel = (*channel / 100.).clamp(0., 1.);
         }
     }
     Ok(output)
@@ -377,6 +380,87 @@ impl CmykDisplayTransform {
             return Err(invalid("ICC transform produced invalid channels"));
         }
         Ok(rgb[0].map(|v| v.clamp(0., 1.)))
+    }
+    /// Bounded caller-owned output, suitable for one resident tile. Native
+    /// alpha is not passed to the CMM and is retained by the raster adapter.
+    pub fn convert_batch(
+        &self,
+        ink: &[[f32; 4]],
+        rgb: &mut [[f32; 3]],
+    ) -> Result<(), PetuniaError> {
+        validate_channels(ink)?;
+        if ink.len() != rgb.len() {
+            return Err(invalid("ICC batch layout mismatch"));
+        }
+        for (input, output) in ink.chunks(4096).zip(rgb.chunks_mut(4096)) {
+            let percent: Vec<_> = input.iter().map(|p| p.map(|v| v * 100.)).collect();
+            self.transform.transform_pixels(&percent, output);
+            for pixel in output {
+                for channel in pixel {
+                    if !channel.is_finite() {
+                        return Err(invalid("ICC produced nonfinite display channels"));
+                    }
+                    *channel = channel.clamp(0., 1.);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// One explicit CMYK-to-CMYK worker transform. Identity profile conversion
+/// copies exact unit samples rather than sending ink through a PCS round trip.
+pub struct CmykInkTransform {
+    transform: Option<Transform<[f32; 4], [f32; 4]>>,
+}
+impl CmykInkTransform {
+    pub fn new(
+        source: &IccProfile,
+        target: &IccProfile,
+        options: IccTransformOptions,
+    ) -> Result<Self, PetuniaError> {
+        if source.space != IccColorSpace::Cmyk || !target.is_press_profile() {
+            return Err(invalid("ICC CMYK ink profile mismatch"));
+        }
+        let transform = if source.id == target.id {
+            None
+        } else {
+            Some(
+                Transform::new_flags(
+                    &source.native()?,
+                    PixelFormat::CMYK_FLT,
+                    &target.native()?,
+                    PixelFormat::CMYK_FLT,
+                    intent(options.intent),
+                    flags(options),
+                )
+                .map_err(|e| invalid(format!("ICC CMYK ink conversion: {e}")))?,
+            )
+        };
+        Ok(Self { transform })
+    }
+    pub fn convert(&self, input: &[[f32; 4]], output: &mut [[f32; 4]]) -> Result<(), PetuniaError> {
+        validate_channels(input)?;
+        if input.len() != output.len() {
+            return Err(invalid("ICC ink batch layout mismatch"));
+        }
+        let Some(transform) = &self.transform else {
+            output.copy_from_slice(input);
+            return Ok(());
+        };
+        for (input, output) in input.chunks(4096).zip(output.chunks_mut(4096)) {
+            let percent: Vec<_> = input.iter().map(|p| p.map(|v| v * 100.)).collect();
+            transform.transform_pixels(&percent, output);
+            for pixel in output {
+                for channel in pixel {
+                    if !channel.is_finite() {
+                        return Err(invalid("ICC produced nonfinite ink channels"));
+                    }
+                    *channel = (*channel / 100.).clamp(0., 1.);
+                }
+            }
+        }
+        Ok(())
     }
 }
 

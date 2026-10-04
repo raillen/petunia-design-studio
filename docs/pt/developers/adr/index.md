@@ -15,6 +15,8 @@ Decisões são documentação de primeira classe. Cada ADR registra contexto, de
 | [ADR-009](/pt/developers/adr/ADR-009-persistent-raster-and-native-workflows) | Raster persistente, recursos binários e fluxos nativos | Contrato aceito · Milestone Required · validação pendente |
 | [ADR-010](/pt/developers/adr/ADR-010-text-histogram-icc-and-pdf) | Texto, histogramas, ICC e PDF fiel | Contrato aceito · Milestone Required / V1 Required · evidência final separada |
 
+| [ADR-011](/pt/developers/adr/ADR-011-native-cmyk-raster) | Raster CMYK nativo, recursos ICC e intercâmbio preservando tintas | Contrato aceito · V1 Required · evidência final separada |
+
 ## Como escrever um novo ADR
 
 1. Copie o padrão de cabeçalho do ADR-001 (`Status`, `Data`, `Escopo`, `Contexto`, `Decisão`, `Consequências`).

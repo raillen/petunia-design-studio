@@ -35,14 +35,18 @@ pub enum PixelFormat {
     Rgba16,
     Gray8,
     Gray16,
+    /// Unassociated process ink C/M/Y/K followed by a separate alpha sample.
+    Cmyka8,
+    /// Little-endian 16-bit C/M/Y/K/alpha; ink is never premultiplied.
+    Cmyka16,
 }
 
 impl PixelFormat {
     #[must_use]
     pub const fn bit_depth(self) -> BitDepth {
         match self {
-            Self::Rgba8 | Self::Gray8 => BitDepth::Eight,
-            Self::Rgba16 | Self::Gray16 => BitDepth::Sixteen,
+            Self::Rgba8 | Self::Gray8 | Self::Cmyka8 => BitDepth::Eight,
+            Self::Rgba16 | Self::Gray16 | Self::Cmyka16 => BitDepth::Sixteen,
         }
     }
 
@@ -51,7 +55,13 @@ impl PixelFormat {
         match self {
             Self::Rgba8 | Self::Rgba16 => 4,
             Self::Gray8 | Self::Gray16 => 1,
+            Self::Cmyka8 | Self::Cmyka16 => 5,
         }
+    }
+
+    #[must_use]
+    pub const fn is_cmyk(self) -> bool {
+        matches!(self, Self::Cmyka8 | Self::Cmyka16)
     }
 
     #[must_use]

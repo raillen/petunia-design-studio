@@ -5695,7 +5695,7 @@ fn photo_brush_and_eraser_commit_real_pixels_with_one_undo_each() {
     else {
         panic!("real raster layer required")
     };
-    let before = layer.pixel(10, 10)[3];
+    let before = layer.pixel(10, 10).unwrap()[3];
     assert!(before > 0.5);
     let mut eraser = PhotoTool::new(PhotoToolKind::Eraser);
     for phase in [PointerPhase::Down, PointerPhase::Up] {
@@ -5719,7 +5719,7 @@ fn photo_brush_and_eraser_commit_real_pixels_with_one_undo_each() {
     else {
         panic!("raster layer preserved")
     };
-    assert!(layer.pixel(10, 10)[3] < before);
+    assert!(layer.pixel(10, 10).unwrap()[3] < before);
     bridge.undo().unwrap();
     assert_eq!(bridge.session().unwrap().document(), &painted);
     bridge.undo().unwrap();

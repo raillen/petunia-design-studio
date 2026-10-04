@@ -4,6 +4,8 @@ Este plano parte da baseline `73447647a34f5b4be209415c36e6965c5f71b9b9` e dos 37
 
 Linux é a plataforma primária. A portabilidade fica nos contratos de plataforma e recursos; outras plataformas não devem consumir o esforço necessário para concluir os fluxos Linux. Manter Freya/Skia enquanto um teste concreto não demonstrar bloqueio insuperável; não iniciar outra migração de GUI por preferência.
 
+Incremento atual V1-B: [ADR-011](/pt/developers/adr/ADR-011-native-cmyk-raster) implementa raster nativo e intercâmbio TIFF/PDF ICC limitado. Não fecha os gates completos V1-B/V1-C.
+
 ## Regras de implementação e evidência
 
 1. Toda alteração passa por Action→Command→DocumentMutator→ChangeSet, com commit atômico, revisão esperada e undo/redo. Preview de gesto não é documento paralelo persistente. Um gesto confirmado gera uma operação de histórico; Esc cancela sem resíduos.

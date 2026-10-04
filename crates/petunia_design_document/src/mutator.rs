@@ -2653,6 +2653,29 @@ impl<'doc> DocumentMutator<'doc> {
     }
 
     /// Assigns an actual CMYK profile without changing any ink numbers.
+    pub fn assign_raster_cmyk_profile(
+        &mut self,
+        id: ObjectId,
+        profile: petunia_design_color::IccProfile,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let object = self
+            .document
+            .find_object(id)
+            .ok_or_else(|| PetuniaError::not_found("CMYK layer target"))?;
+        let Some(crate::ShapeKind::Raster { layer }) = &object.shape else {
+            return Err(PetuniaError::invalid_input(
+                "ICC assignment target is not a raster layer",
+            ));
+        };
+        let next = layer.assign_cmyk_profile(profile)?;
+        self.set_shape(
+            id,
+            Some(crate::ShapeKind::Raster {
+                layer: std::sync::Arc::new(next),
+            }),
+        )
+    }
+    /// Assigns an actual CMYK profile without changing any ink numbers.
     pub fn set_surface_cmyk_profile(
         &mut self,
         id: SurfaceId,

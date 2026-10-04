@@ -1,4 +1,4 @@
-//! PTND schemas 4–5 resource index. Pixels/source images are binary ZIP entries;
+//! PTND schemas 4–6 resource index. Pixels/source images are binary ZIP entries;
 //! JSON holds descriptors only. SHA-256 addresses verify bytes and deduplicate
 //! shared assets. Stable object IDs associate descriptors with canonical shapes.
 use petunia_design_color::IccProfile;
@@ -38,6 +38,12 @@ struct ProfileBinding {
     asset: String,
 }
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RasterProfile {
+    name: String,
+    asset: String,
+}
+#[derive(Serialize, Deserialize)]
 #[serde(tag = "type", deny_unknown_fields)]
 enum Binding {
     Image {
@@ -51,6 +57,8 @@ enum Binding {
         kind: RasterLayerKind,
         format: PixelFormat,
         alpha_mode: AlphaMode,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        profile: Option<RasterProfile>,
         tiles: Vec<TileReference>,
     },
 }
@@ -152,6 +160,21 @@ pub(crate) fn write(
                 return Err(PetuniaError::capability_unavailable("native save requires an embedded image original; unresolved linked images cannot be saved faithfully"));
             }
             Some(ShapeKind::Raster { layer }) => {
+                let profile = if layer.is_cmyk() {
+                    let profile = layer.cmyk_profile().ok_or_else(|| {
+                        PetuniaError::invalid_input("native CMYK save requires an ICC profile")
+                    })?;
+                    Some(RasterProfile {
+                        name: profile.name().to_owned(),
+                        asset: insert_asset(
+                            &mut assets,
+                            Asset::Profile(profile.clone()),
+                            &mut bytes,
+                        )?,
+                    })
+                } else {
+                    None
+                };
                 let mut tiles = Vec::with_capacity(layer.tiles().resident_tile_count());
                 for (coord, tile) in layer.tiles().tiles() {
                     let asset = insert_asset(&mut assets, Asset::Tile(tile.clone()), &mut bytes)?;
@@ -168,12 +191,13 @@ pub(crate) fn write(
                     kind: layer.kind(),
                     format: layer.tiles().format,
                     alpha_mode: layer.tiles().alpha_mode,
+                    profile,
                     tiles,
                 });
                 replacements.push((
                     object.id,
                     ShapeKind::Raster {
-                        layer: Arc::new(layer.without_tiles()),
+                        layer: Arc::new(layer.without_resources()),
                     },
                 ));
             }
@@ -186,7 +210,7 @@ pub(crate) fn write(
         }
     }
     let index = ResourceIndex {
-        version: 2,
+        version: 3,
         bindings,
         profiles,
     };
@@ -249,7 +273,8 @@ pub(crate) fn read(
     if document
         .surfaces()
         .iter()
-        .any(|surface| surface.cmyk_profile.is_some())
+        .any(|surface| surface.cmyk_profile.is_some()
+            || surface.objects().iter().any(|o| matches!(&o.shape, Some(ShapeKind::Raster { layer }) if layer.cmyk_profile().is_some())))
     {
         return Err(PetuniaError::invalid_input(
             "ICC profiles must be bound binary resources",
@@ -264,7 +289,7 @@ pub(crate) fn read(
     let index_bytes = read_bytes(archive, INDEX_PATH, MAX_INDEX_BYTES)?;
     let index: ResourceIndex = serde_json::from_slice(&index_bytes)
         .map_err(|e| PetuniaError::invalid_input(format!("native resource index: {e}")))?;
-    if !matches!(index.version, 1 | 2)
+    if !matches!(index.version, 1..=3)
         || index.bindings.len() > MAX_OBJECT_BINDINGS
         || index.profiles.len() > 1024
         || (index.version == 1 && !index.profiles.is_empty())
@@ -282,25 +307,39 @@ pub(crate) fn read(
                 object,
                 tiles,
                 format,
+                profile,
                 ..
             } => {
+                if format.is_cmyk() != profile.is_some()
+                    || (index.version < 3 && (format.is_cmyk() || profile.is_some()))
+                {
+                    return Err(PetuniaError::invalid_input(
+                        "native CMYK profile binding mismatch",
+                    ));
+                }
                 if tiles.len() > petunia_design_raster::tile::MAX_RESIDENT_TILES {
                     return Err(PetuniaError::invalid_input(
                         "native layer tile count exceeded",
                     ));
                 }
-                (
-                    *object,
-                    tiles
-                        .iter()
-                        .map(|tile| {
-                            (
-                                &tile.asset,
-                                petunia_design_raster::TILE_SIZE.pow(2) * format.bytes_per_pixel(),
-                            )
-                        })
-                        .collect(),
-                )
+                let mut resources: Vec<_> = tiles
+                    .iter()
+                    .map(|tile| {
+                        (
+                            &tile.asset,
+                            petunia_design_raster::TILE_SIZE.pow(2) * format.bytes_per_pixel(),
+                        )
+                    })
+                    .collect();
+                if let Some(profile) = profile {
+                    if profile.name.is_empty() || profile.name.len() > 512 {
+                        return Err(PetuniaError::invalid_input(
+                            "native CMYK profile label budget",
+                        ));
+                    }
+                    resources.push((&profile.asset, 4 * 1024 * 1024));
+                }
+                (*object, resources)
             }
         };
         if !objects.insert(id) {
@@ -442,6 +481,7 @@ pub(crate) fn read(
                 kind,
                 format,
                 alpha_mode,
+                profile,
                 tiles,
             } => {
                 let Some(ShapeKind::Raster { layer }) =
@@ -490,7 +530,17 @@ pub(crate) fn read(
                     };
                     resolved.push(resource);
                 }
-                let layer = layer.with_tiles(TileMap::from_tiles(format, alpha_mode, resolved)?)?;
+                let descriptor = if let Some(profile) = profile {
+                    let bytes = binaries
+                        .get(&profile.asset)
+                        .ok_or_else(|| PetuniaError::invalid_input("missing native CMYK profile"))?
+                        .clone();
+                    layer.assign_cmyk_profile(IccProfile::new(profile.name, bytes)?)?
+                } else {
+                    layer.as_ref().clone()
+                };
+                let layer =
+                    descriptor.with_tiles(TileMap::from_tiles(format, alpha_mode, resolved)?)?;
                 replacements.push((
                     object,
                     ShapeKind::Raster {

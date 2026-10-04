@@ -1122,7 +1122,7 @@ fn subtab_pill(
 }
 
 fn channel_adjuster(
-    label_text: &'static str,
+    label_text: String,
     val_text: String,
     mut on_dec: impl FnMut() + 'static,
     mut on_inc: impl FnMut() + 'static,
@@ -1134,7 +1134,7 @@ fn channel_adjuster(
         .cross_align(Alignment::Center)
         .main_align(Alignment::SpaceBetween)
         .child(
-            rect().width(Size::px(60.)).child(
+            rect().width(Size::px(100.)).child(
                 label()
                     .text(label_text)
                     .font_size(11.)
@@ -1179,6 +1179,30 @@ impl Component for ColorPanel {
         let sel = shell.read().bridge.selection();
         let first_id = sel.selected_ids.first().copied();
         let is_fill = *self.target_fill.read();
+        let raster_target = sel.selected_ids.len() == 1
+            && first_id.is_some_and(|id| {
+                matches!(
+                    shell
+                        .read()
+                        .bridge
+                        .session()
+                        .and_then(|s| s.document().find_object(id))
+                        .and_then(|o| o.shape.as_ref()),
+                    Some(ShapeKind::Raster { .. })
+                )
+            });
+        let native_profile = first_id.and_then(|id| {
+            shell
+                .read()
+                .bridge
+                .session()
+                .and_then(|s| s.document().find_object(id))
+                .and_then(|o| match &o.shape {
+                    Some(ShapeKind::Raster { layer }) => layer.cmyk_profile().cloned(),
+                    _ => None,
+                })
+        });
+        let native_ink_target = native_profile.is_some();
         let mut mut_target_fill = self.target_fill;
 
         let mut color_mode = use_state(|| 0usize); // 0: sRGB, 1: CMYK, 2: Lab, 3: Spot
@@ -1203,17 +1227,25 @@ impl Component for ColorPanel {
         // Spot state
         let spot_name = use_state(|| "PANTONE 185 C".to_string());
 
-        let profile = shell
+        let profile = native_profile.or_else(|| {
+            shell
+                .read()
+                .bridge
+                .session()
+                .and_then(|session| {
+                    session
+                        .active_surface()
+                        .and_then(|id| session.document().surface(id).ok())
+                })
+                .and_then(|surface| surface.cmyk_profile.clone())
+        });
+        let has_profile = profile.is_some();
+        let can_create_native = shell
             .read()
             .bridge
             .session()
-            .and_then(|session| {
-                session
-                    .active_surface()
-                    .and_then(|id| session.document().surface(id).ok())
-            })
-            .and_then(|surface| surface.cmyk_profile.clone());
-        let has_profile = profile.is_some();
+            .is_some_and(|session| session.native_layer_profile().is_some());
+        let cmyk_layer_ui = self.ui.clone();
         let (icc_swatch, icc_error) = crate::color_ui::use_cmyk_swatch(
             (active_mode == 1).then_some(profile).flatten(),
             [*c_val.read(), *m_val.read(), *y_val.read(), *k_val.read()]
@@ -1291,6 +1323,16 @@ impl Component for ColorPanel {
         let mut bpc_options = self.ui.proof_options;
         let mut shell_for_apply = shell;
         let token_for_apply = token.clone();
+        let ink_for_apply = (active_mode == 1 && native_ink_target).then(|| {
+            [*c_val.read(), *m_val.read(), *y_val.read(), *k_val.read()]
+                .map(|v| f32::from(v) / 100.)
+        });
+        let brush_rgb = if active_mode == 1 {
+            icc_swatch.unwrap_or([0; 3]).map(|v| f32::from(v) / 255.)
+        } else {
+            let c = _color_val.to_srgb();
+            [c.r, c.g, c.b]
+        };
 
         rect()
             .direction(Direction::Vertical)
@@ -1306,6 +1348,26 @@ impl Component for ColorPanel {
                         )
                     })
                     .child(self.ui.text("icc_assign")),
+            )
+            .child(
+                Button::new()
+                    .enabled(can_create_native)
+                    .on_press(move |_| {
+                        let result = cmyk_layer_ui.shell.clone().write().bridge.dispatch_action(
+                            petunia_design_application::ActionRequest::without_payload(
+                                petunia_design_application::ActionId::new(
+                                    petunia_design_application::ActionId::RASTER_CREATE_CMYK,
+                                ),
+                            ),
+                        );
+                        if let Err(error) = result {
+                            cmyk_layer_ui
+                                .file_error
+                                .clone()
+                                .set(Some(error.to_string()));
+                        }
+                    })
+                    .child(self.ui.text("cmyk_new_layer")),
             )
             .child(
                 Button::new()
@@ -1397,27 +1459,29 @@ impl Component for ColorPanel {
                     .spacing(theme::SPACE_1)
                     .child(
                         Button::new()
+                            .enabled(!raster_target)
                             .on_press(move |_| mut_target_fill.set(true))
                             .child(
                                 label()
-                                    .text(if is_fill {
-                                        "● Preenchimento"
-                                    } else {
-                                        "Preenchimento"
-                                    })
+                                    .text(format!(
+                                        "{}{}",
+                                        if is_fill { "● " } else { "" },
+                                        self.ui.text("color_fill")
+                                    ))
                                     .font_size(10.),
                             ),
                     )
                     .child(
                         Button::new()
+                            .enabled(!raster_target)
                             .on_press(move |_| mut_target_fill.set(false))
                             .child(
                                 label()
-                                    .text(if !is_fill {
-                                        "● Traço/Contorno"
-                                    } else {
-                                        "Traço/Contorno"
-                                    })
+                                    .text(format!(
+                                        "{}{}",
+                                        if !is_fill { "● " } else { "" },
+                                        self.ui.text("color_stroke")
+                                    ))
                                     .font_size(10.),
                             ),
                     ),
@@ -1491,7 +1555,7 @@ impl Component for ColorPanel {
                         .width(Size::fill())
                         .spacing(2.)
                         .child(channel_adjuster(
-                            "Vermelho (R):",
+                            self.ui.text("color_red"),
                             format!("{}", *r_val.read()),
                             move || {
                                 let curr = *r_val.peek();
@@ -1505,7 +1569,7 @@ impl Component for ColorPanel {
                             },
                         ))
                         .child(channel_adjuster(
-                            "Verde (G):",
+                            self.ui.text("color_green"),
                             format!("{}", *g_val.read()),
                             move || {
                                 let curr = *g_val.peek();
@@ -1519,7 +1583,7 @@ impl Component for ColorPanel {
                             },
                         ))
                         .child(channel_adjuster(
-                            "Azul (B):",
+                            self.ui.text("color_blue"),
                             format!("{}", *b_val.read()),
                             move || {
                                 let curr = *b_val.peek();
@@ -1537,7 +1601,7 @@ impl Component for ColorPanel {
                         .width(Size::fill())
                         .spacing(2.)
                         .child(channel_adjuster(
-                            "Ciano (C):",
+                            self.ui.text("color_cyan"),
                             format!("{}%", *c_val.read()),
                             move || {
                                 let curr = *c_val.peek();
@@ -1551,7 +1615,7 @@ impl Component for ColorPanel {
                             },
                         ))
                         .child(channel_adjuster(
-                            "Magenta (M):",
+                            self.ui.text("color_magenta"),
                             format!("{}%", *m_val.read()),
                             move || {
                                 let curr = *m_val.peek();
@@ -1565,7 +1629,7 @@ impl Component for ColorPanel {
                             },
                         ))
                         .child(channel_adjuster(
-                            "Amarelo (Y):",
+                            self.ui.text("color_yellow"),
                             format!("{}%", *y_val.read()),
                             move || {
                                 let curr = *y_val.peek();
@@ -1579,7 +1643,7 @@ impl Component for ColorPanel {
                             },
                         ))
                         .child(channel_adjuster(
-                            "Preto (K):",
+                            self.ui.text("color_black"),
                             format!("{}%", *k_val.read()),
                             move || {
                                 let curr = *k_val.peek();
@@ -1597,7 +1661,7 @@ impl Component for ColorPanel {
                         .width(Size::fill())
                         .spacing(2.)
                         .child(channel_adjuster(
-                            "Luminância (L):",
+                            self.ui.text("color_lightness"),
                             format!("{}", *lab_l.read()),
                             move || {
                                 let curr = *lab_l.peek();
@@ -1611,7 +1675,7 @@ impl Component for ColorPanel {
                             },
                         ))
                         .child(channel_adjuster(
-                            "Eixo a (V-V):",
+                            self.ui.text("color_lab_a"),
                             format!("{}", *lab_a.read()),
                             move || {
                                 let curr = *lab_a.peek();
@@ -1625,7 +1689,7 @@ impl Component for ColorPanel {
                             },
                         ))
                         .child(channel_adjuster(
-                            "Eixo b (A-A):",
+                            self.ui.text("color_lab_b"),
                             format!("{}", *lab_b.read()),
                             move || {
                                 let curr = *lab_b.peek();
@@ -1646,7 +1710,7 @@ impl Component for ColorPanel {
                             .spacing(theme::SPACE_1)
                             .child(
                                 label()
-                                    .text("Tinta Spot / Especial:")
+                                    .text(self.ui.text("color_spot"))
                                     .font_size(11.)
                                     .color(theme::TEXT_SECONDARY),
                             )
@@ -1682,8 +1746,21 @@ impl Component for ColorPanel {
             .child(
                 // Apply Button
                 Button::new()
-                    .enabled(first_id.is_some() && (active_mode != 1 || has_profile))
+                    .enabled(
+                        first_id.is_some()
+                            && (active_mode != 1 || (has_profile && icc_swatch.is_some()))
+                            && (!raster_target || active_mode != 3),
+                    )
                     .on_press(move |_| {
+                        if raster_target {
+                            let mut current = shell_for_apply.write();
+                            let target = current.tools.photo_brush_tool_mut();
+                            let mut settings = target.brush_settings();
+                            settings.color = [brush_rgb[0], brush_rgb[1], brush_rgb[2], 1.];
+                            settings.ink = ink_for_apply;
+                            target.set_brush_settings(settings);
+                            return;
+                        }
                         if let Some(id) = first_id {
                             let cmd = if is_fill {
                                 Command::SetFill {
@@ -1705,10 +1782,12 @@ impl Component for ColorPanel {
                     })
                     .child(
                         label()
-                            .text(if is_fill {
-                                "Aplicar ao Preenchimento"
+                            .text(if raster_target {
+                                self.ui.text("brush_apply")
+                            } else if is_fill {
+                                self.ui.text("color_apply_fill")
                             } else {
-                                "Aplicar ao Contorno"
+                                self.ui.text("color_apply_stroke")
                             })
                             .font_size(11.),
                     ),
@@ -5908,6 +5987,7 @@ mod tests {
             flow: 0.8,
             opacity: 0.9,
             color: default_brush.color,
+            ink: None,
         };
         shell
             .tools

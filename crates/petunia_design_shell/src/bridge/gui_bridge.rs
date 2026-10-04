@@ -99,7 +99,15 @@ impl PetuniaDesignGuiBridge {
             "petunia_design_io",
         ));
         capabilities.register(petunia_design_application::CapabilityInfo::disabled("ptnd.export.pdf-x4", "petunia_design_io", "PDF/X-4 OutputIntent, float process paints, overprint and independent print validation are not complete"));
-        capabilities.register(petunia_design_application::CapabilityInfo::disabled("ptnd.raster.cmyk", "petunia_design_raster", "persistent pixel planes currently support RGB/Gray; four-ink CMYK planes are V1 Required"));
+        capabilities.register(petunia_design_application::CapabilityInfo::available(
+            "ptnd.raster.cmyk",
+            "petunia_design_raster",
+        ));
+        capabilities.register(petunia_design_application::CapabilityInfo::available(
+            "ptnd.export.cmyk-tiff-layer",
+            "petunia_design_io",
+        ));
+        capabilities.register(petunia_design_application::CapabilityInfo::disabled("ptnd.color.native-ink-proof", "petunia_design_render", "whole-page direct ink proof/overprint composition is not complete; RGB-derived proof does not preserve process separations"));
 
         Self {
             sessions: Vec::new(),
@@ -191,6 +199,7 @@ impl PetuniaDesignGuiBridge {
         match self.active() {
             Some(session) => ActionContext {
                 has_document: true,
+                has_cmyk_layer_profile: session.native_layer_profile().is_some(),
                 selection_count: session.selection.selected_ids.len(),
                 can_undo: session.history().can_undo(),
                 can_redo: session.history().can_redo(),
@@ -411,6 +420,49 @@ impl PetuniaDesignGuiBridge {
         source: std::sync::Arc<petunia_design_raster::EncodedImage>,
         size: [u32; 2],
     ) -> Result<ChangeSet, PetuniaError> {
+        let shape = ShapeKind::Image {
+            path: path.to_string_lossy().into_owned(),
+            data: Some(source),
+        };
+        self.place_prepared_shape(target, revision, surface, path, shape, size)
+    }
+    /// Publishes worker-admitted native samples as an editable ink layer.
+    pub fn place_prepared_cmyk_layer(
+        &mut self,
+        target: petunia_design_application::session::SessionIdentity,
+        revision: u64,
+        surface: SurfaceId,
+        path: std::path::PathBuf,
+        layer: std::sync::Arc<petunia_design_raster::RasterLayer>,
+    ) -> Result<ChangeSet, PetuniaError> {
+        if !layer.is_cmyk() {
+            return Err(PetuniaError::invalid_input(
+                "CMYK placement requires native ink",
+            ));
+        }
+        let size = [layer.width(), layer.height()];
+        self.place_prepared_shape(
+            target,
+            revision,
+            surface,
+            path,
+            ShapeKind::Raster { layer },
+            size,
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn place_prepared_shape(
+        &mut self,
+        target: petunia_design_application::session::SessionIdentity,
+        revision: u64,
+        surface: SurfaceId,
+        path: std::path::PathBuf,
+        shape: ShapeKind,
+        size: [u32; 2],
+    ) -> Result<ChangeSet, PetuniaError> {
+        if size.contains(&0) {
+            return Err(PetuniaError::invalid_input("empty prepared image"));
+        }
         let session = self
             .sessions
             .iter_mut()
@@ -440,10 +492,7 @@ impl PetuniaDesignGuiBridge {
             name: path
                 .file_stem()
                 .map_or_else(|| "Image".into(), |n| n.to_string_lossy().into_owned()),
-            shape: ShapeKind::Image {
-                path: path.to_string_lossy().into_owned(),
-                data: Some(source),
-            },
+            shape,
             bounds: Some(bounds),
             fill: None,
             stroke: None,
@@ -475,6 +524,28 @@ impl PetuniaDesignGuiBridge {
         session.execute_command(CommandRequest::new(Command::SetSurfaceCmykProfile {
             surface,
             profile: Some(profile),
+        }))
+    }
+    pub fn assign_prepared_cmyk_layer_profile(
+        &mut self,
+        target: petunia_design_application::session::SessionIdentity,
+        revision: u64,
+        object: ObjectId,
+        profile: petunia_design_color::IccProfile,
+    ) -> Result<ChangeSet, PetuniaError> {
+        let session = self
+            .sessions
+            .iter_mut()
+            .find(|s| s.identity() == target)
+            .ok_or_else(|| PetuniaError::not_found("ICC layer target tab was closed"))?;
+        if session.current_revision() != revision {
+            return Err(PetuniaError::invalid_input(
+                "ICC layer changed during admission; retry assignment",
+            ));
+        }
+        session.execute_command(CommandRequest::new(Command::AssignRasterCmykProfile {
+            id: object,
+            profile,
         }))
     }
 

@@ -575,6 +575,14 @@ impl Document {
                 ));
             }
             for object in &mut surface.objects {
+                if doc.schema_version < 6
+                    && matches!(&object.shape,
+                    Some(crate::ShapeKind::Raster { layer }) if layer.is_cmyk())
+                {
+                    return Err(PetuniaError::invalid_input(
+                        "native CMYK pixels require schema 6",
+                    ));
+                }
                 if doc.schema_version >= 3
                     && object
                         .modifiers

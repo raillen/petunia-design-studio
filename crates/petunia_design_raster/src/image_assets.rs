@@ -147,7 +147,7 @@ impl Default for ImageDecodeLimits {
     }
 }
 
-/// Oriented straight-alpha RGBA8 or little-endian RGBA16. Source bytes remain
+/// Oriented straight-alpha RGBA8/16 or native CMYKA8/16. Source bytes remain
 /// untouched; profiles are retained, never silently interpreted as sRGB.
 #[derive(Debug)]
 pub struct DecodedImage {
@@ -158,8 +158,8 @@ pub struct DecodedImage {
     pub icc_profile: Option<Arc<Vec<u8>>>,
 }
 
-/// Decodes supported RGB/gray PNG/JPEG/TIFF/WebP. CMYK/HDR are explicit missing
-/// capabilities. Library allocation limits are supplemented by checked output
+/// Decodes RGB/gray PNG/JPEG/TIFF/WebP and ICC-profiled native CMYK TIFF.
+/// CMYK JPEG/HDR remain explicit missing capabilities. Library allocation limits are supplemented by checked output
 /// admission; codec-private allocation accounting remains best effort.
 pub fn decode_image(
     bytes: &[u8],
@@ -187,6 +187,16 @@ fn decode_with_policy(
         return Err(ImageAssetError::Unsupported("image format"));
     }
     admit_display_metadata(bytes, format)?;
+    if format == image::ImageFormat::Tiff {
+        if let Some(native) = crate::cmyk_tiff::decode(bytes, limits)? {
+            if !allow_icc {
+                return Err(ImageAssetError::Unsupported(
+                    "native CMYK TIFF requires color management",
+                ));
+            }
+            return Ok(native);
+        }
+    }
     if format == image::ImageFormat::Jpeg {
         match jpeg_components(bytes)? {
             1 | 3 => {}

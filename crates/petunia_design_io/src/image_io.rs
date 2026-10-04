@@ -176,7 +176,10 @@ impl RawRasterImage {
                         }
                     }
                 }
-                PixelFormat::Gray8 | PixelFormat::Gray16 => {}
+                PixelFormat::Gray8
+                | PixelFormat::Gray16
+                | PixelFormat::Cmyka8
+                | PixelFormat::Cmyka16 => {}
             }
         }
         Self {
@@ -206,9 +209,8 @@ impl RawRasterImage {
     }
 
     /// Converts data into a vector of u16 samples regardless of source bit depth.
-    #[must_use]
-    pub fn to_rgba16(&self) -> Vec<u16> {
-        match self.format {
+    pub fn to_rgba16(&self) -> Result<Vec<u16>, PetuniaError> {
+        Ok(match self.format {
             PixelFormat::Rgba16 => {
                 let mut out = Vec::with_capacity(self.data.len() / 2);
                 for chunk in self.data.as_chunks::<2>().0 {
@@ -240,13 +242,17 @@ impl RawRasterImage {
                 }
                 out
             }
-        }
+            PixelFormat::Cmyka8 | PixelFormat::Cmyka16 => {
+                return Err(PetuniaError::invalid_input(
+                    "native CMYK requires profile-aware display conversion",
+                ))
+            }
+        })
     }
 
     /// Converts data into a vector of u8 samples, downsampling if source is 16-bit.
-    #[must_use]
-    pub fn to_rgba8(&self) -> Vec<u8> {
-        match self.format {
+    pub fn to_rgba8(&self) -> Result<Vec<u8>, PetuniaError> {
+        Ok(match self.format {
             PixelFormat::Rgba8 => self.data.clone(),
             PixelFormat::Rgba16 => {
                 let mut out = Vec::with_capacity(self.data.len() / 2);
@@ -271,7 +277,12 @@ impl RawRasterImage {
                 }
                 out
             }
-        }
+            PixelFormat::Cmyka8 | PixelFormat::Cmyka16 => {
+                return Err(PetuniaError::invalid_input(
+                    "native CMYK requires profile-aware display conversion",
+                ))
+            }
+        })
     }
 }
 
@@ -343,6 +354,11 @@ pub fn export_raster(
     image: &RawRasterImage,
     options: &RasterExportOptions,
 ) -> Result<(Vec<u8>, Vec<DegradationItem>), PetuniaError> {
+    if image.format.is_cmyk() {
+        return Err(PetuniaError::invalid_input(
+            "native CMYK export requires its ICC profile; use export_cmyk_tiff",
+        ));
+    }
     let mut degradations = Vec::new();
 
     // Check 16-bit downsampling degradation
@@ -386,6 +402,11 @@ pub fn export_raster(
                 PixelFormat::Rgba8 => (ExtendedColorType::Rgba8, image.data.as_slice()),
                 PixelFormat::Gray16 => (ExtendedColorType::L16, image.data.as_slice()),
                 PixelFormat::Gray8 => (ExtendedColorType::L8, image.data.as_slice()),
+                PixelFormat::Cmyka8 | PixelFormat::Cmyka16 => {
+                    return Err(PetuniaError::invalid_input(
+                        "use native CMYK TIFF export with its ICC profile",
+                    ))
+                }
             };
             let native_bytes;
             let byte_slice = if cfg!(target_endian = "big")
@@ -410,7 +431,7 @@ pub fn export_raster(
             let mut encoder =
                 JpegEncoder::new_with_quality(cursor, options.jpeg_quality.clamp(1, 100));
             // JPEG requires RGB8 (no alpha)
-            let rgba8 = image.to_rgba8();
+            let rgba8 = image.to_rgba8()?;
             let mut rgb8 = Vec::with_capacity((image.width as usize) * (image.height as usize) * 3);
             for chunk in rgba8.as_chunks::<4>().0 {
                 rgb8.push(chunk[0]);
@@ -427,7 +448,7 @@ pub fn export_raster(
                 .map_err(|e| PetuniaError::io(format!("JPEG encoding error: {e}")))?;
         }
         RasterFormat::WebP => {
-            let rgba8 = image.to_rgba8();
+            let rgba8 = image.to_rgba8()?;
             let dyn_img = image::DynamicImage::ImageRgba8(
                 image::RgbaImage::from_raw(image.width, image.height, rgba8).ok_or_else(|| {
                     PetuniaError::invalid_input("Failed to assemble WebP image buffer")
@@ -441,8 +462,11 @@ pub fn export_raster(
         RasterFormat::Tiff => {
             let mut cursor = Cursor::new(&mut out);
             match image.format {
+                PixelFormat::Cmyka8 | PixelFormat::Cmyka16 => {
+                    return Err(PetuniaError::invalid_input("use native CMYK TIFF export"))
+                }
                 PixelFormat::Rgba16 | PixelFormat::Gray16 => {
-                    let u16_data = image.to_rgba16();
+                    let u16_data = image.to_rgba16()?;
                     let dyn_img = image::DynamicImage::ImageRgba16(
                         image::ImageBuffer::from_raw(image.width, image.height, u16_data)
                             .ok_or_else(|| {
@@ -456,7 +480,7 @@ pub fn export_raster(
                         })?;
                 }
                 PixelFormat::Rgba8 | PixelFormat::Gray8 => {
-                    let rgba8_data = image.to_rgba8();
+                    let rgba8_data = image.to_rgba8()?;
                     let dyn_img = image::DynamicImage::ImageRgba8(
                         image::RgbaImage::from_raw(image.width, image.height, rgba8_data)
                             .ok_or_else(|| {
@@ -531,6 +555,11 @@ pub fn import_raster(bytes: &[u8], max_bytes: usize) -> Result<RawRasterImage, P
         .min((max_bytes as u64).saturating_mul(4));
     let mut decoded = petunia_design_raster::decode_image(bytes, limits)
         .map_err(|e| PetuniaError::invalid_input(e.to_string()))?;
+    if decoded.format.is_cmyk() {
+        return Err(PetuniaError::capability_unavailable(
+            "native CMYK needs import_cmyk_tiff or explicit display conversion",
+        ));
+    }
     if let Some(profile) = decoded.icc_profile.as_ref() {
         petunia_design_color::rgb_profiles::convert_rgba_to_srgb(
             &mut decoded.data,
@@ -602,7 +631,7 @@ mod tests {
         assert_eq!(imported.width, 8);
         assert_eq!(imported.height, 8);
         assert_eq!(imported.format, PixelFormat::Rgba16);
-        assert_eq!(imported.to_rgba16(), samples);
+        assert_eq!(imported.to_rgba16().unwrap(), samples);
     }
 
     #[test]

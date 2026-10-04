@@ -216,47 +216,10 @@ impl Writer<'_> {
             let raw = match shape {
                 ShapeKind::Image {
                     data: Some(source), ..
-                } => crate::import_raster(source.as_slice(), 32 * 1024 * 1024)?,
+                } => crate::import_display_raster(source.as_slice(), 32 * 1024 * 1024)?,
                 ShapeKind::Image { .. } => return Err(unavailable(id, "embedded image source")),
-                ShapeKind::Raster { layer } => {
-                    let sixteen = matches!(
-                        layer.tiles().format,
-                        petunia_design_raster::PixelFormat::Rgba16
-                            | petunia_design_raster::PixelFormat::Gray16
-                    );
-                    let mut bytes = Vec::new();
-                    let count = (layer.width() as usize)
-                        .checked_mul(layer.height() as usize)
-                        .and_then(|n| n.checked_mul(if sixteen { 8 } else { 4 }))
-                        .ok_or_else(|| invalid("SVG raster dimensions"))?;
-                    bytes
-                        .try_reserve_exact(count)
-                        .map_err(|_| invalid("SVG raster allocation"))?;
-                    for y in 0..layer.height() {
-                        for x in 0..layer.width() {
-                            for value in layer.pixel(i64::from(x), i64::from(y)) {
-                                if sixteen {
-                                    bytes.extend_from_slice(
-                                        &((value.clamp(0., 1.) * 65535.).round() as u16)
-                                            .to_le_bytes(),
-                                    );
-                                } else {
-                                    bytes.push((value.clamp(0., 1.) * 255.).round() as u8);
-                                }
-                            }
-                        }
-                    }
-                    crate::RawRasterImage {
-                        width: layer.width(),
-                        height: layer.height(),
-                        format: if sixteen {
-                            petunia_design_raster::PixelFormat::Rgba16
-                        } else {
-                            petunia_design_raster::PixelFormat::Rgba8
-                        },
-                        data: bytes,
-                    }
-                }
+                ShapeKind::Raster { layer } => crate::display_raster_layer(layer, &|| false)?,
+
                 _ => unreachable!(),
             };
             let (png, report) = crate::export_raster(
