@@ -59,3 +59,8 @@ Scope: Milestone Required. ADR-009 (`docs/developers/adr/ADR-009-persistent-rast
 ## ADR-011 — 2026-10-03 (V1 Required)
 
 Accepted native CMYK raster/ICC resource/interchange contract: `developers/adr/ADR-011-native-cmyk-raster.md`, synchronized in pt-BR. It supersedes ADR-010 native-raster capability limitations, without closing professional page proof, overprint, DeviceLink or PDF/X-4.
+
+
+## ADR-012 — Compact Studio desktop (2026-10-04)
+
+Milestone Required (MVP), shared V1 foundation. `developers/adr/ADR-012-studio-workspace.md` and its pt-BR mirror govern the 08.1/08.2/08.3/08.5/08.6/08.12/08.14/08.17/08.18/08.19/09.16 desktop contracts. `developers/uiux-studio.md` maps the audit; actual final execution is recorded in `public/implementation/uiux-studio.json`. No domain/schema change or complete release acceptance is implied.

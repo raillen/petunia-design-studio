@@ -144,6 +144,7 @@ impl LocalizationService {
         for row in crate::shell_strings::SHELL_STRINGS
             .iter()
             .chain(crate::file_workflow_strings::FILE_WORKFLOW_STRINGS)
+            .chain(crate::studio_strings::STUDIO_STRINGS)
         {
             en.insert(TextId::new(row.id), row.en);
             pt.insert(TextId::new(row.id), row.pt);
@@ -326,6 +327,7 @@ mod tests {
         for row in crate::shell_strings::SHELL_STRINGS
             .iter()
             .chain(crate::file_workflow_strings::FILE_WORKFLOW_STRINGS)
+            .chain(crate::studio_strings::STUDIO_STRINGS)
         {
             assert_eq!(service.text(row.id, &Locale::EnUs), row.en);
             assert_eq!(service.text(row.id, &Locale::PtBr), row.pt);

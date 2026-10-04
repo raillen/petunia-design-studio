@@ -17,6 +17,8 @@ Decisions are first-class documentation. Each ADR records context, decision, con
 
 | [ADR-011](/developers/adr/ADR-011-native-cmyk-raster) | Native CMYK raster, ICC resources and ink-preserving interchange | Accepted contract · V1 Required · final evidence separate |
 
+| [ADR-012](/developers/adr/ADR-012-studio-workspace) | Compact Studio workspace and semantic desktop controls | Accepted · Milestone Required · bounded final evidence |
+
 ## Writing a new ADR
 
 1. Copy the ADR-001 file header pattern (`Status`, `Date`, `Scope`, `Context`, `Decision`, `Consequences`).

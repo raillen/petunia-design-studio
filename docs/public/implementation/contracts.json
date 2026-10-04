@@ -1,6 +1,7 @@
 {
-  "contract": "ADR-011",
+  "contract": "ADR-012",
   "related_contracts": [
+    "ADR-011",
     "ADR-010",
     "ADR-009",
     "ADR-008",
@@ -11,7 +12,7 @@
     "ADR-003",
     "ADR-002"
   ],
-  "scope": "V1 Required",
+  "scope": "Milestone Required",
   "schema_version": 6,
   "rust_toolchain": "1.98.1",
   "gui": {
@@ -19,6 +20,34 @@
     "version": "0.5.0-rc.7"
   },
   "sources": [
+    {
+      "path": "apps/petunia-design/src/studio.rs",
+      "sha256": "2091d0576a336ef4252a74b5379eccff7cb39fe15cff75cae050f4fcccddc53e"
+    },
+    {
+      "path": "apps/petunia-design/src/studio_widgets.rs",
+      "sha256": "8eb3a5cde47b8b4d11784e7207af1281cb7331aa9508818f4c106093442f62de"
+    },
+    {
+      "path": "apps/petunia-design/src/navigator.rs",
+      "sha256": "b73602afc498ec6285def269967e3661a7b7c7d0c7b0ec8900bccf7756851d09"
+    },
+    {
+      "path": "apps/petunia-design/src/chrome.rs",
+      "sha256": "cea78cd4fadb305807ff0fb9769d104d172c32b3ca59377b8c137e3958254ab1"
+    },
+    {
+      "path": "apps/petunia-design/src/theme.rs",
+      "sha256": "b78890954c28b2c07c7f6e24651c224cf0ddc97f7ce75c7180b55add76e04764"
+    },
+    {
+      "path": "apps/petunia-design/src/appearance.rs",
+      "sha256": "24add309dc4862d4e09c9ce2bd6993bfb08527ab720a1719e02ae0aa2a7cbcb6"
+    },
+    {
+      "path": "crates/petunia_design_resources/src/studio_strings.rs",
+      "sha256": "559babb647225529da377a5314bb3643510f03cd57985cb738190c6bb94889d0"
+    },
     {
       "path": "crates/petunia_design_raster/src/cmyk.rs",
       "sha256": "0e04df5f51c9b2fac0762518a202b2f6c31e0630b4937d420958b3f88e65f141"
@@ -149,7 +178,7 @@
     },
     {
       "path": "apps/petunia-design/src/export_preview.rs",
-      "sha256": "f184f477191c430004c073efc767c9987a7e01e93e236723a7da58141581d777"
+      "sha256": "e6872ea4bd5a87f4bd6277773df3e04a5ae9d612ab187881ecf85db2a660c53b"
     },
     {
       "path": "apps/petunia-design/src/recovery.rs",
@@ -241,11 +270,11 @@
     },
     {
       "path": "apps/petunia-design/src/canvas_paint.rs",
-      "sha256": "ed78ea924737cb551de30f0eaf7157118681b201256d70f22ab1de57e36a27a3"
+      "sha256": "7bf1fd2c0301ca2d066ac18808111f2d75532c04e06b00a43d8cd5a2a4d89c51"
     },
     {
       "path": "apps/petunia-design/src/dock.rs",
-      "sha256": "b1ae5bff69856cc64e08055e474df05acc2dd4bd2c2f62bdddfb6b1e7ffa8b54"
+      "sha256": "861209493577449f5b84ce753cb3dcb02a69f31b687316ce52e6dcc18362ddaf"
     },
     {
       "path": "crates/petunia_design_application/src/export_service.rs",
@@ -345,22 +374,26 @@
     },
     {
       "path": "apps/petunia-design/src/dialogs.rs",
-      "sha256": "a8b42a7f809050adf5018de18650c43101568f2f93b49550d69aaa8e628515ec"
+      "sha256": "326fd4ed96dbe256bb46d2509e9ef8e3c60fd9699c034aa0df771b6fa86de3d6"
     },
     {
       "path": "apps/petunia-design/src/ui_state.rs",
-      "sha256": "7576c0f5a0de86866f47b3880ba4d0f2010c7d9dabf55b24afa6a30ae73b0ca3"
+      "sha256": "69d60b667896cc20164693359ba5cdd543fe2f4b40a0424cc0cac53fa49b6fb3"
     },
     {
       "path": "crates/petunia_design_resources/src/shell_strings.rs",
-      "sha256": "d9182e4f77303eea2ead865476b8e92547802a6e2ab5942d6fa9c22e1ee0dfe0"
+      "sha256": "9ce0bdb69ca8f5eb124fd706fc15f3e7d02d0003baeceac48ae291f342f353c1"
     },
     {
       "path": "apps/petunia-design/src/main.rs",
-      "sha256": "c6a905293969085efa8c763aa2e918c621e8ea2a33d4d6e4bf8a43b78f87bae6"
+      "sha256": "f432a0224dde1715a0729f54f616aebdbfe0c995313603994883a91052f1dfb7"
     }
   ],
   "tests": [
+    {
+      "path": "apps/petunia-design/src/studio_tests.rs",
+      "count": 19
+    },
     {
       "path": "crates/petunia_design_raster/tests/native_cmyk.rs",
       "count": 7
@@ -550,11 +583,12 @@
       "count": 3
     }
   ],
-  "validation_results": "native-cmyk-v1.json",
+  "validation_results": "uiux-studio.json",
+  "native_cmyk_validation_results": "native-cmyk-v1.json",
   "baseline_validation_results": "mvp-v1-corrections.json",
   "ui_workflow_validation_results": "uiux-file-workflows.json",
   "ui_object_edit_validation_results": "uiux-object-edits.json",
-  "current_validation_status": "automated validation results are recorded in native-cmyk-v1.json; release acceptance remains separate",
+  "current_validation_status": "automated validation results are recorded in uiux-studio.json; release acceptance remains separate",
   "integration_regressions": [
     {
       "path": "crates/petunia_design_shell/tests/tools_test.rs",

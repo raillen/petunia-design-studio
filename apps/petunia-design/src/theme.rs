@@ -110,23 +110,24 @@ icon!(
     "adjustments-horizontal"
 );
 icon!(ICON_OVERFLOW, "dots", "dots");
+outline_icon!(ICON_CHEVRON_UP, "chevron-up");
 icon!(ICON_CHEVRON_DOWN, "chevron-down", "chevron-down");
 icon!(ICON_CHEVRON_RIGHT, "chevron-right", "chevron-right");
 icon!(ICON_CLOSE, "x", "x");
 icon!(ICON_PLUS, "plus", "plus");
 icon!(ICON_CHECK, "check", "check");
-icon!(ICON_UNDO, "undo-2", "circle-dot");
-icon!(ICON_REDO, "redo-2", "circle-dot");
+outline_icon!(ICON_UNDO, "undo-2");
+outline_icon!(ICON_REDO, "redo-2");
 icon!(ICON_ZOOM_IN, "zoom-in", "zoom-in");
 icon!(ICON_ZOOM_OUT, "zoom-out", "zoom-out");
-icon!(ICON_FIT, "maximize", "point");
+outline_icon!(ICON_FIT, "maximize");
 icon!(ICON_SEARCH, "search", "search");
 icon!(ICON_PALETTE, "command", "palette");
 icon!(ICON_TRASH, "trash", "trash");
 icon!(ICON_COPY, "copy", "copy");
 icon!(ICON_LOCK, "lock", "lock");
 icon!(ICON_EYE, "eye", "eye");
-icon!(ICON_EYE_OFF, "eye-off", "eye");
+outline_icon!(ICON_EYE_OFF, "eye-off");
 icon!(ICON_INFO, "info", "info-circle");
 icon!(ICON_STAR, "star", "star");
 icon!(ICON_PHOTO, "photo", "photo");
@@ -170,7 +171,7 @@ outline_icon!(ICON_SHAPE_BUILDER, "layers-intersect");
 outline_icon!(ICON_FRAME_TEXT, "text-wrap");
 outline_icon!(ICON_FLOOD_SELECT, "wand");
 outline_icon!(ICON_TYPE, "type");
-icon!(ICON_ROTATE, "rotate", "circle");
+outline_icon!(ICON_ROTATE, "rotate");
 icon!(ICON_MENU, "menu-2", "menu-2");
 icon!(ICON_WARNING, "info", "alert-triangle");
 icon!(ICON_SPARKLES, "sparkles", "sparkles");
@@ -181,7 +182,7 @@ icon!(ICON_GRIP, "dots", "dots-vertical");
 pub const ICON_TOOL_RAIL: f32 = 20.;
 pub const ICON_TOOLBAR: f32 = 18.;
 pub const ICON_INLINE: f32 = 16.;
-pub const TOOL_RAIL_WIDTH: f32 = 44.;
+pub const TOOL_RAIL_WIDTH: f32 = 56.;
 pub const TOOL_BUTTON: f32 = 34.;
 pub const TOOL_GAP: f32 = 2.;
 pub const PERSONA_ROW_HEIGHT: f32 = 40.;
@@ -190,7 +191,7 @@ pub const STATUS_BAR_HEIGHT: f32 = 26.;
 pub const TOOLBAR_HEIGHT: f32 = 34.;
 #[allow(dead_code)]
 pub const MENU_ROW_HEIGHT: f32 = 28.;
-pub const BODY_SIZE: f32 = 13.;
+pub const BODY_SIZE: f32 = 12.;
 pub const CAPTION_SIZE: f32 = 11.;
 pub const SPACE_1: f32 = 4.;
 pub const SPACE_2: f32 = 8.;
@@ -200,6 +201,16 @@ pub const SPACE_4: f32 = 16.;
 pub const BRAND_MARK_SIZE: f32 = 20.;
 #[allow(dead_code)]
 pub const PERSONA_TAB_HEIGHT: f32 = 30.;
+
+pub const CONTROL_HEIGHT: f32 = 28.;
+pub const CONTROL_RADIUS: f32 = 4.;
+pub const PANEL_HEADER_HEIGHT: f32 = 32.;
+pub const SURFACE_HOVER: Color = Color::from_rgb(0x3B, 0x3E, 0x43);
+pub const SURFACE_SELECTED: Color = Color::from_rgb(0x3F, 0x49, 0x5C);
+pub const BORDER_ACTIVE: Color = Color::from_rgb(0x7E, 0x8B, 0xA0);
+pub const TEXT_ON_ACCENT: Color = Color::from_rgb(0x18, 0x19, 0x1B);
+pub const STATE_WARNING: Color = Color::from_rgb(0xE8, 0xC3, 0x3C);
+pub const STATE_SUCCESS: Color = Color::from_rgb(0x57, 0xC7, 0x84);
 
 // Canvas and workspace ground.
 pub const SURFACE_WORKSPACE: Color = Color::from_rgb(0x20, 0x21, 0x24);
@@ -214,9 +225,9 @@ pub const TEXT_PRIMARY: Color = Color::from_rgb(0xF2, 0xF3, 0xF5);
 /// Recoverable error feedback shared by desktop prompts.
 pub const TEXT_ERROR: Color = Color::from_rgb(0xE5, 0x6B, 0x6B);
 pub const TEXT_SECONDARY: Color = Color::from_rgb(0xC2, 0xC6, 0xCC);
-pub const TEXT_TERTIARY: Color = Color::from_rgb(0x8E, 0x94, 0x9D);
+pub const TEXT_TERTIARY: Color = Color::from_rgb(0xB4, 0xB8, 0xBF);
 // Controls the registry blocks: visible, but plainly not actionable.
-pub const TEXT_DISABLED: Color = Color::from_rgb(0x5A, 0x5F, 0x66);
+pub const TEXT_DISABLED: Color = Color::from_rgb(0x83, 0x88, 0x90);
 pub const ACCENT_BLOOM: Color = Color::from_rgb(0xB7, 0x7A, 0xFF);
 pub const STUDIO_DESIGN: Color = Color::from_rgb(0x35, 0xC7, 0xD4);
 pub const STUDIO_PHOTO: Color = Color::from_rgb(0xF0, 0x6C, 0x8D);
@@ -236,9 +247,43 @@ pub fn petunia_theme() -> Theme {
         border: BORDER_SUBTLE,
         border_focus: ACCENT_BLOOM,
         text_primary: TEXT_PRIMARY,
+        text_inverse: TEXT_ON_ACCENT,
         text_secondary: TEXT_SECONDARY,
         text_placeholder: TEXT_TERTIARY,
         ..DARK_COLORS
     };
+    for (key, height, padding) in [
+        ("button_layout", 28., Gaps::new_symmetric(0., 10.)),
+        ("compact_button_layout", 24., Gaps::new_symmetric(0., 6.)),
+        ("expanded_button_layout", 32., Gaps::new_symmetric(0., 12.)),
+    ] {
+        theme.set(
+            key,
+            ButtonLayoutThemePreference {
+                height: Preference::Specific(Size::px(height)),
+                width: Preference::Specific(Size::Inner),
+                padding: Preference::Specific(padding),
+                margin: Preference::Specific(Gaps::new_all(0.)),
+                corner_radius: Preference::Specific(CornerRadius::new_all(CONTROL_RADIUS)),
+            },
+        );
+    }
+    theme.set(
+        "input_layout",
+        InputLayoutThemePreference {
+            padding: Preference::Specific(Gaps::new_symmetric(6., 8.)),
+            corner_radius: Preference::Specific(CornerRadius::new_all(CONTROL_RADIUS)),
+        },
+    );
+    theme.set(
+        "typography",
+        TypographyThemePreference {
+            title: Preference::Specific(20.),
+            subtitle: Preference::Specific(16.),
+            body: Preference::Specific(BODY_SIZE),
+            caption: Preference::Specific(CAPTION_SIZE),
+            overline: Preference::Specific(CAPTION_SIZE),
+        },
+    );
     theme
 }

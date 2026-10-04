@@ -84,6 +84,10 @@ pub fn canvas_view(
     preview: Option<crate::canvas_preview::PresentedPreview>,
     text_edit: crate::canvas_text::Overlay,
 ) -> Canvas {
+    let frame_key = (
+        preview.as_ref().map(|p| p.image.unique_id()),
+        crate::studio_widgets::canvas_render_epoch(),
+    );
     let on_render = RenderCallback::new(move |context: &mut CanvasContext| {
         paint_scene(
             &snapshot,
@@ -95,7 +99,10 @@ pub fn canvas_view(
             &text_edit,
         );
     });
-    canvas(on_render).width(Size::fill()).height(Size::fill())
+    canvas(on_render)
+        .key(frame_key)
+        .width(Size::fill())
+        .height(Size::fill())
 }
 
 /// Paints background, artwork, overlays and handles in a single ordered pass.

@@ -45,7 +45,8 @@ export const enConfig = {
           { text: 'Architecture', link: '/developers/architecture' },
           { text: 'Build & test', link: '/developers/build-test' },
           { text: 'ADRs', link: '/developers/adr/' },
-          { text: 'ADR-001: EffectChain', link: '/developers/adr/ADR-001-effect-chain' }
+          { text: 'ADR-001: EffectChain', link: '/developers/adr/ADR-001-effect-chain' },
+          { text: 'Studio UI/UX', link: '/developers/uiux-studio' }
         ]
       },
       {

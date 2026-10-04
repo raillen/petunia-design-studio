@@ -46,7 +46,8 @@ export const ptConfig = {
           { text: 'Arquitetura', link: '/pt/developers/architecture' },
           { text: 'Compilar e testar', link: '/pt/developers/build-test' },
           { text: 'ADRs', link: '/pt/developers/adr/' },
-          { text: 'ADR-001: EffectChain', link: '/pt/developers/adr/ADR-001-effect-chain' }
+          { text: 'ADR-001: EffectChain', link: '/pt/developers/adr/ADR-001-effect-chain' },
+          { text: 'Studio UI/UX', link: '/pt/developers/uiux-studio' }
         ]
       },
       {

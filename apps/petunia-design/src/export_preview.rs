@@ -51,6 +51,7 @@ impl Component for ExportPreview {
         drop(shell);
         let (preview, error) =
             canvas_preview::use_canvas_preview_with_background(&snapshot, 0, false, true);
+        let frame_key = preview.as_ref().map(|p| p.image.unique_id());
         let on_render = RenderCallback::new(move |context: &mut CanvasContext| {
             let canvas = context.canvas;
             let mut paint = Paint::default();
@@ -88,6 +89,7 @@ impl Component for ExportPreview {
             .child(label().text(self.0.text("export_preview")))
             .child(
                 canvas(on_render)
+                    .key((frame_key, crate::studio_widgets::canvas_render_epoch()))
                     .width(Size::px(500.))
                     .height(Size::px(200.)),
             )

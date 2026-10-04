@@ -9,6 +9,7 @@ pub mod file_workflow_strings;
 pub mod i18n;
 pub mod pack;
 pub mod shell_strings;
+pub mod studio_strings;
 pub mod tokens;
 
 pub use i18n::{

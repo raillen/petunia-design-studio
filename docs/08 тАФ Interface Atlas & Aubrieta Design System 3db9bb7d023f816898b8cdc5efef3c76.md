@@ -159,3 +159,7 @@ The intended family is **Affinity-like creative workflow + GPUI-native informati
 [08.32 — Photo Layers, Adjustments, Masks, Live Filters, Channels & Analysis UX](08%2032%20%E2%80%94%20Photo%20Layers,%20Adjustments,%20Masks,%20Live%20Fil%203df9bb7d023f81609273c08be65cd5a2.md)
 
 [08.33 — Affinity Tool & Panel Coverage Ledger → Aubrieta Scope/Authority Matrix](08%2033%20%E2%80%94%20Affinity%20Tool%20&%20Panel%20Coverage%20Ledger%20%E2%86%92%20Au%203df9bb7d023f812684f9d8b0bdb12c46.md)
+
+## ADR-012 — Compact Studio desktop (2026-10-04)
+
+Milestone Required (MVP), shared V1 foundation. `developers/adr/ADR-012-studio-workspace.md` and its pt-BR mirror govern the 08.1/08.2/08.3/08.5/08.6/08.12/08.14/08.17/08.18/08.19/09.16 desktop contracts. `developers/uiux-studio.md` maps the audit; actual final execution is recorded in `public/implementation/uiux-studio.json`. No domain/schema change or complete release acceptance is implied.

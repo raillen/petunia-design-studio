@@ -17,6 +17,8 @@ Decisões são documentação de primeira classe. Cada ADR registra contexto, de
 
 | [ADR-011](/pt/developers/adr/ADR-011-native-cmyk-raster) | Raster CMYK nativo, recursos ICC e intercâmbio preservando tintas | Contrato aceito · V1 Required · evidência final separada |
 
+| [ADR-012](/pt/developers/adr/ADR-012-studio-workspace) | Workspace Studio compacto e controles semânticos | Accepted · Milestone Required · bounded final evidence |
+
 ## Como escrever um novo ADR
 
 1. Copie o padrão de cabeçalho do ADR-001 (`Status`, `Data`, `Escopo`, `Contexto`, `Decisão`, `Consequências`).

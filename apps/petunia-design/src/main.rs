@@ -19,9 +19,14 @@ mod file_dialogs;
 mod file_jobs;
 mod file_workflows;
 mod histogram_ui;
+mod navigator;
 mod object_edit_dialog;
 mod object_edits;
 mod recovery;
+mod studio;
+#[cfg(test)]
+mod studio_tests;
+mod studio_widgets;
 mod theme;
 mod typography;
 mod ui_state;
@@ -56,10 +61,9 @@ fn map_cursor_affordance(affordance: CursorAffordance) -> CursorIcon {
 
 #[cfg(test)]
 use crate::actions::run_action_id;
-use crate::appearance::AppearanceBar;
 use crate::chrome::{
-    resolve_tool_shortcut, shortcut_key, ContextToolbar, DocumentTabStrip, MenuBarRow, ToolRail,
-    TooltipOverlay,
+    resolve_tool_shortcut, shortcut_key, ContextToolbar, DocumentTabStrip, MenuBarRow,
+    StudioToolbar, ToolRail, TooltipOverlay,
 };
 use crate::dialogs::{
     CommandPalette, ConfirmCloseDialog, CustomizeDialog, ExportDialog, NewDocumentDialog,
@@ -90,7 +94,7 @@ fn main() {
 
 /// Starts an empty document; examples are created explicitly by the user.
 fn app() -> impl IntoElement {
-    use_init_theme(theme::petunia_theme);
+    let mut current_theme = use_init_theme(theme::petunia_theme);
 
     let shell = use_state(|| {
         let mut shell = PetuniaShell::new(WINDOW_WIDTH, WINDOW_HEIGHT);
@@ -100,6 +104,24 @@ fn app() -> impl IntoElement {
         shell
     });
     let ui = UiShell::fresh(shell);
+    let mut fit = ui.autofit_documents;
+    fit.set_if_modified(true);
+    use_side_effect({
+        let accent = ui.accent;
+        move || {
+            let color = accent.read().value;
+            if current_theme.peek().colors.primary != color {
+                let mut theme = current_theme.write();
+                theme.colors.primary = color;
+                theme.colors.border_focus = color;
+            }
+        }
+    });
+    desktop_studio(ui)
+}
+
+/// Production shell, shared with headless interaction/visual fixtures.
+fn desktop_studio(ui: UiShell) -> impl IntoElement {
     file_jobs::use_file_jobs(ui.clone());
     let root_a11y_id = use_a11y();
     let keyboard_shell = ui.shell;
@@ -114,10 +136,13 @@ fn app() -> impl IntoElement {
         .width(Size::fill())
         .height(Size::fill())
         .background(theme::SURFACE_WORKSPACE)
+        .font_size(theme::BODY_SIZE)
+        .font_family("DejaVu Sans")
+        .color(theme::TEXT_PRIMARY)
         .a11y_id(root_a11y_id)
         .a11y_focusable(true)
-        .a11y_auto_focus(true)
         .child(MenuBarRow(ui.clone()))
+        .child(StudioToolbar(ui.clone()))
         .child(DocumentTabStrip(ui.clone()))
         .child(ContextToolbar(ui.clone()))
         .child(
@@ -135,7 +160,12 @@ fn app() -> impl IntoElement {
                         .content(Content::Flex)
                         .width(Size::flex(1.0))
                         .height(Size::fill())
-                        .child(Workspace(ui.clone()))
+                        .child(
+                            rect()
+                                .width(Size::fill())
+                                .height(Size::flex(1.))
+                                .child(Workspace(ui.clone())),
+                        )
                         .child(dock::BottomDockSplitter(ui.clone()))
                         .child(dock::BottomDock(ui.clone())),
                 )
@@ -160,14 +190,14 @@ fn app() -> impl IntoElement {
             let keyboard_ui = ui.clone();
             let mut modifiers = modifiers;
             move |event: Event<KeyboardEventData>| {
-                modifiers.set(semantic_modifiers(event.modifiers));
+                modifiers.set_if_modified(semantic_modifiers(event.modifiers));
                 dispatch_workspace_key(&keyboard_ui, &event);
             }
         })
         .on_global_key_up({
             let mut modifiers = modifiers;
             move |event: Event<KeyboardEventData>| {
-                modifiers.set(semantic_modifiers(event.modifiers));
+                modifiers.set_if_modified(semantic_modifiers(event.modifiers));
                 if shortcut_key(&event).is_some_and(|key| key.eq_ignore_ascii_case("space")) {
                     restore_temporary_tool(
                         keyboard_shell,
@@ -194,6 +224,40 @@ impl Component for Workspace {
         let ruler_drag = use_state(|| None::<(petunia_design_document::GuideOrientation, f64)>);
         let middle_pan_last = use_state(|| None::<GPoint>);
         let mut is_pointer_down = use_state(|| false);
+        let mut canvas_size = use_state(|| (0.0f64, 0.0f64));
+        let mut fitted = use_state(std::collections::HashSet::new);
+        use_side_effect({
+            let policy = self.0.autofit_documents;
+            move || {
+                let (width, height) = *canvas_size.read();
+                if width <= 0. || height <= 0. {
+                    return;
+                }
+                let state = shell.read();
+                let identity = state.bridge.session().map(|s| s.identity());
+                let mut camera = state.view_camera();
+                let first =
+                    *policy.read() && identity.is_some_and(|id| !fitted.read().contains(&id));
+                let resize = (camera.viewport_width - width).abs() > 0.5
+                    || (camera.viewport_height - height).abs() > 0.5;
+                if !first && !resize {
+                    return;
+                }
+                let bounds = state.canvas_snapshot().surface.map(|s| s.bounds);
+                drop(state);
+                camera.resize(width, height);
+                if first {
+                    if let Some([x, y, w, h]) = bounds {
+                        camera
+                            .fit_rect(petunia_design_geometry::GRect::new(x, y, x + w, y + h), 40.);
+                    }
+                }
+                if let Some(id) = identity {
+                    fitted.write().insert(id);
+                }
+                shell.write().set_view_camera(camera);
+            }
+        });
         let a11y_id = use_a11y();
         use_future(move || async move {
             loop {
@@ -256,6 +320,7 @@ impl Component for Workspace {
                             .top(((screen_origin.y - 42.) as f32).max(24.)),
                     )
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .background(theme::SURFACE_PANEL)
                     .border(
                         Border::new()
@@ -287,7 +352,11 @@ impl Component for Workspace {
                                     .on_press(move |_| cancel_edit.set(None))
                                     .child(self.0.text("cancel")),
                             )
-                            .child(label().text(self.0.text("text_canvas_hint")).font_size(10.))
+                            .child(
+                                label()
+                                    .text(self.0.text("text_canvas_hint"))
+                                    .font_size(theme::CAPTION_SIZE),
+                            )
                     }),
             )
         } else {
@@ -345,20 +414,9 @@ impl Component for Workspace {
                     }
                 }
             })
-            .on_sized({
-                move |event: Event<SizedEventData>| {
-                    let width = event.area.width() as f64;
-                    let height = event.area.height() as f64;
-                    let mut camera = shell.peek().view_camera();
-                    if (camera.viewport_width - width).abs() > 0.5
-                        || (camera.viewport_height - height).abs() > 0.5
-                    {
-                        camera.resize(width, height);
-                        shell.write().set_view_camera(camera);
-                        let next = *gesture_tick.peek() + 1;
-                        gesture_tick.set(next);
-                    }
-                }
+            .on_sized(move |event: Event<SizedEventData>| {
+                canvas_size
+                    .set_if_modified((event.area.width() as f64, event.area.height() as f64));
             })
             .child(
                 canvas_paint::canvas_view(
@@ -792,6 +850,27 @@ fn dispatch_workspace_key(ui: &UiShell, event: &Event<KeyboardEventData>) {
     if canvas_text::key(ui, event) {
         return;
     }
+    let role = Platform::get().focused_accessibility_node.peek().role();
+    if matches!(
+        role,
+        AccessibilityRole::TextInput | AccessibilityRole::MultilineTextInput
+    ) {
+        return;
+    }
+    let command_modifier = event.modifiers.contains(Modifiers::CONTROL)
+        || event.modifiers.contains(Modifiers::META)
+        || event.modifiers.contains(Modifiers::ALT);
+    if !command_modifier
+        && matches!(
+            role,
+            AccessibilityRole::Button
+                | AccessibilityRole::Tab
+                | AccessibilityRole::TreeItem
+                | AccessibilityRole::Splitter
+        )
+    {
+        return;
+    }
     let mut shell = ui.shell;
     let mut palette_open = ui.palette_open;
     let mut palette_query = ui.palette_query;
@@ -927,133 +1006,139 @@ struct StatusBar(UiShell);
 
 impl Component for StatusBar {
     fn render(&self) -> impl IntoElement {
-        let shell_ref = self.0.shell.read();
-        let title = shell_ref.bridge.session().map_or_else(
-            || DEFAULT_DOCUMENT_TITLE.to_string(),
-            |s| s.title().to_string(),
-        );
-        let zoom_pct = (shell_ref.view_camera().zoom * 100.).round() as i32;
-        let zoom_label = shell_ref
-            .bridge
-            .localization()
-            .text("ptnd.text.shell.zoom_readout", shell_ref.bridge.locale());
-        // A hovered control explains itself here: tooltips live in the status
-        // bar so buttons stay exactly where the registry put them.
-        let hovered = self.0.hovered.read().clone();
-        let active_tool = *self.0.active_tool.read();
-        let hint = hovered.map_or_else(
-            || {
-                shell_ref
-                    .bridge
-                    .tool_hint(active_tool)
-                    .or_else(|| shell_ref.bridge.persona_hint(shell_ref.bridge.persona()))
-                    .unwrap_or_default()
-            },
-            |target| {
-                if target.summary.is_empty() {
-                    target.title.clone()
+        let ui = &self.0;
+        let shell = ui.shell.read();
+        let session = shell.bridge.session();
+        let title = session
+            .map(|s| s.title().to_owned())
+            .unwrap_or_else(|| ui.studio_text("no_selection"));
+        let dirty = session.is_some_and(|s| s.is_dirty());
+        let zoom = (shell.view_camera().zoom * 100.).round() as i32;
+        let tool = *ui.active_tool.read();
+        let hint = ui
+            .hovered
+            .read()
+            .as_ref()
+            .map(|h| {
+                if h.summary.is_empty() {
+                    h.title.clone()
                 } else {
-                    target.summary.clone()
+                    h.summary.clone()
                 }
-            },
-        );
-
+            })
+            .unwrap_or_else(|| shell.bridge.tool_hint(tool).unwrap_or_default());
+        drop(shell);
+        let error = ui.file_error.read().clone();
+        let notice = error.clone().or_else(|| ui.file_notice.read().clone());
+        let feedback = notice.clone().unwrap_or(hint);
+        let mut clear_error = ui.file_error;
+        let mut clear_notice = ui.file_notice;
+        let mut assets = ui.left_dock_open;
+        let assets_open = *assets.read();
+        let mut diagnostics = ui.bottom_dock_open;
+        let diagnostics_open = *diagnostics.read();
+        let proof_ui = ui.clone();
+        let proof = *ui.soft_proof.read();
+        let mut channel = ui.channel_view;
+        let channel_index = *channel.read();
+        let channel_name = match channel_index {
+            1 => "R",
+            2 => "G",
+            3 => "B",
+            4 => "A",
+            _ => "RGB",
+        };
         rect()
             .direction(Direction::Horizontal)
+            .content(Content::Flex)
             .width(Size::fill())
             .height(Size::px(theme::STATUS_BAR_HEIGHT))
             .background(theme::SURFACE_CHROME_STRONG)
-            .padding(Gaps::new(0., theme::SPACE_2, 0., theme::SPACE_2))
+            .padding(Gaps::new_symmetric(0., theme::SPACE_2))
             .spacing(theme::SPACE_2)
             .cross_align(Alignment::Center)
             .child(
                 label()
-                    .text(format!("{title} · {zoom_label}: {zoom_pct}%"))
-                    .color(theme::TEXT_SECONDARY)
-                    .font_size(theme::CAPTION_SIZE),
+                    .text(feedback)
+                    .width(Size::flex(1.))
+                    .max_lines(1)
+                    .text_overflow(TextOverflow::Ellipsis)
+                    .font_size(theme::CAPTION_SIZE)
+                    .color(if error.is_some() {
+                        theme::TEXT_ERROR
+                    } else {
+                        theme::TEXT_SECONDARY
+                    }),
             )
-            .child(rect().width(Size::fill()))
+            .maybe_child(notice.is_some().then(|| {
+                crate::studio_widgets::StudioButton::new(ui, ui.text("dismiss"))
+                    .icon(theme::ICON_CLOSE)
+                    .width(Size::px(24.))
+                    .height(24.)
+                    .on_press(move |_| {
+                        clear_error.set(None);
+                        clear_notice.set(None);
+                    })
+            }))
             .child(
                 label()
-                    .text(
-                        self.0
-                            .file_error
-                            .read()
-                            .clone()
-                            .or_else(|| self.0.file_notice.read().clone())
-                            .unwrap_or(hint),
-                    )
-                    .color(theme::TEXT_SECONDARY)
-                    .font_size(theme::CAPTION_SIZE),
-            )
-            .maybe_child(
-                (self.0.file_notice.read().is_some() || self.0.file_error.read().is_some()).then(
-                    || {
-                        let mut notice = self.0.file_notice;
-                        let mut error = self.0.file_error;
-                        Button::new()
-                            .on_press(move |_| {
-                                notice.set(None);
-                                error.set(None);
-                            })
-                            .child(self.0.text("dismiss"))
-                    },
-                ),
+                    .text(title)
+                    .width(Size::px(140.))
+                    .max_lines(1)
+                    .text_overflow(TextOverflow::Ellipsis)
+                    .font_size(theme::CAPTION_SIZE)
+                    .color(theme::TEXT_TERTIARY),
             )
             .child(
                 rect()
-                    .direction(Direction::Horizontal)
-                    .spacing(theme::SPACE_1)
-                    .child(
-                        Button::new()
-                            .on_press({
-                                let mut open = self.0.left_dock_open;
-                                move |_| {
-                                    let cur = *open.peek();
-                                    open.set(!cur);
-                                }
-                            })
-                            .child(
-                                label()
-                                    .text(if *self.0.left_dock_open.read() {
-                                        "◧ Doca Esq (Ativa)"
-                                    } else {
-                                        "◧ Doca Esq"
-                                    })
-                                    .font_size(10.)
-                                    .color(if *self.0.left_dock_open.read() {
-                                        theme::ACCENT_BLOOM
-                                    } else {
-                                        theme::TEXT_SECONDARY
-                                    }),
-                            ),
-                    )
-                    .child(
-                        Button::new()
-                            .on_press({
-                                let mut open = self.0.bottom_dock_open;
-                                move |_| {
-                                    let cur = *open.peek();
-                                    open.set(!cur);
-                                }
-                            })
-                            .child(
-                                label()
-                                    .text(if *self.0.bottom_dock_open.read() {
-                                        "⬒ Doca Inf (Ativa)"
-                                    } else {
-                                        "⬒ Doca Inf"
-                                    })
-                                    .font_size(10.)
-                                    .color(if *self.0.bottom_dock_open.read() {
-                                        theme::ACCENT_BLOOM
-                                    } else {
-                                        theme::TEXT_SECONDARY
-                                    }),
-                            ),
-                    ),
+                    .width(Size::px(5.))
+                    .height(Size::px(5.))
+                    .corner_radius(3.)
+                    .background(if dirty {
+                        theme::STATE_WARNING
+                    } else {
+                        theme::STATE_SUCCESS
+                    })
+                    .a11y_alt(ui.studio_text(if dirty { "unsaved" } else { "saved" })),
             )
-            .child(AppearanceBar(self.0.clone()))
+            .child(
+                label()
+                    .text(format!("{zoom}%"))
+                    .font_size(theme::CAPTION_SIZE)
+                    .color(theme::TEXT_PRIMARY),
+            )
+            .child(
+                crate::studio_widgets::StudioButton::new(ui, ui.studio_text("proof"))
+                    .icon(theme::ICON_PALETTE)
+                    .selected(proof)
+                    .height(24.)
+                    .width(Size::px(28.))
+                    .on_press(move |_| crate::file_workflows::toggle_proof(&proof_ui)),
+            )
+            .child(
+                crate::studio_widgets::StudioButton::new(ui, ui.studio_text("channel"))
+                    .text(channel_name)
+                    .selected(channel_index != 0)
+                    .height(24.)
+                    .width(Size::px(44.))
+                    .on_press(move |_| channel.set((channel_index + 1) % 5)),
+            )
+            .child(
+                crate::studio_widgets::StudioButton::new(ui, ui.studio_text("assets"))
+                    .icon(theme::ICON_PHOTO)
+                    .selected(assets_open)
+                    .height(24.)
+                    .width(Size::px(28.))
+                    .on_press(move |_| assets.set(!assets_open)),
+            )
+            .child(
+                crate::studio_widgets::StudioButton::new(ui, ui.studio_text("diagnostics"))
+                    .icon(theme::ICON_INFO)
+                    .selected(diagnostics_open)
+                    .height(24.)
+                    .width(Size::px(28.))
+                    .on_press(move |_| diagnostics.set(!diagnostics_open)),
+            )
     }
 }
 
@@ -1806,6 +1891,7 @@ mod workspace_tests {
                     .width(Size::fill())
                     .height(Size::fill())
                     .child(MenuBarRow(ui.clone()))
+                    .child(StudioToolbar(ui.clone()))
                     .child(DocumentTabStrip(ui.clone()))
                     .child(ContextToolbar(ui.clone()))
                     .child(
@@ -1842,13 +1928,14 @@ mod workspace_tests {
         let ui = seen.borrow().clone().expect("ui mounted");
         assert_eq!(*ui.dock_tab.read(), 0, "initial tab is Camadas (0)");
 
-        for (title, index) in [
-            ("Propriedades", 1),
-            ("Cores", 2),
-            ("Histórico", 3),
-            ("Navegador", 4),
-            ("Camadas", 0),
+        for (key, index) in [
+            ("properties", 1),
+            ("colors", 2),
+            ("history", 3),
+            ("navigator", 4),
+            ("layers", 0),
         ] {
+            let title = ui.studio_text(key);
             let area = runner
                 .find(|node, element| {
                     Label::try_downcast(element)
@@ -2454,8 +2541,10 @@ mod object_edit_ui_tests {
         let (mut runner, ui, text) = mount();
         let selected = ui.shell.peek().bridge.selection().selected_ids;
         let nodes = runner.find_many(|node, el| {
-            Label::try_downcast(el)
-                .filter(|label| label.text == ui.text("edit_name"))
+            Rect::try_downcast(el)
+                .filter(|control| {
+                    control.accessibility.builder.label() == Some(ui.text("edit_name").as_str())
+                })
                 .map(|_| node)
         });
         let points: Vec<_> = nodes

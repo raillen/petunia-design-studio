@@ -1,5 +1,7 @@
 # Registro de execução da implementação
 
+**Atualização Studio (2026-10-04):** [ADR-012](/pt/developers/adr/ADR-012-studio-workspace) e [auditoria de UI/UX](/pt/developers/uiux-studio) definem a reorganização desktop. Resultados finais próprios em [uiux-studio.json](/implementation/uiux-studio.json); a validação ADR-011 abaixo pertence à baseline integrada.
+
 ## 2026-10-03: continuação CMYK nativo
 
 O [ADR-011](/pt/developers/adr/ADR-011-native-cmyk-raster) implementa raster de cinco canais 8/16-bit, atribuição/conversão ICC imutável, schema 6/índice 3, pintura/preenchimento nativos, importação TIFF editável, inspeção TAC/separação de camada, TIFF nativo de camada e PDF CMYK ICC. Interface e CLI estão integrados. PDF regular exige perfil de impressão comum entre superfícies/camadas/imagens CMYK incluídas; perfis diferentes exigem conversão explícita. Prova/overprint de página, DeviceLink, PDF/X-4 e aceitação do release completo continuam abertos.

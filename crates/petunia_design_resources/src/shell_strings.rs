@@ -885,8 +885,8 @@ pub const SHELL_STRINGS: &[ShellString] = &[
     ),
     entry(
         "ptnd.text.tool_group.photo_paint",
-        "Photo paint",
-        "Pintura de foto",
+        "Painting",
+        "Pintura",
     ),
     entry(
         "ptnd.text.tool_group.photo_selection",

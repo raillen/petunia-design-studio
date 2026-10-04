@@ -1,0 +1,666 @@
+{
+  "schema_version": 1,
+  "contract": "ADR-012",
+  "scope": "Milestone Required",
+  "recorded_at_utc": "2026-10-04T11:12:37.934101+00:00",
+  "base_commit": "82569660ea7a5ee290302054430ccd7b1efb6983",
+  "branch": "work/uiux-studio-2026-10-04",
+  "status": "Final automated gates passed; external release acceptance remains open",
+  "validation_order": "Implementation completed before tests. Final validation corrected stale interaction locators, native headless input event timing, panel dimensions, cached preview publication and a duplicate translation identifier before the successful recorded runs.",
+  "release_status": {
+    "mvp": "Compact native Studio increment implemented and tested; full release acceptance remains open.",
+    "v1": "Shared GUI foundation and ADR-011 native ink semantics preserved; complete V1 acceptance remains open."
+  },
+  "reference": [
+    {
+      "url": "https://www.affinity.studio/graphic-design-software",
+      "purpose": "Current Vector/Pixel/Layout workspace hierarchy; Petunia exposes only its implemented Vector/Pixel Studios."
+    },
+    {
+      "url": "https://affinity.help/photo2/en-US.lproj/pages/Workspace/interface.html",
+      "purpose": "Official workspace anatomy and role of contextual controls, tools and Studio panels."
+    }
+  ],
+  "environment": {
+    "os": "Linux x86_64",
+    "rust_toolchain": "1.98.1",
+    "gui": "Freya 0.5.0-rc.7 / Skia headless TestingRunner",
+    "build_jobs": 2,
+    "debug_info": false,
+    "incremental": false,
+    "native_dependencies": "Native development/runtime Debian packages extracted for this execution; CI dependencies are in .github/workflows/ci.yml.",
+    "fonts": [
+      "DejaVu Sans",
+      "Noto Sans",
+      "Noto Arabic"
+    ],
+    "independent_pdf_reader": "pypdf 6.10.0 + Poppler",
+    "node_version": "24.19.0",
+    "docs_package_manager": "pnpm 11.25.0",
+    "docs_installation": "Frozen lockfile"
+  },
+  "evidence_environment": {
+    "PETUNIA_UI_EVIDENCE_DIR": "docs/public/implementation/studio/artifacts",
+    "PETUNIA_CMYK_EVIDENCE_DIR": "docs/public/implementation/studio/cmyk-artifacts"
+  },
+  "checks": [
+    {
+      "command": "cargo xtask gauntlet",
+      "exit_code": 0,
+      "log": "studio/gauntlet.log",
+      "gates": [
+        "cargo fmt --all --check",
+        "cargo clippy --workspace --all-targets -- -D warnings",
+        "cargo test --workspace",
+        "architecture boundaries",
+        "headless CLI conformance",
+        "four MVP project fixtures",
+        "EN/pt-BR parity",
+        "VitePress dead-link build"
+      ]
+    },
+    {
+      "command": "cargo xtask ui-gauntlet",
+      "exit_code": 0,
+      "tests_passed": 84,
+      "tests_failed": 0,
+      "tests_ignored": 0,
+      "log": "studio/ui-gauntlet.log"
+    },
+    {
+      "command": "python3 scripts/verify-native-cmyk-pdf.py docs/public/implementation/studio/cmyk-artifacts",
+      "exit_code": 0,
+      "files_verified": 4,
+      "log": "studio/independent-pdf.log"
+    },
+    {
+      "command": "node scripts/generate-implementation-reference.js --check; cargo xtask docs; cargo fmt --all --check; git diff --check",
+      "exit_code": 0,
+      "log": "studio/docs.log",
+      "execution": "Sequential commands with shell fail-fast enabled."
+    }
+  ],
+  "log_format": "Captured command output, with trailing empty lines normalized to one final newline.",
+  "workspace_tests": {
+    "passed": 951,
+    "failed": 0,
+    "ignored": 0,
+    "targets": 104,
+    "includes": "Unit, integration and Rust documentation tests. Desktop, click-smoke and four MVP fixtures are subsets, not additional totals."
+  },
+  "desktop_tests": {
+    "passed": 84,
+    "new_since_baseline": 20,
+    "includes": "19 Studio regressions and one exact-unit numeric parser regression"
+  },
+  "click_smoke_tests": {
+    "passed": 29,
+    "changes": "Production Studio toolbar and semantic accessible-name locators; contextual controls assert exact state changes."
+  },
+  "studio_regressions": [
+    "production_studio_fits_and_keeps_controls_in_en_and_pt_at_four_sizes",
+    "studio_live_locale_change_relabels_panels_and_keeps_tab_state",
+    "studio_hide_restore_and_collapse_preserve_document_and_width",
+    "studio_new_session_fits_once_and_tab_return_restores_camera",
+    "vector_color_preserves_width_locked_objects_and_atomic_undo",
+    "pixel_color_changes_actual_brush_clears_ink_and_preserves_alpha",
+    "layer_collapse_is_session_scoped_and_never_deletes_descendants",
+    "navigator_contains_actual_ellipse_and_pans_without_mutating_document",
+    "new_document_invalid_input_creates_no_tab_then_exact_values_commit",
+    "focused_inspector_button_activates_by_keyboard_without_deleting_canvas",
+    "color_hex_and_hsv_accept_valid_triplets_and_reject_partial_input",
+    "studio_tokens_meet_text_contrast_and_preserve_semantic_outline_fallback",
+    "small_window_two_column_rail_and_all_docks_preserve_editable_viewport",
+    "hex_editor_keeps_invalid_draft_and_applies_exact_vector_color",
+    "favorite_swatches_add_real_current_color_once_and_survive_panel_remount",
+    "preferences_reset_real_workspace_and_palette_handles_no_results",
+    "cached_canvas_publishes_selection_overlays_without_document_revision",
+    "pixel_studio_exposes_real_painting_tools_and_context_colors",
+    "splitter_drag_captures_outside_edge_and_keyboard_resize_preserves_document"
+  ],
+  "resource_catalog": {
+    "studio_entries": 286,
+    "locales": [
+      "en-US",
+      "pt-BR"
+    ],
+    "added_regressions": 1,
+    "invariants": "Unique identifiers, nonempty translations, live locale resolution and all literal Studio references resolved."
+  },
+  "documentation": {
+    "canonical_pages": 35,
+    "pt_br_mirrors": 35,
+    "parity": "zero drift",
+    "build": "passed",
+    "dead_links": "zero (ignoreDeadLinks false)"
+  },
+  "ui_capture_provenance": {
+    "production_studio_captures": 18,
+    "existing_module_captures": 9,
+    "implementation": "Actual Rust/Freya desktop_studio composed by production app(), rendered headlessly with original vector/text fixture content.",
+    "sizes": [
+      "900x600",
+      "1024x768",
+      "1280x800",
+      "1600x1000"
+    ],
+    "locales": [
+      "en-US",
+      "pt-BR"
+    ],
+    "pixel_assertions": "Actual artwork/thumbnail colours and immediate selection overlays, not bounding-box substitutes or screenshots alone.",
+    "manual_visual_inspection": [
+      "studio-pt-1280x800.png",
+      "studio-two-columns-all-docks-900-pt.png",
+      "studio-new-document-exact-pt.png",
+      "studio-pixel-brush-en.png",
+      "studio-navigator.png",
+      "studio-hex-editor-en.png",
+      "studio-preferences-general-pt.png",
+      "studio-palette-empty-pt.png"
+    ]
+  },
+  "independent_pdf_verification": [
+    {
+      "file": "native-Cmyka8.pdf",
+      "inks": 4,
+      "bits_per_component": 8,
+      "soft_mask_bits": 8,
+      "icc_sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+      "ink_samples_exact": true,
+      "alpha_samples_exact": true,
+      "reader": "pypdf 6.10.0",
+      "independent_render": "Poppler"
+    },
+    {
+      "file": "native-Cmyka16.pdf",
+      "inks": 4,
+      "bits_per_component": 16,
+      "soft_mask_bits": 16,
+      "icc_sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+      "ink_samples_exact": true,
+      "alpha_samples_exact": true,
+      "reader": "pypdf 6.10.0",
+      "independent_render": "Poppler"
+    },
+    {
+      "file": "image-Cmyka8.pdf",
+      "inks": 4,
+      "bits_per_component": 8,
+      "soft_mask_bits": 8,
+      "icc_sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+      "ink_samples_exact": true,
+      "alpha_samples_exact": true,
+      "reader": "pypdf 6.10.0",
+      "independent_render": "Poppler"
+    },
+    {
+      "file": "image-Cmyka16.pdf",
+      "inks": 4,
+      "bits_per_component": 16,
+      "soft_mask_bits": 16,
+      "icc_sha256": "35eae119d50eb37a594b9d94fca0116cb330a3f05156e12f0415f4eaad0923c7",
+      "ink_samples_exact": true,
+      "alpha_samples_exact": true,
+      "reader": "pypdf 6.10.0",
+      "independent_render": "Poppler"
+    }
+  ],
+  "sources": [
+    {
+      "path": "apps/petunia-design/assets/icons-outline/chevron-up.svg",
+      "bytes": 214,
+      "sha256": "8ea13ab48c0adc83c9ef1e30b51a418f1132dc87a015ff26fdd59701301e544f"
+    },
+    {
+      "path": "apps/petunia-design/src/appearance.rs",
+      "bytes": 2368,
+      "sha256": "24add309dc4862d4e09c9ce2bd6993bfb08527ab720a1719e02ae0aa2a7cbcb6"
+    },
+    {
+      "path": "apps/petunia-design/src/canvas_paint.rs",
+      "bytes": 44057,
+      "sha256": "7bf1fd2c0301ca2d066ac18808111f2d75532c04e06b00a43d8cd5a2a4d89c51"
+    },
+    {
+      "path": "apps/petunia-design/src/chrome.rs",
+      "bytes": 93673,
+      "sha256": "cea78cd4fadb305807ff0fb9769d104d172c32b3ca59377b8c137e3958254ab1"
+    },
+    {
+      "path": "apps/petunia-design/src/dialogs.rs",
+      "bytes": 70997,
+      "sha256": "326fd4ed96dbe256bb46d2509e9ef8e3c60fd9699c034aa0df771b6fa86de3d6"
+    },
+    {
+      "path": "apps/petunia-design/src/dock.rs",
+      "bytes": 265123,
+      "sha256": "861209493577449f5b84ce753cb3dcb02a69f31b687316ce52e6dcc18362ddaf"
+    },
+    {
+      "path": "apps/petunia-design/src/export_preview.rs",
+      "bytes": 4225,
+      "sha256": "e6872ea4bd5a87f4bd6277773df3e04a5ae9d612ab187881ecf85db2a660c53b"
+    },
+    {
+      "path": "apps/petunia-design/src/main.rs",
+      "bytes": 106411,
+      "sha256": "f432a0224dde1715a0729f54f616aebdbfe0c995313603994883a91052f1dfb7"
+    },
+    {
+      "path": "apps/petunia-design/src/navigator.rs",
+      "bytes": 10385,
+      "sha256": "b73602afc498ec6285def269967e3661a7b7c7d0c7b0ec8900bccf7756851d09"
+    },
+    {
+      "path": "apps/petunia-design/src/studio.rs",
+      "bytes": 19148,
+      "sha256": "2091d0576a336ef4252a74b5379eccff7cb39fe15cff75cae050f4fcccddc53e"
+    },
+    {
+      "path": "apps/petunia-design/src/studio_tests.rs",
+      "bytes": 32937,
+      "sha256": "0cda07b2cbef30741d561143073629e79d528e14ece437f2ecab917ea2e0fc4e"
+    },
+    {
+      "path": "apps/petunia-design/src/studio_widgets.rs",
+      "bytes": 12468,
+      "sha256": "8eb3a5cde47b8b4d11784e7207af1281cb7331aa9508818f4c106093442f62de"
+    },
+    {
+      "path": "apps/petunia-design/src/theme.rs",
+      "bytes": 10453,
+      "sha256": "b78890954c28b2c07c7f6e24651c224cf0ddc97f7ce75c7180b55add76e04764"
+    },
+    {
+      "path": "apps/petunia-design/src/ui_state.rs",
+      "bytes": 24070,
+      "sha256": "69d60b667896cc20164693359ba5cdd543fe2f4b40a0424cc0cac53fa49b6fb3"
+    },
+    {
+      "path": "apps/petunia-design/tests/click_smoke.rs",
+      "bytes": 24770,
+      "sha256": "4ad9d0e479bba3eff558405a18633883c003c39b2e6c68df170070911aec37c5"
+    },
+    {
+      "path": "crates/petunia_design_resources/src/i18n.rs",
+      "bytes": 13377,
+      "sha256": "38640b7ae16651ddf8b81dbf98694e58c32d51b25c3f71992d5b04dddb69f90f"
+    },
+    {
+      "path": "crates/petunia_design_resources/src/lib.rs",
+      "bytes": 861,
+      "sha256": "b0f6863e89a918d693c947d435c8d85851efaf4a5c5735784c41308e6e3ef65e"
+    },
+    {
+      "path": "crates/petunia_design_resources/src/shell_strings.rs",
+      "bytes": 32194,
+      "sha256": "9ce0bdb69ca8f5eb124fd706fc15f3e7d02d0003baeceac48ae291f342f353c1"
+    },
+    {
+      "path": "crates/petunia_design_resources/src/studio_strings.rs",
+      "bytes": 28014,
+      "sha256": "559babb647225529da377a5314bb3643510f03cd57985cb738190c6bb94889d0"
+    },
+    {
+      "path": "scripts/generate-implementation-reference.js",
+      "bytes": 10531,
+      "sha256": "881b01f30267b9b77205adb78ba7e61c8afbe1db7ea8fb4d5ce260e036b158aa"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/public/implementation/studio/artifacts/edit-text.png",
+      "bytes": 52756,
+      "sha256": "1bce815e16bb0325e6fa5d600c0f1be93754a7a1c5e4c53440cc7d1a8f625ba3",
+      "width": 1000,
+      "height": 720,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/edit-transform.png",
+      "bytes": 70014,
+      "sha256": "043ed2c3e50510af3e0bdf78aeb43c120818fc3fe0e35883bdcac041fa3f3c02",
+      "width": 1000,
+      "height": 720,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/native-brush-ink.png",
+      "bytes": 39602,
+      "sha256": "51be3626a22c81a1090395d4e17329db56f2da030e7c7ecfbedf3f9121d2cf79",
+      "width": 400,
+      "height": 600,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/native-layer.png",
+      "bytes": 37922,
+      "sha256": "308f21476d5f1cbb8ba44204852bbe5643be15f5e3d66b0a5ffab60f35b76ded",
+      "width": 400,
+      "height": 600,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/new-document.png",
+      "bytes": 47732,
+      "sha256": "3eaf47e1e4d416fb20b9a2361ed28fcb74265ea3a7d15f35a66f7b2f1c4c4df9",
+      "width": 1280,
+      "height": 800,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/open-document.png",
+      "bytes": 29997,
+      "sha256": "dec72678a574fe52ce1cf1c1176a2261fa86351a35207fe02fe59d14eeb2721b",
+      "width": 1280,
+      "height": 800,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/rename-layer.png",
+      "bytes": 50316,
+      "sha256": "7a3ef62270561076833b3bb0eb1cb3ba268503b5e1aa9e9c6cb09fb8e1701448",
+      "width": 1000,
+      "height": 720,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-en-1024x768.png",
+      "bytes": 105840,
+      "sha256": "24c72704e55de56165f4e268a5f5604133329a1e894a907560c388c2767f7460",
+      "width": 1024,
+      "height": 768,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-en-1280x800.png",
+      "bytes": 112533,
+      "sha256": "7bdcd4305a556c58178dda505aa92695511bc30fd21e5f07f61a621f84d6cd6b",
+      "width": 1280,
+      "height": 800,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-en-1600x1000.png",
+      "bytes": 123665,
+      "sha256": "e7f2b7b52686a1d1ae39ce30df85f487c1ea13cef6aed6470ee312a32c74c276",
+      "width": 1600,
+      "height": 1000,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-en-900x600.png",
+      "bytes": 94088,
+      "sha256": "ae18fdab98b202a43ad51d0a1aa184ba4fb7e421ac0eac06995ff8c48c91206f",
+      "width": 900,
+      "height": 600,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-favorites-en.png",
+      "bytes": 86631,
+      "sha256": "55c49d813e8cdf6f48967828eb7cafdfd8a8001c1fed697a76d34e53b08cd88b",
+      "width": 1280,
+      "height": 800,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-hex-editor-en.png",
+      "bytes": 127208,
+      "sha256": "0210df077783fb7e0711033febf3e008a872710bb2f7b3f4202c4dc75f091f5b",
+      "width": 1600,
+      "height": 1000,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-navigator.png",
+      "bytes": 111238,
+      "sha256": "0fea72e96cd0b0b3959f4f8dda0ac5d96d39436d6281213379f2affe9ce271f2",
+      "width": 1280,
+      "height": 800,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-new-document-exact-pt.png",
+      "bytes": 110443,
+      "sha256": "6b7ffceb3e93e906a51dfa9adf0ba3eeaa30cfde193ab28376bdcd099f9a8ce0",
+      "width": 1024,
+      "height": 768,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-new-document-invalid-pt.png",
+      "bytes": 107766,
+      "sha256": "5e9a260fb6874225677e67e1c4ddd671ebfc5bca4a6453115714bb2c728ad7e1",
+      "width": 1024,
+      "height": 768,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-palette-empty-pt.png",
+      "bytes": 79642,
+      "sha256": "30ee719951690f000c094c24dd658e666787444de745206f05408f7fd4a9fc89",
+      "width": 1024,
+      "height": 768,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-pixel-brush-en.png",
+      "bytes": 110751,
+      "sha256": "a1e27673ee69b8037b99e97510f04dba9483bd210ac0fbf68faabc090c63ea13",
+      "width": 1280,
+      "height": 800,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-preferences-general-pt.png",
+      "bytes": 70499,
+      "sha256": "09588e0ab9f2b85a5b7eaad7de090e818cc417166269a21649100285b723cedd",
+      "width": 1024,
+      "height": 768,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-pt-1024x768.png",
+      "bytes": 109059,
+      "sha256": "056025c19c6d02d095fc09bb55d6a6254c21b82d2d1b989d3100e67c6d3f97a4",
+      "width": 1024,
+      "height": 768,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-pt-1280x800.png",
+      "bytes": 115527,
+      "sha256": "d576eb987a0f4997aa7d790dbd0a1f4e00d782fa7d7b47d899823656eedccc8b",
+      "width": 1280,
+      "height": 800,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-pt-1600x1000.png",
+      "bytes": 126663,
+      "sha256": "61a6203e05afbecc1073fda988792e6f7cfa232a4a9cd7e2f13a9d3b3060040f",
+      "width": 1600,
+      "height": 1000,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-pt-900x600.png",
+      "bytes": 97539,
+      "sha256": "36df769ae1be03b30e367e3c2608af7302dab657cbb1a7f3ea2917f29c7a8526",
+      "width": 900,
+      "height": 600,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-selection-baseline.png",
+      "bytes": 112533,
+      "sha256": "7bdcd4305a556c58178dda505aa92695511bc30fd21e5f07f61a621f84d6cd6b",
+      "width": 1280,
+      "height": 800,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/studio-two-columns-all-docks-900-pt.png",
+      "bytes": 105338,
+      "sha256": "024e9f9aa4367e61f3826e3fb76c73a0eb1357b62487a78d66f99c89cd40d48d",
+      "width": 900,
+      "height": 600,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/transform-error.png",
+      "bytes": 69218,
+      "sha256": "d4a1be5f133fce614f8e8d034cb1c14e013e5856bcbcf300ca5a59651626916d",
+      "width": 1000,
+      "height": 720,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/artifacts/workspace.png",
+      "bytes": 91486,
+      "sha256": "2b9e330025fd6c011eaf8955517680ae32eb4f54953b04afae0cbccf8bfd7659",
+      "width": 1280,
+      "height": 800,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/image-Cmyka16-images.txt",
+      "bytes": 372,
+      "sha256": "de699e8aa4bc422d229f3a92df84b4fb695d9f1f8d46970e4b44e949f1433c3c",
+      "storage": "repository verification report"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/image-Cmyka16-poppler.png",
+      "bytes": 2704,
+      "sha256": "70ab591fbf515e3fa96a75741eb653b7f4d17e1097ba5cf055f4d8d76ea33af4",
+      "width": 600,
+      "height": 200,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/image-Cmyka16.pdf",
+      "bytes": 3551,
+      "sha256": "1c0322bc57f136199ad078ade1eeb88733062e72c473e3ad5f0a225f2d57976f",
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/image-Cmyka8-images.txt",
+      "bytes": 372,
+      "sha256": "f8f2a47901abc069a950ca8f488f8ffa0d8048011512ffffe1caea05929124e1",
+      "storage": "repository verification report"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/image-Cmyka8-poppler.png",
+      "bytes": 3800,
+      "sha256": "47b23ee29e1d85ba1ebe6f4cecb76638ae33d74e3c02f424497ae2f76c55b3f5",
+      "width": 600,
+      "height": 200,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/image-Cmyka8.pdf",
+      "bytes": 3535,
+      "sha256": "6eceb78ae0b01a53cc4093b57b96aed36ddc6892434a3d40d05ae10597b8aec6",
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/independent-pdf.json",
+      "bytes": 1315,
+      "sha256": "6546ecdda2b6b1d42a4dee44da8cdb9d4f6096602c3f86672a0194a6dc1daf34",
+      "storage": "repository verification report"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/native-Cmyka16-images.txt",
+      "bytes": 372,
+      "sha256": "de699e8aa4bc422d229f3a92df84b4fb695d9f1f8d46970e4b44e949f1433c3c",
+      "storage": "repository verification report"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/native-Cmyka16-poppler.png",
+      "bytes": 2704,
+      "sha256": "70ab591fbf515e3fa96a75741eb653b7f4d17e1097ba5cf055f4d8d76ea33af4",
+      "width": 600,
+      "height": 200,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/native-Cmyka16.pdf",
+      "bytes": 3551,
+      "sha256": "1c0322bc57f136199ad078ade1eeb88733062e72c473e3ad5f0a225f2d57976f",
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/native-Cmyka16.tif",
+      "bytes": 1121,
+      "sha256": "13d77588b4d72060446795a701c15fd9a3e7e9d32ec5385370be89953c8360e0",
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/native-Cmyka8-images.txt",
+      "bytes": 372,
+      "sha256": "f8f2a47901abc069a950ca8f488f8ffa0d8048011512ffffe1caea05929124e1",
+      "storage": "repository verification report"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/native-Cmyka8-poppler.png",
+      "bytes": 3800,
+      "sha256": "47b23ee29e1d85ba1ebe6f4cecb76638ae33d74e3c02f424497ae2f76c55b3f5",
+      "width": 600,
+      "height": 200,
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/native-Cmyka8.pdf",
+      "bytes": 3535,
+      "sha256": "6eceb78ae0b01a53cc4093b57b96aed36ddc6892434a3d40d05ae10597b8aec6",
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/cmyk-artifacts/native-Cmyka8.tif",
+      "bytes": 1109,
+      "sha256": "029689dfd26f0cfb44d970985780246185761f26f24ef1ca0383108b2f41e901",
+      "storage": "local execution artifact"
+    },
+    {
+      "path": "docs/public/implementation/studio/docs.log",
+      "bytes": 903,
+      "sha256": "dbb03157c0f688ca04df4a1131c44e9741e45822519ccc5f8b6597c3ccf1384e",
+      "storage": "repository verification report"
+    },
+    {
+      "path": "docs/public/implementation/studio/gauntlet.log",
+      "bytes": 93858,
+      "sha256": "e85e90d0fa3f16f69541b8a8e1cee0b29f6c68d627fd5da6a4b13b8c9911ae49",
+      "storage": "repository verification report"
+    },
+    {
+      "path": "docs/public/implementation/studio/independent-pdf.log",
+      "bytes": 1315,
+      "sha256": "6546ecdda2b6b1d42a4dee44da8cdb9d4f6096602c3f86672a0194a6dc1daf34",
+      "storage": "repository verification report"
+    },
+    {
+      "path": "docs/public/implementation/studio/ui-gauntlet.log",
+      "bytes": 7976,
+      "sha256": "32d024a266b28185f92e27b5129a1d08d28dd2c264c16ffc62df48e84161711f",
+      "storage": "repository verification report"
+    }
+  ],
+  "prumo": {
+    "available": false,
+    "fallback": "AGENTS.md, ADR-012, bilingual audit, contract bindings and this execution ledger provide the local goal/scope/evidence context."
+  },
+  "acceptance_limits": [
+    "This GUI increment does not establish complete MVP/V1 release acceptance or Affinity feature parity.",
+    "Exact numeric transform requires one selected object; several legacy properties still edit only the first object.",
+    "Favourites and appearance preferences belong to the current app session; persistent settings and free docking are outside this contract.",
+    "Light/system themes, comprehensive high-contrast modes, certified spot libraries and a Layout Studio are outside this contract.",
+    "Screen-reader, physical IME/tablet, calibrated display, HiDPI, installation, long sessions and representative usability require external acceptance.",
+    "Headless accessibility assertions do not certify real assistive-technology behaviour.",
+    "Professional page ink proof/overprint, spot parity, DeviceLink/black policy, PDF/X-4 and advanced typography remain roadmap work.",
+    "Synthetic CMYK fixtures verify engineering semantics, not press or PDF/X certification."
+  ],
+  "artifact_storage": "Binary screenshots and PDF/TIFF fixtures remain local execution artifacts; implementation sources, logs and textual reports are included in the repository. Reproduction commands are in docs/developers/uiux-studio.md."
+}

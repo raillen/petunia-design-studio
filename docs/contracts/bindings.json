@@ -225,5 +225,20 @@
       "crates/petunia_design_io/src/cmyk_tiff.rs",
       "apps/petunia-design-cli/src/native_cli.rs"
     ]
+  },
+  {
+    "contract_id": "ui.studio-workspace",
+    "scope": "Milestone Required",
+    "sources": [
+      "docs/developers/adr/ADR-012-studio-workspace.md",
+      "docs/pt/developers/adr/ADR-012-studio-workspace.md"
+    ],
+    "implementation": [
+      "apps/petunia-design/src/studio.rs",
+      "apps/petunia-design/src/studio_widgets.rs",
+      "apps/petunia-design/src/navigator.rs",
+      "apps/petunia-design/src/theme.rs",
+      "crates/petunia_design_resources/src/studio_strings.rs"
+    ]
   }
 ]

@@ -6,6 +6,13 @@ const crypto = require('node:crypto');
 const root = path.resolve(__dirname, '..');
 const read = (name) => fs.readFileSync(path.join(root, name), 'utf8');
 const files = [
+  'apps/petunia-design/src/studio.rs',
+  'apps/petunia-design/src/studio_widgets.rs',
+  'apps/petunia-design/src/navigator.rs',
+  'apps/petunia-design/src/chrome.rs',
+  'apps/petunia-design/src/theme.rs',
+  'apps/petunia-design/src/appearance.rs',
+  'crates/petunia_design_resources/src/studio_strings.rs',
   'crates/petunia_design_raster/src/cmyk.rs',
   'crates/petunia_design_raster/src/cmyk_tiff.rs',
   'crates/petunia_design_raster/src/pixel.rs',
@@ -97,6 +104,7 @@ const files = [
   'apps/petunia-design/src/main.rs',
 ];
 const tests = [
+  'apps/petunia-design/src/studio_tests.rs',
   'crates/petunia_design_raster/tests/native_cmyk.rs',
   'crates/petunia_design_io/tests/native_cmyk.rs',
   'crates/petunia_design_application/tests/native_cmyk.rs',
@@ -147,17 +155,18 @@ const tests = [
   'crates/petunia_design_testkit/src/bin/canvas_benchmark.rs',
 ];
 const reference = {
-  contract: 'ADR-011', related_contracts: ['ADR-010', 'ADR-009', 'ADR-008', 'ADR-007', 'ADR-006', 'ADR-005', 'ADR-004', 'ADR-003', 'ADR-002'], scope: 'V1 Required',
+  contract: 'ADR-012', related_contracts: ['ADR-011', 'ADR-010', 'ADR-009', 'ADR-008', 'ADR-007', 'ADR-006', 'ADR-005', 'ADR-004', 'ADR-003', 'ADR-002'], scope: 'Milestone Required',
   schema_version: Number(read('crates/petunia_design_foundation/src/lib.rs').match(/NATIVE_SCHEMA_VERSION: u32 = (\d+)/)[1]),
   rust_toolchain: read('rust-toolchain.toml').match(/channel = "([^"]+)"/)[1],
   gui: { runtime: 'Freya/Skia', version: read('apps/petunia-design/Cargo.toml').match(/freya\s*=\s*"([^"]+)"/)?.[1] ?? 'see Cargo.lock' },
   sources: [...new Set(files)].map((file) => ({ path: file, sha256: crypto.createHash('sha256').update(read(file)).digest('hex') })),
   tests: tests.map((file) => ({ path: file, count: [...read(file).matchAll(/#\[test\]/g)].length })),
-  validation_results: 'native-cmyk-v1.json',
+  validation_results: 'uiux-studio.json',
+  native_cmyk_validation_results: 'native-cmyk-v1.json',
   baseline_validation_results: 'mvp-v1-corrections.json',
   ui_workflow_validation_results: 'uiux-file-workflows.json',
   ui_object_edit_validation_results: 'uiux-object-edits.json',
-  current_validation_status: 'automated validation results are recorded in native-cmyk-v1.json; release acceptance remains separate',
+  current_validation_status: 'automated validation results are recorded in uiux-studio.json; release acceptance remains separate',
   integration_regressions: [{ path: 'crates/petunia_design_shell/tests/tools_test.rs', cases: ['perspective_drag_on_rotated_object_preserves_untouched_world_corners'] }, { path: 'crates/petunia_design_shell/tests/bridge_test.rs', cases: ['preview_source_is_shared_across_selection_and_camera_changes', 'preview_source_changes_on_revision_and_session_replacement'] }],
   limitations: ['MVP release and complete V1 acceptance remain open; automated checks have bounded scope.', 'RGB-composite proof is blocked for native ink; direct whole-page ink proof/separations remain unavailable.', 'Whole-page TAC/separations, DeviceLink black policy, overprint/spot parity, float process PDF colors and PDF/X-4 remain V1 Required.', 'Tablet/physical IME, calibrated display, accessibility, installation, long sessions and representative user projects require external acceptance.', 'Synthetic CMYK LUT is an engineering fixture, not a certified press profile.'],
 };

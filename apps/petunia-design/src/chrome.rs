@@ -16,6 +16,7 @@ use petunia_design_shell::menu::{
 use petunia_design_shell::PetuniaShell;
 
 use crate::actions::run_action_token;
+use crate::studio_widgets::StudioButton;
 use crate::theme;
 use crate::ui_state::{HoverTarget, RailColumns, ToolGroupConfig, ToolRailState, UiShell};
 
@@ -218,38 +219,142 @@ pub struct MenuBarRow(pub UiShell);
 impl Component for MenuBarRow {
     fn render(&self) -> impl IntoElement {
         let ui = &self.0;
-        let bar = ui.shell.peek().bridge.query_menu_bar();
-        let personas = ui.shell.peek().bridge.personas();
-        let active_persona = ui.persona.read().clone();
-
+        let bar = ui.shell.read().bridge.query_menu_bar();
+        let mut preferences = ui.customize_open;
         rect()
             .direction(Direction::Horizontal)
+            .content(Content::Flex)
+            .width(Size::fill())
+            .height(Size::px(theme::MENU_ROW_HEIGHT))
+            .background(theme::SURFACE_CHROME_STRONG)
+            .padding(Gaps::new_symmetric(0., theme::SPACE_2))
+            .cross_align(Alignment::Center)
+            .child(brand_slot())
+            .child(
+                ScrollView::new()
+                    .direction(Direction::Horizontal)
+                    .show_scrollbar(false)
+                    .width(Size::flex(1.))
+                    .height(Size::fill())
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .content(Content::Flex)
+                            .height(Size::fill())
+                            .cross_align(Alignment::Center)
+                            .children(bar.families.into_iter().map(|family| FamilyButton {
+                                ui: ui.clone(),
+                                family,
+                            })),
+                    ),
+            )
+            .child(
+                StudioButton::new(ui, ui.studio_text("preferences"))
+                    .icon(theme::ICON_SETTINGS)
+                    .height(theme::MENU_ROW_HEIGHT)
+                    .width(Size::px(32.))
+                    .on_press(move |_| preferences.set(true)),
+            )
+    }
+}
+
+/// Main toolbar: studios at the leading edge, document/view commands at the trailing edge.
+#[derive(Clone, PartialEq)]
+pub struct StudioToolbar(pub UiShell);
+impl Component for StudioToolbar {
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.0;
+        let personas = ui.shell.read().bridge.personas();
+        let active = ui.persona.read().clone();
+        let mut open = ui.right_studio_open;
+        let visible = *open.read();
+        let mut export = ui.export_open;
+        let shell = ui.shell.read();
+        let session = shell.bridge.session();
+        let snapping = session.is_some_and(|s| s.view.snapping_enabled);
+        let rulers = session.is_some_and(|s| s.view.rulers_visible);
+        let has_document = session.is_some();
+        drop(shell);
+        let mut ruler_shell = ui.shell;
+        rect()
+            .direction(Direction::Horizontal)
+            .content(Content::Flex)
             .width(Size::fill())
             .height(Size::px(theme::PERSONA_ROW_HEIGHT))
             .background(theme::SURFACE_CHROME)
-            .padding(Gaps::new(0., theme::SPACE_2, 0., theme::SPACE_2))
+            .padding(Gaps::new_symmetric(0., theme::SPACE_2))
             .cross_align(Alignment::Center)
             .main_align(Alignment::SpaceBetween)
             .child(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(theme::SPACE_1)
                     .cross_align(Alignment::Center)
-                    .child(brand_slot())
-                    .children(bar.families.iter().cloned().map(|family| FamilyButton {
-                        ui: ui.clone(),
-                        family,
-                    })),
+                    .children(
+                        personas.iter().map(|persona| {
+                            persona_button(ui.clone(), persona, persona.id == active)
+                        }),
+                    ),
+            )
+            .child(
+                ScrollView::new()
+                    .direction(Direction::Horizontal)
+                    .show_scrollbar(false)
+                    .width(Size::flex(1.))
+                    .height(Size::fill())
+                    .child(
+                        rect()
+                            .direction(Direction::Horizontal)
+                            .content(Content::Flex)
+                            .height(Size::fill())
+                            .cross_align(Alignment::Center)
+                            .spacing(theme::SPACE_1)
+                            .child(shell_cluster(ui.clone()))
+                            .child(snap_toggle(
+                                ui.clone(),
+                                ui.studio_text("snapping"),
+                                snapping,
+                            ))
+                            .child(
+                                StudioButton::new(ui, ui.studio_text("rulers"))
+                                    .icon(theme::ICON_MEASURE)
+                                    .selected(rulers)
+                                    .enabled(has_document)
+                                    .on_press(move |_| {
+                                        let _ = run_action_token(
+                                            &mut ruler_shell.write(),
+                                            "ptnd.action.view.toggle_rulers",
+                                        );
+                                    }),
+                            ),
+                    ),
             )
             .child(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(theme::SPACE_1)
-                    .cross_align(Alignment::Center)
-                    .child(shell_cluster(ui.clone()))
-                    .children(personas.iter().map(|persona| {
-                        persona_button(ui.clone(), persona, persona.id == active_persona)
-                    })),
+                    .child(
+                        StudioButton::new(
+                            ui,
+                            ui.studio_text(if visible {
+                                "hide_studio"
+                            } else {
+                                "show_studio"
+                            }),
+                        )
+                        .icon(theme::ICON_LAYERS)
+                        .selected(visible)
+                        .width(Size::px(32.))
+                        .on_press(move |_| open.set(!visible)),
+                    )
+                    .child(
+                        Button::new()
+                            .enabled(has_document)
+                            .on_press(move |_| export.set(true))
+                            .child(ui.text("export")),
+                    ),
             )
     }
 }
@@ -267,6 +372,7 @@ impl Component for ShellCluster {
         let controls = self.0.shell.peek().bridge.query_shell_controls();
         rect()
             .direction(Direction::Horizontal)
+            .content(Content::Flex)
             .cross_align(Alignment::Center)
             .spacing(theme::SPACE_1)
             .children(
@@ -284,232 +390,98 @@ pub struct DocumentTabStrip(pub UiShell);
 impl Component for DocumentTabStrip {
     fn render(&self) -> impl IntoElement {
         let ui = &self.0;
-        let shell_ref = ui.shell.peek();
-        let session = shell_ref.bridge.session();
-        let snap_label = shell_ref
+        let shell = ui.shell.read();
+        let active = shell.bridge.active_session_index();
+        let tabs = shell
             .bridge
-            .surface_label("ptnd.surface.tabs.snapping")
-            .unwrap_or_else(|| "Magnético".to_string());
-        let snapping = session.is_some_and(|s| s.view.snapping_enabled);
-        let rulers_on = session.is_some_and(|s| s.view.rulers_visible);
-        let soft_proof = *ui.soft_proof.read();
-        let proof_ui = ui.clone();
-        let channel_idx = *ui.channel_view.read();
-        let mut channel_toggle = ui.channel_view;
-        let channel_label = match channel_idx {
-            1 => "Canal: R",
-            2 => "Canal: G",
-            3 => "Canal: B",
-            4 => "Canal: Alfa",
-            _ => "Canal: RGB",
-        };
-        let mut shell = ui.shell;
-        let mut new_doc_open = ui.new_doc_open;
-
-        let tabs: Vec<(usize, String, bool, bool)> = {
-            let bridge = &shell_ref.bridge;
-            let active = bridge.active_session_index();
-            bridge
-                .sessions()
-                .iter()
-                .enumerate()
-                .map(|(i, s)| (i, s.title().to_string(), s.is_dirty(), active == Some(i)))
-                .collect()
-        };
-
+            .sessions()
+            .iter()
+            .enumerate()
+            .map(|(index, s)| {
+                (
+                    index,
+                    s.title().to_owned(),
+                    s.is_dirty(),
+                    active == Some(index),
+                )
+            })
+            .collect::<Vec<_>>();
+        drop(shell);
+        let mut open = ui.new_doc_open;
         rect()
             .direction(Direction::Horizontal)
+            .content(Content::Flex)
             .width(Size::fill())
             .height(Size::px(theme::TAB_STRIP_HEIGHT))
             .background(theme::SURFACE_CHROME_STRONG)
-            .padding(Gaps::new(0., theme::SPACE_2, 0., theme::SPACE_2))
-            .main_align(Alignment::SpaceBetween)
-            .cross_align(Alignment::Center)
             .child(
-                // Left: Document Tabs & New Tab (+) Button
-                rect()
+                ScrollView::new()
                     .direction(Direction::Horizontal)
-                    .spacing(theme::SPACE_1)
-                    .cross_align(Alignment::Center)
-                    .children(tabs.into_iter().map(|(idx, title, is_dirty, is_active)| {
-                        let mut shell = shell;
-                        let close_ui = ui.clone();
+                    .show_scrollbar(false)
+                    .height(Size::fill())
+                    .width(Size::flex(1.))
+                    .child(
                         rect()
                             .direction(Direction::Horizontal)
-                            .height(Size::px(26.))
-                            .background(if is_active {
-                                theme::SURFACE_PANEL
-                            } else {
-                                theme::SURFACE_CHROME
-                            })
-                            .padding(Gaps::new(0., theme::SPACE_2, 0., theme::SPACE_2))
-                            .spacing(theme::SPACE_2)
+                            .content(Content::Flex)
+                            .height(Size::fill())
+                            .spacing(2.)
                             .cross_align(Alignment::Center)
-                            .on_press(move |_| {
-                                let _ = shell.write().bridge.switch_session(idx);
-                            })
-                            .child(
-                                label()
-                                    .text(title)
-                                    .color(if is_active {
-                                        theme::TEXT_PRIMARY
-                                    } else {
-                                        theme::TEXT_TERTIARY
-                                    })
-                                    .font_size(theme::CAPTION_SIZE),
-                            )
-                            .maybe_child(if is_dirty {
-                                Some(
-                                    rect()
-                                        .width(Size::px(6.))
-                                        .height(Size::px(6.))
-                                        .background(Color::from_rgb(0xF5, 0x9E, 0x0B)),
-                                )
-                            } else {
-                                None
-                            })
-                            .child(
+                            .children(tabs.into_iter().map(|(index, title, dirty, selected)| {
+                                let mut switch = ui.shell;
+                                let close = ui.clone();
+                                let mut hovered = ui.hovered;
                                 rect()
-                                    .width(Size::px(16.))
-                                    .height(Size::px(16.))
-                                    .center()
-                                    .on_press(move |event: Event<PressEventData>| {
-                                        event.stop_propagation();
-                                        crate::file_workflows::request_close(&close_ui, idx);
+                                    .direction(Direction::Horizontal)
+                                    .content(Content::Flex)
+                                    .height(Size::fill())
+                                    .width(Size::px(196.))
+                                    .cross_align(Alignment::Center)
+                                    .background(if selected {
+                                        theme::SURFACE_PANEL
+                                    } else {
+                                        Color::TRANSPARENT
                                     })
                                     .child(
-                                        label()
-                                            .text("×")
-                                            .color(theme::TEXT_TERTIARY)
-                                            .font_size(12.),
-                                    ),
-                            )
-                    }))
-                    .child(
-                        // New Document Tab Button (+)
-                        rect()
-                            .width(Size::px(26.))
-                            .height(Size::px(26.))
-                            .center()
-                            .on_press(move |_| {
-                                new_doc_open.set(true);
-                            })
-                            .child(
-                                label()
-                                    .text("+")
-                                    .color(theme::TEXT_SECONDARY)
-                                    .font_size(14.),
-                            ),
+                                        StudioButton::new(ui, title.clone())
+                                            .text(title)
+                                            .tab()
+                                            .selected(selected)
+                                            .width(Size::flex(1.))
+                                            .on_press(move |_| {
+                                                if switch
+                                                    .write()
+                                                    .bridge
+                                                    .switch_session(index)
+                                                    .is_ok()
+                                                {
+                                                    hovered.set(None);
+                                                }
+                                            }),
+                                    )
+                                    .maybe_child(dirty.then(|| {
+                                        rect()
+                                            .width(Size::px(5.))
+                                            .height(Size::px(5.))
+                                            .corner_radius(3.)
+                                            .background(theme::STATE_WARNING)
+                                    }))
+                                    .child(
+                                        StudioButton::new(ui, ui.studio_text("close_tab"))
+                                            .icon(theme::ICON_CLOSE)
+                                            .width(Size::px(28.))
+                                            .on_press(move |_| {
+                                                crate::file_workflows::request_close(&close, index)
+                                            }),
+                                    )
+                            })),
                     ),
             )
             .child(
-                // Right: Quick View Controls (Snapping, Rulers, Fit)
-                rect()
-                    .direction(Direction::Horizontal)
-                    .spacing(theme::SPACE_2)
-                    .cross_align(Alignment::Center)
-                    .child(snap_toggle(ui.clone(), snap_label, snapping))
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .spacing(theme::SPACE_1)
-                            .cross_align(Alignment::Center)
-                            .on_press(move |_| {
-                                let _ = run_action_token(
-                                    &mut shell.write(),
-                                    "ptnd.action.view.toggle_rulers",
-                                );
-                            })
-                            .child(
-                                label()
-                                    .text(if rulers_on {
-                                        "Régua: On"
-                                    } else {
-                                        "Régua: Off"
-                                    })
-                                    .color(if rulers_on {
-                                        theme::TEXT_PRIMARY
-                                    } else {
-                                        theme::TEXT_TERTIARY
-                                    })
-                                    .font_size(theme::CAPTION_SIZE),
-                            ),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .spacing(theme::SPACE_1)
-                            .cross_align(Alignment::Center)
-                            .on_press(move |_| {
-                                let _ = run_action_token(
-                                    &mut shell.write(),
-                                    "ptnd.action.view.fit_surface",
-                                );
-                            })
-                            .child(
-                                label()
-                                    .text("Ajustar")
-                                    .color(theme::TEXT_SECONDARY)
-                                    .font_size(theme::CAPTION_SIZE),
-                            ),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .spacing(theme::SPACE_1)
-                            .cross_align(Alignment::Center)
-                            .background(if soft_proof {
-                                theme::SURFACE_PANEL
-                            } else {
-                                Color::TRANSPARENT
-                            })
-                            .padding(Gaps::new_symmetric(2., 5.))
-                            .corner_radius(CornerRadius::new_all(3.))
-                            .on_press(move |_| {
-                                crate::file_workflows::toggle_proof(&proof_ui);
-                            })
-                            .child(
-                                label()
-                                    .text(if soft_proof {
-                                        "Prova ICC"
-                                    } else {
-                                        "Prova ICC: Off"
-                                    })
-                                    .color(if soft_proof {
-                                        theme::ACCENT_BLOOM
-                                    } else {
-                                        theme::TEXT_TERTIARY
-                                    })
-                                    .font_size(theme::CAPTION_SIZE),
-                            ),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .spacing(theme::SPACE_1)
-                            .cross_align(Alignment::Center)
-                            .background(if channel_idx != 0 {
-                                theme::SURFACE_PANEL
-                            } else {
-                                Color::TRANSPARENT
-                            })
-                            .padding(Gaps::new_symmetric(2., 5.))
-                            .corner_radius(CornerRadius::new_all(3.))
-                            .on_press(move |_| {
-                                let next = (*channel_toggle.read() + 1) % 5;
-                                channel_toggle.set(next);
-                            })
-                            .child(
-                                label()
-                                    .text(channel_label)
-                                    .color(if channel_idx != 0 {
-                                        theme::STUDIO_DESIGN
-                                    } else {
-                                        theme::TEXT_TERTIARY
-                                    })
-                                    .font_size(theme::CAPTION_SIZE),
-                            ),
-                    ),
+                StudioButton::new(ui, ui.studio_text("new_tab"))
+                    .icon(theme::ICON_PLUS)
+                    .width(Size::px(32.))
+                    .on_press(move |_| open.set(true)),
             )
     }
 }
@@ -521,46 +493,49 @@ pub struct ToolRail(pub UiShell);
 impl Component for ToolRail {
     fn render(&self) -> impl IntoElement {
         let ui = &self.0;
-        let rail_state = ui.tool_rail.read().clone();
+        let rail = ui.tool_rail.read().clone();
         let photo = *ui.persona.read() == petunia_design_application::surfaces::PERSONA_PHOTO;
-        let groups = rail_state.groups(photo).to_vec();
-        let mut available_height = use_state(|| 0.);
-        let open_group = use_state(|| None::<String>);
-        let two_columns =
-            matches!(rail_state.columns, RailColumns::Two) && *available_height.read() > 520.;
-        let direction = if two_columns {
-            Direction::Horizontal
+        let groups = rail
+            .groups(photo)
+            .iter()
+            .filter(|g| g.visible && !g.tools.is_empty())
+            .cloned()
+            .collect::<Vec<_>>();
+        let open = use_state(|| None::<String>);
+        let columns = if rail.columns == RailColumns::Two {
+            2
         } else {
-            Direction::Vertical
-        };
-        let width = if two_columns {
-            theme::TOOL_RAIL_WIDTH * 2.
-        } else {
-            theme::TOOL_RAIL_WIDTH
+            1
         };
         rect()
-            .direction(direction)
-            .width(Size::px(width))
+            .width(Size::px(theme::TOOL_RAIL_WIDTH * columns as f32))
             .height(Size::fill())
             .background(theme::SURFACE_CHROME)
-            .padding(Gaps::new_all(theme::SPACE_1))
-            .spacing(theme::TOOL_GAP)
-            .cross_align(Alignment::Center)
-            .main_align(Alignment::Start)
-            .children(
-                groups
-                    .iter()
-                    .filter(|group| group.visible && !group.tools.is_empty())
-                    .map(|group| ToolGroupButton {
-                        ui: ui.clone(),
-                        group: group.clone(),
-                        open_group,
-                        open: open_group.read().as_deref() == Some(group.id.as_str()),
-                    }),
+            .child(
+                ScrollView::new()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .show_scrollbar(false)
+                    .child(
+                        rect()
+                            .direction(Direction::Vertical)
+                            .width(Size::fill())
+                            .padding(Gaps::new_symmetric(theme::SPACE_1, 2.))
+                            .spacing(theme::TOOL_GAP)
+                            .children(groups.chunks(columns).map(|row| {
+                                rect()
+                                    .direction(Direction::Horizontal)
+                                    .content(Content::Flex)
+                                    .spacing(2.)
+                                    .children(row.iter().map(|group| ToolGroupButton {
+                                        ui: ui.clone(),
+                                        group: group.clone(),
+                                        open_group: open,
+                                        open: open.read().as_deref() == Some(group.id.as_str()),
+                                    }))
+                            })),
+                    ),
             )
-            .on_sized(move |event: Event<SizedEventData>| {
-                available_height.set_if_modified(event.area.height());
-            })
     }
 }
 
@@ -573,7 +548,13 @@ struct ToolGroupButton {
 }
 
 impl Component for ToolGroupButton {
+    fn render_key(&self) -> DiffKey {
+        DiffKey::from(&self.group.id)
+    }
     fn render(&self) -> impl IntoElement {
+        let primary_id = use_a11y();
+        let primary_focus = use_focus(primary_id);
+        let variant_id = use_a11y();
         let ui = self.ui.clone();
         let rail_state = ui.tool_rail.read().clone();
         let active_tool = *ui.active_tool.read();
@@ -600,8 +581,9 @@ impl Component for ToolGroupButton {
         let group_id = self.group.id.clone();
         let tool = selected_tool;
         let primary = with_tooltip(
-            rect()
-                .width(Size::px(theme::TOOL_BUTTON - 4.))
+            rect().a11y_id(primary_id).a11y_focusable(selectable).a11y_role(AccessibilityRole::Button).a11y_builder(|node|{node.set_selected(active_tool==selected_tool);if !selectable {node.set_disabled();}})
+                .border(Border::new().fill(if primary_focus()==Focus::Keyboard {ui.accent.read().value}else {Color::TRANSPARENT}).width(2.).alignment(BorderAlignment::Inner))
+                .width(Size::px(28.))
                 .height(Size::px(theme::TOOL_BUTTON))
                 .center()
                 .background(if active_tool == selected_tool {
@@ -609,7 +591,9 @@ impl Component for ToolGroupButton {
                 } else {
                     Color::TRANSPARENT
                 })
-                .on_press(move |_| {
+                .on_all_press(move |event:Event<PressEventData>| {
+                    event.stop_propagation();
+                    if matches!(event.data(),PressEventData::Mouse(mouse) if mouse.button!=Some(MouseButton::Left)){return;}
                     if !selectable {
                         return;
                     }
@@ -620,7 +604,7 @@ impl Component for ToolGroupButton {
                     meta.icon,
                     *ui.icon_style.read(),
                     if active_tool == selected_tool {
-                        theme::TEXT_PRIMARY
+                        theme::TEXT_ON_ACCENT
                     } else if selectable {
                         theme::TEXT_TERTIARY
                     } else {
@@ -638,11 +622,13 @@ impl Component for ToolGroupButton {
         let toggle_id = self.group.id.clone();
         let variant = (self.group.tools.len() > 1).then(|| {
             with_tooltip(
-                rect()
-                    .width(Size::px(12.))
+                rect().a11y_id(variant_id).a11y_focusable(true).a11y_role(AccessibilityRole::Button)
+                    .width(Size::px(24.))
                     .height(Size::px(theme::TOOL_BUTTON))
                     .center()
-                    .on_press(move |_| {
+                    .on_all_press(move |event:Event<PressEventData>| {
+                    event.stop_propagation();
+                    if matches!(event.data(),PressEventData::Mouse(mouse) if mouse.button!=Some(MouseButton::Left)){return;}
                         let next = if toggle_group
                             .read()
                             .as_deref()
@@ -687,6 +673,7 @@ impl Component for ToolGroupButton {
             .child(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .child(primary)
                     .maybe_child(variant),
             )
@@ -748,6 +735,7 @@ fn tool_menu_item(
         .child(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .child(app_icon(
                     meta.icon,
@@ -878,7 +866,7 @@ pub fn tool_disabled_reason(ui: &UiShell, tool: ToolKind) -> String {
 }
 
 fn localized_text(ui: &UiShell, text_id: &str) -> String {
-    let shell = ui.shell.peek();
+    let shell = ui.shell.read();
     let bridge = &shell.bridge;
     bridge.localization().text(text_id, bridge.locale())
 }
@@ -922,24 +910,34 @@ impl Component for ContextToolbar {
             .expect("groups never empty")
             .push(customize_button(ui.clone()).into_element());
         rect()
-            .direction(Direction::Horizontal)
             .width(Size::fill())
             .height(Size::px(theme::TOOLBAR_HEIGHT))
             .background(theme::SURFACE_PANEL)
-            .padding(Gaps::new(0., theme::SPACE_2, 0., theme::SPACE_2))
-            .main_align(Alignment::SpaceBetween)
-            .cross_align(Alignment::Center)
-            .children(
-                groups
-                    .into_iter()
-                    .filter(|group| !group.is_empty())
-                    .map(|group| {
+            .child(
+                ScrollView::new()
+                    .direction(Direction::Horizontal)
+                    .show_scrollbar(false)
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .child(
                         rect()
                             .direction(Direction::Horizontal)
-                            .spacing(theme::SPACE_1)
+                            .content(Content::Flex)
+                            .height(Size::fill())
+                            .padding(Gaps::new_symmetric(0., theme::SPACE_2))
+                            .spacing(theme::SPACE_3)
                             .cross_align(Alignment::Center)
-                            .children(group)
-                    }),
+                            .children(groups.into_iter().filter(|group| !group.is_empty()).map(
+                                |group| {
+                                    rect()
+                                        .direction(Direction::Horizontal)
+                                        .content(Content::Flex)
+                                        .spacing(theme::SPACE_1)
+                                        .cross_align(Alignment::Center)
+                                        .children(group)
+                                },
+                            )),
+                    ),
             )
     }
 }
@@ -950,18 +948,19 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
         ToolKind::Rectangle => Some(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .cross_align(Alignment::Center)
                 .child(
                     label()
-                        .text("Cantos:")
+                        .text(ui.studio_text("corners"))
                         .color(theme::TEXT_SECONDARY)
                         .font_size(theme::CAPTION_SIZE),
                 )
-                .child(quick_action_btn("Fixar Cantos", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("bake_corners"), move |_| {
                     let _ = run_action_token(&mut shell.write(), "ptnd.action.object.bake_corners");
                 }))
-                .child(quick_action_btn("Para Curvas", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("curves"), move |_| {
                     let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
                 }))
                 .into_element(),
@@ -969,12 +968,13 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
         ToolKind::Corner => Some(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .cross_align(Alignment::Center)
-                .child(quick_action_btn("Fixar Cantos", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("bake_corners"), move |_| {
                     let _ = run_action_token(&mut shell.write(), "ptnd.action.object.bake_corners");
                 }))
-                .child(quick_action_btn("Para Curvas", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("curves"), move |_| {
                     let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
                 }))
                 .into_element(),
@@ -982,27 +982,28 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
         ToolKind::Node => Some(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .cross_align(Alignment::Center)
                 .child(
                     label()
-                        .text("Nó:")
+                        .text(ui.studio_text("node_options"))
                         .color(theme::TEXT_SECONDARY)
                         .font_size(theme::CAPTION_SIZE),
                 )
-                .child(quick_action_btn("Cúspide", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("cusp"), move |_| {
                     let _ = shell.write().convert_selected_nodes(petunia_design_shell::tools::NodeType::Cusp);
                 }))
-                .child(quick_action_btn("Suave", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("smooth"), move |_| {
                     let _ = shell.write().convert_selected_nodes(petunia_design_shell::tools::NodeType::Smooth);
                 }))
-                .child(quick_action_btn("Simétrico", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("symmetric"), move |_| {
                     let _ = shell.write().convert_selected_nodes(petunia_design_shell::tools::NodeType::Symmetric);
                 }))
-                .child(quick_action_btn("Excluir", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("delete"), move |_| {
                     let _ = shell.write().delete_selected_nodes();
                 }))
-                .child(quick_action_btn("Para Curvas", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("curves"), move |_| {
                     let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
                 }))
                 .into_element(),
@@ -1012,36 +1013,37 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
             Some(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(theme::SPACE_1)
                     .cross_align(Alignment::Center)
                     .child(
                         label()
-                            .text("Caneta:")
+                            .text(ui.studio_text("pen_options"))
                             .color(theme::TEXT_SECONDARY)
                             .font_size(theme::CAPTION_SIZE),
                     )
-                    .child(quick_action_btn(
-                        if mode == petunia_design_shell::tools::PenMode::Bezier { "Bézier (✓)" } else { "Bézier" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("bezier"),if mode == petunia_design_shell::tools::PenMode::Bezier {" ✓"} else {""}),
                         move |_| {
                             shell.write().tools.pen_tool_mut().set_mode(petunia_design_shell::tools::PenMode::Bezier);
                         },
                     ))
-                    .child(quick_action_btn(
-                        if mode == petunia_design_shell::tools::PenMode::Polygon { "Polígono (✓)" } else { "Polígono" },
+                    .child(quick_action_btn(ui,
+                        if mode == petunia_design_shell::tools::PenMode::Polygon { format!("{} ✓",ui.studio_text("polygon")) } else { ui.studio_text("polygon") },
                         move |_| {
                             shell.write().tools.pen_tool_mut().set_mode(petunia_design_shell::tools::PenMode::Polygon);
                         },
                     ))
-                    .child(quick_action_btn(
-                        if mode == petunia_design_shell::tools::PenMode::Line { "Linha (✓)" } else { "Linha" },
+                    .child(quick_action_btn(ui,
+                        if mode == petunia_design_shell::tools::PenMode::Line { format!("{} ✓",ui.studio_text("line")) } else { ui.studio_text("line") },
                         move |_| {
                             shell.write().tools.pen_tool_mut().set_mode(petunia_design_shell::tools::PenMode::Line);
                         },
                     ))
-                    .child(quick_action_btn("Concluir", move |_| {
+                    .child(quick_action_btn(ui,ui.studio_text("finish"), move |_| {
                         let _ = shell.write().finish_open_path();
                     }))
-                    .child(quick_action_btn("Para Curvas", move |_| {
+                    .child(quick_action_btn(ui,ui.studio_text("curves"), move |_| {
                         let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
                     }))
                     .into_element(),
@@ -1052,33 +1054,34 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
             Some(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(theme::SPACE_1)
                     .cross_align(Alignment::Center)
                     .child(
                         label()
-                            .text("Lápis:")
+                            .text(ui.studio_text("pencil_options"))
                             .color(theme::TEXT_SECONDARY)
                             .font_size(theme::CAPTION_SIZE),
                     )
-                    .child(quick_action_btn(
-                        if fidelity == petunia_design_shell::tools::PencilFidelity::Precise { "Preciso (✓)" } else { "Preciso" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("precise"),if fidelity == petunia_design_shell::tools::PencilFidelity::Precise {" ✓"} else {""}),
                         move |_| {
                             shell.write().tools.pencil_tool_mut().set_fidelity(petunia_design_shell::tools::PencilFidelity::Precise);
                         },
                     ))
-                    .child(quick_action_btn(
-                        if fidelity == petunia_design_shell::tools::PencilFidelity::Balanced { "Equilibrado (✓)" } else { "Equilibrado" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("balanced"),if fidelity == petunia_design_shell::tools::PencilFidelity::Balanced {" ✓"} else {""}),
                         move |_| {
                             shell.write().tools.pencil_tool_mut().set_fidelity(petunia_design_shell::tools::PencilFidelity::Balanced);
                         },
                     ))
-                    .child(quick_action_btn(
-                        if fidelity == petunia_design_shell::tools::PencilFidelity::Smooth { "Suave (✓)" } else { "Suave" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("smooth"),if fidelity == petunia_design_shell::tools::PencilFidelity::Smooth {" ✓"} else {""}),
                         move |_| {
                             shell.write().tools.pencil_tool_mut().set_fidelity(petunia_design_shell::tools::PencilFidelity::Smooth);
                         },
                     ))
-                    .child(quick_action_btn("Para Curvas", move |_| {
+                    .child(quick_action_btn(ui,ui.studio_text("curves"), move |_| {
                         let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
                     }))
                     .into_element(),
@@ -1098,11 +1101,12 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
             Some(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(theme::SPACE_1)
                     .cross_align(Alignment::Center)
                     .child(
                         label()
-                            .text(if is_brush { "Pincel:" } else { "Borracha:" })
+                            .text(ui.studio_text(if is_brush {"brush"} else {"eraser"}))
                             .color(theme::TEXT_SECONDARY)
                             .font_size(theme::CAPTION_SIZE),
                     )
@@ -1112,7 +1116,7 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                             .color(theme::TEXT_PRIMARY)
                             .font_size(theme::CAPTION_SIZE),
                     )
-                    .child(quick_action_btn("Raio -", move |_| {
+                    .child(quick_action_btn(ui,ui.studio_text("radius_less"), move |_| {
                         let mut sh = shell.write();
                         let target = if is_brush {
                             sh.tools.photo_brush_tool_mut()
@@ -1123,7 +1127,7 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                         s.radius = (s.radius - 4.0).clamp(2.0, 256.0);
                         target.set_brush_settings(s);
                     }))
-                    .child(quick_action_btn("Raio +", move |_| {
+                    .child(quick_action_btn(ui,ui.studio_text("radius_more"), move |_| {
                         let mut sh = shell.write();
                         let target = if is_brush {
                             sh.tools.photo_brush_tool_mut()
@@ -1134,7 +1138,7 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                         s.radius = (s.radius + 4.0).clamp(2.0, 256.0);
                         target.set_brush_settings(s);
                     }))
-                    .child(quick_action_btn(format!("Dureza {}%", hardness), move |_| {
+                    .child(quick_action_btn(ui,format!("{} {}%",ui.studio_text("hardness"), hardness), move |_| {
                         let mut sh = shell.write();
                         let target = if is_brush {
                             sh.tools.photo_brush_tool_mut()
@@ -1145,7 +1149,7 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                         s.hardness = if s.hardness < 0.3 { 0.5 } else if s.hardness < 0.8 { 1.0 } else { 0.0 };
                         target.set_brush_settings(s);
                     }))
-                    .child(quick_action_btn(format!("Opacidade {}%", opacity), move |_| {
+                    .child(quick_action_btn(ui,format!("{} {}%",ui.studio_text("opacity"), opacity), move |_| {
                         let mut sh = shell.write();
                         let target = if is_brush {
                             sh.tools.photo_brush_tool_mut()
@@ -1162,15 +1166,16 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
         ToolKind::Select => Some(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .cross_align(Alignment::Center)
-                .child(quick_action_btn("União", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("union"), move |_| {
                     let _ = run_action_token(&mut shell.write(), "ptnd.action.object.boolean#union");
                 }))
-                .child(quick_action_btn("Subtrair", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("subtract"), move |_| {
                     let _ = run_action_token(&mut shell.write(), "ptnd.action.object.boolean#subtract");
                 }))
-                .child(quick_action_btn("Interseção", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("intersection"), move |_| {
                     let _ = run_action_token(&mut shell.write(), "ptnd.action.object.boolean#intersect");
                 }))
                 .into_element(),
@@ -1178,15 +1183,16 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
         ToolKind::Star => Some(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .cross_align(Alignment::Center)
                 .child(
                     label()
-                        .text("Estrela:")
+                        .text(ui.studio_text("star_shape"))
                         .color(theme::TEXT_SECONDARY)
                         .font_size(theme::CAPTION_SIZE),
                 )
-                .child(quick_action_btn("Pontas -", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("points_less"), move |_| {
                     let maybe_change = {
                         let sh = shell.peek();
                         sh.bridge.selection().selected_ids.first().copied().and_then(|id| {
@@ -1210,7 +1216,7 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                         );
                     }
                 }))
-                .child(quick_action_btn("Pontas +", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("points_more"), move |_| {
                     let maybe_change = {
                         let sh = shell.peek();
                         sh.bridge.selection().selected_ids.first().copied().and_then(|id| {
@@ -1234,7 +1240,7 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                         );
                     }
                 }))
-                .child(quick_action_btn("Para Curvas", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("curves"), move |_| {
                     let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
                 }))
                 .into_element(),
@@ -1242,15 +1248,16 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
         ToolKind::Polygon => Some(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .cross_align(Alignment::Center)
                 .child(
                     label()
-                        .text("Polígono:")
+                        .text(ui.studio_text("polygon_shape"))
                         .color(theme::TEXT_SECONDARY)
                         .font_size(theme::CAPTION_SIZE),
                 )
-                .child(quick_action_btn("Lados -", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("sides_less"), move |_| {
                     let maybe_change = {
                         let sh = shell.peek();
                         sh.bridge.selection().selected_ids.first().copied().and_then(|id| {
@@ -1274,7 +1281,7 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                         );
                     }
                 }))
-                .child(quick_action_btn("Lados +", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("sides_more"), move |_| {
                     let maybe_change = {
                         let sh = shell.peek();
                         sh.bridge.selection().selected_ids.first().copied().and_then(|id| {
@@ -1298,7 +1305,7 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                         );
                     }
                 }))
-                .child(quick_action_btn("Para Curvas", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("curves"), move |_| {
                     let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
                 }))
                 .into_element(),
@@ -1306,15 +1313,16 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
         ToolKind::Contour => Some(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .cross_align(Alignment::Center)
                 .child(
                     label()
-                        .text("Contorno:")
+                        .text(ui.studio_text("add_contour"))
                         .color(theme::TEXT_SECONDARY)
                         .font_size(theme::CAPTION_SIZE),
                 )
-                .child(quick_action_btn("-2pt", move |_| {
+                .child(quick_action_btn(ui,"-2pt", move |_| {
                     let maybe_target = {
                         let sh = shell.peek();
                         sh.bridge.selection().selected_ids.first().copied().map(|id| {
@@ -1342,7 +1350,7 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                         );
                     }
                 }))
-                .child(quick_action_btn("+2pt", move |_| {
+                .child(quick_action_btn(ui,"+2pt", move |_| {
                     let maybe_target = {
                         let sh = shell.peek();
                         sh.bridge.selection().selected_ids.first().copied().map(|id| {
@@ -1370,7 +1378,7 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                         );
                     }
                 }))
-                .child(quick_action_btn("Fixar Contorno", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("bake_contour"), move |_| {
                     let target_id = shell.peek().bridge.selection().selected_ids.first().copied();
                     if let Some(id) = target_id {
                         let _ = shell.write().bridge.submit_all(
@@ -1384,15 +1392,16 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
         ToolKind::Perspective => Some(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .cross_align(Alignment::Center)
                 .child(
                     label()
-                        .text("Perspectiva:")
+                        .text(ui.studio_text("perspective"))
                         .color(theme::TEXT_SECONDARY)
                         .font_size(theme::CAPTION_SIZE),
                 )
-                .child(quick_action_btn("Fixar Geometria", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("bake_geometry"), move |_| {
                     let target_id = shell.peek().bridge.selection().selected_ids.first().copied();
                     if let Some(id) = target_id {
                         let _ = shell.write().bridge.submit_all(
@@ -1406,15 +1415,16 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
         ToolKind::ArtisticText | ToolKind::FrameText => Some(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .cross_align(Alignment::Center)
                 .child(
                     label()
-                        .text("Texto:")
+                        .text(ui.studio_text("text_options"))
                         .color(theme::TEXT_SECONDARY)
                         .font_size(theme::CAPTION_SIZE),
                 )
-                .child(quick_action_btn("Converter em Curvas", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("curves"), move |_| {
                     let _ = run_action_token(&mut shell.write(), "ptnd.action.object.convert_to_curves");
                 }))
                 .into_element(),
@@ -1422,15 +1432,16 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
         ToolKind::MarqueeRect | ToolKind::MarqueeEllipse | ToolKind::Lasso => Some(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .cross_align(Alignment::Center)
                 .child(
                     label()
-                        .text("Seleção Raster:")
+                        .text(ui.studio_text("pixel_selection"))
                         .color(theme::TEXT_SECONDARY)
                         .font_size(theme::CAPTION_SIZE),
                 )
-                .child(quick_action_btn("Desselecionar", move |_| {
+                .child(quick_action_btn(ui,ui.studio_text("deselect"), move |_| {
                     let _ = run_action_token(&mut shell.write(), "ptnd.action.select.deselect");
                 }))
                 .into_element(),
@@ -1440,27 +1451,28 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
             Some(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(theme::SPACE_1)
                     .cross_align(Alignment::Center)
                     .child(
                         label()
-                            .text("Medição:")
+                            .text(ui.studio_text("measure"))
                             .color(theme::TEXT_SECONDARY)
                             .font_size(theme::CAPTION_SIZE),
                     )
-                    .child(quick_action_btn(
-                        if mode == petunia_design_shell::tools::MeasureMode::Distance { "Distância (✓)" } else { "Distância" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("distance"),if mode == petunia_design_shell::tools::MeasureMode::Distance {" ✓"} else {""}),
                         move |_| {
                             shell.write().tools.measure_tool_mut().set_mode(petunia_design_shell::tools::MeasureMode::Distance);
                         },
                     ))
-                    .child(quick_action_btn(
-                        if mode == petunia_design_shell::tools::MeasureMode::Area { "Área (✓)" } else { "Área" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("area"),if mode == petunia_design_shell::tools::MeasureMode::Area {" ✓"} else {""}),
                         move |_| {
                             shell.write().tools.measure_tool_mut().set_mode(petunia_design_shell::tools::MeasureMode::Area);
                         },
                     ))
-                    .child(quick_action_btn("Limpar", move |_| {
+                    .child(quick_action_btn(ui,ui.studio_text("delete_selection"), move |_| {
                         shell.write().tools.measure_tool_mut().cancel();
                     }))
                     .into_element(),
@@ -1471,22 +1483,23 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
             Some(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(theme::SPACE_1)
                     .cross_align(Alignment::Center)
                     .child(
                         label()
-                            .text("Gradiente:")
+                            .text(ui.studio_text("gradient"))
                             .color(theme::TEXT_SECONDARY)
                             .font_size(theme::CAPTION_SIZE),
                     )
-                    .child(quick_action_btn(
-                        if kind == petunia_design_shell::tools::GradientKind::Linear { "Linear (✓)" } else { "Linear" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("linear"),if kind == petunia_design_shell::tools::GradientKind::Linear {" ✓"} else {""}),
                         move |_| {
                             shell.write().tools.gradient_tool_mut().set_kind(petunia_design_shell::tools::GradientKind::Linear);
                         },
                     ))
-                    .child(quick_action_btn(
-                        if kind == petunia_design_shell::tools::GradientKind::Radial { "Radial (✓)" } else { "Radial" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("radial"),if kind == petunia_design_shell::tools::GradientKind::Radial {" ✓"} else {""}),
                         move |_| {
                             shell.write().tools.gradient_tool_mut().set_kind(petunia_design_shell::tools::GradientKind::Radial);
                         },
@@ -1499,16 +1512,17 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
             Some(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(theme::SPACE_1)
                     .cross_align(Alignment::Center)
                     .child(
                         label()
-                            .text("Copiar:")
+                            .text(ui.studio_text("copy_style"))
                             .color(theme::TEXT_SECONDARY)
                             .font_size(theme::CAPTION_SIZE),
                     )
-                    .child(quick_action_btn(
-                        if filter.fill { "Preenchimento (✓)" } else { "Preenchimento" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("fill"),if filter.fill {" ✓"} else {""}),
                         move |_| {
                             let mut sh = shell.write();
                             let cur = sh.tools.style_picker_tool().filter();
@@ -1518,8 +1532,8 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                             });
                         },
                     ))
-                    .child(quick_action_btn(
-                        if filter.stroke { "Traçado (✓)" } else { "Traçado" },
+                    .child(quick_action_btn(ui,
+                        if filter.stroke { format!("{} ✓",ui.studio_text("stroke")) } else { ui.studio_text("stroke") },
                         move |_| {
                             let mut sh = shell.write();
                             let cur = sh.tools.style_picker_tool().filter();
@@ -1529,8 +1543,8 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                             });
                         },
                     ))
-                    .child(quick_action_btn(
-                        if filter.effects { "Efeitos (✓)" } else { "Efeitos" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("effects"),if filter.effects {" ✓"} else {""}),
                         move |_| {
                             let mut sh = shell.write();
                             let cur = sh.tools.style_picker_tool().filter();
@@ -1540,8 +1554,8 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
                             });
                         },
                     ))
-                    .child(quick_action_btn(
-                        if filter.typography { "Tipografia (✓)" } else { "Tipografia" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("typography"),if filter.typography {" ✓"} else {""}),
                         move |_| {
                             let mut sh = shell.write();
                             let cur = sh.tools.style_picker_tool().filter();
@@ -1559,22 +1573,23 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
             Some(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(theme::SPACE_1)
                     .cross_align(Alignment::Center)
                     .child(
                         label()
-                            .text("Construtor:")
+                            .text(ui.studio_text("shape_builder"))
                             .color(theme::TEXT_SECONDARY)
                             .font_size(theme::CAPTION_SIZE),
                     )
-                    .child(quick_action_btn(
-                        if op == petunia_design_shell::tools::BuilderOp::Add { "Adicionar (✓)" } else { "Adicionar" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("add"),if op == petunia_design_shell::tools::BuilderOp::Add {" ✓"} else {""}),
                         move |_| {
                             shell.write().tools.shape_builder_tool_mut().set_op(petunia_design_shell::tools::BuilderOp::Add);
                         },
                     ))
-                    .child(quick_action_btn(
-                        if op == petunia_design_shell::tools::BuilderOp::Subtract { "Subtrair (✓)" } else { "Subtrair" },
+                    .child(quick_action_btn(ui,
+                        if op == petunia_design_shell::tools::BuilderOp::Subtract { format!("{} ✓",ui.studio_text("subtract")) } else { ui.studio_text("subtract") },
                         move |_| {
                             shell.write().tools.shape_builder_tool_mut().set_op(petunia_design_shell::tools::BuilderOp::Subtract);
                         },
@@ -1587,34 +1602,35 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
             Some(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(theme::SPACE_1)
                     .cross_align(Alignment::Center)
                     .child(
                         label()
-                            .text("Preenchimento Interativo:")
+                            .text(ui.studio_text("interactive_fill"))
                             .color(theme::TEXT_SECONDARY)
                             .font_size(theme::CAPTION_SIZE),
                     )
-                    .child(quick_action_btn(
-                        if current_token == "ptnd.blue/500" { "Azul (✓)" } else { "Azul" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("blue"),if current_token == "ptnd.blue/500" {" ✓"} else {""}),
                         move |_| {
                             shell.write().tools.smart_fill_tool_mut().set_fill_token("ptnd.blue/500");
                         },
                     ))
-                    .child(quick_action_btn(
-                        if current_token == "ptnd.red/500" { "Vermelho (✓)" } else { "Vermelho" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("red"),if current_token == "ptnd.red/500" {" ✓"} else {""}),
                         move |_| {
                             shell.write().tools.smart_fill_tool_mut().set_fill_token("ptnd.red/500");
                         },
                     ))
-                    .child(quick_action_btn(
-                        if current_token == "ptnd.green/500" { "Verde (✓)" } else { "Verde" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("green"),if current_token == "ptnd.green/500" {" ✓"} else {""}),
                         move |_| {
                             shell.write().tools.smart_fill_tool_mut().set_fill_token("ptnd.green/500");
                         },
                     ))
-                    .child(quick_action_btn(
-                        if current_token == "ptnd.yellow/500" { "Amarelo (✓)" } else { "Amarelo" },
+                    .child(quick_action_btn(ui,
+                        format!("{}{}",ui.studio_text("yellow"),if current_token == "ptnd.yellow/500" {" ✓"} else {""}),
                         move |_| {
                             shell.write().tools.smart_fill_tool_mut().set_fill_token("ptnd.yellow/500");
                         },
@@ -1627,17 +1643,14 @@ fn tool_quick_controls(ui: &UiShell, tool: ToolKind) -> Option<Element> {
 }
 
 fn quick_action_btn(
+    ui: &UiShell,
     title: impl Into<String>,
     on_press: impl FnMut(Event<PressEventData>) + 'static,
 ) -> Element {
-    Button::new()
+    let title = title.into();
+    StudioButton::new(ui, title.clone())
+        .text(title)
         .on_press(on_press)
-        .child(
-            label()
-                .text(title.into())
-                .color(theme::TEXT_PRIMARY)
-                .font_size(theme::CAPTION_SIZE),
-        )
         .into_element()
 }
 
@@ -1646,6 +1659,7 @@ fn brand_slot() -> impl IntoElement {
         .width(Size::px(theme::BRAND_MARK_SIZE))
         .height(Size::px(theme::BRAND_MARK_SIZE))
         .background(theme::SURFACE_CHROME_STRONG)
+        .child(label().text("p").font_size(18.).color(theme::ACCENT_BLOOM))
 }
 
 #[derive(Clone, PartialEq)]
@@ -1660,43 +1674,17 @@ impl Component for FamilyButton {
         let family_id = self.family.id.clone();
         let is_open = ui.open_family.read().as_deref() == Some(family_id.as_str());
         let mut open_family = ui.open_family;
-        let button = with_tooltip(
-            rect()
-                .padding(Gaps::new(
-                    theme::SPACE_1,
-                    theme::SPACE_2,
-                    theme::SPACE_1,
-                    theme::SPACE_2,
-                ))
-                .center()
-                .background(if is_open {
-                    theme::SURFACE_PANEL
+        let button = StudioButton::new(&ui, self.family.label.clone())
+            .text(self.family.label.clone())
+            .selected(is_open)
+            .height(theme::MENU_ROW_HEIGHT)
+            .on_press(move |_| {
+                open_family.set(if is_open {
+                    None
                 } else {
-                    Color::TRANSPARENT
+                    Some(family_id.clone())
                 })
-                .on_press(move |_| {
-                    open_family.set(if is_open {
-                        None
-                    } else {
-                        Some(family_id.clone())
-                    });
-                })
-                .child(
-                    label()
-                        .text(self.family.label.clone())
-                        .color(if is_open {
-                            theme::TEXT_PRIMARY
-                        } else {
-                            theme::TEXT_SECONDARY
-                        })
-                        .font_size(theme::BODY_SIZE),
-                ),
-            &ui,
-            format!("menu:{}", self.family.id),
-            self.family.label.clone(),
-            localized_text(&ui, "ptnd.text.shell.open_menu"),
-            String::new(),
-        );
+            });
         let menu = is_open.then(|| {
             let mut close_state = ui.open_family;
             let mut close_hovered = ui.hovered;
@@ -1834,140 +1822,65 @@ fn persona_button(
     active: bool,
 ) -> impl IntoElement {
     let id = persona.id.clone();
-    let ui_for_press = ui.clone();
-    let accent = *ui.accent.read();
-    with_tooltip(
-        rect()
-            .padding(Gaps::new(
-                theme::SPACE_1,
-                theme::SPACE_2,
-                theme::SPACE_1,
-                theme::SPACE_2,
-            ))
-            .center()
-            .background(if active {
-                accent.value
-            } else {
-                Color::TRANSPARENT
-            })
-            .on_press(move |_| {
-                ui_for_press.set_persona(id.clone());
-            })
-            .child(
-                label()
-                    .text(persona.label.clone())
-                    .color(if active {
-                        theme::TEXT_PRIMARY
-                    } else {
-                        theme::TEXT_TERTIARY
-                    })
-                    .font_size(theme::CAPTION_SIZE),
-            ),
+    let target = ui.clone();
+    let photo = persona.id == petunia_design_application::surfaces::PERSONA_PHOTO;
+    StudioButton::new(
         &ui,
-        hover_id("persona", &persona.id),
-        persona.label.clone(),
-        persona.hint.clone(),
-        String::new(),
+        ui.studio_text(if photo {
+            "pixel_studio"
+        } else {
+            "vector_studio"
+        }),
     )
+    .text(ui.studio_text(if photo { "pixel" } else { "vector" }))
+    .icon(if photo {
+        theme::ICON_PHOTO
+    } else {
+        theme::ICON_NODE
+    })
+    .selected(active)
+    .on_press(move |_| target.set_persona(id.clone()))
 }
 
 fn snap_toggle(ui: UiShell, snap_label: String, snapping: bool) -> impl IntoElement {
     let mut shell = ui.shell;
-    let hint = snap_label.clone();
-    let state_text_id = if snapping {
-        "ptnd.text.shell.snap_on"
-    } else {
-        "ptnd.text.shell.snap_off"
-    };
-    let state_label = ui
-        .shell
-        .peek()
-        .bridge
-        .localization()
-        .text(state_text_id, ui.shell.peek().bridge.locale());
-    let summary_label = state_label.clone();
-    with_tooltip(
-        rect()
-            .direction(Direction::Horizontal)
-            .spacing(theme::SPACE_1)
-            .cross_align(Alignment::Center)
-            .on_press(move |_| {
-                use petunia_design_application::{ActionId, ActionRequest};
-                let _ = shell
-                    .write()
-                    .bridge
-                    .dispatch_action(ActionRequest::without_payload(ActionId::new(
-                        "ptnd.action.view.toggle_snapping",
-                    )));
-            })
-            .child(
-                label()
-                    .text(snap_label)
-                    .color(theme::TEXT_SECONDARY)
-                    .font_size(theme::CAPTION_SIZE),
-            )
-            .child(
-                label()
-                    .text(state_label)
-                    .color(if snapping {
-                        theme::ACCENT_BLOOM
-                    } else {
-                        theme::TEXT_TERTIARY
-                    })
-                    .font_size(theme::CAPTION_SIZE),
-            ),
-        &ui,
-        hover_id("tabstrip", "snapping"),
-        hint,
-        summary_label,
-        String::new(),
-    )
+    StudioButton::new(&ui, snap_label)
+        .icon(theme::ICON_ATTRIBUTE_PICKER)
+        .selected(snapping)
+        .on_press(move |_| {
+            let _ = run_action_token(&mut shell.write(), "ptnd.action.view.toggle_snapping");
+        })
 }
 
 fn shell_control(ui: UiShell, control: &ShellControlPresentation) -> impl IntoElement {
-    let body = match control.kind {
+    match control.kind {
         ShellControlKind::Divider => rect()
             .width(Size::px(1.))
             .height(Size::px(theme::ICON_INLINE))
-            .background(theme::BORDER_SUBTLE),
+            .background(theme::BORDER_SUBTLE)
+            .into_element(),
         ShellControlKind::Readout => {
-            let shell_ref = ui.shell.peek();
-            let zoom_pct = (shell_ref.view_camera().zoom * 100.).round() as i32;
-            rect()
-                .padding(Gaps::new(0., theme::SPACE_2, 0., theme::SPACE_2))
-                .center()
-                .child(
-                    label()
-                        .text(format!("{zoom_pct}%"))
-                        .color(theme::TEXT_SECONDARY)
-                        .font_size(theme::CAPTION_SIZE),
-                )
+            let zoom = (ui.shell.read().view_camera().zoom * 100.).round() as i32;
+            label()
+                .text(format!("{zoom}%"))
+                .width(Size::px(48.))
+                .max_lines(1)
+                .font_size(theme::BODY_SIZE)
+                .color(theme::TEXT_SECONDARY)
+                .into_element()
         }
         ShellControlKind::Icon => {
-            let icon = control_icon(&control.id);
             let enabled = control.enabled;
             let id = control.id.clone();
             let mut shell = ui.shell;
-            with_tooltip(
-                rect()
-                    .width(Size::px(theme::TOOL_BUTTON))
-                    .height(Size::px(theme::TOOL_BUTTON))
-                    .center()
-                    .on_press(move |_| {
-                        if enabled {
-                            shell_control_action(&mut shell, &id);
-                        }
-                    })
-                    .child(app_icon(icon, *ui.icon_style.read(), theme::TEXT_TERTIARY)),
-                &ui,
-                hover_id("shell", &control.id),
-                control.tooltip.clone(),
-                control_summary(&ui, &control.id),
-                String::new(),
-            )
+            StudioButton::new(&ui, control.tooltip.clone())
+                .icon(control_icon(&control.id))
+                .width(Size::px(28.))
+                .enabled(enabled)
+                .on_press(move |_| shell_control_action(&mut shell, &id))
+                .into_element()
         }
-    };
-    body.into_element()
+    }
 }
 
 pub(crate) fn with_tooltip(
@@ -1981,26 +1894,27 @@ pub(crate) fn with_tooltip(
     let mut enter_hovered = ui.hovered;
     let mut leave_hovered = ui.hovered;
     let leave_id = id.clone();
-    el.on_pointer_enter(move |event: Event<PointerEventData>| {
-        let point = event.global_location();
-        enter_hovered.set(Some(HoverTarget {
-            id: id.clone(),
-            title: title.clone(),
-            summary: summary.clone(),
-            shortcut: shortcut.clone(),
-            x: point.x,
-            y: point.y,
-        }));
-    })
-    .on_pointer_leave(move |_| {
-        if leave_hovered
-            .read()
-            .as_ref()
-            .is_some_and(|hovered| hovered.id == leave_id)
-        {
-            leave_hovered.set(None);
-        }
-    })
+    el.a11y_alt(title.clone())
+        .on_pointer_enter(move |event: Event<PointerEventData>| {
+            let point = event.global_location();
+            enter_hovered.set(Some(HoverTarget {
+                id: id.clone(),
+                title: title.clone(),
+                summary: summary.clone(),
+                shortcut: shortcut.clone(),
+                x: point.x,
+                y: point.y,
+            }));
+        })
+        .on_pointer_leave(move |_| {
+            if leave_hovered
+                .read()
+                .as_ref()
+                .is_some_and(|hovered| hovered.id == leave_id)
+            {
+                leave_hovered.set(None);
+            }
+        })
 }
 
 #[derive(Clone, PartialEq)]
@@ -2073,18 +1987,6 @@ fn shell_control_action(shell: &mut State<PetuniaShell>, id: &str) {
         .dispatch_action(ActionRequest::without_payload(ActionId::new(action_id)));
 }
 
-fn control_summary(ui: &UiShell, id: &str) -> String {
-    let text_id = match id {
-        "ptnd.surface.shell.undo" => "ptnd.text.summary.undo",
-        "ptnd.surface.shell.redo" => "ptnd.text.summary.redo",
-        "ptnd.surface.shell.zoom_in" => "ptnd.text.summary.zoom_in",
-        "ptnd.surface.shell.zoom_out" => "ptnd.text.summary.zoom_out",
-        "ptnd.surface.shell.fit" => "ptnd.text.summary.fit",
-        _ => "ptnd.text.summary.shell_action",
-    };
-    localized_text(ui, text_id)
-}
-
 fn toolbar_summary(ui: &UiShell, id: &str) -> String {
     let text_id = if id.contains("delete") {
         "ptnd.text.summary.delete"
@@ -2147,6 +2049,7 @@ fn toolbar_entry(
             let icon = tool_badge_icon(&ui);
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .cross_align(Alignment::Center)
                 .child(app_icon(icon, *ui.icon_style.read(), theme::TEXT_PRIMARY))
@@ -2166,46 +2069,78 @@ fn toolbar_entry(
                     .color(theme::TEXT_SECONDARY)
                     .font_size(theme::CAPTION_SIZE),
             ),
-        ToolbarEntryKind::ColorSwatches => rect()
-            .direction(Direction::Horizontal)
-            .spacing(theme::SPACE_1)
-            .cross_align(Alignment::Center)
-            .child(
-                rect()
-                    .width(Size::px(18.))
-                    .height(Size::px(18.))
-                    .background(theme::ACCENT_BLOOM),
-            )
-            .child(
-                rect()
-                    .width(Size::px(18.))
-                    .height(Size::px(18.))
-                    .background(Color::TRANSPARENT),
-            ),
+        ToolbarEntryKind::ColorSwatches => {
+            let state = ui.shell.read();
+            let selected = state.bridge.selection().selected_ids;
+            let object = selected
+                .first()
+                .and_then(|id| state.bridge.session()?.find_object(*id));
+            let brush = object.is_some_and(|o| {
+                matches!(
+                    o.shape,
+                    Some(petunia_design_document::ShapeKind::Raster { .. })
+                )
+            }) || (selected.is_empty()
+                && *ui.persona.read() == petunia_design_application::surfaces::PERSONA_PHOTO);
+            let brush_color = crate::studio::rgb_token(
+                state.tools.photo_brush_tool().brush_settings().color[..3]
+                    .try_into()
+                    .unwrap_or([0.; 3]),
+            );
+            let colors = [
+                object.and_then(|o| o.fill.clone()),
+                object.and_then(|o| o.stroke.clone()),
+            ];
+            drop(state);
+            rect()
+                .direction(Direction::Horizontal)
+                .content(Content::Flex)
+                .spacing(theme::SPACE_1)
+                .children(colors.into_iter().enumerate().map(|(index, token)| {
+                    let fill = index == 0;
+                    let caption = ui.studio_text(if fill { "fill" } else { "stroke" });
+                    let token = if brush {
+                        Some(brush_color.clone())
+                    } else {
+                        token
+                    };
+                    let text = token.as_deref().unwrap_or("—");
+                    let title = format!("{caption}: {text}");
+                    let color = token
+                        .as_deref()
+                        .map(petunia_design_document::resolve_color_to_rgb)
+                        .map(|rgb| {
+                            Color::from_rgb(
+                                (rgb[0] * 255.).round() as u8,
+                                (rgb[1] * 255.).round() as u8,
+                                (rgb[2] * 255.).round() as u8,
+                            )
+                        })
+                        .unwrap_or(Color::TRANSPARENT);
+                    let mut target = ui.studio_fill_target;
+                    let mut tab = ui.dock_tab;
+                    let mut visible = ui.right_studio_open;
+                    crate::studio_widgets::StudioButton::new(&ui, title)
+                        .swatch(color)
+                        .width(Size::px(34.))
+                        .on_press(move |_| {
+                            target.set(fill);
+                            tab.set(2);
+                            visible.set(true);
+                        })
+                }))
+        }
         ToolbarEntryKind::Command => {
             let icon = toolbar_command_icon(&entry.id);
-            let enabled = entry.enabled;
             let id = entry.id.clone();
             let mut shell = ui.shell;
-            let accent = *ui.accent.read();
-            rect()
-                .width(Size::px(theme::TOOL_BUTTON))
-                .height(Size::px(theme::TOOL_BUTTON))
-                .center()
-                .on_press(move |_| {
-                    if enabled {
-                        activate_toolbar_entry(&mut shell, &id);
-                    }
-                })
-                .child(app_icon(
-                    icon,
-                    *ui.icon_style.read(),
-                    if enabled {
-                        accent.value
-                    } else {
-                        theme::TEXT_TERTIARY
-                    },
-                ))
+            rect().child(
+                crate::studio_widgets::StudioButton::new(&ui, tooltip_text.clone())
+                    .icon(icon)
+                    .enabled(entry.enabled)
+                    .width(Size::px(theme::TOOL_BUTTON))
+                    .on_press(move |_| activate_toolbar_entry(&mut shell, &id)),
+            )
         }
     };
     with_tooltip(
@@ -2260,32 +2195,14 @@ fn toolbar_command_icon(id: &str) -> theme::AppIcon {
 
 fn customize_button(ui: UiShell) -> impl IntoElement {
     let mut customize_open = ui.customize_open;
-    let catalog_label = ui
-        .shell
-        .peek()
-        .bridge
-        .localization()
-        .text("ptnd.text.shell.customize", ui.shell.peek().bridge.locale());
-    with_tooltip(
-        rect()
-            .width(Size::px(theme::TOOL_BUTTON))
-            .height(Size::px(theme::TOOL_BUTTON))
-            .center()
-            .on_press(move |_| {
-                let open = *customize_open.read();
-                customize_open.set(!open);
-            })
-            .child(app_icon(
-                theme::ICON_CUSTOMIZE,
-                *ui.icon_style.read(),
-                theme::TEXT_TERTIARY,
-            )),
-        &ui,
-        hover_id("toolbar", "customize"),
-        catalog_label,
-        localized_text(&ui, "ptnd.text.summary.customize_layout"),
-        String::new(),
-    )
+    let name = localized_text(&ui, "ptnd.text.shell.customize");
+    StudioButton::new(&ui, name)
+        .icon(theme::ICON_CUSTOMIZE)
+        .width(Size::px(theme::TOOL_BUTTON))
+        .on_press(move |_| {
+            let open = *customize_open.peek();
+            customize_open.set(!open);
+        })
 }
 
 /// Renders one Tabler glyph recolored to the icon style in use.
@@ -2303,14 +2220,15 @@ pub fn app_icon_sized(
     size: f32,
 ) -> impl IntoElement {
     let bytes = icon.bytes(style);
-    match style {
-        theme::IconStyle::Outline => SvgViewer::new(bytes)
+    if style == theme::IconStyle::Filled && icon.filled.is_some() {
+        SvgViewer::new(bytes)
             .width(Size::px(size))
             .height(Size::px(size))
-            .color(color),
-        theme::IconStyle::Filled => SvgViewer::new(bytes)
+            .fill(color)
+    } else {
+        SvgViewer::new(bytes)
             .width(Size::px(size))
             .height(Size::px(size))
-            .fill(color),
+            .color(color)
     }
 }

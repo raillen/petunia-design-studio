@@ -23,53 +23,66 @@ impl Component for CommandPalette {
             let shell = ui.shell;
             move || shell.read().bridge.query_command_index()
         });
-        if !(*ui.palette_open.read()) {
-            // Zero-size: a default rect would cover the window and swallow
-            // every click meant for the chrome below.
+        if !*ui.palette_open.read() {
             return rect().width(Size::px(0.)).height(Size::px(0.));
         }
-        let query = ui.palette_query.read().clone().to_lowercase();
-        let items = items.read().clone();
-        let filtered: Vec<_> = items
-            .into_iter()
+        let query = ui.palette_query.read().trim().to_lowercase();
+        let filtered = items
+            .read()
+            .iter()
             .filter(|item| {
                 query.is_empty()
                     || item.label.to_lowercase().contains(&query)
                     || item.action_id.to_lowercase().contains(&query)
             })
-            .take(24)
-            .collect();
-
-        let mut palette_open = ui.palette_open;
-        let palette_query = ui.palette_query;
-        rect()
-            .position(Position::new_absolute().top(64.))
-            .width(Size::fill())
-            .cross_align(Alignment::Center)
-            .main_align(Alignment::Center)
-            .child(
-                rect()
-                    .direction(Direction::Vertical)
-                    .width(Size::px(480.))
-                    .background(theme::SURFACE_PANEL)
-                    .padding(Gaps::new_all(theme::SPACE_2))
-                    .spacing(theme::SPACE_1)
-                    .child(with_tooltip(
+            .take(48)
+            .cloned()
+            .collect::<Vec<_>>();
+        let empty = filtered.is_empty();
+        let mut open = ui.palette_open;
+        rect().child(
+            Popup::new()
+                .width(Size::px(560.))
+                .max_width(Size::window_percent(96.))
+                .on_close_request(move |_| open.set(false))
+                .child(PopupTitle::new(localized_dialog_text(
+                    ui,
+                    "ptnd.text.shell.palette",
+                )))
+                .child(
+                    PopupContent::new().child(
                         rect()
+                            .direction(Direction::Vertical)
                             .width(Size::fill())
-                            .child(Input::new(palette_query).placeholder("Type a command…")),
-                        ui,
-                        "palette:input".to_string(),
-                        localized_dialog_text(ui, "ptnd.text.shell.palette"),
-                        localized_dialog_text(ui, "ptnd.text.summary.search_commands"),
-                        "Ctrl+K".to_string(),
-                    ))
-                    .children(
-                        filtered
-                            .iter()
-                            .map(|item| palette_row(ui.clone(), item, &mut palette_open)),
+                            .spacing(theme::SPACE_2)
+                            .child(
+                                Input::new(ui.palette_query)
+                                    .width(Size::fill())
+                                    .auto_focus(true)
+                                    .placeholder(ui.studio_text("search_commands")),
+                            )
+                            .child(
+                                ScrollView::new()
+                                    .width(Size::fill())
+                                    .height(Size::window_percent(55.))
+                                    .child(
+                                        rect()
+                                            .direction(Direction::Vertical)
+                                            .width(Size::fill())
+                                            .spacing(theme::SPACE_1)
+                                            .maybe_child(empty.then(|| {
+                                                label()
+                                                    .text(ui.studio_text("no_commands"))
+                                                    .color(theme::TEXT_SECONDARY)
+                                            }))
+                                            .children(filtered.iter().map(|item| {
+                                                palette_row(ui.clone(), item, &mut open)
+                                            })),
+                                    ),
+                            ),
                     ),
-            )
+                ),
+        )
     }
 }
 
@@ -86,35 +99,47 @@ fn palette_row(
     let mut customize_open = ui.customize_open;
     let mut offset_prompt_open = ui.offset_prompt_open;
     let photo = *ui.persona.read() == petunia_design_application::surfaces::PERSONA_PHOTO;
-    rect().width(Size::fill()).child(
-        Button::new()
-            .on_press(move |_| {
-                let action_id = crate::actions::run_ui_token(&ui, &token);
-                if let Some(action_id) = action_id {
-                    if action_id == ActionId::EDIT_PREFERENCES {
-                        customize_open.set(true);
-                    }
+    let blocked = (!item.enabled).then(|| item.disabled_reason.clone());
+    rect()
+        .direction(Direction::Vertical)
+        .width(Size::fill())
+        .child(
+            Button::new()
+                .enabled(item.enabled)
+                .expanded()
+                .on_press(move |_| {
+                    let action_id = crate::actions::run_ui_token(&ui, &token);
+                    if let Some(action_id) = action_id {
+                        if action_id == ActionId::EDIT_PREFERENCES {
+                            customize_open.set(true);
+                        }
 
-                    if action_id == "ptnd.action.object.offset_path" {
-                        offset_prompt_open.set(true);
+                        if action_id == "ptnd.action.object.offset_path" {
+                            offset_prompt_open.set(true);
+                        }
+                        if let Some(tool) =
+                            petunia_design_application::tools::ToolKind::from_action_id(&action_id)
+                        {
+                            active_tool.set(tool);
+                            tool_rail.write().remember_tool(photo, tool);
+                        }
                     }
-                    if let Some(tool) =
-                        petunia_design_application::tools::ToolKind::from_action_id(&action_id)
-                    {
-                        active_tool.set(tool);
-                        tool_rail.write().remember_tool(photo, tool);
-                    }
-                }
-                palette_open.set(false);
-                palette_query.set(String::new());
-            })
-            .child(
-                label()
-                    .text(item.label.clone())
-                    .color(theme::TEXT_PRIMARY)
-                    .font_size(theme::BODY_SIZE),
-            ),
-    )
+                    palette_open.set(false);
+                    palette_query.set(String::new());
+                })
+                .child(
+                    label()
+                        .text(item.label.clone())
+                        .color(theme::TEXT_PRIMARY)
+                        .font_size(theme::BODY_SIZE),
+                ),
+        )
+        .maybe_child(blocked.map(|reason| {
+            label()
+                .text(reason)
+                .color(theme::TEXT_TERTIARY)
+                .font_size(theme::CAPTION_SIZE)
+        }))
 }
 
 ///// Preferences and toolbar customization dialog.
@@ -124,131 +149,94 @@ pub struct CustomizeDialog(pub UiShell);
 impl Component for CustomizeDialog {
     fn render(&self) -> impl IntoElement {
         let ui = &self.0;
-        let active_tab = use_state(|| 0usize);
-
-        if !(*ui.customize_open.read()) {
-            // Zero-size: a default rect would cover the window and swallow
-            // every click meant for the chrome below.
+        let mut tab = use_state(|| 0usize);
+        let active = *tab.read();
+        if !*ui.customize_open.read() {
             return rect().width(Size::px(0.)).height(Size::px(0.));
         }
-
-        let mut tab_tb = active_tab;
-        let mut tab_gen = active_tab;
-        let mut tab_perf = active_tab;
-        let mut tab_sc = active_tab;
-        let current_tab = *active_tab.read();
-
-        let catalog = ui.shell.peek().bridge.query_toolbar_catalog();
-        let title = "Preferências & Customização";
-        let reset_label = ui.shell.peek().bridge.localization().text(
-            "ptnd.text.shell.reset_toolbar",
-            ui.shell.peek().bridge.locale(),
-        );
-        let divider_label = ui
-            .shell
-            .peek()
-            .bridge
-            .localization()
-            .text("ptnd.text.shell.divider", ui.shell.peek().bridge.locale());
-
-        let mut customize_open = ui.customize_open;
-        let mut shell_for_reset = ui.shell;
-        rect()
-            .position(Position::new_absolute().top(60.))
-            .width(Size::fill())
-            .main_align(Alignment::Center)
-            .child(
-                Popup::new()
-                    .on_close_request(move |_| customize_open.set(false))
-                    .child(PopupTitle::new(title.to_string()))
-                    .child(
-                        PopupContent::new().child(
-                            rect()
-                                .direction(Direction::Vertical)
-                                .width(Size::px(580.))
-                                .spacing(theme::SPACE_2)
-                                .child(
-                                    rect()
-                                        .direction(Direction::Horizontal)
-                                        .width(Size::fill())
-                                        .spacing(theme::SPACE_1)
-                                        .child(
-                                            Button::new().on_press(move |_| tab_tb.set(0)).child(
-                                                label()
-                                                    .text(if current_tab == 0 {
-                                                        "✓ Ferramentas"
-                                                    } else {
-                                                        "Ferramentas"
-                                                    })
-                                                    .font_size(11.),
-                                            ),
-                                        )
-                                        .child(
-                                            Button::new().on_press(move |_| tab_gen.set(1)).child(
-                                                label()
-                                                    .text(if current_tab == 1 {
-                                                        "✓ Geral & Idioma"
-                                                    } else {
-                                                        "Geral & Idioma"
-                                                    })
-                                                    .font_size(11.),
-                                            ),
-                                        )
-                                        .child(
-                                            Button::new().on_press(move |_| tab_perf.set(2)).child(
-                                                label()
-                                                    .text(if current_tab == 2 {
-                                                        "✓ Desempenho"
-                                                    } else {
-                                                        "Desempenho"
-                                                    })
-                                                    .font_size(11.),
-                                            ),
-                                        )
-                                        .child(
-                                            Button::new().on_press(move |_| tab_sc.set(3)).child(
-                                                label()
-                                                    .text(if current_tab == 3 {
-                                                        "✓ Atalhos"
-                                                    } else {
-                                                        "Atalhos"
-                                                    })
-                                                    .font_size(11.),
-                                            ),
+        let mut close = ui.customize_open;
+        let catalog = ui.shell.read().bridge.query_toolbar_catalog();
+        let mut reset = ui.shell;
+        let reset_title = localized_dialog_text(ui, "ptnd.text.shell.reset_toolbar");
+        let divider = localized_dialog_text(ui, "ptnd.text.shell.divider");
+        rect().child(
+            Popup::new()
+                .width(Size::px(640.))
+                .max_width(Size::window_percent(96.))
+                .on_close_request(move |_| close.set(false))
+                .child(PopupTitle::new(ui.studio_text("preferences")))
+                .child(
+                    PopupContent::new().child(
+                        rect()
+                            .direction(Direction::Vertical)
+                            .width(Size::fill())
+                            .spacing(theme::SPACE_3)
+                            .child(
+                                rect()
+                                    .direction(Direction::Horizontal)
+                                    .content(Content::Flex)
+                                    .width(Size::fill())
+                                    .spacing(theme::SPACE_1)
+                                    .children(
+                                        [
+                                            "preferences_tools",
+                                            "preferences_general",
+                                            "preferences_performance",
+                                            "preferences_shortcuts",
+                                        ]
+                                        .into_iter()
+                                        .enumerate()
+                                        .map(
+                                            |(index, key)| {
+                                                crate::studio_widgets::StudioButton::new(
+                                                    ui,
+                                                    ui.studio_text(key),
+                                                )
+                                                .text(ui.studio_text(key))
+                                                .tab()
+                                                .width(Size::flex(1.))
+                                                .selected(index == active)
+                                                .on_press(move |_| tab.set(index))
+                                            },
                                         ),
-                                )
-                                .child(match current_tab {
-                                    1 => rect().child(preferences_general_tab(ui.clone())),
-                                    2 => rect().child(preferences_performance_tab()),
-                                    3 => rect().child(preferences_shortcuts_tab()),
-                                    _ => rect()
-                                        .direction(Direction::Vertical)
-                                        .spacing(theme::SPACE_1)
-                                        .children(catalog.iter().enumerate().map(|(index, row)| {
-                                            catalog_row(ui.clone(), index, row)
-                                        }))
-                                        .child(
-                                            rect()
-                                                .direction(Direction::Horizontal)
-                                                .spacing(theme::SPACE_2)
-                                                .main_align(Alignment::End)
-                                                .child(divider_adder(ui.clone(), divider_label))
-                                                .child(
-                                                    Button::new()
-                                                        .on_press(move |_| {
-                                                            shell_for_reset
-                                                                .write()
-                                                                .bridge
-                                                                .toolbar_reset();
-                                                        })
-                                                        .child(reset_label.clone()),
-                                                ),
-                                        )
-                                        .child(tool_rail_settings(ui.clone())),
-                                }),
-                        ),
+                                    ),
+                            )
+                            .child(
+                                ScrollView::new()
+                                    .width(Size::fill())
+                                    .height(Size::window_percent(62.))
+                                    .child(match active {
+                                        1 => preferences_general_tab(ui.clone()).into_element(),
+                                        2 => preferences_performance_tab(ui.clone()).into_element(),
+                                        3 => preferences_shortcuts_tab(ui.clone()).into_element(),
+                                        _ => rect()
+                                            .direction(Direction::Vertical)
+                                            .width(Size::fill())
+                                            .spacing(theme::SPACE_2)
+                                            .children(catalog.iter().enumerate().map(
+                                                |(index, row)| catalog_row(ui.clone(), index, row),
+                                            ))
+                                            .child(
+                                                rect()
+                                                    .direction(Direction::Horizontal)
+                                                    .content(Content::Flex)
+                                                    .spacing(theme::SPACE_2)
+                                                    .child(divider_adder(ui.clone(), divider))
+                                                    .child(
+                                                        Button::new()
+                                                            .on_press(move |_| {
+                                                                reset.write().bridge.toolbar_reset()
+                                                            })
+                                                            .child(reset_title),
+                                                    ),
+                                            )
+                                            .child(tool_rail_settings(ui.clone()))
+                                            .into_element(),
+                                    }),
+                            ),
                     ),
-            )
+                ),
+        )
     }
 }
 
@@ -262,13 +250,14 @@ fn preferences_general_tab(ui: UiShell) -> impl IntoElement {
         .spacing(theme::SPACE_2)
         .child(
             label()
-                .text("IDIOMA DA INTERFACE / INTERFACE LANGUAGE")
-                .font_size(10.)
+                .text(ui.studio_text("language"))
+                .font_size(theme::CAPTION_SIZE)
                 .color(theme::TEXT_TERTIARY),
         )
         .child(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .child(
                     Button::new()
@@ -309,133 +298,121 @@ fn preferences_general_tab(ui: UiShell) -> impl IntoElement {
         )
         .child(
             label()
-                .text("PALETA DE CORES / THEME ACCENT")
-                .font_size(10.)
+                .text(ui.studio_text("accent"))
+                .font_size(theme::CAPTION_SIZE)
                 .color(theme::TEXT_TERTIARY),
         )
+        .child(crate::appearance::AppearanceBar(ui.clone()))
         .child(
-            rect()
-                .direction(Direction::Horizontal)
-                .spacing(theme::SPACE_1)
-                .child(
-                    rect()
-                        .padding(Gaps::new_all(4.))
-                        .background(theme::ACCENT_BLOOM)
-                        .child(label().text("Bloom").font_size(11.).color(Color::WHITE)),
-                )
-                .child(
-                    rect()
-                        .padding(Gaps::new_all(4.))
-                        .background(theme::STUDIO_DESIGN)
-                        .child(label().text("Design").font_size(11.).color(Color::WHITE)),
-                )
-                .child(
-                    rect()
-                        .padding(Gaps::new_all(4.))
-                        .background(theme::STUDIO_PHOTO)
-                        .child(label().text("Photo").font_size(11.).color(Color::WHITE)),
-                ),
+            Button::new()
+                .on_press({
+                    let reset_ui = ui.clone();
+                    move |_| {
+                        let mut rail = reset_ui.tool_rail;
+                        rail.set(crate::ui_state::default_tool_rail());
+                        let mut right = reset_ui.right_studio_open;
+                        right.set(true);
+                        let mut width = reset_ui.dock_width;
+                        width.set(320.);
+                        let mut upper = reset_ui.studio_upper_open;
+                        upper.set(true);
+                        let mut dock = reset_ui.dock_tab;
+                        dock.set(0);
+                        let mut left = reset_ui.left_dock_open;
+                        left.set(false);
+                        let mut bottom = reset_ui.bottom_dock_open;
+                        bottom.set(false);
+                    }
+                })
+                .child(ui.studio_text("reset_workspace")),
         )
         .child(
             label()
-                .text("HISTÓRICO E ARQUIVO")
-                .font_size(10.)
+                .text(ui.studio_text("history_file"))
+                .font_size(theme::CAPTION_SIZE)
                 .color(theme::TEXT_TERTIARY),
         )
         .child(
             label()
-                .text("Limite de histórico não-destrutivo: Ilimitado (Branching Timeline)")
+                .text(ui.studio_text("history_policy"))
                 .font_size(11.)
                 .color(theme::TEXT_SECONDARY),
         )
 }
 
-fn preferences_performance_tab() -> impl IntoElement {
+fn preferences_performance_tab(ui: UiShell) -> impl IntoElement {
     rect()
         .direction(Direction::Vertical)
         .width(Size::fill())
         .spacing(theme::SPACE_2)
         .child(
             label()
-                .text("MOTOR DE RENDERIZAÇÃO")
-                .font_size(10.)
+                .text(ui.studio_text("render_engine"))
+                .font_size(theme::CAPTION_SIZE)
                 .color(theme::TEXT_TERTIARY),
         )
         .child(
             label()
-                .text("✓ Skia GPU Rasterizer Ativo (RenderCallback Direto)")
+                .text(ui.studio_text("render_description"))
                 .font_size(11.)
                 .color(theme::TEXT_PRIMARY),
         )
         .child(
             label()
-                .text("QUALIDADE DO PREVIEW (LOD)")
-                .font_size(10.)
+                .text(ui.studio_text("preview_quality"))
+                .font_size(theme::CAPTION_SIZE)
                 .color(theme::TEXT_TERTIARY),
         )
         .child(
             label()
-                .text("✓ Nível de Detalhe Adaptativo (Curvas Bézier & Shaders Skia)")
+                .text(ui.studio_text("preview_description"))
                 .font_size(11.)
                 .color(theme::TEXT_SECONDARY),
         )
         .child(
             label()
-                .text("SUAVIZAÇÃO (ANTI-ALIASING)")
-                .font_size(10.)
+                .text(ui.studio_text("antialias"))
+                .font_size(theme::CAPTION_SIZE)
                 .color(theme::TEXT_TERTIARY),
         )
         .child(
             label()
-                .text("✓ Subpixel Antialiasing em Espaço de Cor 32-bit RGBA")
+                .text(ui.studio_text("antialias_description"))
                 .font_size(11.)
                 .color(theme::TEXT_SECONDARY),
         )
 }
 
-fn preferences_shortcuts_tab() -> impl IntoElement {
+fn preferences_shortcuts_tab(ui: UiShell) -> impl IntoElement {
     let shortcuts = [
-        ("V", "Ferramenta de Seleção / Mover"),
-        ("A", "Edição de Nós e Âncoras (Node Tool)"),
-        ("P", "Caneta Vetorial Bézier (Pen Tool)"),
-        ("N", "Lápis de Traçado Livre (Pencil Tool)"),
-        ("M", "Formas Paramétricas (Retângulo / Elipse)"),
-        ("T", "Texto Artístico e Parágrafos"),
-        ("G", "Gradiente Linear e Radial"),
-        ("Z", "Zoom / Lupa"),
-        ("H / Espaço", "Navegação / Pan"),
-        ("Ctrl + Z", "Desfazer Operação (Undo)"),
-        ("Ctrl + Shift + Z", "Refazer Operação (Redo)"),
-        ("Ctrl + K", "Paleta de Comandos Rápidos"),
-        ("Ctrl + N", "Novo Documento"),
-        ("Ctrl + E", "Exportar Documento"),
-        ("Ctrl + 0", "Enquadrar Superfície na Tela"),
-        ("Ctrl + 1", "Zoom Real 100%"),
+        ("V", "ptnd.text.tool.select"),
+        ("A", "ptnd.text.tool.node"),
+        ("P", "ptnd.text.tool.pen"),
+        ("N", "ptnd.text.tool.pencil"),
+        ("M", "ptnd.text.tool.rectangle"),
+        ("T", "ptnd.text.tool.artistic_text"),
+        ("G", "ptnd.text.tool.gradient"),
+        ("Z", "ptnd.text.tool.zoom"),
+        ("H", "ptnd.text.tool.hand"),
+        ("B", "ptnd.text.tool.brush"),
+        ("E", "ptnd.text.tool.eraser"),
     ];
-
     rect()
         .direction(Direction::Vertical)
         .width(Size::fill())
-        .spacing(theme::SPACE_1)
-        .children(shortcuts.iter().map(|(key, desc)| {
+        .spacing(theme::SPACE_2)
+        .children(shortcuts.into_iter().map(|(key, id)| {
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .width(Size::fill())
                 .main_align(Alignment::SpaceBetween)
-                .cross_align(Alignment::Center)
-                .padding(Gaps::new_all(2.))
-                .child(
-                    rect()
-                        .padding(Gaps::new(2., 6., 2., 6.))
-                        .background(theme::SURFACE_CHROME_STRONG)
-                        .child(label().text(*key).font_size(11.).color(theme::TEXT_PRIMARY)),
-                )
                 .child(
                     label()
-                        .text(*desc)
-                        .font_size(11.)
+                        .text(localized_dialog_text(&ui, id))
                         .color(theme::TEXT_SECONDARY),
                 )
+                .child(label().text(key).color(theme::TEXT_PRIMARY))
         }))
 }
 
@@ -457,6 +434,7 @@ fn catalog_row(
     let down_label = localized_dialog_text(&ui, "ptnd.text.shell.move_down");
     let row_element = rect()
         .direction(Direction::Horizontal)
+        .content(Content::Flex)
         .width(Size::fill())
         .spacing(theme::SPACE_1)
         .cross_align(Alignment::Center)
@@ -579,6 +557,7 @@ fn tool_rail_settings(ui: UiShell) -> impl IntoElement {
         .child(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .child(
                     Button::new()
@@ -644,6 +623,7 @@ fn tool_group_settings_row(
         .child(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(theme::SPACE_1)
                 .cross_align(Alignment::Center)
                 .child(label().text(group_label).color(theme::TEXT_PRIMARY))
@@ -697,6 +677,7 @@ fn tool_member_settings_row(
     let remove_label = localized_dialog_text(&ui, "ptnd.text.shell.remove");
     rect()
         .direction(Direction::Horizontal)
+        .content(Content::Flex)
         .width(Size::fill())
         .spacing(theme::SPACE_1)
         .child(
@@ -768,6 +749,9 @@ fn tool_catalog(photo: bool) -> Vec<petunia_design_application::tools::ToolKind>
             ToolKind::FloodSelect,
             ToolKind::Crop,
             ToolKind::PhotoGradient,
+            ToolKind::PixelPaintBrush,
+            ToolKind::PixelEraser,
+            ToolKind::PixelFill,
             ToolKind::Zoom,
             ToolKind::Hand,
         ]
@@ -803,7 +787,7 @@ fn tool_catalog(photo: bool) -> Vec<petunia_design_application::tools::ToolKind>
 }
 
 fn localized_dialog_text(ui: &UiShell, text_id: &str) -> String {
-    let shell = ui.shell.peek();
+    let shell = ui.shell.read();
     let bridge = &shell.bridge;
     bridge.localization().text(text_id, bridge.locale())
 }
@@ -815,307 +799,101 @@ pub struct NewDocumentDialog(pub UiShell);
 impl Component for NewDocumentDialog {
     fn render(&self) -> impl IntoElement {
         let ui = &self.0;
-        let doc_name = use_state(|| "Untitled".to_string());
-        let width_val = use_state(|| 1920.0f64);
-        let height_val = use_state(|| 1080.0f64);
-        let bleed_val = use_state(|| 0.0f64);
-        let margin_val = use_state(|| 0.0f64);
+        let name = use_state(|| ui.studio_text("untitled"));
+        let mut width = use_state(|| "1920".to_string());
+        let mut height = use_state(|| "1080".to_string());
+        let bleed = use_state(|| "0".to_string());
+        let margin = use_state(|| "0".to_string());
         let mut error = use_state(|| None::<String>);
-        let observed_open = ui.new_doc_open;
+        let mut focus_pending = use_state(|| false);
+        let observed = ui.new_doc_open;
         use_side_effect(move || {
-            let _ = *observed_open.read();
+            let opening = *observed.read();
             error.set(None);
+            focus_pending.set(opening);
         });
-        let error_text = error.read().clone();
-        let failure = ui.text("failed");
-
-        if !(*ui.new_doc_open.read()) {
+        if !*ui.new_doc_open.read() {
             return rect().width(Size::px(0.)).height(Size::px(0.));
         }
-        let mut new_doc_open = ui.new_doc_open;
+        let focused_role = Platform::get().focused_accessibility_node.read().role();
+        if *focus_pending.read()
+            && matches!(
+                focused_role,
+                AccessibilityRole::TextInput | AccessibilityRole::MultilineTextInput
+            )
+        {
+            focus_pending.set(false);
+        }
+        let initial_focus = *focus_pending.read();
+        let mut open = ui.new_doc_open;
         let mut shell = ui.shell;
-
-        let mut w_state = width_val;
-        let mut h_state = height_val;
-        let mut bleed_state = bleed_val;
-        let mut margin_state = margin_val;
-
-        let cur_w = *width_val.read();
-        let cur_h = *height_val.read();
-        let cur_bleed = *bleed_val.read();
-        let cur_margin = *margin_val.read();
-
-        rect().child(Popup::new().width(Size::px(560.)).max_width(Size::window_percent(96.)).on_close_request(move |_| new_doc_open.set(false))
-            .child(PopupContent::new().child(
-                rect()
-                    .direction(Direction::Vertical)
-                    .width(Size::fill())
-                    .spacing(theme::SPACE_2)
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .main_align(Alignment::SpaceBetween)
-                            .cross_align(Alignment::Center)
-                            .child(
-                                label()
-                                    .text(ui.text("new"))
-                                    .font_size(14.)
-                                    .color(theme::TEXT_PRIMARY),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        new_doc_open.set(false);
-                                    })
-                                    .child(label().text("✕").font_size(12.)),
-                            ),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Vertical)
-                            .width(Size::fill())
-                            .spacing(theme::SPACE_1)
-                            .child(
-                                label()
-                                    .text(ui.text("name"))
-                                    .font_size(10.)
-                                    .color(theme::TEXT_TERTIARY),
-                            )
-                            .child(
-                                Input::new(doc_name).placeholder(ui.text("name")),
-                            ),
-                    )
-                    .child(
-                        label()
-                            .text(ui.text("presets"))
-                            .font_size(10.)
-                            .color(theme::TEXT_TERTIARY),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .spacing(theme::SPACE_1)
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        w_state.set(1920.0);
-                                        h_state.set(1080.0);
-                                    })
-                                    .child(label().text("Web 1080p").font_size(11.)),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        w_state.set(3840.0);
-                                        h_state.set(2160.0);
-                                    })
-                                    .child(label().text("4K UHD").font_size(11.)),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        w_state.set(1080.0);
-                                        h_state.set(1080.0);
-                                    })
-                                    .child(label().text(ui.text("square")).font_size(11.)),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        w_state.set(390.0);
-                                        h_state.set(844.0);
-                                    })
-                                    .child(label().text(ui.text("mobile")).font_size(11.)),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        w_state.set(595.0);
-                                        h_state.set(842.0);
-                                    })
-                                    .child(label().text("A4").font_size(11.)),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        w_state.set(612.0);
-                                        h_state.set(792.0);
-                                    })
-                                    .child(label().text("Letter").font_size(11.)),
-                            ),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .main_align(Alignment::SpaceBetween)
-                            .cross_align(Alignment::Center)
-                            .child(
-                                label()
-                                    .text(format!("{}: {:.0} × {:.0} pt", ui.text("dimensions"), cur_w, cur_h))
-                                    .font_size(12.)
-                                    .color(theme::TEXT_SECONDARY),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        let (w, h) = (*w_state.peek(), *h_state.peek());
-                                        w_state.set(h);
-                                        h_state.set(w);
-                                    })
-                                    .child(label().text(ui.text("rotate_orientation")).font_size(11.)),
-                            ),
-                    )
-                    .child(
-                        label()
-                            .text(ui.text("bleed"))
-                            .font_size(10.)
-                            .color(theme::TEXT_TERTIARY),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .spacing(theme::SPACE_1)
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| bleed_state.set(0.0))
-                                    .child(
-                                        label()
-                                            .text(format!("{}{}", if cur_bleed == 0.0 {"✓ "} else {""}, ui.text("no_bleed")))
-                                            .font_size(11.),
-                                    ),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| bleed_state.set(8.5))
-                                    .child(
-                                        label()
-                                            .text(if (cur_bleed - 8.5).abs() < 0.1 {
-                                                "✓ 3 mm (8.5 pt)"
-                                            } else {
-                                                "3 mm (8.5 pt)"
-                                            })
-                                            .font_size(11.),
-                                    ),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| bleed_state.set(14.2))
-                                    .child(
-                                        label()
-                                            .text(if (cur_bleed - 14.2).abs() < 0.1 {
-                                                "✓ 5 mm (14.2 pt)"
-                                            } else {
-                                                "5 mm (14.2 pt)"
-                                            })
-                                            .font_size(11.),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        label()
-                            .text(ui.text("margins"))
-                            .font_size(10.)
-                            .color(theme::TEXT_TERTIARY),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .spacing(theme::SPACE_1)
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| margin_state.set(0.0))
-                                    .child(
-                                        label()
-                                            .text(if cur_margin == 0.0 { "✓ 0 pt" } else { "0 pt" })
-                                            .font_size(11.),
-                                    ),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| margin_state.set(10.0))
-                                    .child(
-                                        label()
-                                            .text(if (cur_margin - 10.0).abs() < 0.1 {
-                                                "✓ 10 pt"
-                                            } else {
-                                                "10 pt"
-                                            })
-                                            .font_size(11.),
-                                    ),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| margin_state.set(20.0))
-                                    .child(
-                                        label()
-                                            .text(if (cur_margin - 20.0).abs() < 0.1 {
-                                                "✓ 20 pt"
-                                            } else {
-                                                "20 pt"
-                                            })
-                                            .font_size(11.),
-                                    ),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| margin_state.set(36.0))
-                                    .child(
-                                        label()
-                                            .text(if (cur_margin - 36.0).abs() < 0.1 {
-                                                "✓ 36 pt (0.5\")"
-                                            } else {
-                                                "36 pt (0.5\")"
-                                            })
-                                            .font_size(11.),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        label()
-                            .text(ui.text("color_mode"))
-                            .font_size(10.)
-                            .color(theme::TEXT_TERTIARY),
-                    )
-                    .child(label().text("RGB").color(theme::TEXT_PRIMARY))
-                    .child(label().text(ui.text("color_unavailable")).color(theme::TEXT_SECONDARY))
-                    .children(error_text.into_iter().map(|message| label().text(message).color(PROMPT_ERROR)))
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .main_align(Alignment::End)
-                            .spacing(theme::SPACE_1)
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        new_doc_open.set(false);
-                                    })
-                                    .child(label().text(ui.text("cancel")).font_size(11.)),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        let name = doc_name.peek().clone();
-                                        let w = *width_val.peek();
-                                        let h = *height_val.peek();
-                                        let bleed_amt = *bleed_val.peek();
-                                        let margin_amt = *margin_val.peek();
-                                        let result=crate::file_workflows::create_configured_document(&mut shell.write(),&name,[w,h],bleed_amt,margin_amt);
-                                        match result {
-                                            Ok(())=>{error.set(None);new_doc_open.set(false);},
-                                            Err(reason)=>error.set(Some(format!("{failure}: {reason}"))),
-                                        }
-                                    })
-                                    .child(label().text(ui.text("create")).font_size(11.)),
-                            ),
-                    )
-            )))
+        let submit_ui = ui.clone();
+        let labels = [
+            ui.studio_text("width"),
+            ui.studio_text("height"),
+            ui.text("bleed"),
+            ui.text("margins"),
+        ];
+        let fields = [width, height, bleed, margin];
+        let current_error = error.read().clone();
+        rect().child(Popup::new().width(Size::px(600.)).max_width(Size::window_percent(96.))
+            .on_close_request(move |_|open.set(false)).child(PopupTitle::new(ui.text("new")))
+            .child(PopupContent::new().child(rect().direction(Direction::Vertical).width(Size::fill()).spacing(theme::SPACE_3)
+                .child(label().text(ui.text("name")).color(theme::TEXT_SECONDARY))
+                .child(Input::new(name).width(Size::fill()).auto_focus(initial_focus).placeholder(ui.text("name")).on_validate(move |_|error.set(None)))
+                .child(label().text(ui.text("presets")).color(theme::TEXT_SECONDARY))
+                .child(rect().direction(Direction::Horizontal).content(Content::Flex).width(Size::fill()).spacing(theme::SPACE_1)
+                    .children([("Web 1080p".to_string(),1920.,1080.),("4K UHD".to_string(),3840.,2160.),
+                        (ui.text("square"),1080.,1080.),(ui.text("mobile"),390.,844.),("A4".to_string(),595.276,841.89)]
+                        .into_iter().map(|(caption,w,h)|Button::new().compact().on_press(move |_|{width.set(w.to_string());height.set(h.to_string());error.set(None);}).child(caption))))
+                .child(label().text(ui.studio_text("point_units")).color(theme::TEXT_TERTIARY).font_size(theme::CAPTION_SIZE))
+                .children(fields.into_iter().zip(labels).map(|(state,caption)|rect().direction(Direction::Horizontal).content(Content::Flex).width(Size::fill()).spacing(theme::SPACE_2)
+                    .cross_align(Alignment::Center).child(label().text(caption.clone()).width(Size::px(110.)).color(theme::TEXT_SECONDARY))
+                    .child(Input::new(state).width(Size::flex(1.)).placeholder(caption).on_validate(move |_|error.set(None)))))
+                .child(Button::new().on_press(move |_|{let w=width.peek().clone();let h=height.peek().clone();width.set(h);height.set(w);}).child(ui.text("rotate_orientation")))
+                .child(label().text(ui.text("color_mode")).color(theme::TEXT_SECONDARY))
+                .child(label().text("RGB").color(theme::TEXT_PRIMARY))
+                .child(label().text(ui.text("color_unavailable")).color(theme::TEXT_TERTIARY).font_size(theme::CAPTION_SIZE))
+                .children(current_error.into_iter().map(|reason|label().text(reason).color(theme::TEXT_ERROR)))
+                .child(rect().direction(Direction::Horizontal).content(Content::Flex).width(Size::fill()).spacing(theme::SPACE_2).main_align(Alignment::End)
+                    .child(Button::new().on_press(move |_|open.set(false)).child(ui.text("cancel")))
+                    .child(Button::new().filled().on_press(move |_|{
+                        if name.peek().trim().is_empty(){error.set(Some(submit_ui.studio_text("name_required")));return;}
+                        let parse=|state:State<String>,key:&str,positive:bool|parse_new_dimension(&state.peek(),positive)
+                            .map_err(|reason|format!("{}: {}",submit_ui.studio_text(key),if *submit_ui.shell.peek().bridge.locale()==petunia_design_shell::Locale::PtBr {
+                                reason.message_pt_br()}else {reason.message_en_us()}));
+                        let values=(||Ok::<_,String>([parse(width,"width",true)?,parse(height,"height",true)?,parse(bleed,"bleed",false)?,parse(margin,"margins",false)?]))();
+                        let values=match values {Ok(v)=>v,Err(reason)=>{error.set(Some(reason));return;}};
+                        match crate::file_workflows::create_configured_document(&mut shell.write(),&name.peek(),[values[0],values[1]],values[2],values[3]){
+                            Ok(())=>{error.set(None);open.set(false);},Err(reason)=>error.set(Some(reason.to_string())),
+                        }
+                    }).child(ui.text("create")))))))
     }
+}
+
+fn parse_new_dimension(
+    raw: &str,
+    positive: bool,
+) -> Result<f64, petunia_design_foundation::NumericParseError> {
+    use petunia_design_foundation::{parse_numeric_input, NumericFieldKind, NumericParseError};
+    let raw = raw.trim();
+    let lower = raw.to_ascii_lowercase();
+    let number = if lower.ends_with("pt") {
+        raw[..raw.len() - 2].trim()
+    } else {
+        raw
+    };
+    if !number.is_empty() && number.replace(',', ".").parse::<f64>().is_err() {
+        return Err(NumericParseError::NotANumber);
+    }
+    parse_numeric_input(
+        number,
+        if positive {
+            NumericFieldKind::PositiveDimensionPt
+        } else {
+            NumericFieldKind::NonNegativeDimensionPt
+        },
+    )
 }
 
 /// Dialog to export the current document to PNG, SVG, or PDF.
@@ -1198,7 +976,7 @@ impl Component for ExportDialog {
                 .child(label().text(ui.text("format")))
                 .child(rect().direction(Direction::Horizontal).spacing(theme::SPACE_1).children(["png","svg","pdf"].into_iter().map(|fmt| {
                     let selected=active_format==fmt;
-                    Button::new().on_press(move |_| {
+                    Button::new().enabled(!busy).on_press(move |_| {
                         format.set(fmt.to_string());
                         if !path.peek().trim().is_empty() {
                             let parsed=petunia_design_application::export_service::ExportFormat::parse(fmt).expect("listed export format");
@@ -1212,11 +990,11 @@ impl Component for ExportDialog {
                 .maybe_child((active_format=="png").then(|| rect().direction(Direction::Vertical).spacing(theme::SPACE_1)
                     .child(label().text(ui.text("dpi")))
                     .child(rect().direction(Direction::Horizontal).spacing(theme::SPACE_1).children([72u32,144,300].into_iter().map(|value| {
-                        Button::new().on_press(move |_| {dpi.set(value); replace.set(None);}).child(format!("{}{value} DPI",if density==value {"✓ "} else {""}))
+                        Button::new().enabled(!busy).on_press(move |_| {dpi.set(value); replace.set(None);}).child(format!("{}{value} DPI",if density==value {"✓ "} else {""}))
                     })))
                     .maybe_child(surface_info.map(|info| label().text(info)))
                     .child(label().text(ui.text("alpha")).color(theme::TEXT_SECONDARY))))
-                .child(label().text(ui.text("pdf_limit")).color(theme::TEXT_SECONDARY))
+                .maybe_child((active_format=="pdf").then(||label().text(ui.text("pdf_limit")).color(theme::TEXT_SECONDARY)))
                 .maybe_child((active_format=="png").then(||crate::export_preview::ExportPreview(ui.clone())))
                 .child(label().text(ui.text("destination")))
                 .child(Input::new(path).width(Size::fill()).placeholder(ui.text("destination")))
@@ -1225,7 +1003,7 @@ impl Component for ExportDialog {
                 .maybe_child(confirmed.then(|| label().text(ui.text("overwrite_reason")).color(theme::TEXT_PRIMARY)))
                 .child(rect().direction(Direction::Horizontal).main_align(Alignment::End).spacing(theme::SPACE_1)
                     .child(Button::new().on_press(move |_| {crate::file_jobs::cancel_export(&cancel_ui);open.set(false);error.set(None);replace.set(None);}).child(ui.text("cancel")))
-                    .child(Button::new().enabled(!busy).on_press(move |_| {
+                    .child(Button::new().filled().enabled(!busy).on_press(move |_| {
                         let (_,request)=match &prepared {Ok(value)=>value.clone(),Err(reason)=>{error.set(Some(format!("{failure}: {reason}")));return;}};
                         if request.path.exists() && !confirmed {replace.set(Some(request.path));return;}
                         let result=crate::file_jobs::export(&export_ui,request.clone());
@@ -1299,6 +1077,7 @@ impl Component for ConfirmCloseDialog {
                             .child(
                                 rect()
                                     .direction(Direction::Horizontal)
+                                    .content(Content::Flex)
                                     .main_align(Alignment::End)
                                     .spacing(theme::SPACE_1)
                                     .child(
@@ -1397,172 +1176,127 @@ pub struct OffsetPathDialog(pub UiShell);
 impl Component for OffsetPathDialog {
     fn render(&self) -> impl IntoElement {
         let ui = &self.0;
-        let value = use_state(String::new);
-        let error = use_state(|| None::<String>);
-
-        if !(*ui.offset_prompt_open.read()) {
+        let mut value = use_state(String::new);
+        let mut error = use_state(|| None::<String>);
+        let mut open = ui.offset_prompt_open;
+        let mut shell = ui.shell;
+        if !*open.read() {
             return rect().width(Size::px(0.)).height(Size::px(0.));
         }
-        let mut prompt_open = ui.offset_prompt_open;
-        let mut shell = ui.shell;
-        let mut value_state = value;
-        let mut error_state = error;
-
-        let current: Option<f64> = {
-            let guard = shell.peek();
-            guard
+        let current = {
+            let state = shell.read();
+            state
                 .bridge
                 .selection()
                 .selected_ids
                 .first()
-                .copied()
-                .and_then(|id| guard.bridge.session()?.find_object(id))
+                .and_then(|id| state.bridge.session()?.find_object(*id))
                 .and_then(|object| {
-                    object.modifiers.iter().find_map(|m| {
-                        if let petunia_design_document::ModifierKind::ContourOffset {
-                            distance,
-                            ..
-                        } = m.kind
-                        {
-                            Some(distance)
-                        } else {
-                            None
-                        }
+                    object.modifiers.iter().find_map(|item| match item.kind {
+                        petunia_design_document::ModifierKind::ContourOffset {
+                            distance, ..
+                        } => Some(distance),
+                        _ => None,
                     })
                 })
         };
-        let hint = match current {
-            Some(distance) => {
-                format!("Atual / Current: {distance:.2} pt (0 remove / clears)")
-            }
-            None => "Sem deslocamento / No offset yet".to_string(),
-        };
+        let hint = current.map_or_else(
+            || ui.studio_text("no_offset"),
+            |distance| {
+                format!(
+                    "{}: {distance:.2} pt · {}",
+                    ui.studio_text("offset_current"),
+                    ui.studio_text("offset_zero")
+                )
+            },
+        );
         let error_text = error.read().clone();
-
-        rect()
-            .position(Position::new_absolute().top(120.))
-            .width(Size::fill())
-            .cross_align(Alignment::Center)
-            .main_align(Alignment::Center)
-            .child(
-                rect()
-                    .direction(Direction::Vertical)
-                    .width(Size::px(400.))
-                    .background(theme::SURFACE_PANEL)
-                    .border(
-                        Border::new()
-                            .fill(theme::SURFACE_CHROME_STRONG)
-                            .width(1.)
-                            .alignment(BorderAlignment::Inner),
-                    )
-                    .padding(Gaps::new_all(theme::SPACE_3))
-                    .spacing(theme::SPACE_2)
-                    .child(
+        rect().child(
+            Popup::new()
+                .width(Size::px(440.))
+                .max_width(Size::window_percent(96.))
+                .on_close_request(move |_| {
+                    error.set(None);
+                    value.set(String::new());
+                    open.set(false);
+                })
+                .child(PopupTitle::new(ui.studio_text("offset_path")))
+                .child(
+                    PopupContent::new().child(
                         rect()
-                            .direction(Direction::Horizontal)
+                            .direction(Direction::Vertical)
                             .width(Size::fill())
-                            .main_align(Alignment::SpaceBetween)
-                            .cross_align(Alignment::Center)
+                            .spacing(theme::SPACE_2)
                             .child(
                                 label()
-                                    .text("Deslocar caminho / Offset Path")
-                                    .font_size(14.)
-                                    .color(theme::TEXT_PRIMARY),
+                                    .text(ui.studio_text("distance"))
+                                    .color(theme::TEXT_SECONDARY),
                             )
                             .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        prompt_open.set(false);
-                                    })
-                                    .child(label().text("✕").font_size(12.)),
-                            ),
-                    )
-                    .child(
-                        label()
-                            .text("DISTÂNCIA / DISTANCE")
-                            .font_size(10.)
-                            .color(theme::TEXT_TERTIARY),
-                    )
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .spacing(theme::SPACE_1)
-                            .cross_align(Alignment::Center)
+                                Input::new(value)
+                                    .width(Size::fill())
+                                    .auto_focus(true)
+                                    .placeholder("pt"),
+                            )
+                            .child(label().text(hint).color(theme::TEXT_SECONDARY))
+                            .children(
+                                error_text
+                                    .into_iter()
+                                    .map(|reason| label().text(reason).color(theme::TEXT_ERROR)),
+                            )
                             .child(
                                 rect()
-                                    .width(Size::flex(1.0))
-                                    .child(Input::new(value).placeholder("ex. 6")),
-                            )
-                            .child(
-                                label()
-                                    .text("pt")
-                                    .font_size(12.)
-                                    .color(theme::TEXT_SECONDARY),
-                            ),
-                    )
-                    .child(
-                        label()
-                            .text(hint)
-                            .font_size(11.)
-                            .color(theme::TEXT_SECONDARY),
-                    )
-                    .child(if let Some(message) = error_text {
-                        rect().child(label().text(message).font_size(11.).color(PROMPT_ERROR))
-                    } else {
-                        rect()
-                    })
-                    .child(
-                        rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .main_align(Alignment::End)
-                            .spacing(theme::SPACE_1)
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        error_state.set(None);
-                                        value_state.set(String::new());
-                                        prompt_open.set(false);
-                                    })
-                                    .child(label().text("Cancelar").font_size(11.)),
-                            )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        let typed = value_state.peek().clone();
-                                        match parse_prompt_distance(&typed) {
-                                            Err(message) => {
-                                                error_state.set(Some(message.to_string()));
-                                            }
-                                            Ok(distance) => {
-                                                let res = shell.write().bridge.dispatch_action(
+                                    .direction(Direction::Horizontal)
+                                    .content(Content::Flex)
+                                    .width(Size::fill())
+                                    .main_align(Alignment::End)
+                                    .spacing(theme::SPACE_2)
+                                    .child(
+                                        Button::new()
+                                            .on_press(move |_| {
+                                                error.set(None);
+                                                value.set(String::new());
+                                                open.set(false);
+                                            })
+                                            .child(ui.studio_text("cancel")),
+                                    )
+                                    .child(
+                                        Button::new()
+                                            .filled()
+                                            .on_press(move |_| {
+                                                let distance =
+                                                    match parse_prompt_distance(&value.peek()) {
+                                                        Ok(v) => v,
+                                                        Err(reason) => {
+                                                            error.set(Some(reason.to_string()));
+                                                            return;
+                                                        }
+                                                    };
+                                                let result = shell.write().bridge.dispatch_action(
                                                     ActionRequest::new(
                                                         ActionId::new(
                                                             "ptnd.action.object.offset_path",
                                                         ),
-                                                        serde_json::json!({
-                                                            "distance": distance,
-                                                        }),
+                                                        serde_json::json!({"distance":distance}),
                                                     ),
                                                 );
-                                                match res {
+                                                match result {
                                                     Ok(_) => {
-                                                        error_state.set(None);
-                                                        value_state.set(String::new());
-                                                        prompt_open.set(false);
+                                                        error.set(None);
+                                                        value.set(String::new());
+                                                        open.set(false);
                                                     }
-                                                    Err(err) => {
-                                                        error_state.set(Some(err.to_string()));
+                                                    Err(reason) => {
+                                                        error.set(Some(reason.to_string()))
                                                     }
                                                 }
-                                            }
-                                        }
-                                    })
-                                    .child(label().text("Aplicar / Apply").font_size(11.)),
+                                            })
+                                            .child(ui.studio_text("apply")),
+                                    ),
                             ),
                     ),
-            )
+                ),
+        )
     }
 }
 
@@ -1602,12 +1336,13 @@ impl Component for OverwriteConflictDialog {
                     .child(
                         rect()
                             .direction(Direction::Horizontal)
+                            .content(Content::Flex)
                             .width(Size::fill())
                             .main_align(Alignment::SpaceBetween)
                             .cross_align(Alignment::Center)
                             .child(
                                 label()
-                                    .text("O arquivo já existe / File already exists")
+                                    .text(ui.studio_text("file_exists"))
                                     .font_size(13.)
                                     .color(theme::TEXT_PRIMARY),
                             )
@@ -1631,6 +1366,7 @@ impl Component for OverwriteConflictDialog {
                     .child(
                         rect()
                             .direction(Direction::Horizontal)
+                            .content(Content::Flex)
                             .width(Size::fill())
                             .main_align(Alignment::End)
                             .spacing(theme::SPACE_1)
@@ -1639,14 +1375,14 @@ impl Component for OverwriteConflictDialog {
                                     .on_press(move |_| {
                                         overwrite_open.set(false);
                                     })
-                                    .child(label().text("Cancelar").font_size(11.)),
+                                    .child(label().text(ui.studio_text("cancel")).font_size(11.)),
                             )
                             .child(
                                 Button::new()
                                     .on_press(move |_| {
                                         overwrite_open.set(false);
                                     })
-                                    .child(label().text("Substituir / Overwrite").font_size(11.)),
+                                    .child(label().text(ui.studio_text("overwrite")).font_size(11.)),
                             ),
                     ),
             )
@@ -1678,11 +1414,12 @@ impl Component for PlaceImageDialog {
         let error_text = error.read().clone();
         let failure_label = localized_dialog_text(ui, "ptnd.text.image.place_failed");
         rect()
-            .position(Position::new_absolute().top(100.))
             .width(Size::fill())
             .cross_align(Alignment::Center)
             .child(
                 Popup::new()
+                    .width(Size::px(520.))
+                    .max_width(Size::window_percent(96.))
                     .on_close_request(move |_| {
                         if busy {
                             return;
@@ -1698,7 +1435,7 @@ impl Component for PlaceImageDialog {
                         PopupContent::new().child(
                             rect()
                                 .direction(Direction::Vertical)
-                                .width(Size::px(480.))
+                                .width(Size::fill())
                                 .spacing(theme::SPACE_2)
                                 .child(
                                     label()
@@ -1749,6 +1486,7 @@ impl Component for PlaceImageDialog {
                                 .child(
                                     rect()
                                         .direction(Direction::Horizontal)
+                                        .content(Content::Flex)
                                         .main_align(Alignment::End)
                                         .spacing(theme::SPACE_1)
                                         .child(
@@ -1801,6 +1539,15 @@ impl Component for PlaceImageDialog {
 mod prompt_tests {
     use super::parse_prompt_distance;
 
+    #[test]
+    fn new_dimensions_accept_points_and_commas_but_reject_wrong_units_and_ranges() {
+        use super::parse_new_dimension;
+        assert_eq!(parse_new_dimension("612,5 pt", true).unwrap(), 612.5);
+        assert_eq!(parse_new_dimension("0", false).unwrap(), 0.);
+        for bad in ["", "0", "-1", "NaN", "inf", "1e999", "12 mm", "12 px"] {
+            assert!(parse_new_dimension(bad, true).is_err(), "{bad}");
+        }
+    }
     #[test]
     fn prompt_parses_plain_and_signed_values() {
         assert_eq!(parse_prompt_distance("6").unwrap(), 6.0);

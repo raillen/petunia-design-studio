@@ -125,3 +125,8 @@ Current bounded MVP/V1 corrections: [ADR-010](developers/adr/ADR-010-text-histog
 ## 2026-10-03 — Native CMYK contract (V1 Required)
 
 ADR-011: `developers/adr/ADR-011-native-cmyk-raster.md`, with pt-BR mirror. Raster 09.6/10.9 uses CMYKA8/16 and validated ICC; persistence 09.13/15.A uses schema 6/index 3. Layer TIFF and regular CMYK ICC PDF preserve samples. Whole-page proof/overprint/DeviceLink/PDF-X remain unavailable. Actual validation is recorded in `public/implementation/native-cmyk-v1.json`.
+
+
+## ADR-012 — Compact Studio desktop (2026-10-04)
+
+Milestone Required (MVP), shared V1 foundation. `developers/adr/ADR-012-studio-workspace.md` and its pt-BR mirror govern the 08.1/08.2/08.3/08.5/08.6/08.12/08.14/08.17/08.18/08.19/09.16 desktop contracts. `developers/uiux-studio.md` maps the audit; actual final execution is recorded in `public/implementation/uiux-studio.json`. No domain/schema change or complete release acceptance is implied.

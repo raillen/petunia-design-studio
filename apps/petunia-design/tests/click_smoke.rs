@@ -47,7 +47,14 @@ mod object_edit_dialog;
 #[path = "../src/typography.rs"]
 mod typography;
 
-use chrome::{ContextToolbar, DocumentTabStrip, MenuBarRow, ToolRail};
+#[allow(dead_code)]
+#[path = "../src/studio.rs"]
+mod studio;
+#[allow(dead_code)]
+#[path = "../src/studio_widgets.rs"]
+mod studio_widgets;
+
+use chrome::{ContextToolbar, DocumentTabStrip, MenuBarRow, StudioToolbar, ToolRail};
 use petunia_design_application::tools::ToolKind;
 use ui_state::UiShell;
 
@@ -92,6 +99,7 @@ impl Component for AppChrome {
             .width(Size::fill())
             .height(Size::fill())
             .child(MenuBarRow(ui.clone()))
+            .child(StudioToolbar(ui.clone()))
             .child(DocumentTabStrip(ui.clone()))
             .child(ContextToolbar(ui.clone()))
             .child(ToolRail(ui.clone()))
@@ -199,6 +207,30 @@ fn mount() -> (
 
 fn zoom_of(shell: &State<PetuniaShell>) -> f64 {
     shell.peek().view_camera().zoom
+}
+
+fn named_control_area(runner: &TestingRunner, title: &str) -> Area {
+    runner
+        .find(|node, el| {
+            Rect::try_downcast(el)
+                .filter(|r| {
+                    r.accessibility.builder.role() == AccessibilityRole::Button
+                        && r.accessibility.builder.label() == Some(title)
+                })
+                .map(|_| node.layout().area)
+        })
+        .unwrap_or_else(|| panic!("Missing control {title}"))
+}
+fn click_named_control(runner: &mut TestingRunner, title: &str) {
+    let area = named_control_area(runner, title);
+    let point = (f64::from(area.center().x), f64::from(area.center().y));
+    runner.move_cursor(point);
+    runner.click_cursor(point);
+    runner.sync_and_update();
+}
+fn chrome_text(shell: &State<PetuniaShell>, key: &str) -> String {
+    let state = shell.peek();
+    state.bridge.localization().text(key, state.bridge.locale())
 }
 
 #[test]
@@ -337,7 +369,8 @@ fn persona_click_switches_the_mode() {
     let (mut runner, shell, _open, _customize) = mount();
     runner.sync_and_update();
     let before = shell.peek().bridge.persona();
-    runner.click_cursor((1210., 20.));
+    let name = chrome_text(&shell, "ptnd.text.studio.pixel_studio");
+    click_named_control(&mut runner, &name);
     runner.sync_and_update();
     let after = shell.peek().bridge.persona();
     assert_ne!(before, after, "clicking a persona must switch the mode");
@@ -403,29 +436,44 @@ fn the_rail_never_activates_a_tool_the_registry_blocks() {
 
 #[test]
 fn toolbar_customize_button_opens_the_dialog() {
-    let (mut runner, _shell, _open, customize) = mount();
-    runner.sync_and_update();
+    let (mut runner, shell, _open, customize) = mount();
     assert!(!*customize.peek());
-    // The gear is the trailing child of the toolbar row. The cursor moves
-    // first, like a real mouse: press targeting follows the hover position.
-    runner.move_cursor((1260., 87.));
-    runner.sync_and_update();
-    runner.click_cursor((1260., 87.));
-    runner.sync_and_update();
+    let name = chrome_text(&shell, "ptnd.text.shell.customize");
+    click_named_control(&mut runner, &name);
     assert!(
         *customize.peek(),
-        "clicking the customize gear must open the dialog"
+        "customize must open by its semantic control"
     );
 }
 
 #[test]
 fn hovering_the_gear_reports_its_hint() {
-    let (mut runner, _shell, _open, _customize) = mount();
+    let seen = Rc::new(RefCell::new(None));
+    let output = seen.clone();
+    let (mut runner, ()) = TestingRunner::new(
+        move || {
+            let shell = use_state(|| {
+                let mut s = PetuniaShell::new(1280., 800.);
+                s.new_document("Test").unwrap();
+                s
+            });
+            let ui = UiShell::fresh(shell);
+            output.replace(Some(ui.clone()));
+            AppChrome(ui)
+        },
+        (1280., 800.).into(),
+        |_| {},
+        1.,
+    );
+    let ui = seen.borrow().clone().unwrap();
+    let name = chrome_text(&ui.shell, "ptnd.text.shell.customize");
+    let area = named_control_area(&runner, &name);
+    runner.move_cursor((f64::from(area.center().x), f64::from(area.center().y)));
     runner.sync_and_update();
-    runner.move_cursor((1255., 87.));
-    runner.sync_and_update();
-    // Hover state is what the status bar reads; the tooltip must arrive here.
-    let _ = runner;
+    assert_eq!(
+        ui.hovered.peek().as_ref().map(|hint| hint.title.as_str()),
+        Some(name.as_str())
+    );
 }
 
 #[test]
@@ -475,17 +523,20 @@ fn menu_row_dispatches_zoom_in() {
 #[test]
 fn shell_cluster_zoom_control_changes_zoom() {
     let (mut runner, shell, _open, _customize) = mount();
-    runner.sync_and_update();
     let before = zoom_of(&shell);
-    // The centred cluster sits in the menu row; sweep it for a zoom control.
-    for x in (300..1100).step_by(10).map(|x| x as f64) {
-        runner.click_cursor((x, 20.));
-        runner.sync_and_update();
-        if zoom_of(&shell) != before {
-            return;
-        }
-    }
-    panic!("clicking the cluster zoom control must change the camera zoom");
+    let name = shell
+        .peek()
+        .bridge
+        .query_shell_controls()
+        .into_iter()
+        .find(|c| c.id.ends_with("zoom_in"))
+        .unwrap()
+        .tooltip;
+    click_named_control(&mut runner, &name);
+    assert!(
+        zoom_of(&shell) > before,
+        "zoom-in must enlarge the actual camera"
+    );
 }
 
 fn mount_full() -> FullMount {
@@ -592,20 +643,9 @@ fn context_toolbar_style_picker_toggles_filter() {
     let initial_filter = shell.peek().tools.style_picker_tool().filter();
     assert!(initial_filter.fill);
 
-    // Sweep across context toolbar to click the Preenchimento filter button
-    for y in [82.0, 87.0] {
-        for x in (50..1240).step_by(10).map(|x| x as f64) {
-            runner.move_cursor((x, y));
-            runner.sync_and_update();
-            runner.click_cursor((x, y));
-            runner.sync_and_update();
-            let current = shell.peek().tools.style_picker_tool().filter();
-            if current.fill != initial_filter.fill {
-                return;
-            }
-        }
-    }
-    panic!("Clicking style picker quick controls must toggle filter property");
+    let title = format!("{} ✓", chrome_text(&shell, "ptnd.text.studio.fill"));
+    click_named_control(&mut runner, &title);
+    assert!(!shell.peek().tools.style_picker_tool().filter().fill);
 }
 
 #[test]
@@ -620,21 +660,12 @@ fn context_toolbar_shape_builder_toggles_op() {
         petunia_design_shell::tools::BuilderOp::Add
     );
 
-    // Sweep across context toolbar to click Subtrair
-    for y in [82.0, 87.0] {
-        for x in (50..1240).step_by(10).map(|x| x as f64) {
-            runner.move_cursor((x, y));
-            runner.sync_and_update();
-            runner.click_cursor((x, y));
-            runner.sync_and_update();
-            if shell.peek().tools.shape_builder_tool().op()
-                == petunia_design_shell::tools::BuilderOp::Subtract
-            {
-                return;
-            }
-        }
-    }
-    panic!("Clicking shape builder quick controls must switch op to Subtract");
+    let title = chrome_text(&shell, "ptnd.text.studio.subtract");
+    click_named_control(&mut runner, &title);
+    assert_eq!(
+        shell.peek().tools.shape_builder_tool().op(),
+        petunia_design_shell::tools::BuilderOp::Subtract
+    );
 }
 
 #[test]
@@ -651,17 +682,12 @@ fn context_toolbar_smart_fill_toggles_token() {
         .fill_token()
         .to_string();
 
-    // Sweep across context toolbar to click a different swatch button
-    for y in [82.0, 87.0] {
-        for x in (50..1240).step_by(10).map(|x| x as f64) {
-            runner.move_cursor((x, y));
-            runner.sync_and_update();
-            runner.click_cursor((x, y));
-            runner.sync_and_update();
-            if shell.peek().tools.smart_fill_tool().fill_token() != initial_token {
-                return;
-            }
-        }
-    }
-    panic!("Clicking smart fill quick controls must switch fill token");
+    let (key, token) = if initial_token == "ptnd.red/500" {
+        ("blue", "ptnd.blue/500")
+    } else {
+        ("red", "ptnd.red/500")
+    };
+    let title = chrome_text(&shell, &format!("ptnd.text.studio.{key}"));
+    click_named_control(&mut runner, &title);
+    assert_eq!(shell.peek().tools.smart_fill_tool().fill_token(), token);
 }

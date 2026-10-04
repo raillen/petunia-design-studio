@@ -23,100 +23,148 @@ pub struct RightDock(pub UiShell);
 impl Component for RightDock {
     fn render(&self) -> impl IntoElement {
         let ui = &self.0;
+        if !*ui.right_studio_open.read() {
+            return rect().width(Size::px(0.)).height(Size::px(0.));
+        }
         let mut dock_tab = ui.dock_tab;
         let active_tab = *dock_tab.read();
-        let dock_w = *ui.dock_width.read();
-
+        let mut upper = ui.studio_upper_tab;
+        let upper_tab = *upper.read();
+        let mut upper_open = ui.studio_upper_open;
+        let expanded = *upper_open.read();
+        let root = *Platform::get().root_size.read();
+        let tools = theme::TOOL_RAIL_WIDTH
+            * if ui.tool_rail.read().columns == crate::ui_state::RailColumns::Two {
+                2.
+            } else {
+                1.
+            };
+        let reserve = tools
+            + 8.
+            + if *ui.left_dock_open.read() {
+                crate::studio_widgets::left_studio_width(
+                    *ui.left_dock_width.read(),
+                    root.width,
+                    tools,
+                    true,
+                )
+            } else {
+                0.
+            };
+        let dock_w =
+            crate::studio_widgets::studio_width(*ui.dock_width.read(), root.width, reserve);
+        let upper_height = (root.height * 0.32).clamp(160., 258.);
         rect()
             .direction(Direction::Vertical)
             .content(Content::Flex)
             .width(Size::px(dock_w))
             .height(Size::fill())
             .background(theme::SURFACE_PANEL)
-            .border(
-                Border::new()
-                    .fill(theme::SURFACE_CHROME_STRONG)
-                    .width(1.)
-                    .alignment(BorderAlignment::Inner),
-            )
             .child(
-                // Tab Header Bar
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .width(Size::fill())
-                    .height(Size::px(34.))
+                    .height(Size::px(theme::PANEL_HEADER_HEIGHT))
                     .background(theme::SURFACE_CHROME)
                     .cross_align(Alignment::Center)
-                    .main_align(Alignment::SpaceEvenly)
-                    .child(tab_button(ui, "Camadas", 0, active_tab == 0, &mut dock_tab))
-                    .child(tab_button(
-                        ui,
-                        "Propriedades",
-                        1,
-                        active_tab == 1,
-                        &mut dock_tab,
-                    ))
-                    .child(tab_button(ui, "Cores", 2, active_tab == 2, &mut dock_tab))
-                    .child(tab_button(
-                        ui,
-                        "Histórico",
-                        3,
-                        active_tab == 3,
-                        &mut dock_tab,
-                    ))
-                    .child(tab_button(
-                        ui,
-                        "Navegador",
-                        4,
-                        active_tab == 4,
-                        &mut dock_tab,
-                    )),
+                    .children(
+                        [(0, "color"), (1, "swatches")]
+                            .into_iter()
+                            .map(|(index, key)| {
+                                crate::studio_widgets::StudioButton::new(ui, ui.studio_text(key))
+                                    .text(ui.studio_text(key))
+                                    .tab()
+                                    .width(Size::flex(1.))
+                                    .selected(upper_tab == index)
+                                    .on_press(move |_| {
+                                        upper.set(index);
+                                        upper_open.set(true);
+                                    })
+                            }),
+                    )
+                    .child(
+                        crate::studio_widgets::StudioButton::new(
+                            ui,
+                            ui.studio_text(if expanded { "collapse" } else { "expand" }),
+                        )
+                        .icon(if expanded {
+                            theme::ICON_CHEVRON_DOWN
+                        } else {
+                            theme::ICON_CHEVRON_RIGHT
+                        })
+                        .width(Size::px(32.))
+                        .on_press(move |_| upper_open.set(!expanded)),
+                    ),
+            )
+            .maybe_child(expanded.then(|| {
+                rect()
+                    .width(Size::fill())
+                    .height(Size::px(upper_height))
+                    .padding(Gaps::new_all(theme::SPACE_2))
+                    .child(
+                        ScrollView::new().child(match upper_tab {
+                            1 => SwatchesPanel {
+                                ui: ui.clone(),
+                                target_fill: ui.studio_fill_target,
+                            }
+                            .into_element(),
+                            _ => crate::studio::CompactColor(ui.clone()).into_element(),
+                        }),
+                    )
+            }))
+            .child(
+                rect()
+                    .height(Size::px(1.))
+                    .width(Size::fill())
+                    .background(theme::BORDER_SUBTLE),
+            )
+            .children(
+                [
+                    [(0, "layers"), (1, "properties"), (2, "colors")],
+                    [(3, "history"), (4, "navigator"), (5, "tasks")],
+                ]
+                .into_iter()
+                .map(|tabs| {
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .content(Content::Flex)
+                        .width(Size::fill())
+                        .height(Size::px(theme::PANEL_HEADER_HEIGHT))
+                        .background(theme::SURFACE_CHROME)
+                        .children(tabs.into_iter().map(|(index, key)| {
+                            crate::studio_widgets::StudioButton::new(ui, ui.studio_text(key))
+                                .text(ui.studio_text(key))
+                                .tab()
+                                .width(Size::flex(1.))
+                                .selected(active_tab == index)
+                                .on_press(move |_| dock_tab.set(index))
+                        }))
+                }),
             )
             .child(
-                // Tab Content Body
                 rect()
                     .direction(Direction::Vertical)
+                    .content(Content::Flex)
                     .width(Size::fill())
-                    .height(Size::flex(1.0))
+                    .height(Size::flex(1.))
                     .padding(Gaps::new_all(theme::SPACE_2))
                     .child(match active_tab {
-                        0 => layers_tab(ui.clone()).into_element(),
                         1 => properties_tab(ui.clone()).into_element(),
-                        2 => ColorsTab(ui.clone()).into_element(),
+                        2 => ScrollView::new()
+                            .child(ColorsTab(ui.clone()))
+                            .into_element(),
                         3 => history_tab(ui.clone()).into_element(),
-                        4 => NavigatorTab(ui.clone()).into_element(),
-                        5 => BackgroundTasksPanel(ui.clone()).into_element(),
+                        4 => ScrollView::new()
+                            .child(NavigatorTab(ui.clone()))
+                            .into_element(),
+                        5 => ScrollView::new()
+                            .child(BackgroundTasksPanel(ui.clone()))
+                            .into_element(),
                         _ => layers_tab(ui.clone()).into_element(),
                     }),
             )
     }
-}
-
-fn tab_button(
-    _ui: &UiShell,
-    title: &'static str,
-    index: usize,
-    active: bool,
-    dock_tab: &mut State<usize>,
-) -> impl IntoElement {
-    let mut tab_state = *dock_tab;
-    rect()
-        .height(Size::fill())
-        .padding(Gaps::new(0., theme::SPACE_1 / 2., 0., theme::SPACE_1 / 2.))
-        .center()
-        .background(if active {
-            theme::SURFACE_PANEL
-        } else {
-            Color::TRANSPARENT
-        })
-        .on_press(move |_| {
-            tab_state.set(index);
-        })
-        .child(label().text(title).font_size(12.).color(if active {
-            theme::TEXT_PRIMARY
-        } else {
-            theme::TEXT_TERTIARY
-        }))
 }
 
 // =========================================================================
@@ -125,15 +173,28 @@ fn tab_button(
 
 fn layers_tab(ui: UiShell) -> impl IntoElement {
     let shell = ui.shell;
-    let layers_model = shell.read().query_layers();
-    let total_rows = layers_model.rows.len();
-
-    let mut shell_for_group = shell;
-    let mut shell_for_ungroup = shell;
-    let mut shell_for_delete = shell;
-    let mut shell_for_front = shell;
-    let mut shell_for_back = shell;
-
+    let model = shell.read().query_layers();
+    let count = model.rows.len();
+    let selected = shell.read().bridge.selection().selected_ids.len();
+    let collapsed = ui.collapsed_layers.read().clone();
+    let session = ui.shell.read().bridge.session().map(|s| s.identity());
+    let mut hidden_depth = None;
+    let rows = model
+        .rows
+        .into_iter()
+        .filter(|row| {
+            if let Some(depth) = hidden_depth {
+                if row.depth > depth {
+                    return false;
+                }
+                hidden_depth = None;
+            }
+            if session.is_some_and(|session| collapsed.contains(&(session, row.id))) {
+                hidden_depth = Some(row.depth);
+            }
+            true
+        })
+        .collect::<Vec<_>>();
     rect()
         .direction(Direction::Vertical)
         .content(Content::Flex)
@@ -141,239 +202,324 @@ fn layers_tab(ui: UiShell) -> impl IntoElement {
         .height(Size::fill())
         .spacing(theme::SPACE_2)
         .child(
-            // Separate title and compact actions so the minimum dock width stays usable.
             rect()
-                .direction(Direction::Vertical)
+                .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .width(Size::fill())
-                .spacing(theme::SPACE_1)
+                .height(Size::px(28.))
+                .cross_align(Alignment::Center)
+                .main_align(Alignment::SpaceBetween)
                 .child(
                     label()
-                        .text(format!("Camadas ({total_rows})"))
-                        .color(theme::TEXT_PRIMARY)
-                        .font_size(13.),
+                        .text(format!("{} · {count}", ui.studio_text("layers")))
+                        .font_size(theme::BODY_SIZE)
+                        .color(theme::TEXT_SECONDARY),
                 )
                 .child(
-                    rect()
-                        .direction(Direction::Horizontal)
-                        .spacing(theme::SPACE_1)
-                        .cross_align(Alignment::Center)
-                        .child(
-                            Button::new().compact()
-                                .on_press(move |_| {
-                                    let _ = run_action_token(
-                                        &mut shell_for_group.write(),
-                                        "ptnd.action.object.group",
-                                    );
-                                })
-                                .child(label().text("Agrupar").font_size(10.)),
-                        )
-                        .child(
-                            Button::new().compact()
-                                .on_press(move |_| {
-                                    let _ = run_action_token(
-                                        &mut shell_for_ungroup.write(),
-                                        "ptnd.action.object.ungroup",
-                                    );
-                                })
-                                .child(label().text("Desagrupar").font_size(10.)),
-                        )
-                        .child(
-                            Button::new().compact()
-                                .on_press(move |_| {
-                                    let _ = run_action_token(
-                                        &mut shell_for_front.write(),
-                                        "ptnd.action.object.arrange.front",
-                                    );
-                                })
-                                .child(label().text("▲ Topo").font_size(10.)),
-                        )
-                        .child(
-                            Button::new().compact()
-                                .on_press(move |_| {
-                                    let _ = run_action_token(
-                                        &mut shell_for_back.write(),
-                                        "ptnd.action.object.arrange.back",
-                                    );
-                                })
-                                .child(label().text("▼ Fundo").font_size(10.)),
-                        )
-                        .child(
-                            Button::new().compact()
-                                .on_press(move |_| {
-                                    let _ = run_action_token(
-                                        &mut shell_for_delete.write(),
-                                        "ptnd.action.edit.delete",
-                                    );
-                                })
-                                .child(label().text("Excluir").font_size(10.)),
-                        ),
+                    label()
+                        .text(if selected == 0 {
+                            ui.studio_text("no_selection")
+                        } else {
+                            ui.studio_text("selection_count")
+                                .replace("{count}", &selected.to_string())
+                        })
+                        .font_size(theme::CAPTION_SIZE)
+                        .color(theme::TEXT_TERTIARY),
                 ),
         )
         .child(
-            // List of rows
-            rect()
-                .direction(Direction::Vertical)
+            ScrollView::new()
+                .height(Size::flex(1.))
                 .width(Size::fill())
-                .height(Size::flex(1.0))
-                .spacing(2.)
-                .children(layers_model.rows.into_iter().map(move |row| {
-                    let id = row.id;
-                    let is_selected = row.is_selected;
-                    let name = row.name.clone();
-                    let depth = row.depth;
-                    let visible = row.visible;
-                    let locked = row.locked;
-
-                    let mut shell_for_select = shell;
-                    let mut shell_for_vis = shell;
-                    let mut shell_for_lock = shell;
-                    let mut shell_for_up = shell;
-                    let mut shell_for_down = shell;
-                    let rename_ui = ui.clone();
-
+                .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Vertical)
                         .width(Size::fill())
-                        .height(Size::px(28.))
-                        .padding(Gaps::new(
-                            2.,
-                            theme::SPACE_1,
-                            2.,
-                            (depth as f32 * 14.0) + theme::SPACE_1,
-                        ))
-                        .cross_align(Alignment::Center)
-                        .main_align(Alignment::SpaceBetween)
-                        .background(if is_selected {
-                            theme::SURFACE_CHROME_STRONG
-                        } else {
-                            Color::TRANSPARENT
-                        })
-                        .on_press(move |_| {
-                            shell_for_select.write().bridge.set_selection(vec![id]);
-                        })
-                        .child(
+                        .spacing(2.)
+                        .maybe_child((count == 0).then(|| {
                             rect()
-                                .direction(Direction::Horizontal)
-                                .cross_align(Alignment::Center)
-                                .spacing(theme::SPACE_1)
+                                .direction(Direction::Vertical)
+                                .width(Size::fill())
+                                .padding(Gaps::new_all(theme::SPACE_3))
+                                .spacing(theme::SPACE_2)
                                 .child(
                                     label()
-                                        .text(if row.is_container {
-                                            "📁"
-                                        } else if name.contains("Text") {
-                                            "🔤"
-                                        } else {
-                                            "🔷"
-                                        })
-                                        .font_size(12.),
+                                        .text(ui.studio_text("empty_layers"))
+                                        .color(theme::TEXT_SECONDARY),
                                 )
                                 .child(
                                     label()
-                                        .text(name)
-                                        .font_size(12.)
-                                        .color(if is_selected {
-                                            theme::TEXT_PRIMARY
-                                        } else {
-                                            theme::TEXT_SECONDARY
-                                        }),
-                                ),
-                        )
-                        .child(
-                            rect()
-                                .direction(Direction::Horizontal)
-                                .cross_align(Alignment::Center)
-                                .spacing(theme::SPACE_1)
-                                .child(
-                                    rect()
-                                        .padding(Gaps::new_all(2.))
-                                        .on_press(move |event: Event<PressEventData>| {
-                                            event.stop_propagation();
-                                            let surf = shell_for_up.peek().bridge.active_surface();
-                                            if let Some(surf) = surf {
-                                                let _ = LayersPanelController::new().arrange_row(
-                                                    &mut shell_for_up.write().bridge,
-                                                    surf,
-                                                    id,
-                                                    petunia_design_document::ArrangePosition::Forward,
-                                                );
-                                            }
-                                        })
-                                        .child(
-                                            label()
-                                                .text("▲")
-                                                .font_size(10.)
-                                                .color(theme::TEXT_SECONDARY),
-                                        ),
+                                        .text(ui.studio_text("empty_layers_hint"))
+                                        .color(theme::TEXT_TERTIARY)
+                                        .font_size(theme::BODY_SIZE),
                                 )
-                                .child(
-                                    rect()
-                                        .padding(Gaps::new_all(2.))
-                                        .on_press(move |event: Event<PressEventData>| {
-                                            event.stop_propagation();
-                                            let surf = shell_for_down.peek().bridge.active_surface();
-                                            if let Some(surf) = surf {
-                                                let _ = LayersPanelController::new().arrange_row(
-                                                    &mut shell_for_down.write().bridge,
-                                                    surf,
-                                                    id,
-                                                    petunia_design_document::ArrangePosition::Backward,
-                                                );
-                                            }
-                                        })
-                                        .child(
-                                            label()
-                                                .text("▼")
-                                                .font_size(10.)
-                                                .color(theme::TEXT_SECONDARY),
-                                        ),
-                                )
-                                .child(
-                                    Button::new().compact()
-                                        .on_press(move |event: Event<PressEventData>| {
-                                            event.stop_propagation();
-                                            crate::object_edit_dialog::request(&rename_ui, id, crate::object_edits::EditKind::Name);
-                                        })
-                                        .child(
-                                            label()
-                                                .text(ui.text("edit_name"))
-                                                .font_size(10.),
-                                        ),
-                                )
-                                .child(
-                                    rect()
-                                        .padding(Gaps::new_all(2.))
-                                        .on_press(move |event: Event<PressEventData>| {
-                                            event.stop_propagation();
-                                            let _ = LayersPanelController::new().toggle_visibility(
-                                                &mut shell_for_vis.write().bridge,
-                                                id,
-                                            );
-                                        })
-                                        .child(
-                                            label()
-                                                .text(if visible { "👁" } else { "🚫" })
-                                                .font_size(11.),
-                                        ),
-                                )
-                                .child(
-                                    rect()
-                                        .padding(Gaps::new_all(2.))
-                                        .on_press(move |event: Event<PressEventData>| {
-                                            event.stop_propagation();
-                                            let _ = LayersPanelController::new().toggle_lock(
-                                                &mut shell_for_lock.write().bridge,
-                                                id,
-                                            );
-                                        })
-                                        .child(
-                                            label()
-                                                .text(if locked { "🔒" } else { "🔓" })
-                                                .font_size(11.),
-                                        ),
-                                ),
-                        )
-                })),
+                        }))
+                        .children(rows.into_iter().map(|row| LayerStudioRow {
+                            ui: ui.clone(),
+                            row,
+                        })),
+                ),
         )
+        .child(
+            rect()
+                .direction(Direction::Horizontal)
+                .content(Content::Flex)
+                .width(Size::fill())
+                .height(Size::px(32.))
+                .spacing(theme::SPACE_1)
+                .children(
+                    [
+                        (
+                            "group",
+                            theme::ICON_LAYERS,
+                            "ptnd.action.object.group",
+                            selected >= 2,
+                        ),
+                        (
+                            "ungroup",
+                            theme::ICON_BOOLEAN,
+                            "ptnd.action.object.ungroup",
+                            selected > 0,
+                        ),
+                        (
+                            "front",
+                            theme::ICON_CHEVRON_UP,
+                            "ptnd.action.object.arrange.front",
+                            selected > 0,
+                        ),
+                        (
+                            "back",
+                            theme::ICON_CHEVRON_DOWN,
+                            "ptnd.action.object.arrange.back",
+                            selected > 0,
+                        ),
+                        (
+                            "delete",
+                            theme::ICON_TRASH,
+                            "ptnd.action.edit.delete",
+                            selected > 0,
+                        ),
+                    ]
+                    .into_iter()
+                    .map(|(key, icon, token, enabled)| {
+                        let mut shell = shell;
+                        let state = shell.read();
+                        let availability = petunia_design_application::menus::availability(
+                            token,
+                            &state.bridge.action_context(),
+                        );
+                        let title = availability.reason.map_or_else(
+                            || ui.studio_text(key),
+                            |reason| {
+                                format!(
+                                    "{}: {}",
+                                    ui.studio_text(key),
+                                    state
+                                        .bridge
+                                        .localization()
+                                        .text(reason, state.bridge.locale())
+                                )
+                            },
+                        );
+                        drop(state);
+                        crate::studio_widgets::StudioButton::new(&ui, title)
+                            .icon(icon)
+                            .width(Size::flex(1.))
+                            .enabled(enabled && availability.enabled)
+                            .on_press(move |_| {
+                                let _ = run_action_token(&mut shell.write(), token);
+                            })
+                    }),
+                ),
+        )
+}
+
+#[derive(Clone, PartialEq)]
+struct LayerStudioRow {
+    ui: UiShell,
+    row: petunia_design_application::view_models::LayerRowViewModel,
+}
+impl Component for LayerStudioRow {
+    fn render_key(&self) -> DiffKey {
+        DiffKey::from(&(
+            self.ui.shell.peek().bridge.session().map(|s| s.identity()),
+            self.row.id,
+        ))
+    }
+    fn render(&self) -> impl IntoElement {
+        let ui = &self.ui;
+        let row = &self.row;
+        let id = row.id;
+        let selected = row.is_selected;
+        let focus_id = use_a11y();
+        let focus = use_focus(focus_id);
+        let mut hovered = use_state(|| false);
+        let mut select = ui.shell;
+        let modifiers = ui.modifiers;
+        let mut collapse = ui.collapsed_layers;
+        let session = ui.shell.read().bridge.session().map(|s| s.identity());
+        let collapsed = session.is_some_and(|session| collapse.read().contains(&(session, id)));
+        let object = ui
+            .shell
+            .read()
+            .bridge
+            .session()
+            .and_then(|s| s.find_object(id))
+            .cloned();
+        let icon = if row.is_container {
+            theme::ICON_LAYERS
+        } else {
+            match object.as_ref().and_then(|o| o.shape.as_ref()) {
+                Some(ShapeKind::Text { .. }) => theme::ICON_TYPE,
+                Some(ShapeKind::Raster { .. } | ShapeKind::Image { .. }) => theme::ICON_PHOTO,
+                Some(ShapeKind::Ellipse) => theme::ICON_CIRCLE,
+                Some(ShapeKind::Path { .. }) => theme::ICON_PEN,
+                _ => theme::ICON_SQUARE,
+            }
+        };
+        let rename = ui.clone();
+        let mut visibility = ui.shell;
+        let mut lock = ui.shell;
+        rect()
+            .direction(Direction::Horizontal)
+            .content(Content::Flex)
+            .width(Size::fill())
+            .height(Size::px(36.))
+            .cross_align(Alignment::Center)
+            .spacing(2.)
+            .padding(Gaps::new(2., 2., 2., (row.depth.min(6) as f32 * 12.) + 2.))
+            .background(if selected {
+                theme::SURFACE_SELECTED
+            } else if hovered() {
+                theme::SURFACE_HOVER
+            } else {
+                Color::TRANSPARENT
+            })
+            .border(
+                Border::new()
+                    .fill(if focus() == Focus::Keyboard {
+                        ui.accent.read().value
+                    } else {
+                        Color::TRANSPARENT
+                    })
+                    .width(2.)
+                    .alignment(BorderAlignment::Inner),
+            )
+            .a11y_id(focus_id)
+            .a11y_role(AccessibilityRole::TreeItem)
+            .a11y_focusable(true)
+            .a11y_alt(row.name.clone())
+            .a11y_builder(|node| {
+                node.set_selected(selected);
+                if row.is_container {
+                    node.set_expanded(!collapsed);
+                }
+            })
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
+            .on_all_press(move |event: Event<PressEventData>| {
+                event.stop_propagation();
+                LayersPanelController::new().select_row(
+                    &mut select.write().bridge,
+                    id,
+                    modifiers.peek().constrain || modifiers.peek().disable_snap,
+                );
+            })
+            .child(if row.is_container {
+                crate::studio_widgets::StudioButton::new(
+                    ui,
+                    ui.studio_text(if collapsed {
+                        "expand_layer"
+                    } else {
+                        "collapse_layer"
+                    }),
+                )
+                .width(Size::px(22.))
+                .icon(if collapsed {
+                    theme::ICON_CHEVRON_RIGHT
+                } else {
+                    theme::ICON_CHEVRON_DOWN
+                })
+                .on_press(move |_| {
+                    if let Some(session) = session {
+                        let mut set = collapse.write();
+                        if !set.remove(&(session, id)) {
+                            set.insert((session, id));
+                        }
+                    }
+                })
+                .into_element()
+            } else {
+                rect().width(Size::px(8.)).into_element()
+            })
+            .child(crate::chrome::app_icon_sized(
+                icon,
+                *ui.icon_style.read(),
+                theme::TEXT_SECONDARY,
+                18.,
+            ))
+            .child(
+                label()
+                    .text(row.name.clone())
+                    .width(Size::flex(1.))
+                    .max_lines(1)
+                    .text_overflow(TextOverflow::Ellipsis)
+                    .font_size(theme::BODY_SIZE)
+                    .color(if row.visible {
+                        theme::TEXT_PRIMARY
+                    } else {
+                        theme::TEXT_TERTIARY
+                    }),
+            )
+            .child(
+                crate::studio_widgets::StudioButton::new(ui, ui.text("edit_name"))
+                    .icon(theme::ICON_PENCIL)
+                    .width(Size::px(28.))
+                    .on_press(move |_| {
+                        crate::object_edit_dialog::request(
+                            &rename,
+                            id,
+                            crate::object_edits::EditKind::Name,
+                        )
+                    }),
+            )
+            .child(
+                crate::studio_widgets::StudioButton::new(
+                    ui,
+                    ui.studio_text(if row.visible {
+                        "hide_layer"
+                    } else {
+                        "show_layer"
+                    }),
+                )
+                .icon(if row.visible {
+                    theme::ICON_EYE
+                } else {
+                    theme::ICON_EYE_OFF
+                })
+                .width(Size::px(28.))
+                .on_press(move |_| {
+                    let _ = LayersPanelController::new()
+                        .toggle_visibility(&mut visibility.write().bridge, id);
+                }),
+            )
+            .child(
+                crate::studio_widgets::StudioButton::new(
+                    ui,
+                    ui.studio_text(if row.locked {
+                        "unlock_layer"
+                    } else {
+                        "lock_layer"
+                    }),
+                )
+                .icon(theme::ICON_LOCK)
+                .selected(row.locked)
+                .width(Size::px(28.))
+                .on_press(move |_| {
+                    let _ = LayersPanelController::new().toggle_lock(&mut lock.write().bridge, id);
+                }),
+            )
+    }
 }
 
 // =========================================================================
@@ -392,15 +538,11 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                     .direction(Direction::Vertical)
                     .width(Size::fill())
                     .spacing(theme::SPACE_2)
-                    .child(
-                        section_header("HISTOGRAMA DO DOCUMENTO"),
-                    )
-                    .child(
-                        HistogramWidget {
-                            ui: ui.clone(),
-                            object_id: None,
-                        },
-                    )
+                    .child(section_header(ui.studio_text("document_histogram")))
+                    .child(HistogramWidget {
+                        ui: ui.clone(),
+                        object_id: None,
+                    })
                     .child(
                         rect()
                             .width(Size::fill())
@@ -408,7 +550,7 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                             .center()
                             .child(
                                 label()
-                                    .text("Nenhum objeto selecionado.\nClique em um objeto para editar propriedades.")
+                                    .text(ui.studio_text("selection_hint"))
                                     .color(theme::TEXT_TERTIARY)
                                     .font_size(12.),
                             ),
@@ -561,11 +703,11 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                 .spacing(theme::SPACE_2)
                 .child(
                     // Section: Transformation
-                    section_header("TRANSFORMAÇÃO"),
+                    section_header(ui.studio_text("transform")),
                 )
         .child(
             rect()
-                .direction(Direction::Horizontal)
+                .direction(Direction::Horizontal).content(Content::Flex)
                 .width(Size::fill())
                 .cross_align(Alignment::Center)
                 .main_align(Alignment::SpaceBetween)
@@ -591,30 +733,30 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                 .child(Button::new().on_press(move |_| {
                     if let Some(id) = first_id { crate::object_edit_dialog::request(&edit_ui, id, crate::object_edits::EditKind::Text); }
                 }).child(ui.text("edit_text")))
-                .child(rect().direction(Direction::Horizontal).spacing(theme::SPACE_2).cross_align(Alignment::Center)
+                .child(rect().direction(Direction::Horizontal).content(Content::Flex).spacing(theme::SPACE_2).cross_align(Alignment::Center)
                     .child(Button::new().on_press(move |_| step_text_size(&down_ui, first_id, -4.)).child("A−"))
                     .child(label().text(format!("{font_size:.1} pt")).color(theme::TEXT_PRIMARY))
                     .child(Button::new().on_press(move |_| step_text_size(&up_ui, first_id, 4.)).child("A+")))
         })
         .child(
             // Section: Appearance
-            section_header("APARÊNCIA & CORES"),
+            section_header(ui.studio_text("appearance")),
         )
         .child(
             rect()
-                .direction(Direction::Horizontal)
+                .direction(Direction::Horizontal).content(Content::Flex)
                 .width(Size::fill())
                 .cross_align(Alignment::Center)
                 .main_align(Alignment::SpaceBetween)
                 .child(
                     label()
-                        .text(format!("Opacidade: {}%", opacity))
+                        .text(format!("{}: {}%", ui.studio_text("opacity"), opacity))
                         .font_size(11.)
                         .color(theme::TEXT_SECONDARY),
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .spacing(2.)
                         .child(opacity_button(shell, first_id, "25%", 0.25))
                         .child(opacity_button(shell, first_id, "50%", 0.50))
@@ -624,19 +766,19 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         )
         .child(
             rect()
-                .direction(Direction::Horizontal)
+                .direction(Direction::Horizontal).content(Content::Flex)
                 .width(Size::fill())
                 .cross_align(Alignment::Center)
                 .main_align(Alignment::SpaceBetween)
                 .child(
                     label()
-                        .text(format!("Traço: {:.1} pt", stroke_width))
+                        .text(format!("{}: {:.1} pt", ui.studio_text("stroke_width"), stroke_width))
                         .font_size(11.)
                         .color(theme::TEXT_SECONDARY),
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .spacing(theme::SPACE_1)
                         .child(stroke_button(shell, first_id, "- 1pt", -1.0))
                         .child(stroke_button(shell, first_id, "+ 1pt", 1.0)),
@@ -645,34 +787,34 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         .child(
             // Quick Swatches for Fill
             rect()
-                .direction(Direction::Horizontal)
+                .direction(Direction::Horizontal).content(Content::Flex)
                 .width(Size::fill())
                 .main_align(Alignment::SpaceBetween)
-                .child(quick_color_swatch(shell, first_id, "ptnd.gray/900", Color::from_rgb(0x20, 0x21, 0x24)))
-                .child(quick_color_swatch(shell, first_id, "ptnd.blue/500", Color::from_rgb(0x3B, 0x82, 0xF6)))
-                .child(quick_color_swatch(shell, first_id, "ptnd.purple/500", Color::from_rgb(0x8B, 0x5C, 0xF6)))
-                .child(quick_color_swatch(shell, first_id, "ptnd.teal/500", Color::from_rgb(0x14, 0xB8, 0xA6)))
-                .child(quick_color_swatch(shell, first_id, "ptnd.red/500", Color::from_rgb(0xEF, 0x44, 0x44)))
-                .child(quick_color_swatch(shell, first_id, "ptnd.amber/500", Color::from_rgb(0xF5, 0x9E, 0x0B))),
+                .child(quick_color_swatch(ui.clone(), "ptnd.gray/900", Color::from_rgb(0x20, 0x21, 0x24)))
+                .child(quick_color_swatch(ui.clone(), "ptnd.blue/500", Color::from_rgb(0x3B, 0x82, 0xF6)))
+                .child(quick_color_swatch(ui.clone(), "ptnd.purple/500", Color::from_rgb(0x8B, 0x5C, 0xF6)))
+                .child(quick_color_swatch(ui.clone(), "ptnd.teal/500", Color::from_rgb(0x14, 0xB8, 0xA6)))
+                .child(quick_color_swatch(ui.clone(), "ptnd.red/500", Color::from_rgb(0xEF, 0x44, 0x44)))
+                .child(quick_color_swatch(ui.clone(), "ptnd.amber/500", Color::from_rgb(0xF5, 0x9E, 0x0B))),
         )
         .maybe(star_params.is_some(), |el| {
             let (points, inner_ratio) = star_params.unwrap();
-            el.child(section_header("FORMA PARAMÉTRICA — ESTRELA"))
+            el.child(section_header(ui.studio_text("star_shape")))
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .width(Size::fill())
                         .main_align(Alignment::SpaceBetween)
                         .cross_align(Alignment::Center)
                         .child(
                             label()
-                                .text(format!("Pontas: {} | Raio: {:.0}%", points, inner_ratio * 100.0))
+                                .text(format!("{}: {} · {}: {:.0}%",ui.studio_text("points"), points, ui.studio_text("radius"), inner_ratio * 100.0))
                                 .font_size(11.)
                                 .color(theme::TEXT_SECONDARY),
                         )
                         .child(
                             rect()
-                                .direction(Direction::Horizontal)
+                                .direction(Direction::Horizontal).content(Content::Flex)
                                 .spacing(2.)
                                 .child(star_points_button(shell, first_id, "-1", -1))
                                 .child(star_points_button(shell, first_id, "+1", 1))
@@ -682,7 +824,7 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .width(Size::fill())
                         .main_align(Alignment::End)
                         .child(convert_to_curves_button(shell, first_id)),
@@ -690,22 +832,22 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         })
         .maybe(polygon_params.is_some(), |el| {
             let sides = polygon_params.unwrap();
-            el.child(section_header("FORMA PARAMÉTRICA — POLÍGONO"))
+            el.child(section_header(ui.studio_text("polygon_shape")))
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .width(Size::fill())
                         .main_align(Alignment::SpaceBetween)
                         .cross_align(Alignment::Center)
                         .child(
                             label()
-                                .text(format!("Lados: {}", sides))
+                                .text(format!("{}: {}",ui.studio_text("sides"), sides))
                                 .font_size(11.)
                                 .color(theme::TEXT_SECONDARY),
                         )
                         .child(
                             rect()
-                                .direction(Direction::Horizontal)
+                                .direction(Direction::Horizontal).content(Content::Flex)
                                 .spacing(2.)
                                 .child(polygon_sides_button(shell, first_id, "-1", -1))
                                 .child(polygon_sides_button(shell, first_id, "+1", 1)),
@@ -713,7 +855,7 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .width(Size::fill())
                         .main_align(Alignment::End)
                         .child(convert_to_curves_button(shell, first_id)),
@@ -721,22 +863,22 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         })
         .maybe(rect_corners.is_some(), |el| {
             let r = rect_corners.unwrap();
-            el.child(section_header("FORMA PARAMÉTRICA — CANTOS"))
+            el.child(section_header(ui.studio_text("corners")))
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .width(Size::fill())
                         .main_align(Alignment::SpaceBetween)
                         .cross_align(Alignment::Center)
                         .child(
                             label()
-                                .text(format!("Raio: {:.1} pt", r))
+                                .text(format!("{}: {:.1} pt",ui.studio_text("radius"), r))
                                 .font_size(11.)
                                 .color(theme::TEXT_SECONDARY),
                         )
                         .child(
                             rect()
-                                .direction(Direction::Horizontal)
+                                .direction(Direction::Horizontal).content(Content::Flex)
                                 .spacing(2.)
                                 .child(corner_radius_button(shell, first_id, "-2pt", -2.0))
                                 .child(corner_radius_button(shell, first_id, "+2pt", 2.0))
@@ -746,32 +888,32 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         })
         .child(
             // Section: Live Modifiers Stack (ADR 09.31)
-            section_header("MODIFICADORES VIVOS (ADR 09.31)"),
+            section_header(ui.studio_text("live_modifiers")),
         )
         .child(modifier_stack_inspector(shell, first_id, &modifiers_list, obj_bounds))
         .child(
             // Section: Effects & Live Filters (10.4 / 10.10)
-            section_header("EFEITOS (FX) & FILTROS VIVOS"),
+            section_header(ui.studio_text("effects")),
         )
         .child(
             rect()
-                .direction(Direction::Horizontal)
+                .direction(Direction::Horizontal).content(Content::Flex)
                 .width(Size::fill())
                 .main_align(Alignment::SpaceBetween)
                 .cross_align(Alignment::Center)
                 .child(
                     label()
                         .text(match gaussian_blur_effect {
-                            Some((_, r, true)) => format!("Desfoque: {:.1} pt", r),
-                            Some((_, r, false)) => format!("Desfoque (Oculto): {:.1} pt", r),
-                            None => "Desfoque: Nenhum".to_string(),
+                            Some((_, r, true)) => format!("{}: {r:.1} pt",ui.studio_text("blur")),
+                            Some((_, r, false)) => format!("{} ({}): {r:.1} pt",ui.studio_text("blur"),ui.studio_text("hidden")),
+                            None => format!("{}: {}",ui.studio_text("blur"),ui.studio_text("none")),
                         })
                         .font_size(11.)
                         .color(theme::TEXT_SECONDARY),
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .spacing(2.)
                         .child(blur_adjust_button(shell, first_id, "-1pt", -1.0))
                         .child(blur_adjust_button(shell, first_id, "+1pt", 1.0))
@@ -791,7 +933,7 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                 .spacing(3.)
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .width(Size::fill())
                         .main_align(Alignment::SpaceBetween)
                         .cross_align(Alignment::Center)
@@ -799,19 +941,19 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                             label()
                                 .text(match drop_shadow_effect {
                                     Some((_, offset, blur, _, op, true)) => {
-                                        format!("Sombra Ext: Desf {:.0} | Dx {:.0} | Dy {:.0} | Op {:.0}%", blur, offset[0], offset[1], op * 100.0)
+                                        format!("{}: {:.0} pt · Δ {:.0},{:.0} · {:.0}%",ui.studio_text("drop_shadow"),blur,offset[0],offset[1],op*100.)
                                     }
                                     Some((_, _, blur, _, _, false)) => {
-                                        format!("Sombra Ext (Oculta): Desf {:.0}pt", blur)
+                                        format!("{} ({}): {blur:.0} pt",ui.studio_text("drop_shadow"),ui.studio_text("hidden"))
                                     }
-                                    None => "Sombra Ext: Nenhuma".to_string(),
+                                    None => format!("{}: {}",ui.studio_text("drop_shadow"),ui.studio_text("none")),
                                 })
                                 .font_size(11.)
                                 .color(theme::TEXT_SECONDARY),
                         )
                         .child(
                             rect()
-                                .direction(Direction::Horizontal)
+                                .direction(Direction::Horizontal).content(Content::Flex)
                                 .spacing(2.)
                                 .child(toggle_drop_shadow_button(shell, first_id))
                                 .child(remove_shadow_button(
@@ -823,7 +965,7 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .spacing(2.)
                         .child(drop_shadow_adjust_button(shell, first_id, "Dx -2", -2.0, 0.0, 0.0, 0.0))
                         .child(drop_shadow_adjust_button(shell, first_id, "Dx +2", 2.0, 0.0, 0.0, 0.0))
@@ -840,7 +982,7 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                 .spacing(3.)
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .width(Size::fill())
                         .main_align(Alignment::SpaceBetween)
                         .cross_align(Alignment::Center)
@@ -848,19 +990,19 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                             label()
                                 .text(match inner_shadow_effect {
                                     Some((_, offset, blur, _, op, true)) => {
-                                        format!("Sombra Int: Desf {:.0} | Dist {:.0} | Op {:.0}%", blur, offset[0], op * 100.0)
+                                        format!("{}: {:.0} pt · Δ {:.0} · {:.0}%",ui.studio_text("inner_shadow"),blur,offset[0],op*100.)
                                     }
                                     Some((_, _, blur, _, _, false)) => {
-                                        format!("Sombra Int (Oculta): Desf {:.0}pt", blur)
+                                        format!("{} ({}): {blur:.0} pt",ui.studio_text("inner_shadow"),ui.studio_text("hidden"))
                                     }
-                                    None => "Sombra Int: Nenhuma".to_string(),
+                                    None => format!("{}: {}",ui.studio_text("inner_shadow"),ui.studio_text("none")),
                                 })
                                 .font_size(11.)
                                 .color(theme::TEXT_SECONDARY),
                         )
                         .child(
                             rect()
-                                .direction(Direction::Horizontal)
+                                .direction(Direction::Horizontal).content(Content::Flex)
                                 .spacing(2.)
                                 .child(toggle_inner_shadow_button(shell, first_id))
                                 .child(remove_inner_shadow_button(
@@ -872,7 +1014,7 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .spacing(2.)
                         .child(inner_shadow_adjust_button(shell, first_id, "Dist -2", -2.0, 0.0, 0.0))
                         .child(inner_shadow_adjust_button(shell, first_id, "Dist +2", 2.0, 0.0, 0.0))
@@ -883,7 +1025,7 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         )
         .child(
             rect()
-                .direction(Direction::Horizontal)
+                .direction(Direction::Horizontal).content(Content::Flex)
                 .width(Size::fill())
                 .main_align(Alignment::SpaceBetween)
                 .cross_align(Alignment::Center)
@@ -891,17 +1033,17 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                     label()
                         .text(match sharpen_effect {
                             Some((_, r, a, true)) => {
-                                format!("Nitidez: Raio {:.1}pt | Qtd {:.0}%", r, a * 100.0)
+                                format!("{}: {r:.1} pt · {:.0}%",ui.studio_text("sharpen"),a*100.)
                             }
-                            Some((_, r, _, false)) => format!("Nitidez (Oculta): {:.1}pt", r),
-                            None => "Nitidez: Nenhuma".to_string(),
+                            Some((_, r, _, false)) => format!("{} ({}): {r:.1} pt",ui.studio_text("sharpen"),ui.studio_text("hidden")),
+                            None => format!("{}: {}",ui.studio_text("sharpen"),ui.studio_text("none")),
                         })
                         .font_size(11.)
                         .color(theme::TEXT_SECONDARY),
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .spacing(2.)
                         .child(sharpen_adjust_button(shell, first_id, "Qtd -10%", 0.0, -0.10))
                         .child(sharpen_adjust_button(shell, first_id, "Qtd +10%", 0.0, 0.10))
@@ -915,7 +1057,7 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         )
         .child(
             rect()
-                .direction(Direction::Horizontal)
+                .direction(Direction::Horizontal).content(Content::Flex)
                 .width(Size::fill())
                 .main_align(Alignment::SpaceBetween)
                 .cross_align(Alignment::Center)
@@ -923,19 +1065,20 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                     label()
                         .text(match noise_effect {
                             Some((_, a, mono, true)) => format!(
-                                "Ruído: {:.0}% ({})",
+                                "{}: {:.0}% ({})",
+                                ui.studio_text("noise"),
                                 a * 100.0,
-                                if mono { "Mono" } else { "Cor" }
+                                ui.studio_text(if mono {"monochrome"}else {"color"})
                             ),
-                            Some((_, a, _, false)) => format!("Ruído (Oculto): {:.0}%", a * 100.0),
-                            None => "Ruído: Nenhum".to_string(),
+                            Some((_, a, _, false)) => format!("{} ({}): {:.0}%",ui.studio_text("noise"),ui.studio_text("hidden"),a*100.),
+                            None => format!("{}: {}",ui.studio_text("noise"),ui.studio_text("none")),
                         })
                         .font_size(11.)
                         .color(theme::TEXT_SECONDARY),
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .spacing(2.)
                         .child(noise_adjust_button(shell, first_id, "-5%", -0.05))
                         .child(noise_adjust_button(shell, first_id, "+5%", 0.05))
@@ -949,7 +1092,7 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         )
         .child(
             // Section: Histogram (Spec 10.10)
-            section_header("HISTOGRAMA (SPEC 10.10)"),
+            section_header(ui.studio_text("histogram")),
         )
         .child(
             HistogramWidget {
@@ -959,30 +1102,30 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         )
         .child(
             // Section: Tonal Adjustments (Spec 10.10)
-            section_header("AJUSTES TONAIS (SPEC 10.10)"),
+            section_header(ui.studio_text("adjustments")),
         )
         .child(
             // Preset / Add adjustment buttons row
             rect()
-                .direction(Direction::Horizontal)
+                .direction(Direction::Horizontal).content(Content::Flex)
                 .width(Size::fill())
                 .main_align(Alignment::SpaceBetween)
                 .child(add_adjustment_button(
                     shell,
                     first_id,
-                    "+Níveis",
+                    studio_text(shell,"levels"),
                     petunia_design_document::adjustments::AdjustmentKind::default_levels(),
                 ))
                 .child(add_adjustment_button(
                     shell,
                     first_id,
-                    "+Curvas",
+                    studio_text(shell,"curves_adjustment"),
                     petunia_design_document::adjustments::AdjustmentKind::default_curves(),
                 ))
                 .child(add_adjustment_button(
                     shell,
                     first_id,
-                    "+HSL",
+                    studio_text(shell,"hsl"),
                     petunia_design_document::adjustments::AdjustmentKind::default_hsl(),
                 ))
                 .child(add_adjustment_button(
@@ -994,7 +1137,7 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
                 .child(add_adjustment_button(
                     shell,
                     first_id,
-                    "+Balanço",
+                    studio_text(shell,"white_balance"),
                     petunia_design_document::adjustments::AdjustmentKind::default_white_balance(),
                 )),
         )
@@ -1005,27 +1148,27 @@ fn properties_tab(ui: UiShell) -> impl IntoElement {
         )
         .child(
             // Section: Alignment & Booleans
-            section_header("ALINHAMENTO & BOOLEANOS"),
+            section_header(ui.studio_text("alignment")),
         )
         .child(
             rect()
-                .direction(Direction::Horizontal)
+                .direction(Direction::Horizontal).content(Content::Flex)
                 .width(Size::fill())
                 .main_align(Alignment::SpaceBetween)
-                .child(action_button(shell, "ptnd.action.object.align_left", "Esq"))
-                .child(action_button(shell, "ptnd.action.object.align_center", "Centro"))
-                .child(action_button(shell, "ptnd.action.object.align_right", "Dir"))
-                .child(action_button(shell, "ptnd.action.object.align_top", "Topo"))
-                .child(action_button(shell, "ptnd.action.object.align_bottom", "Base")),
+                .child(action_button(shell, "ptnd.action.object.align_left", studio_text(shell,"align_left")))
+                .child(action_button(shell, "ptnd.action.object.align_center", studio_text(shell,"align_center")))
+                .child(action_button(shell, "ptnd.action.object.align_right", studio_text(shell,"align_right")))
+                .child(action_button(shell, "ptnd.action.object.align_top", studio_text(shell,"align_top")))
+                .child(action_button(shell, "ptnd.action.object.align_bottom", studio_text(shell,"align_bottom"))),
         )
         .child(
             rect()
-                .direction(Direction::Horizontal)
+                .direction(Direction::Horizontal).content(Content::Flex)
                 .width(Size::fill())
                 .main_align(Alignment::SpaceBetween)
-                .child(action_button(shell, "ptnd.action.vector.boolean_union", "Unir"))
-                .child(action_button(shell, "ptnd.action.vector.boolean_subtract", "Subtrair"))
-                .child(action_button(shell, "ptnd.action.vector.boolean_intersect", "Intersec"))
+                .child(action_button(shell, "ptnd.action.vector.boolean_union", studio_text(shell,"union")))
+                .child(action_button(shell, "ptnd.action.vector.boolean_subtract", studio_text(shell,"subtract")))
+                .child(action_button(shell, "ptnd.action.vector.boolean_intersect", studio_text(shell,"intersect")))
                 .child(action_button(shell, "ptnd.action.vector.boolean_xor", "XOR")),
         ))
         .into_element()
@@ -1042,33 +1185,38 @@ impl Component for ColorsTab {
     fn render(&self) -> impl IntoElement {
         let mut subtab = use_state(|| 0usize);
         let current_subtab = *subtab.read();
-        let target_fill = use_state(|| true);
+        let target_fill = self.0.studio_fill_target;
 
         rect()
             .direction(Direction::Vertical)
             .width(Size::fill())
-            .height(Size::fill())
             .spacing(theme::SPACE_2)
             .child(
                 // Subtab Switcher: Cor (ptnd.panel.color) | Amostras (ptnd.panel.swatches) | Tarefas (ptnd.panel.background_tasks)
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .width(Size::fill())
-                    .height(Size::px(30.))
+                    .height(Size::px(theme::PANEL_HEADER_HEIGHT))
                     .background(theme::SURFACE_CHROME_STRONG)
                     .padding(Gaps::new_all(2.))
                     .spacing(theme::SPACE_1)
                     .main_align(Alignment::SpaceEvenly)
                     .cross_align(Alignment::Center)
-                    .child(subtab_pill("🎨 Cor", 0, current_subtab == 0, &mut subtab))
                     .child(subtab_pill(
-                        "📑 Amostras",
+                        self.0.studio_text("color"),
+                        0,
+                        current_subtab == 0,
+                        &mut subtab,
+                    ))
+                    .child(subtab_pill(
+                        self.0.studio_text("swatches"),
                         1,
                         current_subtab == 1,
                         &mut subtab,
                     ))
                     .child(subtab_pill(
-                        "⚡ Tarefas",
+                        self.0.studio_text("tasks"),
                         2,
                         current_subtab == 2,
                         &mut subtab,
@@ -1096,25 +1244,16 @@ impl Component for ColorsTab {
 }
 
 fn subtab_pill(
-    title: &'static str,
+    title: impl Into<String>,
     idx: usize,
     active: bool,
     subtab: &mut State<usize>,
 ) -> impl IntoElement {
-    let mut st = *subtab;
-    rect()
-        .height(Size::px(24.))
-        .background(if active {
-            theme::SURFACE_PANEL
-        } else {
-            theme::SURFACE_CHROME
-        })
-        .padding(Gaps::new(0., theme::SPACE_2, 0., theme::SPACE_2))
-        .center()
-        .on_press(move |_| {
-            st.set(idx);
-        })
-        .child(label().text(title).font_size(10.).color(if active {
+    let mut state = *subtab;
+    Button::new()
+        .compact()
+        .on_press(move |_| state.set(idx))
+        .child(label().text(title.into()).color(if active {
             theme::TEXT_PRIMARY
         } else {
             theme::TEXT_SECONDARY
@@ -1129,6 +1268,7 @@ fn channel_adjuster(
 ) -> impl IntoElement {
     rect()
         .direction(Direction::Horizontal)
+        .content(Content::Flex)
         .width(Size::fill())
         .height(Size::px(26.))
         .cross_align(Alignment::Center)
@@ -1152,6 +1292,7 @@ fn channel_adjuster(
         .child(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .spacing(4.)
                 .child(
                     Button::new()
@@ -1190,7 +1331,9 @@ impl Component for ColorPanel {
                         .and_then(|o| o.shape.as_ref()),
                     Some(ShapeKind::Raster { .. })
                 )
-            });
+            })
+            || (sel.selected_ids.is_empty()
+                && *self.ui.persona.read() == petunia_design_application::surfaces::PERSONA_PHOTO);
         let native_profile = first_id.and_then(|id| {
             shell
                 .read()
@@ -1209,15 +1352,54 @@ impl Component for ColorPanel {
         let active_mode = *color_mode.read();
 
         // sRGB state
-        let r_val = use_state(|| 239u8);
-        let g_val = use_state(|| 68u8);
-        let b_val = use_state(|| 68u8);
+        let source = {
+            let s = shell.read();
+            let object = first_id.and_then(|id| s.bridge.session()?.find_object(id));
+            let rgb = if raster_target {
+                s.tools.photo_brush_tool().brush_settings().color[..3]
+                    .try_into()
+                    .unwrap_or([0.; 3])
+            } else {
+                object
+                    .and_then(|o| {
+                        if is_fill {
+                            o.fill.as_deref()
+                        } else {
+                            o.stroke.as_deref()
+                        }
+                    })
+                    .map(petunia_design_document::resolve_color_to_rgb)
+                    .unwrap_or([0.2, 0.78, 0.83])
+            };
+            (
+                s.bridge.session().map(|s| s.identity()),
+                first_id,
+                is_fill,
+                crate::studio::rgb_token(rgb),
+                rgb,
+                raster_target
+                    .then(|| s.tools.photo_brush_tool().brush_settings().ink)
+                    .flatten(),
+            )
+        };
+        let mut input = use_state(|| source.clone());
+        if *input.peek() != source {
+            input.set(source.clone());
+        }
+        let mut r_val = use_state(|| (source.4[0] * 255.).round() as u8);
+        let mut g_val = use_state(|| (source.4[1] * 255.).round() as u8);
+        let mut b_val = use_state(|| (source.4[2] * 255.).round() as u8);
 
+        let mut hex = use_state(|| source.3.clone());
+        use_side_effect(move || {
+            let rgb = [*r_val.read(), *g_val.read(), *b_val.read()];
+            hex.set(format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]));
+        });
         // CMYK state (percentages 0..=100)
-        let c_val = use_state(|| 0u8);
-        let m_val = use_state(|| 85u8);
-        let y_val = use_state(|| 70u8);
-        let k_val = use_state(|| 0u8);
+        let mut c_val = use_state(|| 0u8);
+        let mut m_val = use_state(|| 85u8);
+        let mut y_val = use_state(|| 70u8);
+        let mut k_val = use_state(|| 0u8);
 
         // Lab state (L: 0..100, a: -128..127, b: -128..127)
         let lab_l = use_state(|| 55i16);
@@ -1225,8 +1407,21 @@ impl Component for ColorPanel {
         let lab_b = use_state(|| 35i16);
 
         // Spot state
-        let spot_name = use_state(|| "PANTONE 185 C".to_string());
+        let spot_name = use_state(|| "Studio Red".to_string());
 
+        use_side_effect(move || {
+            let source = input.read();
+            r_val.set((source.4[0] * 255.).round() as u8);
+            g_val.set((source.4[1] * 255.).round() as u8);
+            b_val.set((source.4[2] * 255.).round() as u8);
+            if let Some(ink) = source.5 {
+                let [c, m, y, k] = ink.map(|v| (v * 100.).round() as u8);
+                c_val.set(c);
+                m_val.set(m);
+                y_val.set(y);
+                k_val.set(k);
+            }
+        });
         let profile = native_profile.or_else(|| {
             shell
                 .read()
@@ -1323,6 +1518,7 @@ impl Component for ColorPanel {
         let mut bpc_options = self.ui.proof_options;
         let mut shell_for_apply = shell;
         let token_for_apply = token.clone();
+        let apply_ui = self.ui.clone();
         let ink_for_apply = (active_mode == 1 && native_ink_target).then(|| {
             [*c_val.read(), *m_val.read(), *y_val.read(), *k_val.read()]
                 .map(|v| f32::from(v) / 100.)
@@ -1337,7 +1533,6 @@ impl Component for ColorPanel {
         rect()
             .direction(Direction::Vertical)
             .width(Size::fill())
-            .height(Size::fill())
             .spacing(theme::SPACE_2)
             .child(
                 Button::new()
@@ -1382,6 +1577,7 @@ impl Component for ColorPanel {
             .child(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(2.)
                     .children(
                         [
@@ -1421,7 +1617,7 @@ impl Component for ColorPanel {
                                         } else {
                                             theme::TEXT_SECONDARY
                                         })
-                                        .font_size(9.),
+                                        .font_size(theme::CAPTION_SIZE),
                                 )
                         }),
                     ),
@@ -1455,6 +1651,7 @@ impl Component for ColorPanel {
                 // Target Selector: Preenchimento vs Traço
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .width(Size::fill())
                     .spacing(theme::SPACE_1)
                     .child(
@@ -1468,7 +1665,7 @@ impl Component for ColorPanel {
                                         if is_fill { "● " } else { "" },
                                         self.ui.text("color_fill")
                                     ))
-                                    .font_size(10.),
+                                    .font_size(theme::CAPTION_SIZE),
                             ),
                     )
                     .child(
@@ -1482,7 +1679,7 @@ impl Component for ColorPanel {
                                         if !is_fill { "● " } else { "" },
                                         self.ui.text("color_stroke")
                                     ))
-                                    .font_size(10.),
+                                    .font_size(theme::CAPTION_SIZE),
                             ),
                     ),
             )
@@ -1490,6 +1687,7 @@ impl Component for ColorPanel {
                 // Color Mode Segmented Bar: sRGB | CMYK | Lab | Spot
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .width(Size::fill())
                     .height(Size::px(26.))
                     .background(theme::SURFACE_CHROME_STRONG)
@@ -1506,6 +1704,7 @@ impl Component for ColorPanel {
                 // Active Color Preview Card
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .width(Size::fill())
                     .height(Size::px(42.))
                     .background(theme::SURFACE_CHROME)
@@ -1521,7 +1720,7 @@ impl Component for ColorPanel {
                     .child(
                         rect()
                             .width(Size::px(34.))
-                            .height(Size::px(34.))
+                            .height(Size::px(theme::PANEL_HEADER_HEIGHT))
                             .background(preview_color)
                             .border(
                                 Border::new()
@@ -1542,7 +1741,7 @@ impl Component for ColorPanel {
                             .child(
                                 label()
                                     .text(self.ui.text("gamut_unmeasured"))
-                                    .font_size(9.)
+                                    .font_size(theme::CAPTION_SIZE)
                                     .color(theme::TEXT_SECONDARY),
                             ),
                     ),
@@ -1717,68 +1916,94 @@ impl Component for ColorPanel {
                             .child(
                                 rect()
                                     .direction(Direction::Horizontal)
+                                    .content(Content::Flex)
                                     .spacing(4.)
                                     .child(
                                         Button::new()
                                             .on_press(move |_| {
-                                                spot_change.set("PANTONE 185 C".to_string())
+                                                spot_change.set("Studio Red".to_string())
                                             })
-                                            .child(label().text("185 C (Red)").font_size(9.)),
+                                            .child(
+                                                label()
+                                                    .text(self.ui.studio_text("spot_red"))
+                                                    .font_size(theme::CAPTION_SIZE),
+                                            ),
                                     )
                                     .child(
                                         Button::new()
                                             .on_press(move |_| {
-                                                spot_change.set("PANTONE Reflex Blue".to_string())
+                                                spot_change.set("Studio Blue".to_string())
                                             })
-                                            .child(label().text("Reflex Blue").font_size(9.)),
+                                            .child(
+                                                label()
+                                                    .text(self.ui.studio_text("spot_blue"))
+                                                    .font_size(theme::CAPTION_SIZE),
+                                            ),
                                     )
                                     .child(
                                         Button::new()
                                             .on_press(move |_| {
-                                                spot_change.set("PANTONE Metallic Gold".to_string())
+                                                spot_change.set("Studio Gold".to_string())
                                             })
-                                            .child(label().text("Gold").font_size(9.)),
+                                            .child(
+                                                label()
+                                                    .text(self.ui.studio_text("spot_gold"))
+                                                    .font_size(theme::CAPTION_SIZE),
+                                            ),
                                     ),
                             )
                     }
                 },
             )
+            .maybe_child((active_mode == 0).then(|| {
+                rect()
+                    .direction(Direction::Horizontal)
+                    .content(Content::Flex)
+                    .width(Size::fill())
+                    .spacing(theme::SPACE_2)
+                    .cross_align(Alignment::Center)
+                    .child(label().text("Hex").color(theme::TEXT_SECONDARY))
+                    .child(
+                        Input::new(hex)
+                            .width(Size::flex(1.))
+                            .placeholder("#RRGGBB")
+                            .on_validate(move |validator: InputValidator| {
+                                if let Some([r, g, b]) = crate::studio::parse_hex(&validator.text())
+                                {
+                                    r_val.set(r);
+                                    g_val.set(g);
+                                    b_val.set(b);
+                                }
+                            }),
+                    )
+                    .maybe_child(crate::studio::parse_hex(&hex.read()).is_none().then(|| {
+                        label()
+                            .text(self.ui.studio_text("invalid_hex"))
+                            .color(theme::TEXT_ERROR)
+                    }))
+            }))
             .child(
                 // Apply Button
                 Button::new()
                     .enabled(
-                        first_id.is_some()
+                        crate::studio::color_target_enabled(&self.ui)
                             && (active_mode != 1 || (has_profile && icc_swatch.is_some()))
-                            && (!raster_target || active_mode != 3),
+                            && (!raster_target || active_mode != 3)
+                            && (active_mode != 0
+                                || crate::studio::parse_hex(&hex.read()).is_some()),
                     )
                     .on_press(move |_| {
                         if raster_target {
                             let mut current = shell_for_apply.write();
                             let target = current.tools.photo_brush_tool_mut();
                             let mut settings = target.brush_settings();
-                            settings.color = [brush_rgb[0], brush_rgb[1], brush_rgb[2], 1.];
+                            settings.color =
+                                [brush_rgb[0], brush_rgb[1], brush_rgb[2], settings.color[3]];
                             settings.ink = ink_for_apply;
                             target.set_brush_settings(settings);
                             return;
                         }
-                        if let Some(id) = first_id {
-                            let cmd = if is_fill {
-                                Command::SetFill {
-                                    id,
-                                    fill: Some(token_for_apply.clone()),
-                                }
-                            } else {
-                                Command::SetStroke {
-                                    id,
-                                    stroke: Some(token_for_apply.clone()),
-                                    width: 2.0,
-                                }
-                            };
-                            let _ = shell_for_apply
-                                .write()
-                                .bridge
-                                .submit_all("Apply color", vec![cmd]);
-                        }
+                        crate::studio::apply_color(&apply_ui, &token_for_apply, is_fill);
                     })
                     .child(
                         label()
@@ -1804,258 +2029,178 @@ pub struct SwatchesPanel {
 
 impl Component for SwatchesPanel {
     fn render(&self) -> impl IntoElement {
-        let shell = self.ui.shell;
-        let sel = shell.peek().bridge.selection();
-        let first_id = sel.selected_ids.first().copied();
-        let is_fill = *self.target_fill.read();
-
-        let mut lib_mode = use_state(|| 0usize); // 0: Sistema, 1: Documento, 2: Favoritos
-        let current_lib = *lib_mode.read();
-
-        let custom_swatches = use_state(|| {
-            vec![
-                (
-                    "Menta Neon".to_string(),
-                    "#10B981".to_string(),
-                    Color::from_rgb(0x10, 0xB9, 0x81),
-                ),
-                (
-                    "Ouro Solar".to_string(),
-                    "#F59E0B".to_string(),
-                    Color::from_rgb(0xF5, 0x9E, 0x0B),
-                ),
-                (
-                    "Índigo".to_string(),
-                    "#6366F1".to_string(),
-                    Color::from_rgb(0x63, 0x66, 0xF1),
-                ),
-                (
-                    "Coral Rosa".to_string(),
-                    "#F43F5E".to_string(),
-                    Color::from_rgb(0xF4, 0x3F, 0x5E),
-                ),
-            ]
-        });
-
-        let system_palette = [
-            (
-                "Cinza 900",
-                "ptnd.gray/900",
-                Color::from_rgb(0x11, 0x18, 0x27),
-            ),
-            (
-                "Cinza 600",
-                "ptnd.gray/600",
-                Color::from_rgb(0x4B, 0x55, 0x63),
-            ),
-            (
-                "Cinza 300",
-                "ptnd.gray/300",
-                Color::from_rgb(0xD1, 0xD5, 0xDB),
-            ),
-            ("Branco", "ptnd.white", Color::from_rgb(0xFF, 0xFF, 0xFF)),
-            (
-                "Vermelho 500",
-                "ptnd.red/500",
-                Color::from_rgb(0xEF, 0x44, 0x44),
-            ),
-            (
-                "Rosa 500",
-                "ptnd.pink/500",
-                Color::from_rgb(0xEC, 0x48, 0x99),
-            ),
-            (
-                "Roxo 500",
-                "ptnd.purple/500",
-                Color::from_rgb(0x8B, 0x5C, 0xF6),
-            ),
-            (
-                "Azul 500",
-                "ptnd.blue/500",
-                Color::from_rgb(0x3B, 0x82, 0xF6),
-            ),
-            (
-                "Ciano 500",
-                "ptnd.cyan/500",
-                Color::from_rgb(0x06, 0xB6, 0xD4),
-            ),
-            (
-                "Teal 500",
-                "ptnd.teal/500",
-                Color::from_rgb(0x14, 0xB8, 0xA6),
-            ),
-            (
-                "Verde 500",
-                "ptnd.green/500",
-                Color::from_rgb(0x10, 0xB9, 0x81),
-            ),
-            (
-                "Amarelo 500",
-                "ptnd.amber/500",
-                Color::from_rgb(0xF5, 0x9E, 0x0B),
-            ),
-        ];
-
-        let doc_swatches: Vec<(String, String, Color)> = {
-            let s = shell.peek();
-            let mut list = Vec::new();
-            if let Some(session) = s.bridge.session() {
-                if let Some(surface) = s
-                    .bridge
-                    .active_surface()
-                    .and_then(|id| session.surface(id).ok())
-                {
-                    for obj in surface.objects() {
-                        if let Some(fill) = obj.fill.as_deref() {
-                            let rgb = petunia_design_document::resolve_color_to_rgb(fill);
-                            let col = Color::from_rgb(
-                                (rgb[0] * 255.0).round() as u8,
-                                (rgb[1] * 255.0).round() as u8,
-                                (rgb[2] * 255.0).round() as u8,
-                            );
-                            let name = format!("Obj #{}", obj.id.raw());
-                            if !list.iter().any(|(_, tok, _)| tok == fill) {
-                                list.push((name, fill.to_string(), col));
-                            }
-                        }
+        let ui = &self.ui;
+        let s = ui.shell.read();
+        let selected = s.bridge.selection().selected_ids;
+        let first = selected
+            .first()
+            .and_then(|id| s.bridge.session()?.find_object(*id));
+        let fill = *self.target_fill.read();
+        let brush = first.is_some_and(|o| matches!(o.shape, Some(ShapeKind::Raster { .. })))
+            || (selected.is_empty()
+                && *ui.persona.read() == petunia_design_application::surfaces::PERSONA_PHOTO);
+        let token = if brush {
+            Some(crate::studio::rgb_token(
+                s.tools.photo_brush_tool().brush_settings().color[..3]
+                    .try_into()
+                    .unwrap_or([0.; 3]),
+            ))
+        } else {
+            first.and_then(|o| {
+                if fill {
+                    o.fill.clone()
+                } else {
+                    o.stroke.clone()
+                }
+            })
+        };
+        let enabled = crate::studio::color_target_enabled(ui);
+        let mut document = Vec::<(String, String)>::new();
+        if let Some(surface) = s.bridge.session().and_then(|session| {
+            session
+                .active_surface()
+                .and_then(|id| session.document().surface(id).ok())
+        }) {
+            for object in surface.objects() {
+                for color in [&object.fill, &object.stroke].into_iter().flatten() {
+                    if !document.iter().any(|(_, value)| value == color) {
+                        document.push((color.clone(), color.clone()));
                     }
                 }
             }
-            list
-        };
-
-        let active_swatches: Vec<(String, String, Color)> = match current_lib {
-            0 => system_palette
-                .iter()
-                .map(|&(n, t, c)| (n.to_string(), t.to_string(), c))
+        }
+        drop(s);
+        let mut mode = use_state(|| 0usize);
+        let active = *mode.read();
+        let mut favorites = ui.favorite_swatches;
+        let swatches = match active {
+            1 => document,
+            2 => favorites.read().clone(),
+            _ => crate::studio::QUICK_COLORS
+                .into_iter()
+                .map(|token| (token.to_string(), token.to_string()))
                 .collect(),
-            1 => doc_swatches,
-            _ => (*custom_swatches.read()).clone(),
         };
-
-        let mut add_swatches = custom_swatches;
-
+        let mut target = self.target_fill;
+        let add_title = ui.studio_text("swatch");
         rect()
             .direction(Direction::Vertical)
             .width(Size::fill())
-            .height(Size::fill())
             .spacing(theme::SPACE_2)
             .child(
-                // Library Switcher: Sistema | Documento | Favoritos
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .width(Size::fill())
-                    .height(Size::px(26.))
-                    .background(theme::SURFACE_CHROME_STRONG)
-                    .padding(Gaps::new_all(2.))
                     .spacing(2.)
-                    .main_align(Alignment::SpaceEvenly)
-                    .cross_align(Alignment::Center)
-                    .child(subtab_pill("Sistema", 0, current_lib == 0, &mut lib_mode))
-                    .child(subtab_pill("Documento", 1, current_lib == 1, &mut lib_mode))
-                    .child(subtab_pill("Favoritos", 2, current_lib == 2, &mut lib_mode)),
+                    .children(
+                        [(0, "system"), (1, "document"), (2, "favorites")]
+                            .into_iter()
+                            .map(|(index, key)| {
+                                crate::studio_widgets::StudioButton::new(ui, ui.studio_text(key))
+                                    .text(ui.studio_text(key))
+                                    .tab()
+                                    .width(Size::flex(1.))
+                                    .selected(active == index)
+                                    .on_press(move |_| mode.set(index))
+                            }),
+                    ),
             )
             .child(
                 rect()
                     .direction(Direction::Horizontal)
-                    .width(Size::fill())
-                    .main_align(Alignment::SpaceBetween)
-                    .cross_align(Alignment::Center)
-                    .child(
-                        label()
-                            .text(match current_lib {
-                                0 => "PALETA DO SISTEMA",
-                                1 => "CORES DO DOCUMENTO",
-                                _ => "AMOSTRAS FAVORITAS",
-                            })
-                            .font_size(10.)
-                            .color(theme::TEXT_SECONDARY),
-                    )
-                    .maybe_child(if current_lib == 2 {
-                        Some(
-                            Button::new()
-                                .on_press(move |_| {
-                                    let count = add_swatches.read().len() + 1;
-                                    let mut list = (*add_swatches.read()).clone();
-                                    list.push((
-                                        format!("Amostra {count}"),
-                                        "#EC4899".to_string(),
-                                        Color::from_rgb(0xEC, 0x48, 0x99),
-                                    ));
-                                    add_swatches.set(list);
-                                })
-                                .child(label().text("+ Adicionar").font_size(9.)),
-                        )
-                    } else {
-                        None
-                    }),
-            )
-            .child(if active_swatches.is_empty() {
-                rect()
-                    .width(Size::fill())
-                    .padding(Gaps::new_all(theme::SPACE_2))
-                    .center()
-                    .child(
-                        label()
-                            .text("Nenhuma cor encontrada nesta biblioteca.")
-                            .font_size(11.)
-                            .color(theme::TEXT_SECONDARY),
-                    )
-            } else {
-                rect()
-                    .direction(Direction::Vertical)
+                    .content(Content::Flex)
                     .width(Size::fill())
                     .spacing(theme::SPACE_1)
-                    .children(active_swatches.chunks(4).map(|chunk| {
+                    .child(
+                        crate::studio_widgets::StudioButton::new(
+                            ui,
+                            ui.studio_text(if brush { "brush_color" } else { "fill" }),
+                        )
+                        .text(ui.studio_text(if brush { "brush_color" } else { "fill" }))
+                        .selected(fill || brush)
+                        .on_press(move |_| target.set(true)),
+                    )
+                    .maybe_child((!brush).then(|| {
+                        crate::studio_widgets::StudioButton::new(ui, ui.studio_text("stroke"))
+                            .text(ui.studio_text("stroke"))
+                            .selected(!fill)
+                            .on_press(move |_| target.set(false))
+                    })),
+            )
+            .maybe_child((active == 2).then(|| {
+                crate::studio_widgets::StudioButton::new(ui, ui.studio_text("add_selected_color"))
+                    .icon(theme::ICON_PLUS)
+                    .text(ui.studio_text("add_selected_color"))
+                    .enabled(token.is_some())
+                    .on_press(move |_| {
+                        if let Some(token) = &token {
+                            let mut values = favorites.write();
+                            if !values.iter().any(|(_, value)| value == token) {
+                                let name = format!("{} {}", add_title, values.len() + 1);
+                                values.push((name, token.clone()));
+                            }
+                        }
+                    })
+            }))
+            .maybe_child(swatches.is_empty().then(|| {
+                label()
+                    .text(ui.studio_text("empty_swatches"))
+                    .color(theme::TEXT_SECONDARY)
+            }))
+            .children(swatches.chunks(4).map(|chunk| {
+                rect()
+                    .direction(Direction::Horizontal)
+                    .content(Content::Flex)
+                    .width(Size::fill())
+                    .spacing(theme::SPACE_1)
+                    .children(chunk.iter().map(|(name, token)| {
+                        let rgb = petunia_design_document::resolve_color_to_rgb(token);
+                        let apply_ui = ui.clone();
+                        let apply_token = token.clone();
                         rect()
-                            .direction(Direction::Horizontal)
-                            .width(Size::fill())
-                            .main_align(Alignment::SpaceBetween)
-                            .children(chunk.iter().map(|(name, token, color)| {
-                                let mut shell_for_swatch = shell;
-                                let tok = token.clone();
-                                let col = *color;
+                            .direction(Direction::Vertical)
+                            .width(Size::flex(1.))
+                            .spacing(2.)
+                            .child(
                                 rect()
-                                    .width(Size::px(60.))
-                                    .height(Size::px(34.))
-                                    .background(col)
-                                    .border(
-                                        Border::new()
-                                            .fill(theme::SURFACE_CHROME_STRONG)
-                                            .width(1.)
-                                            .alignment(BorderAlignment::Inner),
-                                    )
-                                    .center()
-                                    .on_press(move |_| {
-                                        if let Some(id) = first_id {
-                                            let cmd = if is_fill {
-                                                Command::SetFill {
-                                                    id,
-                                                    fill: Some(tok.clone()),
-                                                }
-                                            } else {
-                                                Command::SetStroke {
-                                                    id,
-                                                    stroke: Some(tok.clone()),
-                                                    width: 2.0,
-                                                }
-                                            };
-                                            let _ = shell_for_swatch
-                                                .write()
-                                                .bridge
-                                                .submit_all("Set swatch color", vec![cmd]);
-                                        }
-                                    })
-                                    .child(label().text(name.clone()).font_size(9.).color(
-                                        if col.r() > 180 && col.g() > 180 {
-                                            Color::BLACK
-                                        } else {
-                                            Color::WHITE
-                                        },
+                                    .height(Size::px(theme::PANEL_HEADER_HEIGHT))
+                                    .width(Size::fill())
+                                    .corner_radius(theme::CONTROL_RADIUS)
+                                    .background(Color::from_rgb(
+                                        (rgb[0] * 255.) as u8,
+                                        (rgb[1] * 255.) as u8,
+                                        (rgb[2] * 255.) as u8,
                                     ))
-                            }))
+                                    .child(
+                                        crate::studio_widgets::StudioButton::new(
+                                            ui,
+                                            format!("{name}: {token}"),
+                                        )
+                                        .enabled(enabled)
+                                        .width(Size::fill())
+                                        .height(30.)
+                                        .on_press(
+                                            move |_| {
+                                                crate::studio::apply_color(
+                                                    &apply_ui,
+                                                    &apply_token,
+                                                    fill,
+                                                )
+                                            },
+                                        ),
+                                    ),
+                            )
+                            .child(
+                                label()
+                                    .text(name.clone())
+                                    .font_size(theme::CAPTION_SIZE)
+                                    .color(theme::TEXT_SECONDARY)
+                                    .max_lines(1)
+                                    .text_overflow(TextOverflow::Ellipsis),
+                            )
                     }))
-            })
+            }))
     }
 }
 
@@ -2067,7 +2212,6 @@ impl Component for BackgroundTasksPanel {
     fn render(&self) -> impl IntoElement {
         let shell = self.0.shell;
         let jobs = shell.peek().bridge.jobs().list_jobs();
-        let mut shell_for_sim = shell;
         let mut shell_for_clear = shell;
 
         rect()
@@ -2078,31 +2222,31 @@ impl Component for BackgroundTasksPanel {
             .child(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .width(Size::fill())
                     .main_align(Alignment::SpaceBetween)
                     .cross_align(Alignment::Center)
-                    .child(section_header("TAREFAS EM SEGUNDO PLANO"))
                     .child(
                         rect()
-                            .direction(Direction::Horizontal)
-                            .spacing(4.)
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        let s = shell_for_sim.write();
-                                        let (id, _) =
-                                            s.bridge.jobs().spawn_job("Exportação PDF 300 DPI");
-                                        s.bridge.jobs().update_progress(id, 65);
-                                    })
-                                    .child(label().text("+ Simular").font_size(10.)),
+                            .width(Size::flex(1.))
+                            .child(section_header(self.0.studio_text("background_tasks"))),
+                    )
+                    .child(
+                        crate::studio_widgets::StudioButton::new(
+                            &self.0,
+                            self.0.studio_text("clear"),
+                        )
+                        .icon(theme::ICON_TRASH)
+                        .width(Size::px(28.))
+                        .enabled(jobs.iter().any(|job| {
+                            matches!(
+                                job.state,
+                                petunia_design_jobs::JobState::Completed
+                                    | petunia_design_jobs::JobState::Cancelled
+                                    | petunia_design_jobs::JobState::Failed
                             )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| {
-                                        shell_for_clear.write().bridge.jobs().clear_completed();
-                                    })
-                                    .child(label().text("Limpar").font_size(10.)),
-                            ),
+                        }))
+                        .on_press(move |_| shell_for_clear.write().bridge.jobs().clear_completed()),
                     ),
             )
             .child(if jobs.is_empty() {
@@ -2112,7 +2256,7 @@ impl Component for BackgroundTasksPanel {
                     .center()
                     .child(
                         label()
-                            .text("Nenhuma tarefa em execução em segundo plano.")
+                            .text(self.0.studio_text("empty_tasks"))
                             .font_size(11.)
                             .color(theme::TEXT_SECONDARY),
                     )
@@ -2127,11 +2271,21 @@ impl Component for BackgroundTasksPanel {
                         let job_id = job.id;
                         let is_running = job.state == petunia_design_jobs::JobState::Running;
                         let state_label = match job.state {
-                            petunia_design_jobs::JobState::Running => "⚡ Executando",
-                            petunia_design_jobs::JobState::Completed => "✓ Concluído",
-                            petunia_design_jobs::JobState::Cancelled => "⊘ Cancelado",
-                            petunia_design_jobs::JobState::Failed => "✗ Falhou",
-                            petunia_design_jobs::JobState::Queued => "Pendente",
+                            petunia_design_jobs::JobState::Running => {
+                                self.0.studio_text("job_running")
+                            }
+                            petunia_design_jobs::JobState::Completed => {
+                                self.0.studio_text("job_completed")
+                            }
+                            petunia_design_jobs::JobState::Cancelled => {
+                                self.0.studio_text("job_cancelled")
+                            }
+                            petunia_design_jobs::JobState::Failed => {
+                                self.0.studio_text("job_failed")
+                            }
+                            petunia_design_jobs::JobState::Queued => {
+                                self.0.studio_text("job_queued")
+                            }
                         };
                         let state_color = match job.state {
                             petunia_design_jobs::JobState::Running => {
@@ -2164,6 +2318,7 @@ impl Component for BackgroundTasksPanel {
                             .child(
                                 rect()
                                     .direction(Direction::Horizontal)
+                                    .content(Content::Flex)
                                     .width(Size::fill())
                                     .main_align(Alignment::SpaceBetween)
                                     .cross_align(Alignment::Center)
@@ -2174,7 +2329,10 @@ impl Component for BackgroundTasksPanel {
                                             .color(theme::TEXT_PRIMARY),
                                     )
                                     .child(
-                                        label().text(state_label).font_size(10.).color(state_color),
+                                        label()
+                                            .text(state_label)
+                                            .font_size(theme::CAPTION_SIZE)
+                                            .color(state_color),
                                     ),
                             )
                             .child(
@@ -2193,13 +2351,14 @@ impl Component for BackgroundTasksPanel {
                             .child(
                                 rect()
                                     .direction(Direction::Horizontal)
+                                    .content(Content::Flex)
                                     .width(Size::fill())
                                     .main_align(Alignment::SpaceBetween)
                                     .cross_align(Alignment::Center)
                                     .child(
                                         label()
                                             .text(format!("{}%", job.percent))
-                                            .font_size(10.)
+                                            .font_size(theme::CAPTION_SIZE)
                                             .color(theme::TEXT_TERTIARY),
                                     )
                                     .maybe_child(if is_running {
@@ -2212,7 +2371,11 @@ impl Component for BackgroundTasksPanel {
                                                         .jobs()
                                                         .cancel_job(job_id);
                                                 })
-                                                .child(label().text("Cancelar").font_size(9.)),
+                                                .child(
+                                                    label()
+                                                        .text(self.0.studio_text("cancel"))
+                                                        .font_size(theme::CAPTION_SIZE),
+                                                ),
                                         )
                                     } else {
                                         None
@@ -2242,13 +2405,15 @@ fn history_tab(ui: UiShell) -> impl IntoElement {
         .child(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .width(Size::fill())
                 .main_align(Alignment::SpaceBetween)
                 .cross_align(Alignment::Center)
-                .child(section_header("HISTÓRICO DE AÇÕES"))
+                .child(section_header(ui.studio_text("action_history")))
                 .child(
                     rect()
                         .direction(Direction::Horizontal)
+                        .content(Content::Flex)
                         .spacing(theme::SPACE_1)
                         .child(
                             Button::new()
@@ -2258,7 +2423,7 @@ fn history_tab(ui: UiShell) -> impl IntoElement {
                                         "ptnd.action.edit.undo",
                                     );
                                 })
-                                .child(label().text("Desfazer").font_size(11.)),
+                                .child(label().text(ui.studio_text("undo")).font_size(11.)),
                         )
                         .child(
                             Button::new()
@@ -2268,7 +2433,7 @@ fn history_tab(ui: UiShell) -> impl IntoElement {
                                         "ptnd.action.edit.redo",
                                     );
                                 })
-                                .child(label().text("Refazer").font_size(11.)),
+                                .child(label().text(ui.studio_text("redo")).font_size(11.)),
                         ),
                 ),
         )
@@ -2281,6 +2446,7 @@ fn history_tab(ui: UiShell) -> impl IntoElement {
                 .children(history_model.undo_stack.into_iter().rev().map(|item| {
                     rect()
                         .direction(Direction::Horizontal)
+                        .content(Content::Flex)
                         .width(Size::fill())
                         .height(Size::px(26.))
                         .padding(Gaps::new_all(4.))
@@ -2300,235 +2466,34 @@ fn history_tab(ui: UiShell) -> impl IntoElement {
 // 5. Navigator Tab (Minimap)
 // =========================================================================
 
-#[derive(Clone, PartialEq)]
-pub struct NavigatorTab(pub UiShell);
+pub use crate::navigator::NavigatorTab;
 
-impl Component for NavigatorTab {
-    fn render(&self) -> impl IntoElement {
-        let shell = self.0.shell;
-        let is_dragging = use_state(|| false);
-        let snapshot = shell.peek().canvas_snapshot();
-        let zoom_pct = (snapshot.camera.zoom * 100.0) as i32;
-        let pan_x = snapshot.camera.pan_x as i32;
-        let pan_y = snapshot.camera.pan_y as i32;
-
-        let (surf_w, surf_h) = snapshot
-            .surface
-            .as_ref()
-            .map(|s| (s.bounds[2], s.bounds[3]))
-            .unwrap_or((800.0, 600.0));
-
-        // Thumbnail scale: fit within 240px wide, 150px high
-        let scale_x = 240.0 / surf_w.max(10.0);
-        let scale_y = 150.0 / surf_h.max(10.0);
-        let scale = scale_x.min(scale_y);
-        let thumb_w = (surf_w * scale) as f32;
-        let thumb_h = (surf_h * scale) as f32;
-
-        let mut shell_for_reset = shell;
-        let mut shell_for_zoom_in = shell;
-        let mut shell_for_zoom_out = shell;
-        let mut shell_for_zoom_100 = shell;
-
-        // Viewport visible rect in document space
-        let vis_doc = snapshot.camera.visible_doc_rect();
-        let vis_box_x = ((vis_doc.x0 * scale) as f32).clamp(0.0, thumb_w);
-        let vis_box_y = ((vis_doc.y0 * scale) as f32).clamp(0.0, thumb_h);
-        let vis_box_w = (((vis_doc.width() * scale) as f32).min(thumb_w - vis_box_x)).max(4.0);
-        let vis_box_h = (((vis_doc.height() * scale) as f32).min(thumb_h - vis_box_y)).max(4.0);
-
-        let mut shell_for_down = shell;
-        let mut shell_for_move = shell;
-        let mut drag_down = is_dragging;
-        let drag_move = is_dragging;
-        let mut drag_up = is_dragging;
-
-        rect()
-            .direction(Direction::Vertical)
-            .width(Size::fill())
-            .spacing(theme::SPACE_2)
-            .child(
-                rect()
-                    .direction(Direction::Horizontal)
-                    .width(Size::fill())
-                    .main_align(Alignment::SpaceBetween)
-                    .cross_align(Alignment::Center)
-                    .child(section_header("NAVEGADOR & ZOOM"))
-                    .child(
-                        Button::new()
-                            .on_press(move |_| {
-                                let _ = run_action_token(
-                                    &mut shell_for_reset.write(),
-                                    "ptnd.action.view.fit_surface",
-                                );
-                            })
-                            .child(label().text("Enquadrar").font_size(11.)),
-                    ),
-            )
-            .child(
-                rect()
-                    .direction(Direction::Horizontal)
-                    .spacing(theme::SPACE_1)
-                    .child(value_pill("Zoom", format!("{}%", zoom_pct)))
-                    .child(value_pill("X", format!("{} pt", pan_x)))
-                    .child(value_pill("Y", format!("{} pt", pan_y))),
-            )
-            .child(
-                rect()
-                    .direction(Direction::Horizontal)
-                    .width(Size::fill())
-                    .spacing(theme::SPACE_1)
-                    .child(
-                        Button::new()
-                            .on_press(move |_| {
-                                let _ = run_action_token(
-                                    &mut shell_for_zoom_in.write(),
-                                    "ptnd.action.view.zoom_in",
-                                );
-                            })
-                            .child(label().text("Zoom +").font_size(11.)),
-                    )
-                    .child(
-                        Button::new()
-                            .on_press(move |_| {
-                                let _ = run_action_token(
-                                    &mut shell_for_zoom_out.write(),
-                                    "ptnd.action.view.zoom_out",
-                                );
-                            })
-                            .child(label().text("Zoom -").font_size(11.)),
-                    )
-                    .child(
-                        Button::new()
-                            .on_press(move |_| {
-                                let _ = run_action_token(
-                                    &mut shell_for_zoom_100.write(),
-                                    "ptnd.action.view.zoom_100",
-                                );
-                            })
-                            .child(label().text("100%").font_size(11.)),
-                    ),
-            )
-            .child(
-                // Mini Canvas Viewport Box
-                rect()
-                    .width(Size::fill())
-                    .height(Size::px(180.))
-                    .center()
-                    .background(theme::SURFACE_CHROME)
-                    .border(
-                        Border::new()
-                            .fill(theme::SURFACE_CHROME_STRONG)
-                            .width(1.)
-                            .alignment(BorderAlignment::Inner),
-                    )
-                    .child(
-                        rect()
-                            .width(Size::px(thumb_w.max(20.)))
-                            .height(Size::px(thumb_h.max(20.)))
-                            .background(Color::WHITE)
-                            .border(
-                                Border::new()
-                                    .fill(theme::BLOOM.value)
-                                    .width(1.)
-                                    .alignment(BorderAlignment::Inner),
-                            )
-                            .on_pointer_down(move |event: Event<PointerEventData>| {
-                                drag_down.set(true);
-                                let loc = event.element_location();
-                                let target_doc_x = (loc.x / scale).clamp(0.0, surf_w);
-                                let target_doc_y = (loc.y / scale).clamp(0.0, surf_h);
-                                let mut s = shell_for_down.write();
-                                let mut cam = s.view_camera();
-                                let vp_w = cam.viewport_width;
-                                let vp_h = cam.viewport_height;
-                                cam.pan_x = vp_w / 2.0 - target_doc_x * cam.zoom;
-                                cam.pan_y = vp_h / 2.0 - target_doc_y * cam.zoom;
-                                s.set_view_camera(cam);
-                            })
-                            .on_pointer_move(move |event: Event<PointerEventData>| {
-                                if *drag_move.peek() {
-                                    let loc = event.element_location();
-                                    let target_doc_x = (loc.x / scale).clamp(0.0, surf_w);
-                                    let target_doc_y = (loc.y / scale).clamp(0.0, surf_h);
-                                    let mut s = shell_for_move.write();
-                                    let mut cam = s.view_camera();
-                                    let vp_w = cam.viewport_width;
-                                    let vp_h = cam.viewport_height;
-                                    cam.pan_x = vp_w / 2.0 - target_doc_x * cam.zoom;
-                                    cam.pan_y = vp_h / 2.0 - target_doc_y * cam.zoom;
-                                    s.set_view_camera(cam);
-                                }
-                            })
-                            .on_mouse_up(move |_| {
-                                drag_up.set(false);
-                            })
-                            .on_pointer_leave(move |_| {
-                                drag_up.set(false);
-                            })
-                            .children(snapshot.objects.iter().filter_map(|obj| {
-                                let min_x = (obj.world_bounds[0] * scale) as f32;
-                                let min_y = (obj.world_bounds[1] * scale) as f32;
-                                let w =
-                                    ((obj.world_bounds[2] - obj.world_bounds[0]) * scale) as f32;
-                                let h =
-                                    ((obj.world_bounds[3] - obj.world_bounds[1]) * scale) as f32;
-                                if w > 1.0 && h > 1.0 {
-                                    let fill_col = obj
-                                        .fill
-                                        .as_deref()
-                                        .and_then(parse_color_rgb)
-                                        .map(|(r, g, b)| {
-                                            Color::from_rgb(
-                                                r.round() as u8,
-                                                g.round() as u8,
-                                                b.round() as u8,
-                                            )
-                                        })
-                                        .unwrap_or(Color::from_rgb(0x94, 0xA3, 0xB8));
-                                    Some(
-                                        rect()
-                                            .position(
-                                                Position::new_absolute().left(min_x).top(min_y),
-                                            )
-                                            .width(Size::px(w))
-                                            .height(Size::px(h))
-                                            .background(fill_col)
-                                            .into_element(),
-                                    )
-                                } else {
-                                    None
-                                }
-                            }))
-                            .child(
-                                rect()
-                                    .position(
-                                        Position::new_absolute().left(vis_box_x).top(vis_box_y),
-                                    )
-                                    .width(Size::px(vis_box_w))
-                                    .height(Size::px(vis_box_h))
-                                    .background(Color::from_argb(0x22, 0xEF, 0x44, 0x44))
-                                    .border(
-                                        Border::new()
-                                            .fill(Color::from_rgb(0xEF, 0x44, 0x44))
-                                            .width(1.5)
-                                            .alignment(BorderAlignment::Inner),
-                                    ),
-                            ),
-                    ),
-            )
-    }
+fn studio_text(shell: State<PetuniaShell>, key: &str) -> String {
+    let state = shell.read();
+    state
+        .bridge
+        .localization()
+        .text(&format!("ptnd.text.studio.{key}"), state.bridge.locale())
 }
 
-// =========================================================================
-// Helper Widgets
-// =========================================================================
+fn tab_button(
+    ui: &UiShell,
+    title: impl Into<String>,
+    index: usize,
+    active: bool,
+    dock_tab: &mut State<usize>,
+) -> impl IntoElement {
+    let mut state = *dock_tab;
+    let title = title.into();
+    crate::studio_widgets::StudioButton::new(ui, title.clone())
+        .text(title)
+        .tab()
+        .selected(active)
+        .on_press(move |_| state.set(index))
+}
 
 fn section_header(title: impl Into<String>) -> impl IntoElement {
-    label()
-        .text(title.into())
-        .font_size(11.)
-        .color(theme::TEXT_TERTIARY)
+    crate::studio_widgets::panel_header(title)
 }
 
 fn value_pill(tag: &'static str, value: String) -> impl IntoElement {
@@ -2565,7 +2530,7 @@ fn step_text_size(ui: &UiShell, target_id: Option<ObjectId>, delta: f64) {
 fn opacity_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
+    label_text: impl Into<String>,
     val: f64,
 ) -> impl IntoElement {
     Button::new()
@@ -2577,13 +2542,17 @@ fn opacity_button(
                 );
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(
+            label()
+                .text(label_text.into())
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn stroke_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
+    label_text: impl Into<String>,
     delta: f64,
 ) -> impl IntoElement {
     Button::new()
@@ -2609,54 +2578,49 @@ fn stroke_button(
                 );
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(
+            label()
+                .text(label_text.into())
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
-fn quick_color_swatch(
-    mut shell: State<petunia_design_shell::PetuniaShell>,
-    target_id: Option<ObjectId>,
-    token: &'static str,
-    color: Color,
-) -> impl IntoElement {
+fn quick_color_swatch(ui: UiShell, color_token: &'static str, color: Color) -> impl IntoElement {
+    let apply_ui = ui.clone();
     rect()
-        .width(Size::px(26.))
-        .height(Size::px(26.))
+        .width(Size::px(28.))
+        .height(Size::px(28.))
         .background(color)
-        .border(
-            Border::new()
-                .fill(theme::SURFACE_CHROME_STRONG)
-                .width(1.)
-                .alignment(BorderAlignment::Inner),
+        .corner_radius(theme::CONTROL_RADIUS)
+        .child(
+            crate::studio_widgets::StudioButton::new(&ui, color_token)
+                .width(Size::fill())
+                .enabled(crate::studio::color_target_enabled(&ui))
+                .on_press(move |_| crate::studio::apply_color(&apply_ui, color_token, true)),
         )
-        .on_press(move |_| {
-            if let Some(id) = target_id {
-                let _ = shell.write().bridge.submit_all(
-                    "Set fill",
-                    vec![Command::SetFill {
-                        id,
-                        fill: Some(token.to_string()),
-                    }],
-                );
-            }
-        })
 }
 
 fn action_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     action_token: &'static str,
-    title: &'static str,
+    title: impl Into<String>,
 ) -> impl IntoElement {
+    let availability = petunia_design_application::menus::availability(
+        action_token,
+        &shell.read().bridge.action_context(),
+    );
     Button::new()
+        .enabled(availability.enabled)
         .on_press(move |_| {
             let _ = run_action_token(&mut shell.write(), action_token);
         })
-        .child(label().text(title).font_size(11.))
+        .child(label().text(title.into()).font_size(11.))
 }
 
 fn star_points_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
+    label_text: impl Into<String>,
     delta: i32,
 ) -> impl IntoElement {
     Button::new()
@@ -2689,13 +2653,17 @@ fn star_points_button(
                 }
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(
+            label()
+                .text(label_text.into())
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn star_ratio_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
+    label_text: impl Into<String>,
     delta: f64,
 ) -> impl IntoElement {
     Button::new()
@@ -2728,13 +2696,17 @@ fn star_ratio_button(
                 }
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(
+            label()
+                .text(label_text.into())
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn polygon_sides_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
+    label_text: impl Into<String>,
     delta: i32,
 ) -> impl IntoElement {
     Button::new()
@@ -2760,13 +2732,17 @@ fn polygon_sides_button(
                 }
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(
+            label()
+                .text(label_text.into())
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn corner_radius_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
+    label_text: impl Into<String>,
     delta: f64,
 ) -> impl IntoElement {
     Button::new()
@@ -2794,7 +2770,11 @@ fn corner_radius_button(
                 }
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(
+            label()
+                .text(label_text.into())
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn bake_corners_button(
@@ -2810,13 +2790,17 @@ fn bake_corners_button(
                     .submit_all("Bake corners", vec![Command::BakeCorners { id }]);
             }
         })
-        .child(label().text("Fixar").font_size(10.))
+        .child(
+            label()
+                .text(studio_text(shell, "bake"))
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn contour_offset_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
+    label_text: impl Into<String>,
     delta: f64,
 ) -> impl IntoElement {
     Button::new()
@@ -2851,7 +2835,11 @@ fn contour_offset_button(
                 );
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(
+            label()
+                .text(label_text.into())
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn bake_contour_button(
@@ -2867,7 +2855,11 @@ fn bake_contour_button(
                     .submit_all("Bake contour", vec![Command::BakeContour { id }]);
             }
         })
-        .child(label().text("Fixar (Bake)").font_size(10.))
+        .child(
+            label()
+                .text(studio_text(shell, "bake"))
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn bake_geometry_button(
@@ -2883,7 +2875,11 @@ fn bake_geometry_button(
                 );
             }
         })
-        .child(label().text("Fixar Geometria").font_size(10.))
+        .child(
+            label()
+                .text(studio_text(shell, "bake_geometry"))
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn bake_transparency_button(
@@ -2899,7 +2895,11 @@ fn bake_transparency_button(
                 );
             }
         })
-        .child(label().text("Fixar Transparência").font_size(10.))
+        .child(
+            label()
+                .text(studio_text(shell, "bake_transparency"))
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn modifier_stack_inspector(
@@ -2916,18 +2916,20 @@ fn modifier_stack_inspector(
     if modifiers.is_empty() {
         let add_row = rect()
             .direction(Direction::Horizontal)
+            .content(Content::Flex)
             .width(Size::fill())
             .main_align(Alignment::SpaceBetween)
             .cross_align(Alignment::Center)
             .child(
                 label()
-                    .text("Nenhum modificador ativo")
+                    .text(studio_text(shell, "no_modifiers"))
                     .font_size(11.)
                     .color(theme::TEXT_TERTIARY),
             )
             .child(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(4.)
                     .child(
                         Button::new()
@@ -2939,7 +2941,11 @@ fn modifier_stack_inspector(
                                     );
                                 }
                             })
-                            .child(label().text("+ Contorno").font_size(10.)),
+                            .child(
+                                label()
+                                    .text(studio_text(shell, "add_contour"))
+                                    .font_size(theme::CAPTION_SIZE),
+                            ),
                     )
                     .child(
                         Button::new()
@@ -2957,7 +2963,11 @@ fn modifier_stack_inspector(
                                     );
                                 }
                             })
-                            .child(label().text("+ Recorte").font_size(10.)),
+                            .child(
+                                label()
+                                    .text(studio_text(shell, "add_clip"))
+                                    .font_size(theme::CAPTION_SIZE),
+                            ),
                     ),
             );
         return root.child(add_row);
@@ -2977,30 +2987,36 @@ fn modifier_stack_inspector(
                 cap,
             } => {
                 let join_name = match join {
-                    OffsetJoin::Round => "Arredondada",
-                    OffsetJoin::Miter => "Esquadria",
-                    OffsetJoin::Bevel => "Chanfro",
+                    OffsetJoin::Round => studio_text(shell, "round"),
+                    OffsetJoin::Miter => studio_text(shell, "miter"),
+                    OffsetJoin::Bevel => studio_text(shell, "bevel"),
                 };
                 let cap_name = match cap {
-                    OffsetCap::None => "Reta",
-                    OffsetCap::Round => "Redonda",
-                    OffsetCap::Square => "Quadrada",
+                    OffsetCap::None => studio_text(shell, "butt"),
+                    OffsetCap::Round => studio_text(shell, "round"),
+                    OffsetCap::Square => studio_text(shell, "square"),
                 };
                 (
-                    format!("Contorno Vivo: {:+.1} pt", distance),
-                    format!("Junção: {} | Extr: {}", join_name, cap_name),
+                    format!("{}: {distance:+.1} pt", studio_text(shell, "live_contour")),
+                    format!(
+                        "{}: {} · {}: {}",
+                        studio_text(shell, "join"),
+                        join_name,
+                        studio_text(shell, "cap"),
+                        cap_name
+                    ),
                 )
             }
             petunia_design_document::ModifierKind::TransparentGradient { stops, .. } => (
-                "Gradiente de Transparência".to_string(),
-                format!("{} marcadores de opacidade", stops.len()),
+                studio_text(shell, "transparent_gradient"),
+                format!("{} {}", stops.len(), studio_text(shell, "opacity_stops")),
             ),
             petunia_design_document::ModifierKind::Perspective { .. } => (
-                "Distorção de Perspectiva".to_string(),
-                "Deformação quad de 4 cantos".to_string(),
+                studio_text(shell, "perspective_warp"),
+                studio_text(shell, "quad_warp"),
             ),
             petunia_design_document::ModifierKind::CropRect { rect } => (
-                "Recorte Vetorial (Crop)".to_string(),
+                studio_text(shell, "vector_crop"),
                 format!(
                     "{:.0}x{:.0} @ {:.0},{:.0}",
                     rect[2], rect[3], rect[0], rect[1]
@@ -3028,12 +3044,14 @@ fn modifier_stack_inspector(
         // Header row: Title + Reorder/Toggle/Delete
         let mut header_row = rect()
             .direction(Direction::Horizontal)
+            .content(Content::Flex)
             .width(Size::fill())
             .main_align(Alignment::SpaceBetween)
             .cross_align(Alignment::Center)
             .child(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(4.)
                     .cross_align(Alignment::Center)
                     .child(label().text(title).font_size(11.).color(if is_enabled {
@@ -3046,6 +3064,7 @@ fn modifier_stack_inspector(
         // Action buttons
         let mut actions = rect()
             .direction(Direction::Horizontal)
+            .content(Content::Flex)
             .spacing(2.)
             .cross_align(Alignment::Center);
 
@@ -3071,7 +3090,7 @@ fn modifier_stack_inspector(
                 .child(
                     label()
                         .text(if is_enabled { "👁" } else { "⊘" })
-                        .font_size(10.),
+                        .font_size(theme::CAPTION_SIZE),
                 ),
         );
 
@@ -3093,7 +3112,7 @@ fn modifier_stack_inspector(
                             );
                         }
                     })
-                    .child(label().text("↑").font_size(10.)),
+                    .child(label().text("↑").font_size(theme::CAPTION_SIZE)),
             );
         }
 
@@ -3115,7 +3134,7 @@ fn modifier_stack_inspector(
                             );
                         }
                     })
-                    .child(label().text("↓").font_size(10.)),
+                    .child(label().text("↓").font_size(theme::CAPTION_SIZE)),
             );
         }
 
@@ -3136,7 +3155,7 @@ fn modifier_stack_inspector(
                         );
                     }
                 })
-                .child(label().text("×").font_size(10.)),
+                .child(label().text("×").font_size(theme::CAPTION_SIZE)),
         );
 
         header_row = header_row.child(actions);
@@ -3156,13 +3175,14 @@ fn modifier_stack_inspector(
                 card = card.child(
                     label()
                         .text(detail)
-                        .font_size(10.)
+                        .font_size(theme::CAPTION_SIZE)
                         .color(theme::TEXT_TERTIARY),
                 );
 
                 // Distance + Bake Row
                 let dist_row = rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(2.)
                     .child(contour_offset_button(shell, target_id, "-2pt", -2.0))
                     .child(contour_offset_button(shell, target_id, "+2pt", 2.0))
@@ -3175,12 +3195,13 @@ fn modifier_stack_inspector(
                 let modifiers_join = modifiers.to_vec();
                 let join_row = rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(2.)
                     .cross_align(Alignment::Center)
                     .child(
                         label()
-                            .text("Junção:")
-                            .font_size(10.)
+                            .text(studio_text(shell, "join"))
+                            .font_size(theme::CAPTION_SIZE)
                             .color(theme::TEXT_SECONDARY),
                     )
                     .child({
@@ -3213,7 +3234,7 @@ fn modifier_stack_inspector(
                                     } else {
                                         "Redonda"
                                     })
-                                    .font_size(10.),
+                                    .font_size(theme::CAPTION_SIZE),
                             )
                     })
                     .child({
@@ -3246,7 +3267,7 @@ fn modifier_stack_inspector(
                                     } else {
                                         "Esquadria"
                                     })
-                                    .font_size(10.),
+                                    .font_size(theme::CAPTION_SIZE),
                             )
                     })
                     .child({
@@ -3279,7 +3300,7 @@ fn modifier_stack_inspector(
                                     } else {
                                         "Chanfro"
                                     })
-                                    .font_size(10.),
+                                    .font_size(theme::CAPTION_SIZE),
                             )
                     });
                 card = card.child(join_row);
@@ -3289,12 +3310,13 @@ fn modifier_stack_inspector(
                 card = card.child(
                     label()
                         .text(detail)
-                        .font_size(10.)
+                        .font_size(theme::CAPTION_SIZE)
                         .color(theme::TEXT_TERTIARY),
                 );
                 let modifiers_crop = modifiers.to_vec();
                 let crop_row = rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(2.)
                     .child({
                         let modifiers_clone = modifiers_crop.clone();
@@ -3321,7 +3343,11 @@ fn modifier_stack_inspector(
                                     }
                                 }
                             })
-                            .child(label().text("Expandir +10pt").font_size(10.))
+                            .child(
+                                label()
+                                    .text(studio_text(shell, "expand_geometry"))
+                                    .font_size(theme::CAPTION_SIZE),
+                            )
                     })
                     .child({
                         let modifiers_clone = modifiers_crop.clone();
@@ -3348,7 +3374,11 @@ fn modifier_stack_inspector(
                                     }
                                 }
                             })
-                            .child(label().text("Recortar -10pt").font_size(10.))
+                            .child(
+                                label()
+                                    .text(studio_text(shell, "inset_geometry"))
+                                    .font_size(theme::CAPTION_SIZE),
+                            )
                     })
                     .child(bake_geometry_button(shell, target_id));
                 card = card.child(crop_row);
@@ -3357,11 +3387,12 @@ fn modifier_stack_inspector(
                 card = card.child(
                     label()
                         .text(detail)
-                        .font_size(10.)
+                        .font_size(theme::CAPTION_SIZE)
                         .color(theme::TEXT_TERTIARY),
                 );
                 let trans_row = rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(2.)
                     .child(bake_transparency_button(shell, target_id));
                 card = card.child(trans_row);
@@ -3370,11 +3401,12 @@ fn modifier_stack_inspector(
                 card = card.child(
                     label()
                         .text(detail)
-                        .font_size(10.)
+                        .font_size(theme::CAPTION_SIZE)
                         .color(theme::TEXT_TERTIARY),
                 );
                 let pers_row = rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .spacing(2.)
                     .child(bake_geometry_button(shell, target_id));
                 card = card.child(pers_row);
@@ -3400,6 +3432,7 @@ fn modifier_stack_inspector(
     if !has_contour || !has_crop || modifiers.len() > 1 {
         let mut extra_row = rect()
             .direction(Direction::Horizontal)
+            .content(Content::Flex)
             .spacing(4.)
             .cross_align(Alignment::Center);
         if !has_contour {
@@ -3413,7 +3446,11 @@ fn modifier_stack_inspector(
                             );
                         }
                     })
-                    .child(label().text("+ Contorno").font_size(10.)),
+                    .child(
+                        label()
+                            .text(studio_text(shell, "add_contour"))
+                            .font_size(theme::CAPTION_SIZE),
+                    ),
             );
         }
         if !has_crop {
@@ -3433,7 +3470,11 @@ fn modifier_stack_inspector(
                             );
                         }
                     })
-                    .child(label().text("+ Recorte").font_size(10.)),
+                    .child(
+                        label()
+                            .text(studio_text(shell, "add_clip"))
+                            .font_size(theme::CAPTION_SIZE),
+                    ),
             );
         }
         if modifiers.len() > 1 {
@@ -3458,13 +3499,17 @@ fn convert_to_curves_button(
                     .submit_all("Convert to curves", vec![Command::ConvertToCurves { id }]);
             }
         })
-        .child(label().text("Para Curvas").font_size(10.))
+        .child(
+            label()
+                .text(studio_text(shell, "curves"))
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn blur_adjust_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
+    label_text: impl Into<String>,
     delta: f64,
 ) -> impl IntoElement {
     Button::new()
@@ -3511,7 +3556,11 @@ fn blur_adjust_button(
                 let _ = shell.write().bridge.submit_all("Adjust blur", cmds);
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(
+            label()
+                .text(label_text.into())
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn toggle_blur_button(
@@ -3559,7 +3608,7 @@ fn toggle_blur_button(
                 }
             }
         })
-        .child(label().text("👁").font_size(10.))
+        .child(label().text("👁").font_size(theme::CAPTION_SIZE))
 }
 
 fn remove_blur_button(
@@ -3576,13 +3625,13 @@ fn remove_blur_button(
                     .submit_all("Remove blur", vec![Command::RemoveEffect { id, effect_id }]);
             }
         })
-        .child(label().text("✕").font_size(10.))
+        .child(label().text("✕").font_size(theme::CAPTION_SIZE))
 }
 
 fn drop_shadow_adjust_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
+    label_text: impl Into<String>,
     delta_dx: f64,
     delta_dy: f64,
     delta_blur: f64,
@@ -3651,7 +3700,11 @@ fn drop_shadow_adjust_button(
                 let _ = shell.write().bridge.submit_all("Adjust drop shadow", cmds);
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(
+            label()
+                .text(label_text.into())
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn toggle_drop_shadow_button(
@@ -3707,7 +3760,7 @@ fn toggle_drop_shadow_button(
                 }
             }
         })
-        .child(label().text("👁").font_size(10.))
+        .child(label().text("👁").font_size(theme::CAPTION_SIZE))
 }
 
 fn remove_shadow_button(
@@ -3724,13 +3777,13 @@ fn remove_shadow_button(
                 );
             }
         })
-        .child(label().text("✕").font_size(10.))
+        .child(label().text("✕").font_size(theme::CAPTION_SIZE))
 }
 
 fn inner_shadow_adjust_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
+    label_text: impl Into<String>,
     delta_dist: f64,
     delta_blur: f64,
     delta_opacity: f64,
@@ -3798,7 +3851,11 @@ fn inner_shadow_adjust_button(
                 let _ = shell.write().bridge.submit_all("Adjust inner shadow", cmds);
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(
+            label()
+                .text(label_text.into())
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn toggle_inner_shadow_button(
@@ -3854,7 +3911,7 @@ fn toggle_inner_shadow_button(
                 }
             }
         })
-        .child(label().text("👁").font_size(10.))
+        .child(label().text("👁").font_size(theme::CAPTION_SIZE))
 }
 
 fn remove_inner_shadow_button(
@@ -3871,13 +3928,13 @@ fn remove_inner_shadow_button(
                 );
             }
         })
-        .child(label().text("✕").font_size(10.))
+        .child(label().text("✕").font_size(theme::CAPTION_SIZE))
 }
 
 fn sharpen_adjust_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
+    label_text: impl Into<String>,
     delta_radius: f64,
     delta_amount: f64,
 ) -> impl IntoElement {
@@ -3923,7 +3980,11 @@ fn sharpen_adjust_button(
                 );
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(
+            label()
+                .text(label_text.into())
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn remove_sharpen_button(
@@ -3940,13 +4001,13 @@ fn remove_sharpen_button(
                 );
             }
         })
-        .child(label().text("✕").font_size(10.))
+        .child(label().text("✕").font_size(theme::CAPTION_SIZE))
 }
 
 fn noise_adjust_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
+    label_text: impl Into<String>,
     delta: f64,
 ) -> impl IntoElement {
     Button::new()
@@ -3990,7 +4051,11 @@ fn noise_adjust_button(
                 );
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(
+            label()
+                .text(label_text.into())
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn noise_toggle_mono_button(
@@ -4037,7 +4102,11 @@ fn noise_toggle_mono_button(
                 );
             }
         })
-        .child(label().text("Mono/Cor").font_size(10.))
+        .child(
+            label()
+                .text(studio_text(shell, "mono_color"))
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn remove_noise_button(
@@ -4054,13 +4123,13 @@ fn remove_noise_button(
                 );
             }
         })
-        .child(label().text("✕").font_size(10.))
+        .child(label().text("✕").font_size(theme::CAPTION_SIZE))
 }
 
 fn add_adjustment_button(
     mut shell: State<petunia_design_shell::PetuniaShell>,
     target_id: Option<ObjectId>,
-    label_text: &'static str,
+    label_text: impl Into<String>,
     kind: petunia_design_document::adjustments::AdjustmentKind,
 ) -> impl IntoElement {
     Button::new()
@@ -4087,7 +4156,11 @@ fn add_adjustment_button(
                 );
             }
         })
-        .child(label().text(label_text).font_size(10.))
+        .child(
+            label()
+                .text(label_text.into())
+                .font_size(theme::CAPTION_SIZE),
+        )
 }
 
 fn adjustment_card(
@@ -4098,7 +4171,7 @@ fn adjustment_card(
     let adj_id = adj.id;
     let title = match &adj.kind {
         petunia_design_document::adjustments::AdjustmentKind::Levels { .. } => {
-            format!("Níveis #{}", adj_id)
+            format!("{} #{adj_id}", studio_text(shell, "levels"))
         }
         petunia_design_document::adjustments::AdjustmentKind::Curves { .. } => {
             format!("Curvas #{}", adj_id)
@@ -4107,10 +4180,10 @@ fn adjustment_card(
             format!("HSL #{}", adj_id)
         }
         petunia_design_document::adjustments::AdjustmentKind::Exposure { .. } => {
-            format!("Exposição #{}", adj_id)
+            format!("{} #{adj_id}", studio_text(shell, "exposure"))
         }
         petunia_design_document::adjustments::AdjustmentKind::WhiteBalance { .. } => {
-            format!("Balanço B. #{}", adj_id)
+            format!("{} #{adj_id}", studio_text(shell, "white_balance"))
         }
     };
 
@@ -4132,12 +4205,12 @@ fn adjustment_card(
                 .child(
                     label()
                         .text(format!("Gamma: {:.2} | In: [{:.2}, {:.2}]", master.gamma, master.input_black, master.input_white))
-                        .font_size(10.)
+                        .font_size(theme::CAPTION_SIZE)
                         .color(theme::TEXT_TERTIARY),
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .spacing(2.)
                         .child(
                             Button::new()
@@ -4150,7 +4223,7 @@ fn adjustment_card(
                                         let _ = shell_g_down.write().bridge.submit_all("Adjust levels gamma", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("γ -0.1").font_size(10.)),
+                                .child(label().text("γ -0.1").font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4163,7 +4236,7 @@ fn adjustment_card(
                                         let _ = shell_g_up.write().bridge.submit_all("Adjust levels gamma", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("γ +0.1").font_size(10.)),
+                                .child(label().text("γ +0.1").font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4176,7 +4249,7 @@ fn adjustment_card(
                                         let _ = shell_b_up.write().bridge.submit_all("Adjust levels black", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("Preto +").font_size(10.)),
+                                .child(label().text(studio_text(shell,"black_more")).font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4189,7 +4262,7 @@ fn adjustment_card(
                                         let _ = shell_w_down.write().bridge.submit_all("Adjust levels white", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("Branco -").font_size(10.)),
+                                .child(label().text(studio_text(shell,"white_less")).font_size(theme::CAPTION_SIZE)),
                         ),
                 )
         }
@@ -4207,13 +4280,13 @@ fn adjustment_card(
                 .spacing(2.)
                 .child(
                     label()
-                        .text(format!("Pontos da Curva: {}", master_points.len()))
-                        .font_size(10.)
+                        .text(format!("{}: {}",studio_text(shell,"curve_points"), master_points.len()))
+                        .font_size(theme::CAPTION_SIZE)
                         .color(theme::TEXT_TERTIARY),
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .spacing(2.)
                         .child(
                             Button::new()
@@ -4226,7 +4299,7 @@ fn adjustment_card(
                                         let _ = shell_s.write().bridge.submit_all("Set S-Curve", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("Curva S").font_size(10.)),
+                                .child(label().text(studio_text(shell,"s_curve")).font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4239,7 +4312,7 @@ fn adjustment_card(
                                         let _ = shell_lin.write().bridge.submit_all("Set Linear Curve", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("Linear").font_size(10.)),
+                                .child(label().text(studio_text(shell,"linear")).font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4252,7 +4325,7 @@ fn adjustment_card(
                                         let _ = shell_hi.write().bridge.submit_all("Set High Contrast", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("Alto Contraste").font_size(10.)),
+                                .child(label().text(studio_text(shell,"high_contrast")).font_size(theme::CAPTION_SIZE)),
                         ),
                 )
         }
@@ -4277,12 +4350,12 @@ fn adjustment_card(
                 .child(
                     label()
                         .text(format!("Matiz: {:+.0}° | Sat: {:+.0}% | Lum: {:+.0}%", hue_shift, saturation * 100.0, lightness * 100.0))
-                        .font_size(10.)
+                        .font_size(theme::CAPTION_SIZE)
                         .color(theme::TEXT_TERTIARY),
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .spacing(2.)
                         .child(
                             Button::new()
@@ -4295,7 +4368,7 @@ fn adjustment_card(
                                         let _ = shell_h.write().bridge.submit_all("Shift Hue", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("H +15°").font_size(10.)),
+                                .child(label().text("H +15°").font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4308,7 +4381,7 @@ fn adjustment_card(
                                         let _ = shell_s_down.write().bridge.submit_all("Adjust Saturation", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("S -10%").font_size(10.)),
+                                .child(label().text("S -10%").font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4321,7 +4394,7 @@ fn adjustment_card(
                                         let _ = shell_s_up.write().bridge.submit_all("Adjust Saturation", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("S +10%").font_size(10.)),
+                                .child(label().text("S +10%").font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4334,7 +4407,7 @@ fn adjustment_card(
                                         let _ = shell_l_up.write().bridge.submit_all("Adjust Lightness", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("L +10%").font_size(10.)),
+                                .child(label().text("L +10%").font_size(theme::CAPTION_SIZE)),
                         ),
                 )
         }
@@ -4359,12 +4432,12 @@ fn adjustment_card(
                 .child(
                     label()
                         .text(format!("EV: {:+.1} | Offset: {:+.2} | γ: {:.2}", exposure, offset, gamma))
-                        .font_size(10.)
+                        .font_size(theme::CAPTION_SIZE)
                         .color(theme::TEXT_TERTIARY),
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .spacing(2.)
                         .child(
                             Button::new()
@@ -4377,7 +4450,7 @@ fn adjustment_card(
                                         let _ = shell_ev_down.write().bridge.submit_all("Adjust Exposure", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("EV -0.5").font_size(10.)),
+                                .child(label().text("EV -0.5").font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4390,7 +4463,7 @@ fn adjustment_card(
                                         let _ = shell_ev_up.write().bridge.submit_all("Adjust Exposure", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("EV +0.5").font_size(10.)),
+                                .child(label().text("EV +0.5").font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4403,7 +4476,7 @@ fn adjustment_card(
                                         let _ = shell_off_up.write().bridge.submit_all("Adjust Offset", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("Off +0.05").font_size(10.)),
+                                .child(label().text("Off +0.05").font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4416,7 +4489,7 @@ fn adjustment_card(
                                         let _ = shell_gam_up.write().bridge.submit_all("Adjust Gamma", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("γ +0.1").font_size(10.)),
+                                .child(label().text("γ +0.1").font_size(theme::CAPTION_SIZE)),
                         ),
                 )
         }
@@ -4440,12 +4513,12 @@ fn adjustment_card(
                 .child(
                     label()
                         .text(format!("Temp: {:+.2} | Tint: {:+.2}", temperature, tint))
-                        .font_size(10.)
+                        .font_size(theme::CAPTION_SIZE)
                         .color(theme::TEXT_TERTIARY),
                 )
                 .child(
                     rect()
-                        .direction(Direction::Horizontal)
+                        .direction(Direction::Horizontal).content(Content::Flex)
                         .spacing(2.)
                         .child(
                             Button::new()
@@ -4458,7 +4531,7 @@ fn adjustment_card(
                                         let _ = shell_t_down.write().bridge.submit_all("Cooler Temperature", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("Frio -0.1").font_size(10.)),
+                                .child(label().text(studio_text(shell,"cooler")).font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4471,7 +4544,7 @@ fn adjustment_card(
                                         let _ = shell_t_up.write().bridge.submit_all("Warmer Temperature", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("Quente +0.1").font_size(10.)),
+                                .child(label().text(studio_text(shell,"warmer")).font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4484,7 +4557,7 @@ fn adjustment_card(
                                         let _ = shell_tint_down.write().bridge.submit_all("Green Tint", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("Verde -0.1").font_size(10.)),
+                                .child(label().text(studio_text(shell,"green_less")).font_size(theme::CAPTION_SIZE)),
                         )
                         .child(
                             Button::new()
@@ -4497,7 +4570,7 @@ fn adjustment_card(
                                         let _ = shell_tint_up.write().bridge.submit_all("Magenta Tint", vec![Command::SetAdjustment { id, adjustment: new_adj }]);
                                     }
                                 })
-                                .child(label().text("Magenta +0.1").font_size(10.)),
+                                .child(label().text("Magenta +0.1").font_size(theme::CAPTION_SIZE)),
                         ),
                 )
         }
@@ -4513,6 +4586,7 @@ fn adjustment_card(
         .child(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .width(Size::fill())
                 .main_align(Alignment::SpaceBetween)
                 .cross_align(Alignment::Center)
@@ -4535,7 +4609,7 @@ fn adjustment_card(
                                 );
                             }
                         })
-                        .child(label().text("✕").font_size(10.)),
+                        .child(label().text("✕").font_size(theme::CAPTION_SIZE)),
                 ),
         )
         .child(body)
@@ -4616,15 +4690,20 @@ impl Component for HistogramWidget {
             .direction(Direction::Vertical)
             .width(Size::fill())
             .spacing(theme::SPACE_1)
-            .child(label().text(self.ui.text("histogram_scope")).font_size(10.))
+            .child(
+                label()
+                    .text(self.ui.text("histogram_scope"))
+                    .font_size(theme::CAPTION_SIZE),
+            )
             .children(
                 status
                     .into_iter()
-                    .map(|text| label().text(text).font_size(10.)),
+                    .map(|text| label().text(text).font_size(theme::CAPTION_SIZE)),
             )
             .child(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .width(Size::fill())
                     .main_align(Alignment::SpaceBetween)
                     .child(channel_button("RGB", 0, channel == 0, &mut channel_state))
@@ -4646,6 +4725,7 @@ impl Component for HistogramWidget {
                     )
                     .padding(Gaps::new(2., 2., 2., 2.))
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .cross_align(Alignment::End)
                     .children(bins.iter().enumerate().map(|(idx, &val)| {
                         let bar_h = (val * 64.0).clamp(0.0, 64.0);
@@ -4660,12 +4740,13 @@ impl Component for HistogramWidget {
             .child(
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .width(Size::fill())
                     .main_align(Alignment::SpaceBetween)
                     .child(
                         label()
                             .text(format!("{}: {}", self.ui.text("histogram_mean"), mean))
-                            .font_size(10.)
+                            .font_size(theme::CAPTION_SIZE)
                             .color(theme::TEXT_SECONDARY),
                     )
                     .child(
@@ -4675,7 +4756,7 @@ impl Component for HistogramWidget {
                                 self.ui.text("histogram_shadows"),
                                 shadows_pct
                             ))
-                            .font_size(10.)
+                            .font_size(theme::CAPTION_SIZE)
                             .color(theme::TEXT_TERTIARY),
                     )
                     .child(
@@ -4685,7 +4766,7 @@ impl Component for HistogramWidget {
                                 self.ui.text("histogram_midtones"),
                                 midtones_pct
                             ))
-                            .font_size(10.)
+                            .font_size(theme::CAPTION_SIZE)
                             .color(theme::TEXT_TERTIARY),
                     )
                     .child(
@@ -4695,7 +4776,7 @@ impl Component for HistogramWidget {
                                 self.ui.text("histogram_highlights"),
                                 highlights_pct
                             ))
-                            .font_size(10.)
+                            .font_size(theme::CAPTION_SIZE)
                             .color(theme::TEXT_TERTIARY),
                     ),
             )
@@ -4729,242 +4810,38 @@ fn channel_button(
         .on_press(move |_| {
             state_clone.set(index);
         })
-        .child(label().text(title).font_size(10.).color(if active {
-            theme::TEXT_PRIMARY
-        } else {
-            theme::TEXT_TERTIARY
-        }))
+        .child(
+            label()
+                .text(title)
+                .font_size(theme::CAPTION_SIZE)
+                .color(if active {
+                    theme::TEXT_PRIMARY
+                } else {
+                    theme::TEXT_TERTIARY
+                }),
+        )
 }
 
-/// Draggable splitter between Workspace and RightDock.
+/// Draggable, keyboard-accessible panel edges share one interaction owner.
 #[derive(Clone, PartialEq)]
 pub struct DockSplitter(pub UiShell);
-
 impl Component for DockSplitter {
     fn render(&self) -> impl IntoElement {
-        let is_dragging = use_state(|| false);
-        let drag_start_x = use_state(|| 0.0f64);
-        let drag_start_width = use_state(|| 240.0f32);
-        let dock_width = self.0.dock_width;
-        let dragging_val = *is_dragging.read();
-
-        let splitter_bar = rect()
-            .width(Size::px(4.))
-            .height(Size::fill())
-            .background(if dragging_val {
-                theme::ACCENT_BLOOM
-            } else {
-                theme::SURFACE_CHROME_STRONG
-            })
-            .cursor(CursorIcon::EwResize)
-            .on_mouse_down({
-                let mut is_dragging = is_dragging;
-                let mut drag_start_x = drag_start_x;
-                let mut drag_start_width = drag_start_width;
-                move |event: Event<MouseEventData>| {
-                    is_dragging.set(true);
-                    drag_start_x.set(event.global_location.x);
-                    drag_start_width.set(*dock_width.peek());
-                }
-            });
-
-        if dragging_val {
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::px(4.))
-                .height(Size::fill())
-                .child(splitter_bar)
-                .child(
-                    Portal::new("dock-splitter-drag")
-                        .width(Size::px(0.))
-                        .height(Size::px(0.))
-                        .child(
-                            rect()
-                                .position(Position::new_absolute().top(0.).left(0.))
-                                .width(Size::fill())
-                                .height(Size::fill())
-                                .cursor(CursorIcon::EwResize)
-                                .on_mouse_move({
-                                    let mut dock_width = dock_width;
-                                    move |event: Event<MouseEventData>| {
-                                        let delta = *drag_start_x.read() - event.global_location.x;
-                                        let new_w = (*drag_start_width.read() + delta as f32)
-                                            .clamp(180.0, 520.0);
-                                        dock_width.set(new_w);
-                                    }
-                                })
-                                .on_mouse_up({
-                                    let mut is_dragging = is_dragging;
-                                    move |_| {
-                                        is_dragging.set(false);
-                                    }
-                                }),
-                        ),
-                )
-        } else {
-            rect()
-                .width(Size::px(4.))
-                .height(Size::fill())
-                .child(splitter_bar)
-        }
+        crate::studio_widgets::StudioSplitter::new(&self.0, crate::studio_widgets::DockEdge::Right)
     }
 }
-
-/// Draggable vertical splitter between LeftDock and Center area.
 #[derive(Clone, PartialEq)]
 pub struct LeftDockSplitter(pub UiShell);
-
 impl Component for LeftDockSplitter {
     fn render(&self) -> impl IntoElement {
-        let ui = &self.0;
-        if !*ui.left_dock_open.read() {
-            return rect().width(Size::px(0.)).height(Size::px(0.));
-        }
-
-        let is_dragging = use_state(|| false);
-        let drag_start_x = use_state(|| 0.0f64);
-        let drag_start_width = use_state(|| 240.0f32);
-        let left_dock_width = ui.left_dock_width;
-        let dragging_val = *is_dragging.read();
-
-        let splitter_bar = rect()
-            .width(Size::px(4.))
-            .height(Size::fill())
-            .background(if dragging_val {
-                theme::ACCENT_BLOOM
-            } else {
-                theme::SURFACE_CHROME_STRONG
-            })
-            .cursor(CursorIcon::EwResize)
-            .on_mouse_down({
-                let mut is_dragging = is_dragging;
-                let mut drag_start_x = drag_start_x;
-                let mut drag_start_width = drag_start_width;
-                move |event: Event<MouseEventData>| {
-                    is_dragging.set(true);
-                    drag_start_x.set(event.global_location.x);
-                    drag_start_width.set(*left_dock_width.peek());
-                }
-            });
-
-        if dragging_val {
-            rect()
-                .direction(Direction::Horizontal)
-                .width(Size::px(4.))
-                .height(Size::fill())
-                .child(splitter_bar)
-                .child(
-                    Portal::new("left-dock-splitter-drag")
-                        .width(Size::px(0.))
-                        .height(Size::px(0.))
-                        .child(
-                            rect()
-                                .position(Position::new_absolute().top(0.).left(0.))
-                                .width(Size::fill())
-                                .height(Size::fill())
-                                .cursor(CursorIcon::EwResize)
-                                .on_mouse_move({
-                                    let mut left_dock_width = left_dock_width;
-                                    move |event: Event<MouseEventData>| {
-                                        let delta = event.global_location.x - *drag_start_x.read();
-                                        let new_w = (*drag_start_width.read() + delta as f32)
-                                            .clamp(160.0, 480.0);
-                                        left_dock_width.set(new_w);
-                                    }
-                                })
-                                .on_mouse_up({
-                                    let mut is_dragging = is_dragging;
-                                    move |_| {
-                                        is_dragging.set(false);
-                                    }
-                                }),
-                        ),
-                )
-        } else {
-            rect()
-                .width(Size::px(4.))
-                .height(Size::fill())
-                .child(splitter_bar)
-        }
+        crate::studio_widgets::StudioSplitter::new(&self.0, crate::studio_widgets::DockEdge::Left)
     }
 }
-
-/// Draggable horizontal splitter between Workspace and BottomDock.
 #[derive(Clone, PartialEq)]
 pub struct BottomDockSplitter(pub UiShell);
-
 impl Component for BottomDockSplitter {
     fn render(&self) -> impl IntoElement {
-        let ui = &self.0;
-        if !*ui.bottom_dock_open.read() {
-            return rect().width(Size::px(0.)).height(Size::px(0.));
-        }
-
-        let is_dragging = use_state(|| false);
-        let drag_start_y = use_state(|| 0.0f64);
-        let drag_start_height = use_state(|| 160.0f32);
-        let bottom_dock_height = ui.bottom_dock_height;
-        let dragging_val = *is_dragging.read();
-
-        let splitter_bar = rect()
-            .width(Size::fill())
-            .height(Size::px(4.))
-            .background(if dragging_val {
-                theme::ACCENT_BLOOM
-            } else {
-                theme::SURFACE_CHROME_STRONG
-            })
-            .cursor(CursorIcon::NsResize)
-            .on_mouse_down({
-                let mut is_dragging = is_dragging;
-                let mut drag_start_y = drag_start_y;
-                let mut drag_start_height = drag_start_height;
-                move |event: Event<MouseEventData>| {
-                    is_dragging.set(true);
-                    drag_start_y.set(event.global_location.y);
-                    drag_start_height.set(*bottom_dock_height.peek());
-                }
-            });
-
-        if dragging_val {
-            rect()
-                .direction(Direction::Vertical)
-                .width(Size::fill())
-                .height(Size::px(4.))
-                .child(splitter_bar)
-                .child(
-                    Portal::new("bottom-dock-splitter-drag")
-                        .width(Size::px(0.))
-                        .height(Size::px(0.))
-                        .child(
-                            rect()
-                                .position(Position::new_absolute().top(0.).left(0.))
-                                .width(Size::fill())
-                                .height(Size::fill())
-                                .cursor(CursorIcon::NsResize)
-                                .on_mouse_move({
-                                    let mut bottom_dock_height = bottom_dock_height;
-                                    move |event: Event<MouseEventData>| {
-                                        let delta = *drag_start_y.read() - event.global_location.y;
-                                        let new_h = (*drag_start_height.read() + delta as f32)
-                                            .clamp(80.0, 420.0);
-                                        bottom_dock_height.set(new_h);
-                                    }
-                                })
-                                .on_mouse_up({
-                                    let mut is_dragging = is_dragging;
-                                    move |_| {
-                                        is_dragging.set(false);
-                                    }
-                                }),
-                        ),
-                )
-        } else {
-            rect()
-                .width(Size::fill())
-                .height(Size::px(4.))
-                .child(splitter_bar)
-        }
+        crate::studio_widgets::StudioSplitter::new(&self.0, crate::studio_widgets::DockEdge::Bottom)
     }
 }
 
@@ -4981,7 +4858,18 @@ impl Component for LeftDock {
 
         let mut left_dock_tab = ui.left_dock_tab;
         let active_tab = *left_dock_tab.read();
-        let dock_w = *ui.left_dock_width.read();
+        let tools = theme::TOOL_RAIL_WIDTH
+            * if ui.tool_rail.read().columns == crate::ui_state::RailColumns::Two {
+                2.
+            } else {
+                1.
+            };
+        let dock_w = crate::studio_widgets::left_studio_width(
+            *ui.left_dock_width.read(),
+            Platform::get().root_size.read().width,
+            tools,
+            *ui.right_studio_open.read(),
+        );
         let mut left_dock_open = ui.left_dock_open;
 
         rect()
@@ -5000,8 +4888,9 @@ impl Component for LeftDock {
                 // Tab Header Bar
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .width(Size::fill())
-                    .height(Size::px(34.))
+                    .height(Size::px(theme::PANEL_HEADER_HEIGHT))
                     .background(theme::SURFACE_CHROME)
                     .cross_align(Alignment::Center)
                     .main_align(Alignment::SpaceBetween)
@@ -5009,27 +4898,29 @@ impl Component for LeftDock {
                     .child(
                         rect()
                             .direction(Direction::Horizontal)
+                            .content(Content::Flex)
                             .spacing(theme::SPACE_1)
                             .cross_align(Alignment::Center)
                             .child(tab_button(
                                 ui,
-                                "Ativos",
+                                ui.studio_text("assets"),
                                 0,
                                 active_tab == 0,
                                 &mut left_dock_tab,
                             ))
                             .child(tab_button(
                                 ui,
-                                "Símbolos",
+                                ui.studio_text("symbols"),
                                 1,
                                 active_tab == 1,
                                 &mut left_dock_tab,
                             )),
                     )
                     .child(
-                        Button::new()
-                            .on_press(move |_| left_dock_open.set(false))
-                            .child(label().text("✕").font_size(11.).color(theme::TEXT_TERTIARY)),
+                        crate::studio_widgets::StudioButton::new(ui, ui.studio_text("hide_assets"))
+                            .icon(theme::ICON_CLOSE)
+                            .width(Size::px(28.))
+                            .on_press(move |_| left_dock_open.set(false)),
                     ),
             )
             .child(
@@ -5072,7 +4963,7 @@ impl Component for AssetsTab {
                 .direction(Direction::Vertical)
                 .width(Size::fill())
                 .spacing(theme::SPACE_2)
-                .child(section_header("ATIVOS DO DOCUMENTO"))
+                .child(section_header(ui.studio_text("document_assets")))
                 .child(
                     Button::new()
                         .on_press(move |_| {
@@ -5081,13 +4972,14 @@ impl Component for AssetsTab {
                         .child(
                             rect()
                                 .direction(Direction::Horizontal)
+                                .content(Content::Flex)
                                 .padding(Gaps::new(4., 8., 4., 8.))
                                 .background(theme::SURFACE_CHROME_STRONG)
                                 .corner_radius(4.0)
                                 .cross_align(Alignment::Center)
                                 .child(
                                     label()
-                                        .text("+ Importar Imagem (file.place)")
+                                        .text(ui.studio_text("place_image"))
                                         .font_size(11.)
                                         .color(theme::ACCENT_BLOOM),
                                 ),
@@ -5110,14 +5002,14 @@ impl Component for AssetsTab {
                         .corner_radius(4.0)
                         .child(
                             label()
-                                .text(format!("Imagem #{}", img.id))
+                                .text(format!("{} #{}", ui.studio_text("image"), img.id))
                                 .font_size(11.)
                                 .color(theme::TEXT_PRIMARY),
                         )
                         .child(
                             label()
                                 .text(format!("{:.0} x {:.0} pt", w, h))
-                                .font_size(10.)
+                                .font_size(theme::CAPTION_SIZE)
                                 .color(theme::TEXT_TERTIARY),
                         )
                         .into_element()
@@ -5140,44 +5032,44 @@ impl Component for SymbolsTab {
                 .direction(Direction::Vertical)
                 .width(Size::fill())
                 .spacing(theme::SPACE_2)
-                .child(section_header("BIBLIOTECA DE FORMAS"))
+                .child(section_header(ui.studio_text("shape_library")))
                 .child(symbol_preset_item(
                     shell,
-                    "Retângulo Básico",
+                    ui.studio_text("basic_rectangle"),
                     "200x150 pt",
                     ShapeKind::Rectangle {
                         corner_radii: [0.0; 4],
                     },
-                    [50.0, 50.0, 250.0, 200.0],
+                    [50.0, 50.0, 200.0, 150.0],
                     "ptnd.blue/500",
                 ))
                 .child(symbol_preset_item(
                     shell,
-                    "Cartão UI",
+                    ui.studio_text("ui_card"),
                     "240x140 pt · r=8",
                     ShapeKind::Rectangle {
                         corner_radii: [8.0; 4],
                     },
-                    [50.0, 50.0, 290.0, 190.0],
+                    [50.0, 50.0, 240.0, 140.0],
                     "ptnd.gray/900",
                 ))
                 .child(symbol_preset_item(
                     shell,
-                    "Círculo / Avatar",
+                    ui.studio_text("basic_ellipse"),
                     "100x100 pt",
                     ShapeKind::Ellipse,
-                    [50.0, 50.0, 150.0, 150.0],
+                    [50.0, 50.0, 100.0, 100.0],
                     "ptnd.teal/500",
                 ))
                 .child(symbol_preset_item(
                     shell,
-                    "Estrela 5 Pontas",
+                    ui.studio_text("basic_star"),
                     "120x120 pt",
                     ShapeKind::Star {
                         points: 5,
                         inner_ratio: 0.5,
                     },
-                    [50.0, 50.0, 170.0, 170.0],
+                    [50.0, 50.0, 120.0, 120.0],
                     "ptnd.purple/500",
                 )),
         )
@@ -5186,7 +5078,7 @@ impl Component for SymbolsTab {
 
 fn symbol_preset_item(
     shell: State<PetuniaShell>,
-    name: &'static str,
+    name: String,
     subtitle: &'static str,
     shape: ShapeKind,
     bounds: [f64; 4],
@@ -5196,6 +5088,7 @@ fn symbol_preset_item(
     let shape_clone = shape;
     rect()
         .direction(Direction::Horizontal)
+        .content(Content::Flex)
         .width(Size::fill())
         .main_align(Alignment::SpaceBetween)
         .cross_align(Alignment::Center)
@@ -5205,11 +5098,16 @@ fn symbol_preset_item(
         .child(
             rect()
                 .direction(Direction::Vertical)
-                .child(label().text(name).font_size(11.).color(theme::TEXT_PRIMARY))
+                .child(
+                    label()
+                        .text(name.clone())
+                        .font_size(11.)
+                        .color(theme::TEXT_PRIMARY),
+                )
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(10.)
+                        .font_size(theme::CAPTION_SIZE)
                         .color(theme::TEXT_TERTIARY),
                 ),
         )
@@ -5253,8 +5151,8 @@ fn symbol_preset_item(
                         .corner_radius(4.0)
                         .child(
                             label()
-                                .text("Inserir")
-                                .font_size(10.)
+                                .text(studio_text(shell, "insert"))
+                                .font_size(theme::CAPTION_SIZE)
                                 .color(theme::ACCENT_BLOOM),
                         ),
                 ),
@@ -5274,7 +5172,10 @@ impl Component for BottomDock {
 
         let mut bottom_dock_tab = ui.bottom_dock_tab;
         let active_tab = *bottom_dock_tab.read();
-        let dock_h = *ui.bottom_dock_height.read();
+        let dock_h = crate::studio_widgets::bottom_studio_height(
+            *ui.bottom_dock_height.read(),
+            Platform::get().root_size.read().height,
+        );
         let mut bottom_dock_open = ui.bottom_dock_open;
 
         rect()
@@ -5293,8 +5194,9 @@ impl Component for BottomDock {
                 // Tab Header Bar
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .width(Size::fill())
-                    .height(Size::px(30.))
+                    .height(Size::px(theme::PANEL_HEADER_HEIGHT))
                     .background(theme::SURFACE_CHROME)
                     .cross_align(Alignment::Center)
                     .main_align(Alignment::SpaceBetween)
@@ -5302,27 +5204,32 @@ impl Component for BottomDock {
                     .child(
                         rect()
                             .direction(Direction::Horizontal)
+                            .content(Content::Flex)
                             .spacing(theme::SPACE_1)
                             .cross_align(Alignment::Center)
                             .child(tab_button(
                                 ui,
-                                "Tarefas",
+                                ui.studio_text("tasks"),
                                 0,
                                 active_tab == 0,
                                 &mut bottom_dock_tab,
                             ))
                             .child(tab_button(
                                 ui,
-                                "Diagnóstico",
+                                ui.studio_text("diagnostics"),
                                 1,
                                 active_tab == 1,
                                 &mut bottom_dock_tab,
                             )),
                     )
                     .child(
-                        Button::new()
-                            .on_press(move |_| bottom_dock_open.set(false))
-                            .child(label().text("✕").font_size(11.).color(theme::TEXT_TERTIARY)),
+                        crate::studio_widgets::StudioButton::new(
+                            ui,
+                            ui.studio_text("hide_diagnostics"),
+                        )
+                        .icon(theme::ICON_CLOSE)
+                        .width(Size::px(28.))
+                        .on_press(move |_| bottom_dock_open.set(false)),
                     ),
             )
             .child(
@@ -5356,18 +5263,19 @@ impl Component for DiagnosticsTab {
         let snapshot = shell_ref.canvas_snapshot();
         let cam = shell_ref.view_camera();
         let session = shell_ref.bridge.session();
-        let title = session.map_or("Sem Documento", |s| s.title());
+        let title = session.map_or_else(|| ui.studio_text("no_document"), |s| s.title().to_owned());
         let rev = session.map_or(0, |s| s.saved_revision());
         let dirty = shell_ref.bridge.is_dirty();
         let surf_id = shell_ref
             .bridge
             .active_surface()
-            .map_or("Nenhum".to_string(), |id| id.to_string());
+            .map_or_else(|| ui.studio_text("none"), |id| id.to_string());
         let obj_count = snapshot.objects.len();
 
         ScrollView::new().child(
             rect()
                 .direction(Direction::Horizontal)
+                .content(Content::Flex)
                 .width(Size::fill())
                 .spacing(theme::SPACE_3)
                 .padding(Gaps::new(
@@ -5382,8 +5290,8 @@ impl Component for DiagnosticsTab {
                         .spacing(theme::SPACE_1)
                         .child(
                             label()
-                                .text("DOCUMENTO")
-                                .font_size(10.)
+                                .text(ui.studio_text("document"))
+                                .font_size(theme::CAPTION_SIZE)
                                 .color(theme::TEXT_TERTIARY),
                         )
                         .child(
@@ -5394,12 +5302,8 @@ impl Component for DiagnosticsTab {
                         )
                         .child(
                             label()
-                                .text(if dirty {
-                                    "Modificado (não salvo)"
-                                } else {
-                                    "Salvo / Sem alterações"
-                                })
-                                .font_size(10.)
+                                .text(ui.studio_text(if dirty { "unsaved" } else { "saved" }))
+                                .font_size(theme::CAPTION_SIZE)
                                 .color(if dirty {
                                     theme::ACCENT_BLOOM
                                 } else {
@@ -5413,20 +5317,20 @@ impl Component for DiagnosticsTab {
                         .spacing(theme::SPACE_1)
                         .child(
                             label()
-                                .text("SUPERFÍCIE & OBJETOS")
-                                .font_size(10.)
+                                .text(ui.studio_text("surface_objects"))
+                                .font_size(theme::CAPTION_SIZE)
                                 .color(theme::TEXT_TERTIARY),
                         )
                         .child(
                             label()
-                                .text(format!("Ativa: {surf_id}"))
+                                .text(format!("{}: {surf_id}", ui.studio_text("active_surface")))
                                 .font_size(11.)
                                 .color(theme::TEXT_PRIMARY),
                         )
                         .child(
                             label()
-                                .text(format!("Total de objetos: {obj_count}"))
-                                .font_size(10.)
+                                .text(format!("{}: {obj_count}", ui.studio_text("object_count")))
+                                .font_size(theme::CAPTION_SIZE)
                                 .color(theme::TEXT_SECONDARY),
                         ),
                 )
@@ -5436,8 +5340,8 @@ impl Component for DiagnosticsTab {
                         .spacing(theme::SPACE_1)
                         .child(
                             label()
-                                .text("VIEWPORT & CÂMERA")
-                                .font_size(10.)
+                                .text(ui.studio_text("viewport_camera"))
+                                .font_size(theme::CAPTION_SIZE)
                                 .color(theme::TEXT_TERTIARY),
                         )
                         .child(
@@ -5449,7 +5353,7 @@ impl Component for DiagnosticsTab {
                         .child(
                             label()
                                 .text(format!("Pan: ({:.1}, {:.1})", cam.pan_x, cam.pan_y))
-                                .font_size(10.)
+                                .font_size(theme::CAPTION_SIZE)
                                 .color(theme::TEXT_SECONDARY),
                         ),
                 )
@@ -5459,8 +5363,8 @@ impl Component for DiagnosticsTab {
                         .spacing(theme::SPACE_1)
                         .child(
                             label()
-                                .text("FERRAMENTA & PERSONA")
-                                .font_size(10.)
+                                .text(ui.studio_text("tool_studio"))
+                                .font_size(theme::CAPTION_SIZE)
                                 .color(theme::TEXT_TERTIARY),
                         )
                         .child(
@@ -5472,21 +5376,12 @@ impl Component for DiagnosticsTab {
                         .child(
                             label()
                                 .text(ui.persona.read().clone())
-                                .font_size(10.)
+                                .font_size(theme::CAPTION_SIZE)
                                 .color(theme::TEXT_SECONDARY),
                         ),
                 ),
         )
     }
-}
-
-// Navigator swatches are metadata; the histogram uses composed pixels.
-fn parse_color_rgb(token: &str) -> Option<(f64, f64, f64)> {
-    if !token.is_ascii() || token.is_empty() {
-        return None;
-    }
-    let [r, g, b] = petunia_design_document::resolve_color_to_rgb(token);
-    Some((f64::from(r), f64::from(g), f64::from(b)))
 }
 
 #[cfg(test)]
@@ -5524,13 +5419,14 @@ mod tests {
         let ui = seen.borrow().clone().unwrap();
         assert_eq!(*ui.dock_tab.read(), 0, "default active tab is Camadas (0)");
 
-        for (title, index) in [
-            ("Propriedades", 1),
-            ("Cores", 2),
-            ("Histórico", 3),
-            ("Navegador", 4),
-            ("Camadas", 0),
+        for (key, index) in [
+            ("properties", 1),
+            ("colors", 2),
+            ("history", 3),
+            ("navigator", 4),
+            ("layers", 0),
         ] {
+            let title = ui.studio_text(key);
             let area = runner
                 .find(|node, element| {
                     Label::try_downcast(element)
@@ -6381,6 +6277,7 @@ mod tests {
                 seen_hook.replace(Some(ui.clone()));
                 rect()
                     .direction(Direction::Horizontal)
+                    .content(Content::Flex)
                     .child(LeftDock(ui.clone()))
                     .child(LeftDockSplitter(ui))
             },

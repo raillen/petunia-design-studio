@@ -238,6 +238,15 @@ pub fn default_tool_rail() -> ToolRailState {
         ],
         photo_groups: vec![
             group(
+                "photo-paint",
+                "ptnd.text.tool_group.photo_paint",
+                &[
+                    ToolKind::PixelPaintBrush,
+                    ToolKind::PixelEraser,
+                    ToolKind::PixelFill,
+                ],
+            ),
+            group(
                 "photo-selection",
                 "ptnd.text.tool_group.photo_selection",
                 &[
@@ -309,6 +318,18 @@ pub struct UiShell {
     pub temporary_tool: State<Option<ToolKind>>,
     pub suspended_tool: State<Option<ToolKind>>,
     pub dock_tab: State<usize>,
+    pub autofit_documents: State<bool>,
+    pub studio_fill_target: State<bool>,
+    pub favorite_swatches: State<Vec<(String, String)>>,
+    pub studio_upper_tab: State<usize>,
+    pub studio_upper_open: State<bool>,
+    pub right_studio_open: State<bool>,
+    pub collapsed_layers: State<
+        std::collections::HashSet<(
+            petunia_design_application::session::SessionIdentity,
+            petunia_design_foundation::ObjectId,
+        )>,
+    >,
     pub new_doc_open: State<bool>,
     pub export_open: State<bool>,
     pub place_image_open: State<bool>,
@@ -361,6 +382,13 @@ impl PartialEq for UiShell {
             && self.temporary_tool == other.temporary_tool
             && self.suspended_tool == other.suspended_tool
             && self.dock_tab == other.dock_tab
+            && self.autofit_documents == other.autofit_documents
+            && self.studio_fill_target == other.studio_fill_target
+            && self.favorite_swatches == other.favorite_swatches
+            && self.studio_upper_tab == other.studio_upper_tab
+            && self.studio_upper_open == other.studio_upper_open
+            && self.right_studio_open == other.right_studio_open
+            && self.collapsed_layers == other.collapsed_layers
             && self.new_doc_open == other.new_doc_open
             && self.export_open == other.export_open
             && self.place_image_open == other.place_image_open
@@ -425,6 +453,13 @@ impl UiShell {
         bottom_dock_tab: State<usize>,
     ) -> Self {
         Self {
+            autofit_documents: use_state(|| false),
+            studio_fill_target: use_state(|| true),
+            favorite_swatches: use_state(Vec::new),
+            studio_upper_tab: use_state(|| 0usize),
+            studio_upper_open: use_state(|| true),
+            right_studio_open: use_state(|| true),
+            collapsed_layers: use_state(std::collections::HashSet::new),
             proof_options: use_state(Default::default),
             monitor_profile: use_state(|| None),
             canvas_text: use_state(|| None),
@@ -481,6 +516,15 @@ impl UiShell {
             .bridge
             .localization()
             .text(&format!("ptnd.text.workflow.{key}"), shell.bridge.locale())
+    }
+
+    /// Studio copy follows the same live locale as menus and file workflows.
+    pub fn studio_text(&self, key: &str) -> String {
+        let shell = self.shell.read();
+        shell
+            .bridge
+            .localization()
+            .text(&format!("ptnd.text.studio.{key}"), shell.bridge.locale())
     }
 
     pub fn has_modal(&self) -> bool {
