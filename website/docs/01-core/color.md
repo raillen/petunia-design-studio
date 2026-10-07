@@ -61,7 +61,13 @@ Um documento pode ter perfil de trabalho; recursos colocados podem manter perfil
 
 ## Decisão 3 — encoded versus linear
 
-Cor para edição/UI costuma estar codificada com uma transfer function; blending e vários filtros devem ocorrer em espaço linear.
+Uma **transfer function** é a curva matemática que relaciona o valor armazenado ao valor de luz representado.
+
+Em espaços como sRGB, os números armazenados são **encoded**: foram transformados por uma curva. Isso melhora distribuição de precisão e visualização, mas significa que `0.5` não representa necessariamente “metade da luz”.
+
+Em **linear RGB**, os valores são proporcionais à intensidade de luz representada.
+
+Cor para edição/UI costuma estar codificada; blending e vários filtros devem ocorrer em espaço linear quando a matemática exige relações de luz.
 
 Criar tipos distintos para impedir mistura acidental:
 
@@ -76,11 +82,24 @@ A conversão é função do Engine/Render, não método implícito do Core.
 
 No modelo de documento, armazenar **straight alpha**. Em buffers de composição, usar preferencialmente **premultiplied alpha**.
 
-Motivo: premultiplicação torna Porter–Duff eficiente e evita várias bordas incorretas, mas blend modes são definidos sobre componentes de cor não premultiplicados. A fronteira deve ser explícita.
+Motivo: premultiplicação torna composição alpha mais eficiente e evita várias bordas incorretas.
+
+**Porter–Duff** é uma família clássica de operadores de composição que define como duas imagens com alpha são combinadas — por exemplo, source-over, destination-over, source-in e source-out.
+
+O caso mais comum no editor é **source-over**: desenhar a fonte por cima do fundo.
+
+Blend modes são definidos sobre relações de cor que não devem ser confundidas com os valores premultiplicados. A fronteira deve ser explícita. A matemática completa de composição fica em [Composição e efeitos](#/docs/03-render/compositing-effects.md).
 
 ## Decisão 5 — range e HDR
 
-Não clamping automático em construtores de `f32`. Operações lineares/HDR podem temporariamente produzir valores fora de 0…1. Clamp só quando um formato/output exigir.
+**Clamping** força um valor para dentro de um intervalo.
+
+~~~text
+clamp(-0.2, 0, 1) → 0
+clamp(1.4, 0, 1)  → 1
+~~~
+
+Não fazer clamping automático em construtores de `f32`. Operações lineares/HDR podem temporariamente produzir valores fora de 0…1. Clamp só quando um formato ou output exigir.
 
 Fornecer:
 - `is_finite()`
