@@ -8,6 +8,10 @@ O `Command` atual guarda o estado anterior dentro de cada objeto de comando. Fun
 
 ## Transaction
 
+Uma **Transaction** agrupa várias mutações que devem ser tratadas como uma única ação do usuário.
+
+Exemplo: mover três objetos juntos deve produzir um único Undo, mesmo que internamente altere três transforms.
+
 ```rust
 pub struct Transaction {
     pub id: TransactionId,
@@ -22,7 +26,21 @@ pub struct Transaction {
 
 ## Atomicidade
 
-Ou todas as ops de uma Transaction aplicam ou nenhuma. Falha no meio não pode deixar Scene parcialmente alterada.
+**Atomicidade** significa “tudo ou nada”.
+
+Se uma Transaction possui 10 operações e a operação 7 falha, o documento não pode permanecer com as 6 primeiras aplicadas.
+
+~~~text
+10 operações
+   ↓
+todas válidas? ── sim → commit
+   │
+   não
+   ↓
+nenhuma alteração permanente
+~~~
+
+Falha no meio não pode deixar Scene parcialmente alterada.
 
 ## Preview e commit
 
@@ -35,6 +53,10 @@ Ferramentas interativas usam:
 O estado transient pode viver numa overlay de sessão. Commit produz uma única Transaction.
 
 ## Coalescing
+
+**Coalescing** junta várias ações pequenas e consecutivas em uma única entrada de histórico.
+
+Exemplo: arrastar um slider produz muitos valores intermediários, mas o usuário espera um único Undo.
 
 Digitação, nudges e sliders podem se fundir quando:
 - mesmo merge key
@@ -50,7 +72,13 @@ Novo Command após undo limpa redo branch. Se futuramente quisermos history tree
 
 ## Dirty checkpoint
 
-No save, registrar o history revision atual. `is_dirty = current_revision != saved_revision`.
+**Dirty** significa que o documento possui mudanças ainda não salvas.
+
+No save, registramos a revisão atual como **checkpoint**:
+
+`is_dirty = current_revision != saved_revision`.
+
+Não precisamos manter um boolean manual que possa ficar fora de sincronia.
 
 ## Commands e plugins
 
