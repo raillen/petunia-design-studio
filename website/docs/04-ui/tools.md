@@ -25,7 +25,7 @@ Pode solicitar:
 - selection change
 - status hint.
 
-Isso mantém QML fora da lógica.
+Isso mantém `egui` fora da lógica de domínio.
 
 ## Pen Tool
 
@@ -47,7 +47,7 @@ Cria `ParametricShape`, não Path. Drag define bounds; modifiers controlam ratio
 
 ## Brush Tool
 
-Controller envia samples ao Brush Engine. Não gera dabs no QML.
+Controller envia samples ao Brush Engine. Não gera dabs dentro de widgets `egui`.
 
 ## Guide Tool
 
