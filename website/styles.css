@@ -1217,3 +1217,122 @@ html[data-theme="dark"] .sidebar .nav-file-children::before {
 html[data-theme="dark"] .sidebar .nav-domain + .nav-domain {
   border-top-color: #21262d !important;
 }
+
+
+/* Syntax highlighting — Highlight.js tokens, styled with Petunia/Primer semantics. */
+.markdown-body pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 0;
+  background: transparent;
+  color: var(--fgColor-default);
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #6e7781;
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-link {
+  color: #cf222e;
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-name,
+.hljs-type,
+.hljs-attribute,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+  color: #0a3069;
+}
+
+.hljs-number,
+.hljs-meta,
+.hljs-variable,
+.hljs-template-variable {
+  color: #0550ae;
+}
+
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: #8250df;
+}
+
+.hljs-function .hljs-title,
+.hljs-title.function_,
+.hljs-title.class_ {
+  color: #8250df;
+}
+
+.hljs-params,
+.hljs-property {
+  color: var(--fgColor-default);
+}
+
+.hljs-deletion {
+  color: #82071e;
+  background: #ffebe9;
+}
+
+.hljs-addition {
+  background: #dafbe1;
+}
+
+html[data-theme="dark"] .hljs-comment,
+html[data-theme="dark"] .hljs-quote {
+  color: #8b949e;
+}
+
+html[data-theme="dark"] .hljs-keyword,
+html[data-theme="dark"] .hljs-selector-tag,
+html[data-theme="dark"] .hljs-literal,
+html[data-theme="dark"] .hljs-section,
+html[data-theme="dark"] .hljs-link {
+  color: #ff7b72;
+}
+
+html[data-theme="dark"] .hljs-string,
+html[data-theme="dark"] .hljs-title,
+html[data-theme="dark"] .hljs-name,
+html[data-theme="dark"] .hljs-type,
+html[data-theme="dark"] .hljs-attribute,
+html[data-theme="dark"] .hljs-symbol,
+html[data-theme="dark"] .hljs-bullet,
+html[data-theme="dark"] .hljs-addition {
+  color: #a5d6ff;
+}
+
+html[data-theme="dark"] .hljs-number,
+html[data-theme="dark"] .hljs-meta,
+html[data-theme="dark"] .hljs-variable,
+html[data-theme="dark"] .hljs-template-variable {
+  color: #79c0ff;
+}
+
+html[data-theme="dark"] .hljs-built_in,
+html[data-theme="dark"] .hljs-builtin-name,
+html[data-theme="dark"] .hljs-selector-attr,
+html[data-theme="dark"] .hljs-selector-pseudo,
+html[data-theme="dark"] .hljs-function .hljs-title,
+html[data-theme="dark"] .hljs-title.function_,
+html[data-theme="dark"] .hljs-title.class_ {
+  color: #d2a8ff;
+}
+
+html[data-theme="dark"] .hljs-deletion {
+  color: #ffa198;
+  background: #490202;
+}
+
+html[data-theme="dark"] .hljs-addition {
+  background: #033a16;
+}
