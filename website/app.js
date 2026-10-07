@@ -12,6 +12,8 @@ const cache = new Map();
 
 let manifest = null;
 let fuse = null;
+let FuseCtor = null;
+let searchDocuments = [];
 let currentPath = null;
 let tocObserver = null;
 let keyboardResultIndex = -1;
@@ -89,6 +91,13 @@ function fileMeta(path) {
     if (file) return { domain: domain, file: file };
   }
 
+  if (path === "home.md") {
+    return {
+      domain: { id: "home", title: "Documentação" },
+      file: { title: "Início", path: path }
+    };
+  }
+
   if (path === "about.md") {
     return {
       domain: { id: "project", title: "Projeto" },
@@ -105,6 +114,17 @@ function closeMobileNavigation() {
 
 function buildSearchIndex() {
   const documents = [];
+
+  const home = cache.get("home.md") || "";
+  documents.push({
+    path: "home.md",
+    title: "Início",
+    domain: "Documentação",
+    headings: sourceHeadings(home).map(function (item) {
+      return item.title;
+    }).join(" "),
+    content: stripMarkdown(home)
+  });
 
   for (const domain of manifest.domains) {
     for (const file of domain.files) {
@@ -132,7 +152,14 @@ function buildSearchIndex() {
     content: stripMarkdown(about)
   });
 
-  fuse = new Fuse(documents, {
+  searchDocuments = documents;
+
+  if (!FuseCtor) {
+    fuse = null;
+    return;
+  }
+
+  fuse = new FuseCtor(documents, {
     keys: [
       { name: "title", weight: 0.38 },
       { name: "headings", weight: 0.30 },
@@ -145,6 +172,16 @@ function buildSearchIndex() {
     includeScore: true,
     minMatchCharLength: 2
   });
+}
+
+async function loadFuse() {
+  try {
+    const module = await import("https://cdn.jsdelivr.net/npm/fuse.js@7.5.0/dist/fuse.min.mjs");
+    FuseCtor = module.default || module.Fuse || null;
+  } catch (error) {
+    FuseCtor = null;
+    console.warn("Fuse.js indisponível; usando busca textual de fallback.", error);
+  }
 }
 
 function excerptFor(item, query) {
@@ -176,14 +213,30 @@ function resetKeyboardSearchSelection() {
 function renderSearchResults(query) {
   const cleanQuery = query.trim();
 
-  if (cleanQuery.length < 2 || !fuse) {
+  if (cleanQuery.length < 2) {
     searchResults.hidden = true;
     searchResults.innerHTML = "";
     resetKeyboardSearchSelection();
     return;
   }
 
-  const results = fuse.search(cleanQuery, { limit: 10 });
+  const results = fuse
+    ? fuse.search(cleanQuery, { limit: 10 })
+    : searchDocuments
+        .filter(function (item) {
+          const haystack = [
+            item.title,
+            item.domain,
+            item.headings,
+            item.content
+          ].join(" ").toLocaleLowerCase("pt-BR");
+
+          return haystack.includes(cleanQuery.toLocaleLowerCase("pt-BR"));
+        })
+        .slice(0, 10)
+        .map(function (item) {
+          return { item: item, score: 0 };
+        });
 
   if (!results.length) {
     searchResults.innerHTML =
@@ -421,6 +474,15 @@ async function openDoc(path, anchor) {
 async function buildNavigation() {
   nav.innerHTML = "";
 
+  const homeLink = document.createElement("a");
+  homeLink.className = "nav-home file-overview";
+  homeLink.href = "#/docs/home.md";
+  homeLink.dataset.path = "home.md";
+  homeLink.innerHTML =
+    '<i class="ph ph-house" aria-hidden="true"></i>' +
+    '<span>Início</span>';
+  nav.append(homeLink);
+
   for (const domain of manifest.domains) {
     const domainDetails = document.createElement("details");
     domainDetails.className = "nav-domain";
@@ -487,16 +549,16 @@ async function preloadDocumentation() {
     });
   });
 
-  paths.push("about.md");
+  paths.push("home.md", "about.md");
   await Promise.all(paths.map(loadText));
 }
 
 function route() {
-  const raw = location.hash || "#/docs/00-architecture/boundaries.md";
+  const raw = location.hash || "#/docs/home.md";
   const match = /^#\/docs\/([^#]+)(?:#(.+))?$/.exec(raw);
 
   if (!match) {
-    openDoc("00-architecture/boundaries.md");
+    openDoc("home.md");
     return;
   }
 
@@ -514,6 +576,7 @@ async function initialize() {
 
     await preloadDocumentation();
     await buildNavigation();
+    await loadFuse();
     buildSearchIndex();
     route();
   } catch (error) {
