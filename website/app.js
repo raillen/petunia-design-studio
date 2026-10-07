@@ -20,6 +20,7 @@ let tocObserver = null;
 let keyboardResultIndex = -1;
 
 const domainIcons = {
+  philosophy: "ph-flower-lotus",
   architecture: "ph-compass",
   core: "ph-cube",
   engine: "ph-gear",
