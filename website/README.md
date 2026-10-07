@@ -17,6 +17,7 @@ Tudo é carregado diretamente por CDN:
 | Alpine.js | 3.17.4 | estado pequeno de interface/mobile |
 | Marked | 18.0.14 | Markdown → HTML |
 | Fuse.js | 7.5.0 | busca fuzzy via módulo ESM; fallback textual se o CDN falhar |
+| Highlight.js | 11.11.1 | syntax highlighting dos blocos de código |
 | Markdown | — | fonte canônica da documentação |
 
 O CSS local não copia o Primer. Ele adota os mesmos **princípios semânticos**: canvas/foreground/border/accent, hierarquia tipográfica discreta, bordas sutis, linhas de leitura curtas, estados claros e responsividade.
@@ -73,6 +74,7 @@ http://localhost:8080
 - navegação por teclado nos resultados;
 - sumário da página com seção ativa;
 - links diretos para headings;
+- syntax highlighting para Rust, shell, JSON, TOML e outros blocos reconhecidos;
 - botão de copiar blocos de código;
 - tabelas responsivas;
 - navegação mobile;
