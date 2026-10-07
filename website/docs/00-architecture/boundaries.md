@@ -80,8 +80,12 @@ Geometria usa `f64` porque operações booleanas, interseções e sequências lo
 
 ## Decisões que exigem ADR
 
-Criar um Architecture Decision Record quando mudarem: representação canônica de paths; formato PTND; modelo de efeito; estratégia de scene graph; color management/CMM; modelo de raster tiles; renderer GPU; threading; ABI de plugins; ou qualquer dependência que atravesse crates.
+**ADR — Architecture Decision Record** é um documento curto que registra uma decisão arquitetural importante, seu contexto, alternativas consideradas e consequências.
+
+Criar um ADR quando mudarem: representação canônica de paths; formato PTND; modelo de efeito; estratégia de scene graph; color management/CMM; modelo de raster tiles; renderer GPU; threading; ABI de plugins; ou qualquer dependência que atravesse crates.
 
 ## Critério de teste de fronteira
+
+**Headless** significa executar sem janela, display server ou interface gráfica.
 
 Pergunte: “consigo executar isto headless?”. Boolean, snapping, import, export, text layout e filtros devem funcionar sem Qt. Se uma operação matemática precisar instanciar `QObject`, a fronteira está errada.
