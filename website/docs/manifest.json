@@ -45,6 +45,16 @@
       ]
     },
     {
+      "id": "roadmap",
+      "title": "Roadmap",
+      "files": [
+        {
+          "title": "Capacidades planejadas",
+          "path": "00-roadmap/capabilities.md"
+        }
+      ]
+    },
+    {
       "id": "core",
       "title": "Núcleo · petunia-core",
       "files": [
