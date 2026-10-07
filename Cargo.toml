@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/petunia-core",
+    "crates/petunia-engine",
+    "crates/petunia-render",
+    "crates/petunia-ui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Petunia Team"]
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+petunia-core = { path = "crates/petunia-core" }
+petunia-engine = { path = "crates/petunia-engine" }
+petunia-render = { path = "crates/petunia-render" }
+petunia-ui = { path = "crates/petunia-ui" }
+
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.10", features = ["v4", "serde"] }

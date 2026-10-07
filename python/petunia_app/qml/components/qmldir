@@ -1,8 +1,0 @@
-singleton Phosphor 1.0 Phosphor.qml
-PIcon 1.0 PIcon.qml
-DesktopMenuBar 1.0 DesktopMenuBar.qml
-TopHeaderBar 1.0 TopHeaderBar.qml
-ContextToolbar 1.0 ContextToolbar.qml
-LeftToolbar 1.0 LeftToolbar.qml
-StatusBar 1.0 StatusBar.qml
-PetuniaSlider 1.0 PetuniaSlider.qml

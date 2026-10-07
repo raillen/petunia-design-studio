@@ -1,0 +1,10 @@
+[package]
+name = "petunia-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Rendering backend abstractions, scene draw plans, and reference rasterizer for Petunia Design Studio"
+
+[dependencies]
+petunia-core = { workspace = true }
+thiserror = { workspace = true }

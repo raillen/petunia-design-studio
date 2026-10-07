@@ -1,0 +1,12 @@
+[package]
+name = "petunia-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Desktop application shell, input mapping, and studio tools for Petunia Design Studio"
+
+[dependencies]
+petunia-core = { workspace = true }
+petunia-engine = { workspace = true }
+petunia-render = { workspace = true }
+thiserror = { workspace = true }

@@ -1,0 +1,10 @@
+[package]
+name = "petunia-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Business logic, command transactions, undo/redo stack, and snapping engine for Petunia Design Studio"
+
+[dependencies]
+petunia-core = { workspace = true }
+thiserror = { workspace = true }
