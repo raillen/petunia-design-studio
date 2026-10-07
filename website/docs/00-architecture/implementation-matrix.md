@@ -106,7 +106,7 @@ petunia-ui/src/
 └── accessibility/
 ```
 
-`egui` permanece na borda de UI. Nenhum tipo `egui` deve entrar em Core, Engine ou Render.
+Qt/QML e CXX-Qt permanecem na borda de UI. Nenhum tipo Qt deve entrar em Core, Engine ou Render.
 
 ## Ordem de implementação recomendada
 
