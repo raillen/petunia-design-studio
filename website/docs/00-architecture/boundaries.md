@@ -122,14 +122,329 @@ Isso impede que trocar uma biblioteca obrigue a alterar o formato PTND ou toda a
 
 ## Quatro tipos de estado
 
-| Estado | Exemplo | Dono | Serializa no documento? |
-|---|---|---|---|
-| Documento | path, layer, cor, efeito, guia | Núcleo | Sim |
-| Sessão | seleção, ferramenta ativa, zoom | Interface / session | Não |
-| Derivado | bounds, tesselação, spatial index | Engine / Render | Não |
-| Configuração | atalhos, tema, idioma | Interface / app settings | Fora do documento |
+A classificação de estado responde a uma pergunta central:
 
-Misturar esses estados é uma fonte comum de bugs. Zoom não deve alterar geometria; cache não deve virar dado permanente; seleção não deve mudar o arquivo salvo.
+> **Se este dado desaparecer, a obra muda ou apenas a experiência de edição?**
+
+O Petunia usa quatro categorias. Não criar uma quinta categoria apenas para previews; preview é estado transitório de sessão até o commit.
+
+| Categoria | Pergunta | Dono | Persistência | Undo/Redo | Muda `DocumentRevision`? |
+|---|---|---|---|---|---|
+| **Document State** | O que o artista criou? | Core | PTND | Sim | Sim |
+| **Session State** | Como o usuário está editando agora? | UI / Session | opcional, fora do PTND | Não | Não |
+| **Derived State** | O que pode ser recalculado? | Engine / Render | cache opcional | Não | Não |
+| **Application Settings** | Como este usuário prefere usar o programa? | App / UI | configuração externa | Não | Não |
+
+### Document State
+
+É a **fonte autoral da verdade**.
+
+Um dado pertence ao documento quando é necessário para reconstruir fielmente o trabalho depois de salvar, fechar e abrir o arquivo novamente.
+
+Exemplos:
+
+```text
+Document
+├── pages / artboards
+├── scene graph
+├── paths / shapes / text / images
+├── transforms
+├── appearance
+├── effects
+├── masks / clips
+├── styles / symbols
+├── resources
+├── document color setup
+├── guides
+└── export slices
+```
+
+Persistente não significa automaticamente documental. Tema, atalhos e layout de painéis também podem ser persistidos, mas fora do PTND.
+
+### Session State
+
+Descreve a sessão de edição atual, não a obra.
+
+Exemplos:
+
+- seleção;
+- hover;
+- ferramenta ativa;
+- subestado de ferramenta;
+- pointer capture;
+- drag atual;
+- preview transitório;
+- zoom;
+- pan;
+- rotação da view;
+- modo de preview;
+- snapping ligado/desligado.
+
+Modelo recomendado:
+
+```rust
+pub struct EditorSession {
+    pub active_document: DocumentHandle,
+    pub selection: SelectionState,
+    pub active_tool: ToolId,
+    pub tool_session: ToolSession,
+    pub active_view: ViewId,
+    pub transient_edits: TransientEdits,
+}
+```
+
+### View State
+
+View State é parte da Session, mas merece tipo próprio porque um mesmo documento pode ter várias views simultâneas.
+
+```rust
+pub struct ViewState {
+    pub zoom: ViewScale,
+    pub pan: ViewTranslation,
+    pub rotation: ViewRotation,
+    pub viewport_size: DeviceSize,
+    pub overlay_visibility: OverlayVisibility,
+    pub preview_mode: PreviewMode,
+}
+```
+
+```text
+Document A
+├── View 1 → 25%
+├── View 2 → 400%
+└── View 3 → soft proof
+```
+
+Na v0.1, View State não entra no PTND. Se quisermos restaurar a última sessão, isso deve ser armazenado separadamente e associado ao `DocumentId`.
+
+### Preview e Transient Edit
+
+**Transient** significa temporário: existe durante uma interação, mas ainda não virou edição autoral.
+
+Durante um drag:
+
+```text
+Document revision 84
+        +
+Transient Transform
+        ↓
+Preview
+```
+
+A revisão continua 84.
+
+Somente no commit:
+
+```text
+Transient Edit
+      ↓
+Transaction
+      ↓
+Commit
+      ↓
+Document revision 85
+```
+
+Portanto:
+
+> Preview nunca deixa o documento dirty e nunca cria dezenas de entradas de histórico por movimento do ponteiro.
+
+### Derived State
+
+**Derived State** é qualquer informação que pode ser reconstruída a partir de dados autoritativos.
+
+Exemplos:
+
+```text
+VectorPath → bounds
+VectorPath → flattening → tessellation
+Text       → shaping → glyph positions
+Scene      → spatial index
+Effects    → raster tiles
+```
+
+Se todos os dados derivados forem apagados, o documento continua correto. Apenas precisa recalcular.
+
+Não criar um `DerivedState` gigante. Cada subsistema possui seus próprios caches:
+
+```text
+Geometry → GeometryCache
+Spatial  → SpatialIndex
+Text     → TextLayoutCache
+Effects  → EffectCache
+Render   → TessellationCache / GlyphCache / TileCache
+```
+
+### Invalidation
+
+**Invalidar** um cache significa declarar que o resultado antigo não corresponde mais aos dados atuais.
+
+```text
+Path revision 12
+Bounds cache revision 12
+→ válido
+
+Path revision 13
+Bounds cache revision 12
+→ inválido
+```
+
+A invalidação deve ser localizada. Mudar o nome de uma layer não deve apagar tessellation; alterar o path deve invalidar os resultados que dependem de sua geometria.
+
+### Application Settings
+
+São preferências do usuário ou da instalação, persistidas fora do documento.
+
+Exemplos:
+
+```rust
+pub struct ApplicationSettings {
+    pub theme: Theme,
+    pub language: Language,
+    pub reduced_motion: bool,
+    pub autosave_policy: AutosavePolicy,
+    pub shortcuts: ShortcutMap,
+}
+```
+
+Workspace também é configuração da aplicação:
+
+```rust
+pub struct WorkspaceSettings {
+    pub dock_layout: DockLayout,
+    pub panel_visibility: PanelVisibility,
+    pub toolbar_layout: ToolbarLayout,
+}
+```
+
+Qt pode ser usado como mecanismo de persistência, mas os tipos Qt não definem o significado dessas configurações.
+
+### Features que atravessam categorias
+
+Uma mesma feature pode conter propriedades de categorias diferentes. Nesse caso, separar os tipos.
+
+#### Grid
+
+```text
+GridDefinition       → Document
+Grid visibility      → View
+Grid render cache    → Derived
+```
+
+A geometria do grid pode fazer parte da construção; a decisão de exibi-lo é da view.
+
+#### Guides
+
+```text
+Guide position       → Document
+Guide locked         → Document
+Guides visible       → View
+Guide raster/overlay → Derived
+```
+
+Lock faz parte da intenção compartilhada de edição. Visibilidade é apenas como a view apresenta as guias.
+
+#### Layers
+
+`Layer.visible` é Document State porque altera render final, export e impressão.
+
+Mostrar ou esconder overlays de seleção da layer é View State.
+
+#### Snapping
+
+Geometrias que podem gerar snap pertencem ao documento. Preferências como `snap enabled`, `snap to grid` e `snap to nodes` pertencem à Session/Workspace.
+
+Desabilitar snapping nunca deixa o documento dirty.
+
+#### Soft proof
+
+Perfil de cor do documento é Document State.
+
+`Soft Proof enabled` e `Gamut Warning visible` são View State porque simulam visualização e não alteram a obra.
+
+#### Resources
+
+Descrição e referência do recurso são autorais:
+
+```text
+ResourceId
+URI/path
+content hash
+embed/link policy
+metadata
+```
+
+Buffers decodificados, thumbnails e representações prontas para render são Derived State.
+
+### Recovery não muda a classificação
+
+Crash recovery pode persistir dados operacionais temporariamente:
+
+```text
+Recovery Journal
+├── document revision
+├── pending transactions
+├── resource changes
+└── timestamps
+```
+
+Isso é infraestrutura de recuperação, não parte do formato autoral PTND.
+
+### DocumentRevision e dirty state
+
+`DocumentRevision` muda somente após uma alteração autoral commitada.
+
+```rust
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct DocumentRevision(u64);
+```
+
+Não muda por:
+
+- hover;
+- zoom;
+- pan;
+- seleção;
+- troca de ferramenta;
+- rebuild de cache;
+- soft proof.
+
+**Dirty** significa “existem alterações autorais ainda não salvas”.
+
+Não manter um boolean autoritativo. Derivar:
+
+```text
+is_dirty = current_revision != saved_revision
+```
+
+Exemplo:
+
+```text
+current = 18
+saved   = 18
+→ clean
+
+current = 19
+saved   = 18
+→ dirty
+
+save
+saved = 19
+→ clean
+```
+
+### Invariantes
+
+1. Document State é a única verdade autoral persistida no PTND.
+2. Session State controla a experiência de edição, não a obra.
+3. Preview/Transient Edit pertence à Session até o commit.
+4. Derived State pode sempre ser descartado e reconstruído.
+5. Application Settings são persistidas separadamente do documento.
+6. Uma propriedade possui exatamente um dono autoritativo.
+7. `DocumentRevision` muda somente após alteração autoral commitada.
+8. Dirty state é derivado de `current_revision != saved_revision`.
+9. View State não entra no PTND na v0.1.
+10. Recovery pode persistir estado operacional sem transformá-lo em Document State.
 
 ## Fluxo de edição
 
