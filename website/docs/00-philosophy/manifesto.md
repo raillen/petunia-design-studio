@@ -47,7 +47,7 @@ Exemplos da stack atual:
 | Paralelismo CPU | `rayon` |
 | Persistência | `serde` |
 | Identidade | `uuid` |
-| UI | Qt/QML via CXX-Qt |
+| UI | `egui` |
 
 O Petunia mede antes de otimizar. Uma abstração clara só deve ser substituída por uma implementação mais complexa quando profiling demonstrar necessidade.
 
@@ -71,7 +71,7 @@ Interface
 
 A UI é uma camada inteligente de interação, mas não autoridade sobre o domínio.
 
-Qt pode conhecer botões, painéis, foco e eventos. Qt não decide geometria, snapping, topologia, regras de documento ou comportamento de efeitos.
+`egui` pode conhecer widgets, painéis, foco e eventos. `egui` não decide geometria, snapping, topologia, regras de documento ou comportamento de efeitos.
 
 ## Paradigma não destrutivo
 
@@ -125,7 +125,7 @@ Para o desenvolvedor:
 
 O código autoral de domínio deve evitar `unsafe`.
 
-Quando FFI for inevitável, como na fronteira Rust ↔ C++/Qt, ela permanece confinada e auditável.
+Quando FFI for inevitável por integração de plataforma ou biblioteca nativa, ela permanece confinada e auditável. A UI em `egui` não muda essa regra.
 
 Entradas externas são consideradas não confiáveis:
 
