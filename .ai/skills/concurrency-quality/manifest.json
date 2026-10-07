@@ -1,0 +1,54 @@
+{
+  "id": "concurrency-quality",
+  "name": "Concurrency Quality",
+  "version": 1,
+  "schema_version": 2,
+  "purpose": "Prevent data races, deadlocks, task leaks, and unbounded channels in concurrent and async systems.",
+  "risk_level": "high",
+  "modes": [
+    "implementation",
+    "review"
+  ],
+  "inputs": [
+    "Async task definitions",
+    "Shared state / channels",
+    "Synchronization primitives"
+  ],
+  "outputs": [
+    "Thread-safe implementation",
+    "Concurrency stress tests",
+    "Deadlock analysis report"
+  ],
+  "requires": [],
+  "conflicts": [],
+  "capabilities": [
+    "filesystem.read",
+    "filesystem.write",
+    "process.spawn"
+  ],
+  "references": [],
+  "templates": [],
+  "checks": [
+    "checks/concurrency-checklist.md"
+  ],
+  "scripts": [],
+  "examples": [],
+  "required_evidence": [
+    "test"
+  ],
+  "stop_conditions": [
+    "Task acceptance criteria satisfied with evidence",
+    "Token budget exhausted",
+    "Blocked on external dependency"
+  ],
+  "provenance": {
+    "origin": "framework",
+    "license": "MIT",
+    "source": "prumo",
+    "version": "0.3.0",
+    "checksum": "",
+    "modified": "2026-08-14"
+  },
+  "requires_any": [],
+  "tools": []
+}

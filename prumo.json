@@ -1,0 +1,61 @@
+{
+  "version": 3,
+  "protocol": {
+    "version": 3,
+    "compatible": ">=3 <4"
+  },
+  "framework": {
+    "name": "prumo",
+    "version": "0.6.0"
+  },
+  "project": {
+    "name": "petunia-design-rust",
+    "description": "Petunia Design Studio - High-performance desktop creative editor rebuilt natively in Rust with modular architecture.",
+    "type": [
+      "desktop",
+      "gui",
+      "library",
+      "cli"
+    ]
+  },
+  "stack": {
+    "languages": [
+      "rust"
+    ]
+  },
+  "features": [
+    "desktop-editor",
+    "vector-graphics",
+    "rendering-2d",
+    "accessibility",
+    "plugin-architecture",
+    "testing"
+  ],
+  "quality": {
+    "security": "high",
+    "accessibility": "high",
+    "architecture": "modular"
+  },
+  "documentation": {
+    "entrypoint": "README.md",
+    "canonical_format": "markdown",
+    "source_locale": "pt-BR",
+    "audiences": [
+      "developer",
+      "architect",
+      "user",
+      "agent"
+    ]
+  },
+  "workforce": {
+    "core_skills": [
+      "clean-code",
+      "cognitive-clarity",
+      "architecture-quality",
+      "accessibility",
+      "lang-rust",
+      "testing-quality",
+      "implementation-reality-verification"
+    ]
+  }
+}
