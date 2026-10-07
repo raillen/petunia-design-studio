@@ -25,9 +25,11 @@ Use a busca no topo — ou pressione **/** — para localizar rapidamente tipos,
 
 Se você está entrando no projeto agora, leia nesta ordem:
 
-1. [Fronteiras e invariantes](#/docs/00-architecture/boundaries.md)
-2. [Matriz de implementação](#/docs/00-architecture/implementation-matrix.md)
-3. [Não destrutibilidade](#/docs/00-architecture/non-destructive.md)
-4. Depois avance para o domínio que estiver implementando.
+1. [Manifesto de engenharia](#/docs/00-philosophy/manifesto.md)
+2. [Princípios de refatoração](#/docs/00-philosophy/refactor-principles.md)
+3. [Qualidade de código](#/docs/00-philosophy/code-quality.md)
+4. [Fronteiras e invariantes](#/docs/00-architecture/boundaries.md)
+5. [Não destrutibilidade](#/docs/00-architecture/non-destructive.md)
+6. Depois avance para o domínio que estiver implementando.
 
 A documentação é iterativa: decisões consolidadas devem acompanhar o código, e mudanças estruturais importantes devem ser registradas como ADR.
