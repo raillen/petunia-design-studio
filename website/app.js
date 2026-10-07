@@ -7,6 +7,7 @@ const search = document.querySelector("#search");
 const searchResults = document.querySelector("#searchResults");
 const sidebar = document.querySelector("#sidebar");
 const collapseAll = document.querySelector("#collapseAll");
+const themeToggle = document.querySelector("#themeToggle");
 
 const cache = new Map();
 
@@ -25,6 +26,39 @@ const domainIcons = {
   render: "ph-image-square",
   ui: "ph-layout"
 };
+
+const THEME_STORAGE_KEY = "petunia-docs-theme";
+
+function applyTheme(theme, persist) {
+  const nextTheme = theme === "dark" ? "dark" : "light";
+  const isDark = nextTheme === "dark";
+
+  document.documentElement.dataset.theme = nextTheme;
+  document.documentElement.style.colorScheme = nextTheme;
+
+  if (themeToggle) {
+    const label = isDark ? "Ativar tema claro" : "Ativar tema escuro";
+    const icon = themeToggle.querySelector(".ph");
+
+    themeToggle.setAttribute("aria-label", label);
+    themeToggle.setAttribute("title", label);
+    themeToggle.setAttribute("aria-pressed", String(isDark));
+
+    if (icon) {
+      icon.className = isDark ? "ph ph-sun" : "ph ph-moon";
+    }
+  }
+
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+    } catch (_) {}
+  }
+}
+
+function initializeTheme() {
+  applyTheme(document.documentElement.dataset.theme || "light", false);
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, function (char) {
@@ -651,6 +685,15 @@ collapseAll.addEventListener("click", function () {
     details.open = false;
   });
 });
+
+if (themeToggle) {
+  themeToggle.addEventListener("click", function () {
+    const current = document.documentElement.dataset.theme || "light";
+    applyTheme(current === "dark" ? "light" : "dark", true);
+  });
+}
+
+initializeTheme();
 
 window.addEventListener("hashchange", route);
 window.addEventListener("DOMContentLoaded", initialize);
