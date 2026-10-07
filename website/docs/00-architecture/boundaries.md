@@ -6,17 +6,119 @@ Esta página define **quem é dono de cada decisão**. A regra principal é simp
 
 ## Direção de dependências
 
+**Dependência** aqui significa uma crate conhecer tipos ou APIs de outra crate. Isso não é a mesma coisa que a ordem em que funções são chamadas durante a execução.
+
+A direção definida para a arquitetura atual é:
+
 ```text
-petunia-ui ───────┐
-                  ├──> petunia-engine ───> petunia-core
-petunia-render ───┘            │
-        └──────────────────────>┘
+                 petunia-ui
+                ↙    ↓    ↘
+             Core  Engine  Render
+                    ↓       ↓
+                 petunia-core
 ```
 
-- `petunia-core` não conhece Qt, GPU, filesystem de UI ou widgets.
-- `petunia-engine` conhece modelos do Core, mas não QML/Qt.
-- `petunia-render` lê snapshots do Core e resultados avaliados; não altera o documento.
-- `petunia-ui` traduz intenção humana em Commands e estados de sessão.
+De forma explícita:
+
+```text
+petunia-core
+└── não depende de nenhum outro domínio Petunia
+
+petunia-engine
+└── pode depender de petunia-core
+    não depende de petunia-render ou petunia-ui
+
+petunia-render
+└── pode depender de petunia-core
+    não depende de petunia-engine ou petunia-ui
+
+petunia-ui
+└── pode depender de Core, Engine e Render
+    egui existe somente nesta camada
+```
+
+### Core como base
+
+`petunia-core` contém a representação autoral e persistente. Ele não conhece `egui`, widgets, janela, renderer ou algoritmos de UI.
+
+Isso permite testar e usar o domínio sem inicializar interface gráfica.
+
+### Engine
+
+`petunia-engine` recebe tipos Petunia do Core, executa cálculos e devolve resultados Petunia.
+
+Bibliotecas como `kurbo` e `i_overlay` podem ser usadas internamente, mas seus tipos não devem atravessar a API pública por conveniência quando forem apenas detalhes de implementação.
+
+### Render
+
+`petunia-render` transforma estado de leitura em pixels. Ele pode conhecer tipos estáveis do Core, mas não deve executar algoritmos que pertencem ao Engine nem modificar o documento.
+
+Se Engine e Render passarem a precisar compartilhar um modelo derivado significativo, uma crate neutra de contrato poderá ser extraída. **Não criaremos essa quinta crate antecipadamente.**
+
+Essa regra aplica o princípio de não criar abstração antes de existir necessidade real.
+
+### Interface
+
+`petunia-ui` usa `egui` para apresentação e interação.
+
+`egui` pode conhecer:
+
+- widgets;
+- painéis;
+- foco;
+- eventos de pointer/teclado;
+- estado transitório de ferramenta;
+- layout do workspace.
+
+`egui` não decide:
+
+- geometria;
+- topologia;
+- snapping;
+- regras de documento;
+- shaping de texto;
+- efeitos;
+- composição.
+
+### Dependências externas
+
+Uma biblioteca externa precisa ter um domínio proprietário.
+
+Exemplos:
+
+| Dependência | Proprietário principal |
+|---|---|
+| `kurbo` | Engine / Geometry |
+| `i_overlay` | Engine / Geometry |
+| `palette` | Engine / Color |
+| `rustybuzz` | Engine / Text |
+| `fontdue` | Render / rasterização de glifos |
+| `rayon` | Engine e Render, internamente |
+| `serde` | Core / persistência |
+| `uuid` | Core / identidade |
+| `egui` | UI |
+
+“Proprietário” significa que aquele domínio decide como a biblioteca é encapsulada. Não significa que uma dependência nunca possa ser usada em outro lugar; exceções precisam de justificativa arquitetural.
+
+### Adapter
+
+Um **adapter** é uma camada pequena que converte entre o modelo Petunia e a API de uma biblioteca.
+
+```text
+VectorPath Petunia
+      ↓ adapter
+tipo esperado por kurbo/i_overlay
+      ↓ algoritmo
+resultado externo
+      ↓ adapter
+VectorPath Petunia
+```
+
+Isso impede que trocar uma biblioteca obrigue a alterar o formato PTND ou toda a aplicação.
+
+### Regra
+
+> Tipos de terceiros não atravessam fronteiras públicas de domínio apenas por conveniência.
 
 ## Quatro tipos de estado
 
@@ -88,4 +190,4 @@ Criar um ADR quando mudarem: representação canônica de paths; formato PTND; m
 
 **Headless** significa executar sem janela, display server ou interface gráfica.
 
-Pergunte: “consigo executar isto headless?”. Boolean, snapping, import, export, text layout e filtros devem funcionar sem Qt. Se uma operação matemática precisar instanciar `QObject`, a fronteira está errada.
+Pergunte: “consigo executar isto headless?”. Boolean, snapping, import, export, text layout e filtros devem funcionar sem `egui` e sem criar uma janela. Se uma operação matemática precisar de `egui::Context`, a fronteira está errada.
