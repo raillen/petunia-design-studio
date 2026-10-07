@@ -1,0 +1,59 @@
+{
+  "domains": [
+    {
+      "id": "architecture",
+      "title": "Arquitetura",
+      "files": [
+        {"title": "Fronteiras e invariantes", "path": "00-architecture/boundaries.md"},
+        {"title": "Matriz de implementação", "path": "00-architecture/implementation-matrix.md"},
+        {"title": "Não destrutibilidade", "path": "00-architecture/non-destructive.md"}
+      ]
+    },
+    {
+      "id": "core",
+      "title": "Núcleo · petunia-core",
+      "files": [
+        {"title": "color.rs", "path": "01-core/color.md"},
+        {"title": "math.rs", "path": "01-core/math.md"},
+        {"title": "path.rs", "path": "01-core/path.md"},
+        {"title": "scene.rs", "path": "01-core/scene.md"},
+        {"title": "document.rs", "path": "01-core/document.md"},
+        {"title": "appearance + effects", "path": "01-core/appearance-effects.md"},
+        {"title": "texto, raster e recursos", "path": "01-core/text-raster-resources.md"},
+        {"title": "IDs e serialização", "path": "01-core/ids-serialization.md"}
+      ]
+    },
+    {
+      "id": "engine",
+      "title": "Engine · petunia-engine",
+      "files": [
+        {"title": "geometry", "path": "02-engine/geometry.md"},
+        {"title": "spatial + snapping", "path": "02-engine/spatial.md"},
+        {"title": "commands + history", "path": "02-engine/commands-history.md"},
+        {"title": "brush + raster", "path": "02-engine/brush-raster.md"},
+        {"title": "text + layout", "path": "02-engine/text-layout.md"},
+        {"title": "color management", "path": "02-engine/color-management.md"},
+        {"title": "I/O, jobs e plugins", "path": "02-engine/io-jobs-plugins.md"}
+      ]
+    },
+    {
+      "id": "render",
+      "title": "Render · petunia-render",
+      "files": [
+        {"title": "pipeline e render graph", "path": "03-render/pipeline.md"},
+        {"title": "composição e efeitos", "path": "03-render/compositing-effects.md"},
+        {"title": "cache, overlays e output", "path": "03-render/cache-overlay-output.md"}
+      ]
+    },
+    {
+      "id": "ui",
+      "title": "Interface · petunia-ui",
+      "files": [
+        {"title": "sessão e input", "path": "04-ui/session-input.md"},
+        {"title": "ferramentas", "path": "04-ui/tools.md"},
+        {"title": "workspace", "path": "04-ui/workspace.md"},
+        {"title": "acessibilidade", "path": "04-ui/accessibility.md"}
+      ]
+    }
+  ]
+}

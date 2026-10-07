@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentação arquitetural e matriz de implementação do Petunia Design Studio.">
+  <title>Petunia Design — Documentação</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#content">Pular para o conteúdo</a>
+  <header class="topbar">
+    <button class="mobile-menu" id="mobileMenu" aria-label="Abrir navegação" aria-expanded="false">☰</button>
+    <a class="brand" href="#/docs/00-architecture/boundaries.md">petunia design</a>
+    <nav class="topnav" aria-label="Navegação principal">
+      <a href="#/docs/00-architecture/boundaries.md">documentação</a>
+      <a href="#/docs/about.md">sobre</a>
+    </nav>
+    <div class="search-wrap">
+      <label class="sr-only" for="search">Buscar na documentação</label>
+      <input id="search" type="search" placeholder="Buscar...  /" autocomplete="off" spellcheck="false">
+      <div id="searchResults" class="search-results" hidden></div>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Índice da documentação">
+      <div class="sidebar-heading">
+        <span>Arquitetura</span>
+        <button id="collapseAll" class="text-button" type="button">recolher</button>
+      </div>
+      <nav id="docNav"></nav>
+    </aside>
+
+    <main id="content" class="content" tabindex="-1">
+      <div class="loading">Carregando documentação…</div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="Nesta página">
+      <div class="toc-title">Nesta página</div>
+      <nav id="pageToc"></nav>
+    </aside>
+  </div>
+
+  <noscript>Esta documentação precisa de JavaScript habilitado para carregar os arquivos Markdown.</noscript>
+  <script src="./app.js" defer></script>
+</body>
+</html>
