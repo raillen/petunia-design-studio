@@ -33,3 +33,10 @@ Se você está entrando no projeto agora, leia nesta ordem:
 6. Depois avance para o domínio que estiver implementando.
 
 A documentação é iterativa: decisões consolidadas devem acompanhar o código, e mudanças estruturais importantes devem ser registradas como ADR.
+
+
+## Roadmap
+
+O [Roadmap de capacidades](#/docs/00-roadmap/capabilities.md) registra as funcionalidades aprovadas para o horizonte do produto sem congelar APIs antes da hora.
+
+As features são especificadas em detalhe somente quando o domínio técnico que as sustenta estiver maduro. **Placed 3D permanece explicitamente pós-`v0.1.0-stable`.**
