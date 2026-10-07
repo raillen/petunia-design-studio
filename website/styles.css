@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   --bgColor-default: #ffffff;
   --bgColor-muted: #f6f8fa;
@@ -53,8 +53,8 @@
   font-synthesis: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+html[data-theme="dark"] {
+  color-scheme: dark;
     --bgColor-default: #0d1117;
     --bgColor-muted: #161b22;
     --bgColor-inset: #010409;
@@ -75,8 +75,7 @@
     --fgColor-danger: #f85149;
     --bgColor-danger-muted: #f8514926;
     --shadow-small: 0 0 transparent;
-    --shadow-medium: 0 8px 24px #01040980;
-  }
+  --shadow-medium: 0 8px 24px #01040980;
 }
 
 * {
@@ -250,6 +249,14 @@ a:focus-visible {
 
 .mobile-menu {
   display: none;
+}
+
+.theme-toggle {
+  flex: 0 0 auto;
+}
+
+.theme-toggle .ph {
+  pointer-events: none;
 }
 
 .search-wrap {
@@ -1143,72 +1150,70 @@ h3:hover .heading-anchor,
   background-clip: padding-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  .sidebar {
-    background: #0d1117;
-    border-right-color: #21262d;
-  }
+html[data-theme="dark"] .sidebar {
+  background: #0d1117;
+  border-right-color: #21262d;
+}
 
-  .sidebar-heading {
-    color: #e6edf3;
-  }
+html[data-theme="dark"] .sidebar-heading {
+  color: #e6edf3;
+}
 
-  .sidebar .eyebrow {
-    color: #7d8590;
-  }
+html[data-theme="dark"] .sidebar .eyebrow {
+  color: #7d8590;
+}
 
-  .sidebar .quiet-button {
-    color: #8d96a0;
-  }
+html[data-theme="dark"] .sidebar .quiet-button {
+  color: #8d96a0;
+}
 
-  .sidebar .quiet-button:hover,
-  .sidebar .quiet-button:focus-visible {
-    background: #161b22;
-    color: #e6edf3;
-  }
+html[data-theme="dark"] .sidebar .quiet-button:hover,
+html[data-theme="dark"] .sidebar .quiet-button:focus-visible {
+  background: #161b22;
+  color: #e6edf3;
+}
 
-  .sidebar .nav-domain > summary {
-    color: #e6edf3 !important;
-  }
+html[data-theme="dark"] .sidebar .nav-domain > summary {
+  color: #e6edf3 !important;
+}
 
-  .sidebar .nav-domain-icon,
-  .sidebar .nav-caret {
-    color: #7d8590;
-  }
+html[data-theme="dark"] .sidebar .nav-domain-icon,
+html[data-theme="dark"] .sidebar .nav-caret {
+  color: #7d8590;
+}
 
-  .sidebar .nav-file > summary,
-  .sidebar .file-overview,
-  .sidebar .topic-link,
-  .sidebar .nav-home {
-    color: #8d96a0 !important;
-  }
+html[data-theme="dark"] .sidebar .nav-file > summary,
+html[data-theme="dark"] .sidebar .file-overview,
+html[data-theme="dark"] .sidebar .topic-link,
+html[data-theme="dark"] .sidebar .nav-home {
+  color: #8d96a0 !important;
+}
 
-  .sidebar .nav-domain > summary:hover,
-  .sidebar .nav-domain > summary:focus-visible,
-  .sidebar .nav-file > summary:hover,
-  .sidebar .nav-file > summary:focus-visible {
-    background: #161b22 !important;
-    color: #e6edf3 !important;
-  }
+html[data-theme="dark"] .sidebar .nav-domain > summary:hover,
+html[data-theme="dark"] .sidebar .nav-domain > summary:focus-visible,
+html[data-theme="dark"] .sidebar .nav-file > summary:hover,
+html[data-theme="dark"] .sidebar .nav-file > summary:focus-visible {
+  background: #161b22 !important;
+  color: #e6edf3 !important;
+}
 
-  .sidebar .file-overview:hover,
-  .sidebar .file-overview:focus-visible,
-  .sidebar .topic-link:hover,
-  .sidebar .topic-link:focus-visible,
-  .sidebar .file-overview.active,
-  .sidebar .topic-link.active,
-  .sidebar .nav-home:hover,
-  .sidebar .nav-home:focus-visible,
-  .sidebar .nav-home.active {
-    background: #1f6feb26 !important;
-    color: #58a6ff !important;
-  }
+html[data-theme="dark"] .sidebar .file-overview:hover,
+html[data-theme="dark"] .sidebar .file-overview:focus-visible,
+html[data-theme="dark"] .sidebar .topic-link:hover,
+html[data-theme="dark"] .sidebar .topic-link:focus-visible,
+html[data-theme="dark"] .sidebar .file-overview.active,
+html[data-theme="dark"] .sidebar .topic-link.active,
+html[data-theme="dark"] .sidebar .nav-home:hover,
+html[data-theme="dark"] .sidebar .nav-home:focus-visible,
+html[data-theme="dark"] .sidebar .nav-home.active {
+  background: #1f6feb26 !important;
+  color: #58a6ff !important;
+}
 
-  .sidebar .nav-file-children::before {
-    background: #30363d;
-  }
+html[data-theme="dark"] .sidebar .nav-file-children::before {
+  background: #30363d;
+}
 
-  .sidebar .nav-domain + .nav-domain {
-    border-top-color: #21262d !important;
-  }
+html[data-theme="dark"] .sidebar .nav-domain + .nav-domain {
+  border-top-color: #21262d !important;
 }
