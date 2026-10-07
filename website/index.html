@@ -1,11 +1,23 @@
 <!doctype html>
-<html lang="pt-BR" class="wa-theme-default">
+<html lang="pt-BR" class="wa-theme-default" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Documentação arquitetural e matriz de implementação do Petunia Design Studio.">
   <meta name="color-scheme" content="light dark">
   <title>Petunia Design — Documentação</title>
+
+  <script>
+    (function () {
+      var theme = "light";
+      try {
+        if (localStorage.getItem("petunia-docs-theme") === "dark") {
+          theme = "dark";
+        }
+      } catch (_) {}
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
 
   <link rel="stylesheet" href="https://ka-f.webawesome.com/webawesome@3.14.0/styles/themes/default.css">
   <script type="module" src="https://ka-f.webawesome.com/webawesome@3.14.0/webawesome.loader.js"></script>
@@ -49,6 +61,17 @@
         <a href="#/docs/home.md">documentação</a>
         <a href="#/docs/about.md">sobre</a>
       </nav>
+
+      <button
+        id="themeToggle"
+        class="icon-button theme-toggle"
+        type="button"
+        aria-label="Ativar tema escuro"
+        aria-pressed="false"
+        title="Ativar tema escuro"
+      >
+        <i class="ph ph-moon" aria-hidden="true"></i>
+      </button>
 
       <div class="search-wrap">
         <label class="sr-only" for="search">Buscar na documentação</label>
