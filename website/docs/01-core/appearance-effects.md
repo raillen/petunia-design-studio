@@ -1,6 +1,8 @@
 # appearance + effects
 
-Appearance descreve **como a geometria é pintada**. Effects descrevem operações reavaliáveis aplicadas em fases bem definidas.
+**Appearance** descreve como uma geometria é pintada: fills, strokes, opacity e blend.
+
+**Effect** descreve uma operação reavaliável aplicada antes ou depois da pintura, como blur, shadow ou ajuste de cor.
 
 ## Appearance
 
@@ -39,20 +41,28 @@ pub enum Paint {
 }
 ```
 
-Gradiente guarda geometry em object/document space claramente indicado. O renderer não pode “adivinhar” a unidade dos stops.
+Um gradiente precisa declarar em qual sistema de coordenadas vive:
+
+- **object space** — relativo ao próprio objeto;
+- **document space** — relativo ao documento.
+
+Um **stop** é um ponto do gradiente que define posição e cor. O renderer não pode “adivinhar” a unidade ou o espaço dos stops.
 
 ## StrokeStyle
 
+Um stroke é a linha desenhada ao redor ou ao longo de um path.
+
 Decisões obrigatórias:
-- width
-- cap: butt/round/square
-- join: miter/round/bevel
-- miter limit
-- dash pattern
-- dash offset
-- alignment: center/inside/outside quando suportado
-- variable width profile
-- start/end markers.
+
+- **width** — espessura;
+- **cap** — acabamento das extremidades abertas: butt, round ou square;
+- **join** — como dois segmentos se conectam em um canto: miter, round ou bevel;
+- **miter limit** — limite que impede pontas excessivamente longas em cantos agudos;
+- **dash pattern** — sequência de traço/espaço;
+- **dash offset** — deslocamento inicial dessa sequência;
+- **alignment** — center/inside/outside quando suportado;
+- **variable width profile** — variação da espessura ao longo do path;
+- **start/end markers** — elementos como setas nas extremidades.
 
 ## BlendMode
 
@@ -81,7 +91,11 @@ pub enum EffectKind {
 
 ## Ordem
 
-A ordem da stack é semântica. Drag na UI gera Command de reorder e invalida downstream evaluation.
+A ordem da stack é semântica.
+
+**Downstream** significa “tudo que depende deste resultado depois dele no fluxo”. Se um efeito anterior muda, os efeitos posteriores precisam ser reavaliados.
+
+Drag na UI gera Command de reorder e invalida somente a avaliação downstream afetada.
 
 ## Máscara por efeito
 
@@ -93,4 +107,6 @@ Effect params são fonte da verdade; o resultado nunca substitui pixels/paths or
 
 ## Versionamento
 
-Cada effect kind precisa de schema version ou migrador por versão do documento. Plugins precisam namespace próprio para evitar colisão com efeitos built-in.
+Cada effect kind precisa de **schema version** — versão da estrutura persistida de seus parâmetros — ou migrador por versão do documento.
+
+Plugins precisam **namespace** próprio, isto é, um prefixo/identidade que evite colisão entre nomes de efeitos de origens diferentes.
