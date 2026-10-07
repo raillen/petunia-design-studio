@@ -1,48 +1,130 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="wa-theme-default">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Documentação arquitetural e matriz de implementação do Petunia Design Studio.">
+  <meta name="color-scheme" content="light dark">
   <title>Petunia Design — Documentação</title>
+
+  <link rel="stylesheet" href="https://ka-f.webawesome.com/webawesome@3.14.0/styles/webawesome.css">
+  <script type="module" src="https://ka-f.webawesome.com/webawesome@3.14.0/webawesome.loader.js"></script>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css">
+
   <link rel="stylesheet" href="./styles.css">
+
+  <script defer src="https://cdn.jsdelivr.net/npm/marked@18.0.14/lib/marked.umd.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/fuse.js@7.5.0/dist/fuse.min.js"></script>
+  <script defer src="./app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.4/dist/cdn.min.js"></script>
 </head>
-<body>
+
+<body
+  x-data="{ navOpen: false }"
+  @keydown.escape.window="navOpen = false"
+>
   <a class="skip-link" href="#content">Pular para o conteúdo</a>
+
   <header class="topbar">
-    <button class="mobile-menu" id="mobileMenu" aria-label="Abrir navegação" aria-expanded="false">☰</button>
-    <a class="brand" href="#/docs/00-architecture/boundaries.md">petunia design</a>
-    <nav class="topnav" aria-label="Navegação principal">
-      <a href="#/docs/00-architecture/boundaries.md">documentação</a>
-      <a href="#/docs/about.md">sobre</a>
-    </nav>
-    <div class="search-wrap">
-      <label class="sr-only" for="search">Buscar na documentação</label>
-      <input id="search" type="search" placeholder="Buscar...  /" autocomplete="off" spellcheck="false">
-      <div id="searchResults" class="search-results" hidden></div>
+    <div class="brand-zone">
+      <button
+        class="icon-button mobile-menu"
+        type="button"
+        aria-label="Abrir navegação"
+        :aria-expanded="navOpen.toString()"
+        @click="navOpen = !navOpen"
+      >
+        <i class="ph ph-list" aria-hidden="true"></i>
+      </button>
+
+      <a class="brand" href="#/docs/00-architecture/boundaries.md" aria-label="Petunia Design — início da documentação">
+        <span class="brand-mark" aria-hidden="true">p</span>
+        <span>petunia design</span>
+      </a>
+    </div>
+
+    <div class="header-actions">
+      <nav class="topnav" aria-label="Navegação principal">
+        <a href="#/docs/00-architecture/boundaries.md">documentação</a>
+        <a href="#/docs/about.md">sobre</a>
+      </nav>
+
+      <div class="search-wrap">
+        <label class="sr-only" for="search">Buscar na documentação</label>
+        <wa-input
+          id="search"
+          type="search"
+          size="s"
+          appearance="filled-outlined"
+          placeholder="Buscar na documentação"
+          autocomplete="off"
+          spellcheck="false"
+          with-clear
+        >
+          <i class="ph ph-magnifying-glass" slot="start" aria-hidden="true"></i>
+          <kbd slot="end" class="shortcut-key" aria-hidden="true">/</kbd>
+        </wa-input>
+
+        <div
+          id="searchResults"
+          class="search-results"
+          role="listbox"
+          aria-label="Resultados da busca"
+          hidden
+        ></div>
+      </div>
     </div>
   </header>
 
+  <div
+    class="sidebar-backdrop"
+    x-cloak
+    x-show="navOpen"
+    x-transition.opacity
+    @click="navOpen = false"
+    aria-hidden="true"
+  ></div>
+
   <div class="app-shell">
-    <aside class="sidebar" id="sidebar" aria-label="Índice da documentação">
+    <aside
+      class="sidebar"
+      id="sidebar"
+      :class="{ 'is-open': navOpen }"
+      aria-label="Índice da documentação"
+    >
       <div class="sidebar-heading">
-        <span>Arquitetura</span>
-        <button id="collapseAll" class="text-button" type="button">recolher</button>
+        <div>
+          <span class="eyebrow">Referência técnica</span>
+          <strong>Documentação</strong>
+        </div>
+        <button id="collapseAll" class="quiet-button" type="button">
+          <i class="ph ph-arrows-in-line-vertical" aria-hidden="true"></i>
+          <span>recolher</span>
+        </button>
       </div>
-      <nav id="docNav"></nav>
+
+      <nav id="docNav" class="doc-nav" aria-label="Domínios e arquivos"></nav>
     </aside>
 
     <main id="content" class="content" tabindex="-1">
-      <div class="loading">Carregando documentação…</div>
+      <div class="loading-card" role="status">
+        <span class="loading-dot" aria-hidden="true"></span>
+        Carregando documentação…
+      </div>
     </main>
 
     <aside class="toc" id="toc" aria-label="Nesta página">
-      <div class="toc-title">Nesta página</div>
+      <div class="toc-header">
+        <i class="ph ph-list-bullets" aria-hidden="true"></i>
+        <span>Nesta página</span>
+      </div>
       <nav id="pageToc"></nav>
     </aside>
   </div>
 
-  <noscript>Esta documentação precisa de JavaScript habilitado para carregar os arquivos Markdown.</noscript>
-  <script src="./app.js" defer></script>
+  <noscript>
+    <div class="noscript">Esta documentação precisa de JavaScript habilitado para carregar os arquivos Markdown.</div>
+  </noscript>
 </body>
 </html>
