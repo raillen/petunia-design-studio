@@ -1,62 +1,239 @@
 # Color Management Engine
 
-`palette` ajuda em matemática/conversões simples, mas não substitui um CMM ICC profissional.
+`palette` ajuda em matemática e conversões simples de cor, mas não substitui um sistema profissional de gerenciamento ICC.
 
 ## CMM
 
+**CMM** significa *Color Management Module*.
+
+É o componente que calcula transformações de cor entre perfis diferentes.
+
+Exemplo:
+
+~~~text
+RGB da câmera
+   ↓ perfil de origem
+CMM
+   ↓ perfil de destino
+CMYK da impressora
+~~~
+
 Para ICC, a opção Rust madura a avaliar é `lcms2`, wrapper de Little CMS. O domínio deve escondê-lo atrás de trait para permitir testes e troca futura.
 
-```rust
+~~~rust
 pub trait ColorManagementEngine {
-    fn build_transform(&self, spec: ColorTransformSpec) -> Result<ColorTransformId>;
-    fn convert_pixels(&self, transform: ColorTransformId, src: PixelView, dst: PixelViewMut) -> Result<()>;
-    fn convert_color(&self, transform: ColorTransformId, color: ColorValue) -> Result<ColorValue>;
+    fn build_transform(
+        &self,
+        spec: ColorTransformSpec,
+    ) -> Result<ColorTransformId>;
+
+    fn convert_pixels(
+        &self,
+        transform: ColorTransformId,
+        src: PixelView,
+        dst: PixelViewMut,
+    ) -> Result<()>;
+
+    fn convert_color(
+        &self,
+        transform: ColorTransformId,
+        color: ColorValue,
+    ) -> Result<ColorValue>;
 }
-```
+~~~
+
+## ICC profile
+
+**ICC profile** descreve como os valores numéricos de um dispositivo ou espaço correspondem a cores reais.
+
+Os valores:
+
+~~~text
+R=200 G=40 B=30
+~~~
+
+não são uma cor completamente definida sem sabermos o espaço/perfil usado.
+
+O perfil fornece essa interpretação.
+
+## PCS
+
+Perfis ICC usam um espaço intermediário chamado **PCS — Profile Connection Space**.
+
+Conceitualmente:
+
+~~~text
+perfil A
+  ↓
+PCS
+  ↓
+perfil B
+~~~
+
+Isso evita precisar de uma conversão específica para cada par possível de dispositivos.
 
 ## Assign versus Convert
 
-**Assign** troca a interpretação/perfil, mantendo números. **Convert** calcula novos números para preservar aparência entre espaços. Devem ser Commands diferentes.
+**Assign profile** troca a interpretação dos mesmos números.
+
+~~~text
+números RGB permanecem iguais
+perfil muda
+aparência pode mudar
+~~~
+
+**Convert profile** recalcula os números para tentar preservar a aparência.
+
+~~~text
+cor aparente desejada permanece
+valores RGB/CMYK podem mudar
+~~~
+
+Por isso são Commands diferentes.
 
 ## Working space
 
-Documento define working profile. Recursos importados têm profile de origem. Política de import decide preservar perfil ou converter para working space.
+O **working space** é o espaço de cor principal no qual o documento trabalha.
+
+Recursos importados podem:
+
+- manter perfil próprio;
+- ser convertidos para o working space;
+- pedir decisão do usuário conforme a política definida.
+
+Essa decisão deve ser explícita.
 
 ## Rendering intents
 
-Suportar os quatro intents ICC:
-- absolute colorimetric
-- relative colorimetric
-- perceptual
-- saturation.
+Um perfil pode encontrar cores que o destino não consegue reproduzir. O **rendering intent** define a estratégia usada nessa situação.
 
-Black point compensation é configuração separada.
+Os quatro intents ICC são:
+
+### Relative colorimetric
+
+Cores que cabem no destino são preservadas o máximo possível. Cores fora do gamut são levadas ao limite reproduzível.
+
+O branco do espaço de origem é adaptado ao branco do destino.
+
+É comum em impressão quando fidelidade local é importante.
+
+### Absolute colorimetric
+
+Preserva também a relação com o branco do espaço de origem.
+
+É útil principalmente para simular a aparência de outro papel/dispositivo em soft proof.
+
+### Perceptual
+
+Pode comprimir várias cores para preservar relações visuais gerais quando o gamut do destino é menor.
+
+É útil para imagens com muitas cores fora do gamut, embora o comportamento concreto dependa do perfil/CMM.
+
+### Saturation
+
+Prioriza intensidade/saturação em vez de fidelidade colorimétrica.
+
+É mais comum em gráficos/apresentações do que em fotografia.
+
+## Black point compensation
+
+**Black Point Compensation — BPC** adapta a faixa de sombras quando o preto mais escuro da origem e do destino são diferentes.
+
+Sem compensação, detalhes escuros podem ser comprimidos de forma abrupta.
+
+BPC é configuração separada do rendering intent.
 
 ## Soft proof
 
-Soft proof é transformação de visualização/adjustment e **não modifica fonte**. Pode haver múltiplos proof presets.
+**Soft proof** simula na tela como o trabalho tende a aparecer em outro dispositivo ou condição de impressão.
 
-## Linearização
+~~~text
+documento
+  ↓
+perfil da impressão simulada
+  ↓
+perfil do monitor
+  ↓
+preview
+~~~
 
-Pipeline de composição precisa trabalhar em linear light quando a operação exigir. O Color Engine fornece transform encoded ↔ linear; Render decide onde aplicar.
+Soft proof não modifica as cores autorais do documento.
 
-## LUT cache
+## Encoded versus linear light
 
-ICC transforms podem ser caros. Cache por:
-- source profile hash
-- destination profile hash
-- intent
-- BPC
-- pixel format.
+Espaços como sRGB normalmente armazenam valores **encoded**, ajustados por uma curva de transferência para distribuição eficiente e visualização.
+
+Muitas operações de luz precisam de valores **lineares**, nos quais relações numéricas correspondem melhor à intensidade luminosa.
+
+~~~text
+encoded RGB
+   ↓ linearização
+linear RGB
+   ↓ cálculo/composição
+encoded RGB para saída
+~~~
+
+O Color Engine fornece as transformações; Render declara onde elas são necessárias.
+
+## LUT
+
+**LUT** significa *Look-Up Table*.
+
+É uma tabela pré-calculada usada para substituir cálculos repetitivos por consultas rápidas.
+
+Exemplo conceitual:
+
+~~~text
+entrada 0.00 → saída ...
+entrada 0.01 → saída ...
+entrada 0.02 → saída ...
+...
+~~~
+
+Transformações ICC podem ser caras. O Engine pode cachear transformações/LUTs por:
+
+- hash do perfil de origem;
+- hash do perfil de destino;
+- rendering intent;
+- BPC;
+- formato de pixel.
+
+A LUT é cache derivado e reconstruível.
 
 ## Spot colors
 
-Tela usa alternate color para preview, mas export/prepress mantém separação spot quando o formato permite.
+**Spot color** representa uma tinta específica de impressão, não apenas uma cor CMYK aproximada.
+
+Na tela usamos uma cor alternativa para preview. Na exportação compatível, a identidade da tinta precisa permanecer preservada.
+
+## Gamut
+
+**Gamut** é o conjunto de cores que um espaço ou dispositivo consegue representar.
+
+Uma cor pode existir no working space e ficar fora do gamut de uma impressora.
 
 ## Gamut warning
 
-Engine calcula out-of-gamut mask; Render colore overlay. Não alterar pixels.
+O Engine pode gerar uma máscara das regiões fora do gamut.
+
+~~~text
+documento
+   ↓
+teste contra destino
+   ↓
+máscara out-of-gamut
+   ↓
+overlay visual
+~~~
+
+Render mostra o aviso; o documento não é alterado.
 
 ## HDR
 
-Não fechar arquitetura em 0…1. Perfis/transfer functions futuras podem incluir HDR; tipos internos devem aceitar valores float estendidos e metadata apropriada.
+**HDR — High Dynamic Range** representa faixas de luminância mais amplas do que pipelines tradicionais.
+
+Por isso a arquitetura não deve assumir que todos os canais ficam permanentemente entre 0 e 1.
+
+Valores float intermediários podem ultrapassar esse intervalo antes da etapa de output/tone mapping.
+
+A política HDR completa fica aberta até existir caso de uso concreto.
