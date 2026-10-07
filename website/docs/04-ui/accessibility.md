@@ -8,7 +8,7 @@ Toda ação de ponteiro relevante deve possuir rota de teclado quando semanticam
 
 ## Screen reader
 
-Elementos QML precisam:
+Widgets e componentes `egui` precisam expor semântica de acessibilidade:
 - role
 - accessible name
 - state
