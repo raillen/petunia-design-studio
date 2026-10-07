@@ -21,6 +21,7 @@ let keyboardResultIndex = -1;
 
 const domainIcons = {
   philosophy: "ph-flower-lotus",
+  roadmap: "ph-map-trifold",
   architecture: "ph-compass",
   core: "ph-cube",
   engine: "ph-gear",
