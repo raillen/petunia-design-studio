@@ -1000,3 +1000,215 @@ h3:hover .heading-anchor,
     color: #000;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Sidebar reset
+   Web Awesome's native stylesheet intentionally styles HTML details/summary.
+   The documentation navigation owns its visual language, so we neutralize
+   those native presentation rules here and keep only their accessible behavior.
+   -------------------------------------------------------------------------- */
+
+.sidebar .doc-nav details,
+.sidebar .doc-nav details[open] {
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: inherit !important;
+}
+
+.sidebar .doc-nav details::details-content {
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.sidebar .doc-nav summary,
+.sidebar .doc-nav details[open] > summary {
+  width: 100% !important;
+  margin: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  color: inherit !important;
+  text-align: left !important;
+  justify-content: flex-start !important;
+}
+
+.sidebar .doc-nav summary::marker {
+  content: "";
+}
+
+.sidebar .doc-nav summary::-webkit-details-marker {
+  display: none !important;
+}
+
+.sidebar .nav-domain > summary {
+  min-height: 36px;
+  padding: 7px 8px !important;
+  color: var(--fgColor-default) !important;
+}
+
+.sidebar .nav-domain > summary:hover,
+.sidebar .nav-domain > summary:focus-visible {
+  background: color-mix(in srgb, var(--fgColor-muted) 10%, transparent) !important;
+}
+
+.sidebar .nav-domain + .nav-domain {
+  margin-top: 10px !important;
+  padding-top: 10px !important;
+  border-top: 1px solid var(--borderColor-muted) !important;
+}
+
+.sidebar .nav-domain-children {
+  margin-top: 2px;
+  padding-left: 24px;
+}
+
+.sidebar .nav-file > summary {
+  min-height: 30px;
+  padding: 4px 6px !important;
+  color: var(--fgColor-muted) !important;
+  font-weight: 500;
+}
+
+.sidebar .nav-file > summary:hover,
+.sidebar .nav-file > summary:focus-visible {
+  background: color-mix(in srgb, var(--fgColor-muted) 8%, transparent) !important;
+  color: var(--fgColor-default) !important;
+}
+
+.sidebar .nav-file-children {
+  margin: 1px 0 7px 9px;
+  padding-left: 13px;
+}
+
+.sidebar .nav-file-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar .nav-caret {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.sidebar .nav-file > summary .nav-caret {
+  margin-right: 1px;
+  margin-left: 0;
+}
+
+.nav-home {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  margin: 0 0 10px;
+  padding: 7px 8px;
+  color: var(--fgColor-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.nav-home:hover,
+.nav-home:focus-visible,
+.nav-home.active {
+  background: var(--bgColor-accent-muted);
+  color: var(--fgColor-accent);
+}
+
+.nav-home .ph {
+  width: 17px;
+  text-align: center;
+}
+
+.sidebar {
+  scrollbar-color: color-mix(in srgb, var(--fgColor-muted) 42%, transparent) transparent;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fgColor-muted) 42%, transparent);
+  background-clip: padding-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar {
+    background: #0d1117;
+    border-right-color: #21262d;
+  }
+
+  .sidebar-heading {
+    color: #e6edf3;
+  }
+
+  .sidebar .eyebrow {
+    color: #7d8590;
+  }
+
+  .sidebar .quiet-button {
+    color: #8d96a0;
+  }
+
+  .sidebar .quiet-button:hover,
+  .sidebar .quiet-button:focus-visible {
+    background: #161b22;
+    color: #e6edf3;
+  }
+
+  .sidebar .nav-domain > summary {
+    color: #e6edf3 !important;
+  }
+
+  .sidebar .nav-domain-icon,
+  .sidebar .nav-caret {
+    color: #7d8590;
+  }
+
+  .sidebar .nav-file > summary,
+  .sidebar .file-overview,
+  .sidebar .topic-link,
+  .sidebar .nav-home {
+    color: #8d96a0 !important;
+  }
+
+  .sidebar .nav-domain > summary:hover,
+  .sidebar .nav-domain > summary:focus-visible,
+  .sidebar .nav-file > summary:hover,
+  .sidebar .nav-file > summary:focus-visible {
+    background: #161b22 !important;
+    color: #e6edf3 !important;
+  }
+
+  .sidebar .file-overview:hover,
+  .sidebar .file-overview:focus-visible,
+  .sidebar .topic-link:hover,
+  .sidebar .topic-link:focus-visible,
+  .sidebar .file-overview.active,
+  .sidebar .topic-link.active,
+  .sidebar .nav-home:hover,
+  .sidebar .nav-home:focus-visible,
+  .sidebar .nav-home.active {
+    background: #1f6feb26 !important;
+    color: #58a6ff !important;
+  }
+
+  .sidebar .nav-file-children::before {
+    background: #30363d;
+  }
+
+  .sidebar .nav-domain + .nav-domain {
+    border-top-color: #21262d !important;
+  }
+}
