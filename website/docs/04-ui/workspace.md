@@ -2,9 +2,13 @@
 
 Workspace é composição de interface: janelas, docking, panels, menus e contexto. Não é documento.
 
-## Qt boundary
+## egui boundary
 
-CXX-Qt, QML/Qt Quick, QtWidgets e biblioteca de docking ficam aqui. Outros crates não importam tipos Qt.
+`egui` pertence exclusivamente à camada de interface.
+
+Outros crates não importam tipos `egui`. O Core, Engine e Render expõem dados e comandos próprios; `petunia-ui` converte esses contratos em widgets e interação.
+
+A escolha de backend de janela/renderização usado para hospedar `egui` é detalhe da camada UI e não deve vazar para os outros domínios.
 
 ## Shell
 
@@ -40,7 +44,7 @@ Panel não implementa regra de domínio.
 
 ## Context bar
 
-É derivada de active tool + selection capabilities. Evitar if/else espalhado em QML; fornecer model de actions/controls.
+É derivada de active tool + selection capabilities. Evitar regras de domínio espalhadas pelo código de widgets `egui`; fornecer modelos de actions/controls derivados do estado da aplicação.
 
 ## Command registry
 
