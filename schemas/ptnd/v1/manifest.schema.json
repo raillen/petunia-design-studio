@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://petunia.dev/schemas/ptnd/v1/manifest.schema.json",
+  "title": "PTND Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "formatId",
+    "containerVersion",
+    "schemaVersion",
+    "minimumReaderVersion",
+    "writer",
+    "documentId",
+    "requiredCapabilities",
+    "resources",
+    "extensions",
+    "interchange"
+  ],
+  "properties": {
+    "formatId": { "const": "ptnd.document" },
+    "containerVersion": { "const": 1 },
+    "schemaVersion": { "const": 1 },
+    "minimumReaderVersion": { "type": "string", "minLength": 1 },
+    "writer": {
+      "type": "object",
+      "required": ["appVersion"],
+      "properties": {
+        "appVersion": { "type": "string" },
+        "buildId": { "type": "string" },
+        "platform": { "type": "string" },
+        "timestamp": { "type": "string" }
+      }
+    },
+    "documentId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "requiredCapabilities": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "path", "mediaType", "byteSize", "sha256", "canonical"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "type": "string" },
+          "path": { "type": "string" },
+          "mediaType": { "type": "string" },
+          "byteSize": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "codecVersion": { "type": "integer" },
+          "canonical": { "type": "boolean" }
+        }
+      }
+    },
+    "extensions": { "type": "array" },
+    "interchange": { "type": "array" }
+  }
+}

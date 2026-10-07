@@ -1,0 +1,12 @@
+{
+  "formatId": "ptnd.document",
+  "containerVersion": 1,
+  "schemaVersion": 1,
+  "minimumReaderVersion": "1.0",
+  "writer": { "appVersion": "0.1.0" },
+  "documentId": "11111111-2222-3333-4444-555555555555",
+  "requiredCapabilities": ["ptnd.core.vector-path.v1"],
+  "resources": [],
+  "extensions": [],
+  "interchange": []
+}

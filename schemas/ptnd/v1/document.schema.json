@@ -1,0 +1,308 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://petunia.dev/schemas/ptnd/v1/document.schema.json",
+  "title": "PTND document.json v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "documentId", "surfaces"],
+  "properties": {
+    "version": { "const": 1 },
+    "documentId": { "$ref": "#/$defs/uuid" },
+    "name": { "type": "string" },
+    "surfaces": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/surface" }
+    },
+    "libraries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/assetLibrary" }
+    },
+    "stories": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/textStory" }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "finiteNumber": { "type": "number" },
+    "color": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["colorSpace", "values"],
+      "properties": {
+        "colorSpace": { "enum": ["srgb", "display-p3", "cmyk", "lab", "gray", "spot"] },
+        "values": { "type": "array", "items": { "type": "number" }, "minItems": 1 }
+      }
+    },
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "$ref": "#/$defs/finiteNumber" },
+        "y": { "$ref": "#/$defs/finiteNumber" },
+        "width": { "$ref": "#/$defs/finiteNumber" },
+        "height": { "$ref": "#/$defs/finiteNumber" }
+      }
+    },
+    "objectBase": {
+      "type": "object",
+      "required": ["id", "type", "name"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "type": { "type": "string" },
+        "name": { "type": "string" },
+        "visible": { "type": "boolean", "default": true },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/object" } },
+        "symbolId": { "$ref": "#/$defs/uuid" },
+        "styleId": { "$ref": "#/$defs/uuid" },
+        "storyId": { "$ref": "#/$defs/uuid" },
+        "overrides": { "type": "object" }
+      }
+    },
+    "rectangle": {
+      "allOf": [
+        { "$ref": "#/$defs/objectBase" },
+        {
+          "properties": {
+            "type": { "const": "rectangle" },
+            "frame": { "$ref": "#/$defs/rect" }
+          },
+          "required": ["frame"]
+        }
+      ]
+    },
+    "ellipse": {
+      "allOf": [
+        { "$ref": "#/$defs/objectBase" },
+        {
+          "properties": {
+            "type": { "const": "ellipse" },
+            "frame": { "$ref": "#/$defs/rect" }
+          },
+          "required": ["frame"]
+        }
+      ]
+    },
+    "group": {
+      "allOf": [
+        { "$ref": "#/$defs/objectBase" },
+        { "properties": { "type": { "const": "group" } } }
+      ]
+    },
+    "ptndNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "x", "y", "kind"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "x": { "$ref": "#/$defs/finiteNumber" },
+        "y": { "$ref": "#/$defs/finiteNumber" },
+        "kind": { "enum": ["cusp", "smooth", "symmetric"] },
+        "inHandle": {
+          "type": ["array", "null"],
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "outHandle": {
+          "type": ["array", "null"],
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    },
+    "ptndContour": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "nodes", "closed"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "closed": { "type": "boolean" },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/ptndNode" } }
+      }
+    },
+    "ptndPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fillRule", "contours"],
+      "properties": {
+        "fillRule": { "enum": ["nonzero", "evenodd"] },
+        "contours": { "type": "array", "items": { "$ref": "#/$defs/ptndContour" } }
+      }
+    },
+    "ptndLive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "sourceIds"],
+      "properties": {
+        "op": { "enum": ["union", "subtract", "intersect", "xor", "divide"] },
+        "sourceIds": { "type": "array", "items": { "$ref": "#/$defs/uuid" } }
+      }
+    },
+    "path": {
+      "allOf": [
+        { "$ref": "#/$defs/objectBase" },
+        {
+          "properties": {
+            "type": { "const": "path" },
+            "frame": { "$ref": "#/$defs/rect" },
+            "path": { "$ref": "#/$defs/ptndPath" },
+            "live": { "$ref": "#/$defs/ptndLive" }
+          },
+          "required": ["frame", "path"]
+        }
+      ]
+    },
+    "text": {
+      "allOf": [
+        { "$ref": "#/$defs/objectBase" },
+        {
+          "properties": {
+            "type": { "const": "text" },
+            "frame": { "$ref": "#/$defs/rect" }
+          },
+          "required": ["frame"]
+        }
+      ]
+    },
+    "object": {
+      "oneOf": [
+        { "$ref": "#/$defs/rectangle" },
+        { "$ref": "#/$defs/ellipse" },
+        { "$ref": "#/$defs/group" },
+        { "$ref": "#/$defs/path" },
+        { "$ref": "#/$defs/text" }
+      ]
+    },
+    "surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "canvas", "objects"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string" },
+        "canvas": {
+          "type": "object",
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "number", "exclusiveMinimum": 0 },
+            "height": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        "objects": { "type": "array", "items": { "$ref": "#/$defs/object" } }
+      }
+    },
+    "symbolDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "source"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string" },
+        "source": { "$ref": "#/$defs/object" }
+      }
+    },
+    "objectStyle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "kind"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string" },
+        "kind": { "const": "object" },
+        "fill": { "type": "string" },
+        "gradient": { "type": "array", "items": { "type": "string" } },
+        "stroke": { "type": "string" },
+        "strokeWidth": { "$ref": "#/$defs/finiteNumber" },
+        "visible": { "type": "boolean" }
+      }
+    },
+    "textStyle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "kind"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string" },
+        "kind": { "enum": ["character", "paragraph"] },
+        "properties": { "type": "object" }
+      }
+    },
+    "style": {
+      "oneOf": [
+        { "$ref": "#/$defs/objectStyle" },
+        { "$ref": "#/$defs/textStyle" }
+      ]
+    },
+    "assetLibrary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "scope"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string" },
+        "scope": { "enum": ["document", "user"] },
+        "symbols": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/symbolDefinition" }
+        },
+        "styles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/style" }
+        }
+      }
+    },
+    "inlineField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end", "kind", "value"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 },
+        "kind": { "type": "string" },
+        "value": { "type": "string" },
+        "fallback": { "type": "string" }
+      }
+    },
+    "characterRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 },
+        "styleId": { "$ref": "#/$defs/uuid" },
+        "overrides": { "type": "object" }
+      }
+    },
+    "paragraphSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 },
+        "styleId": { "$ref": "#/$defs/uuid" },
+        "overrides": { "type": "object" }
+      }
+    },
+    "textStory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "text", "paragraphs", "runs"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "text": { "type": "string" },
+        "revision": { "type": "integer", "minimum": 0 },
+        "paragraphs": { "type": "array", "items": { "$ref": "#/$defs/paragraphSpan" } },
+        "runs": { "type": "array", "items": { "$ref": "#/$defs/characterRun" } },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/inlineField" } }
+      }
+    }
+  }
+}

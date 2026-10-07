@@ -1,0 +1,42 @@
+{
+  "environment": {
+    "python": "offscreen",
+    "note": "offscreen Linux container, single OS"
+  },
+  "budgets": {
+    "boolean_10k_union": 2.0,
+    "svg_export": 0.5,
+    "png_export": 2.0,
+    "ptnd_roundtrip": 1.0,
+    "flatten_100k": 1.0
+  },
+  "boolean_10k_union": {
+    "seconds": 0.1704,
+    "budget_s": 2.0,
+    "within_budget": true,
+    "result_contours": 1673,
+    "segments_per_operand": 10000
+  },
+  "flatten_100k": {
+    "seconds": 0.0511,
+    "budget_s": 1.0,
+    "within_budget": true,
+    "polyline_points": 100001
+  },
+  "svg": {
+    "seconds": 0.0001,
+    "budget_s": 0.5,
+    "within_budget": true
+  },
+  "png": {
+    "seconds": 0.0457,
+    "budget_s": 2.0,
+    "within_budget": true
+  },
+  "ptnd_roundtrip": {
+    "seconds": 0.0042,
+    "budget_s": 1.0,
+    "within_budget": true,
+    "objects_reopened": 2
+  }
+}

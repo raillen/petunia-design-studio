@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "documentId": "11111111-2222-3333-4444-555555555555",
+  "name": "Minimal",
+  "surfaces": [
+    {
+      "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "name": "Page 1",
+      "canvas": { "width": 1000, "height": 1000 },
+      "objects": [
+        {
+          "id": "01010101-0101-0101-0101-010101010101",
+          "type": "rectangle",
+          "name": "Hero",
+          "visible": true,
+          "frame": { "x": 0, "y": 0, "width": 320, "height": 200 }
+        }
+      ]
+    }
+  ]
+}

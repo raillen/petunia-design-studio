@@ -1,0 +1,10 @@
+build/
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/
+.pyright/
+python/petunia_native*.so
+compile_commands.json
+.idea/
+.vscode/

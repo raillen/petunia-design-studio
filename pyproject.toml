@@ -1,0 +1,47 @@
+[project]
+name = "petunia"
+version = "0.1.0"
+description = "Petunia Design Studio - Python/C++ desktop creative editor"
+requires-python = ">=3.13"
+dependencies = [
+    "PySide6>=6.8",
+    "PySide6-QtAds>=5.1.1",
+    "pyclipper>=1.4",
+]
+
+[dependency-groups]
+dev = [
+    "nanobind>=2.4",
+    "pytest>=8",
+    "ruff>=0.8",
+    "pyright>=1.1.390",
+]
+
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+build-dir = "build/{wheel_tag}"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["python", "tests", "tooling"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pyright]
+include = ["python", "tests"]
+typeCheckingMode = "strict"
+pythonVersion = "3.13"
+reportMissingModuleSource = false
+extraPaths = ["python", "python/stubs"]
+venvPath = "."
+venv = ".venv"

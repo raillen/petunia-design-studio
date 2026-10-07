@@ -1,0 +1,9 @@
+{
+  "roundtrip_semantic_equal": true,
+  "roundtrip_object_count": 3,
+  "svg_bytes": 1725,
+  "svg_has_path_element": true,
+  "png_bytes": 53044,
+  "pytest_exit": 0,
+  "pytest_tail": ".........                                                                [100%]"
+}
