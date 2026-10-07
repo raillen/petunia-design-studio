@@ -98,14 +98,15 @@ petunia-ui/src/
 ├── app.rs
 ├── session.rs
 ├── input.rs
-├── commands.rs
+├── actions.rs
 ├── tools/
-├── viewport.rs
-├── bridge/
+├── viewport/
+├── panels/
+├── workspace/
 └── accessibility/
 ```
 
-QML, CXX-Qt e docking permanecem na borda de UI. Nenhum tipo Qt deve entrar nos outros três crates.
+`egui` permanece na borda de UI. Nenhum tipo `egui` deve entrar em Core, Engine ou Render.
 
 ## Ordem de implementação recomendada
 
