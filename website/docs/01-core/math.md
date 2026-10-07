@@ -27,6 +27,8 @@ Bounds geométrico e bounds visual são diferentes. Stroke, blur e shadow expand
 
 ## Transform2D
 
+Uma **transformação afim** representa operações como translação, rotação, escala e skew sem precisar alterar os pontos originais do objeto.
+
 Manter matriz afim 2×3:
 
 ```text
@@ -51,7 +53,28 @@ API mínima:
 - transform_rect conservador
 - decompose/recompose
 
-Matriz singular não pode retornar NaN silenciosamente.
+### Determinante e matriz singular
+
+O **determinante** indica, entre outras coisas, se uma transformação preserva área/orientação e se pode ser invertida.
+
+Para a parte linear da matriz:
+
+~~~text
+| a c |
+| b d |
+~~~
+
+o determinante é:
+
+~~~text
+det = a × d - b × c
+~~~
+
+Se `det = 0`, a transformação colapsou pelo menos uma dimensão e não possui inversa. Ela é chamada **singular**.
+
+Exemplo: escala X = 0 transforma uma forma inteira em uma linha.
+
+Uma inversão de matriz singular deve retornar erro/Option; nunca NaN silenciosamente.
 
 ## Sistemas de coordenadas
 
@@ -84,6 +107,10 @@ DPI é necessário para conversões que envolvem pixel físico/documental. Não 
 
 ## Tolerâncias
 
+Números de ponto flutuante não representam todos os valores reais exatamente. Por isso comparar resultados geométricos com `a == b` muitas vezes é inadequado.
+
+Uma **tolerância** define quanto erro é aceitável para uma operação específica.
+
 Não criar `const EPSILON: f64` global para todas as operações.
 
 Usar contextos:
@@ -96,6 +123,12 @@ Usar contextos:
 Uma tolerância boa para hit-test em zoom 10% é diferente da usada para decidir se dois pontos geométricos são coincidentes.
 
 ## Pontos não finitos
+
+**NaN** significa *Not a Number*: resultado numérico inválido, como algumas operações indefinidas.
+
+**±Inf** representa infinito positivo ou negativo.
+
+Esses valores quebram premissas fundamentais de ordenação e comparação. Por exemplo, NaN não se comporta como um número comum em comparações.
 
 Na fronteira de Commands e import, rejeitar NaN/±Inf. Dados não finitos destroem ordering, bounds, spatial indices e serialização.
 
