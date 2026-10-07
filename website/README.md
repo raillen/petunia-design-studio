@@ -112,3 +112,15 @@ O conteúdo Markdown é considerado **conteúdo confiável do próprio repositó
 A rota padrão é `#/docs/home.md`. A home apresenta brevemente a arquitetura e aponta a ordem de leitura recomendada.
 
 Web Awesome carrega apenas `styles/themes/default.css` + autoloader. O stylesheet agregado `webawesome.css` não é usado porque ele também habilita Native Styles e passaria a estilizar elementos nativos da navegação, como `details` e `summary`.
+
+
+## Temas
+
+A interface possui dois temas explícitos:
+
+- **Light** — tema padrão em toda primeira visita, independentemente do tema do sistema operacional.
+- **Dark** — ativado manualmente pelo botão no header.
+
+A escolha é armazenada em `localStorage` com a chave `petunia-docs-theme`. Depois que o usuário escolhe um tema, a preferência é restaurada nas próximas visitas.
+
+O CSS usa `html[data-theme="light"]` / `html[data-theme="dark"]` em vez de `prefers-color-scheme` para impedir que o sistema operacional sobrescreva o padrão claro.
