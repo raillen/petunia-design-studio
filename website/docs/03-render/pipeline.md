@@ -23,6 +23,10 @@ pub struct RenderFrame {
 
 ## Render graph
 
+Um **render graph** descreve as etapas de renderização como uma sequência ou grafo de passes e dependências.
+
+Um **pass** é uma etapa que lê recursos e produz outros recursos, como “rasterizar vetores” ou “compor máscara”.
+
 Passes explícitos permitem:
 - offscreen surfaces
 - masks
@@ -47,19 +51,47 @@ prepare
 
 ## Culling
 
-Usar visual bounds no espaço de view. Objetos totalmente fora do viewport não geram draw work, salvo dependências de filtros/clip.
+**Culling** é descartar trabalho que não pode afetar a imagem final.
+
+Se o bounds visual de um objeto está totalmente fora do viewport, o renderer normalmente não precisa desenhá-lo.
+
+~~~text
+viewport
+┌───────────┐
+│ objeto A  │       objeto B
+└───────────┘
+
+A → renderiza
+B → pode ser descartado
+~~~
+
+Filtros, shadows ou clips podem expandir a região de influência; por isso usamos **visual bounds**, não apenas bounds geométrico.
 
 ## Tessellation
 
-É cache derivado. Key inclui path revision, stroke/fill parameters e tolerância/scale quando necessário.
+**Tessellation** converte geometria vetorial em primitivas simples, normalmente triângulos, que a GPU ou renderer raster consegue processar eficientemente.
+
+É cache derivado. A chave inclui revisão do path, parâmetros de stroke/fill e tolerância/scale quando necessário.
 
 ## CPU reference versus GPU
 
-Manter `SoftwareReferenceRenderer` como caminho determinístico de testes. GPU backend otimiza, mas sem alterar semântica.
+**CPU** executa código geral nos núcleos do processador. **GPU** executa grandes quantidades de operações gráficas/paralelas.
+
+Manter `SoftwareReferenceRenderer` como caminho determinístico de testes: uma implementação simples e previsível usada como referência de correção.
+
+O backend GPU pode otimizar agressivamente, mas não deve alterar a semântica visual além das tolerâncias documentadas.
 
 ## Device pixel ratio
 
-Document coordinates → view → device. DPR só entra no limite de output/quality e nunca modifica documento.
+**DPR — Device Pixel Ratio** é a relação entre uma unidade lógica de interface e pixels físicos da tela.
+
+Em uma tela HiDPI, DPR 2 significa que uma unidade lógica pode ocupar 2×2 pixels físicos.
+
+~~~text
+Document → View → Device Pixels
+~~~
+
+DPR afeta qualidade e tamanho do target de render, mas nunca modifica geometria persistente do documento.
 
 ## Quality levels
 
