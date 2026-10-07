@@ -100,12 +100,7 @@ function fileMeta(path) {
 }
 
 function closeMobileNavigation() {
-  sidebar.classList.remove("is-open");
-
-  if (window.Alpine) {
-    const bodyData = Alpine.$data(document.body);
-    if (bodyData) bodyData.navOpen = false;
-  }
+  window.dispatchEvent(new CustomEvent("close-nav"));
 }
 
 function buildSearchIndex() {
