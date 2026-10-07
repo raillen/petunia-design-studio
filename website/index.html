@@ -23,6 +23,7 @@
 <body
   x-data="{ navOpen: false }"
   @keydown.escape.window="navOpen = false"
+  @close-nav.window="navOpen = false"
 >
   <a class="skip-link" href="#content">Pular para o conteúdo</a>
 
