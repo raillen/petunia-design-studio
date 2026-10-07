@@ -486,7 +486,7 @@ async function buildNavigation() {
   for (const domain of manifest.domains) {
     const domainDetails = document.createElement("details");
     domainDetails.className = "nav-domain";
-    domainDetails.open = true;
+    domainDetails.open = false;
 
     const domainSummary = document.createElement("summary");
     domainSummary.innerHTML =
@@ -576,9 +576,14 @@ async function initialize() {
 
     await preloadDocumentation();
     await buildNavigation();
-    await loadFuse();
+
+    // A documentação deve abrir mesmo se o CDN de busca estiver lento ou indisponível.
     buildSearchIndex();
     route();
+
+    loadFuse().then(function () {
+      buildSearchIndex();
+    });
   } catch (error) {
     content.innerHTML =
       '<div class="error-card">' +
