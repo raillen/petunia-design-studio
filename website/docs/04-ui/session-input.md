@@ -43,7 +43,7 @@ pub struct PointerSample {
 }
 ```
 
-A camada de integração com `egui` traduz os eventos recebidos pelo backend de janela para esse formato normalizado.
+A camada Qt/CXX-Qt traduz eventos nativos de mouse, teclado e caneta para esse formato normalizado antes de entregá-los às ferramentas.
 
 ## Actions
 
