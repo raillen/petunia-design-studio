@@ -392,14 +392,35 @@ Isso é infraestrutura de recuperação, não parte do formato autoral PTND.
 
 ### DocumentRevision e dirty state
 
-`DocumentRevision` muda somente após uma alteração autoral commitada.
+`DocumentRevision` identifica um **estado autoral do histórico**.
+
+Uma nova alteração commitada cria uma nova revision. Undo e Redo não criam revisions artificiais: eles navegam entre estados já existentes.
+
+```text
+Revision 18 ← saved
+    ↓
+Revision 19
+    ↓
+Revision 20
+
+Undo
+↓
+current_revision = 19
+
+Undo
+↓
+current_revision = 18
+→ clean novamente
+```
+
+Se o usuário cria uma nova edição depois de Undo, essa edição recebe uma nova identidade e o redo branch antigo é descartado na v0.1.
 
 ```rust
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct DocumentRevision(u64);
 ```
 
-Não muda por:
+A revision não muda por:
 
 - hover;
 - zoom;
@@ -409,7 +430,7 @@ Não muda por:
 - rebuild de cache;
 - soft proof.
 
-**Dirty** significa “existem alterações autorais ainda não salvas”.
+**Dirty** significa “o estado autoral atual é diferente do estado salvo”.
 
 Não manter um boolean autoritativo. Derivar:
 
@@ -417,21 +438,13 @@ Não manter um boolean autoritativo. Derivar:
 is_dirty = current_revision != saved_revision
 ```
 
-Exemplo:
+No save:
 
 ```text
-current = 18
-saved   = 18
-→ clean
-
-current = 19
-saved   = 18
-→ dirty
-
-save
-saved = 19
-→ clean
+saved_revision = current_revision
 ```
+
+Essa semântica permite que Undo retorne exatamente ao estado salvo e torne o documento clean sem heurística adicional.
 
 ### Invariantes
 
@@ -441,7 +454,7 @@ saved = 19
 4. Derived State pode sempre ser descartado e reconstruído.
 5. Application Settings são persistidas separadamente do documento.
 6. Uma propriedade possui exatamente um dono autoritativo.
-7. `DocumentRevision` muda somente após alteração autoral commitada.
+7. `DocumentRevision` identifica estados autorais; novas revisions surgem em commits e Undo/Redo navegam entre revisions existentes.
 8. Dirty state é derivado de `current_revision != saved_revision`.
 9. View State não entra no PTND na v0.1.
 10. Recovery pode persistir estado operacional sem transformá-lo em Document State.
