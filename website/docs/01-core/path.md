@@ -48,7 +48,31 @@ Isso é **regra de edição**, não muda a curva já armazenada até um handle s
 
 ## FillRule
 
-Suportar `NonZero` e `EvenOdd`. Eles determinam interior de self-intersections e compound paths; não são “opção do renderer” apenas. Precisam sobreviver a SVG/PDF roundtrip.
+**Fill rule** define quais regiões de um path contam como “dentro” quando contornos se cruzam ou existem furos.
+
+### EvenOdd
+
+Traçamos conceitualmente uma linha do ponto até fora da forma e contamos quantas bordas ela cruza.
+
+- número ímpar de cruzamentos → dentro;
+- número par → fora.
+
+~~~text
+1 cruzamento  → dentro
+2 cruzamentos → fora
+3 cruzamentos → dentro
+~~~
+
+### NonZero
+
+NonZero considera também a direção em que cada contorno cruza a linha imaginária. Cruzamentos em sentidos opostos se cancelam.
+
+Em vez de apenas par/ímpar, acumulamos um **winding number** — um contador de orientação.
+
+- resultado diferente de zero → dentro;
+- resultado zero → fora.
+
+O Petunia deve suportar `NonZero` e `EvenOdd` porque SVG/PDF e compound paths dependem dessa semântica. A regra precisa ser persistida no Core, não inferida pelo renderer.
 
 ## Orientação de contorno
 
@@ -98,7 +122,19 @@ Todas são Geometry Engine.
 
 ## Curvas e precisão
 
-Para cúbica Bézier, a avaliação pode usar De Casteljau por estabilidade numérica. Bounds exatos consideram extrema internas, não apenas anchors. Arc length é aproximado por tolerância adaptativa.
+A avaliação e subdivisão de Bézier deve usar **De Casteljau**, explicado em [Geometry Engine](#/docs/02-engine/geometry.md#de-casteljau).
+
+**Extrema internas** são pontos dentro da curva onde X ou Y atinge um máximo ou mínimo local. Bounds exatos precisam considerá-las, não apenas anchors.
+
+**Arc length** é o comprimento ao longo da curva. Como uma Bézier cúbica normalmente não possui uma fórmula prática simples para comprimento exato, o Engine usa aproximação adaptativa:
+
+1. estima o comprimento do trecho;
+2. compara com uma aproximação mais refinada;
+3. se o erro for pequeno, aceita;
+4. caso contrário, subdivide;
+5. repete até atingir a tolerância.
+
+“Tolerância adaptativa” significa justamente isso: regiões simples usam poucas subdivisões; regiões curvas usam mais.
 
 ## IDs internos
 
