@@ -11,7 +11,7 @@ Esta documentação descreve **as decisões antes da implementação** — tipos
 | **Núcleo** | Documento, scene graph, paths, cores, texto, recursos e dados persistentes. |
 | **Engine** | Geometria, snapping, brushes, raster, layout, color management, commands e I/O. |
 | **Render** | Rasterização, composição, efeitos, caches, overlays e saída para tela/export. |
-| **Interface** | Workspace, ferramentas, input, painéis, atalhos, acessibilidade e integração Qt/QML. |
+| **Interface** | Workspace, ferramentas, input, painéis, atalhos, acessibilidade e integração egui. |
 
 > A regra central é simples: **dados autorais ficam no Núcleo; cálculos ficam no Engine; pixels ficam no Render; interação fica na Interface.**
 
