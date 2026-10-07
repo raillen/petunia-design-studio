@@ -1,221 +1,593 @@
 const MANIFEST_URL = "./docs/manifest.json";
+
 const nav = document.querySelector("#docNav");
 const content = document.querySelector("#content");
 const pageToc = document.querySelector("#pageToc");
 const search = document.querySelector("#search");
 const searchResults = document.querySelector("#searchResults");
 const sidebar = document.querySelector("#sidebar");
-const mobileMenu = document.querySelector("#mobileMenu");
+const collapseAll = document.querySelector("#collapseAll");
+
 const cache = new Map();
-let manifest;
 
-const esc = (s) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const slug = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+let manifest = null;
+let fuse = null;
+let currentPath = null;
+let tocObserver = null;
+let keyboardResultIndex = -1;
 
-function inline(text) {
-  let out = esc(text);
-  out = out.replace(/\`([^\`]+)\`/g, "<code>$1</code>");
-  out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  out = out.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
-  return out;
+const domainIcons = {
+  architecture: "ph-compass",
+  core: "ph-cube",
+  engine: "ph-gear",
+  render: "ph-image-square",
+  ui: "ph-layout"
+};
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, function (char) {
+    return {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[char];
+  });
 }
 
-function parseMarkdown(md) {
-  const lines = md.replace(/\r/g, "").split("\n");
-  const html = [];
-  let i = 0, inCode = false, code = [], list = null;
-  const closeList = () => { if (list) { html.push(`</${list}>`); list = null; } };
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    if (line.startsWith("```")) {
-      closeList();
-      if (!inCode) { inCode = true; code = []; }
-      else { html.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`); inCode = false; }
-      i++; continue;
-    }
-    if (inCode) { code.push(line); i++; continue; }
-
-    const heading = /^(#{1,4})\s+(.+)$/.exec(line);
-    if (heading) {
-      closeList();
-      const level = heading[1].length;
-      const title = heading[2].replace(/[*`]/g, "");
-      html.push(`<h${level} id="${slug(title)}">${inline(heading[2])}</h${level}>`);
-      i++; continue;
-    }
-
-    if (line.trim() && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}/.test(lines[i+1])) {
-      closeList();
-      const headers = line.split("|").map(x=>x.trim()).filter(Boolean);
-      i += 2;
-      const rows = [];
-      while (i < lines.length && lines[i].includes("|") && lines[i].trim()) {
-        rows.push(lines[i].split("|").map(x=>x.trim()).filter(Boolean)); i++;
-      }
-      html.push("<table><thead><tr>" + headers.map(x=>`<th>${inline(x)}</th>`).join("") + "</tr></thead><tbody>" +
-        rows.map(r=>"<tr>"+r.map(x=>`<td>${inline(x)}</td>`).join("")+"</tr>").join("") + "</tbody></table>");
-      continue;
-    }
-
-    const ul = /^\s*[-*]\s+(.+)$/.exec(line);
-    const ol = /^\s*\d+\.\s+(.+)$/.exec(line);
-    if (ul || ol) {
-      const type = ul ? "ul" : "ol";
-      if (list !== type) { closeList(); list = type; html.push(`<${type}>`); }
-      html.push(`<li>${inline((ul||ol)[1])}</li>`); i++; continue;
-    }
-    closeList();
-
-    if (/^---+$/.test(line.trim())) { html.push("<hr>"); i++; continue; }
-    if (line.startsWith("> ")) { html.push(`<blockquote><p>${inline(line.slice(2))}</p></blockquote>`); i++; continue; }
-    if (!line.trim()) { i++; continue; }
-
-    const para = [line.trim()]; i++;
-    while (i < lines.length && lines[i].trim() && !/^(#{1,4})\s/.test(lines[i]) && !/^\s*[-*]\s+/.test(lines[i]) && !/^\s*\d+\.\s+/.test(lines[i]) && !lines[i].startsWith("```") && !lines[i].startsWith("> ")) {
-      if (i + 1 < lines.length && /^\s*\|?\s*:?-{3,}/.test(lines[i+1])) break;
-      para.push(lines[i].trim()); i++;
-    }
-    html.push(`<p>${inline(para.join(" "))}</p>`);
-  }
-  closeList();
-  return html.join("\n");
+function slugify(value) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
-function headings(md) {
-  return md.split("\n").map(line => {
-    const m = /^(#{2,3})\s+(.+)$/.exec(line);
-    return m ? {level:m[1].length, title:m[2].replace(/[*`]/g,""), id:slug(m[2].replace(/[*`]/g,""))} : null;
-  }).filter(Boolean);
+function stripMarkdown(markdown) {
+  return markdown
+    .replace(/\x60\x60\x60[\s\S]*?\x60\x60\x60/g, " ")
+    .replace(/\x60([^\x60]+)\x60/g, "$1")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[#>*_~|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sourceHeadings(markdown) {
+  return markdown
+    .split("\n")
+    .map(function (line) {
+      const match = /^(#{2,3})\s+(.+)$/.exec(line);
+      if (!match) return null;
+      const title = match[2].replace(/[*\x60]/g, "").trim();
+      return { level: match[1].length, title: title, id: slugify(title) };
+    })
+    .filter(Boolean);
 }
 
 async function loadText(path) {
   if (cache.has(path)) return cache.get(path);
-  const res = await fetch("./docs/" + path);
-  if (!res.ok) throw new Error(`Falha ao carregar ${path}`);
-  const text = await res.text();
+
+  const response = await fetch("./docs/" + path);
+  if (!response.ok) {
+    throw new Error("Falha ao carregar " + path + " (" + response.status + ")");
+  }
+
+  const text = await response.text();
   cache.set(path, text);
   return text;
 }
 
 function fileMeta(path) {
   for (const domain of manifest.domains) {
-    const file = domain.files.find(f => f.path === path);
-    if (file) return {domain, file};
+    const file = domain.files.find(function (candidate) {
+      return candidate.path === path;
+    });
+    if (file) return { domain: domain, file: file };
   }
-  if (path === "about.md") return {domain:{title:"Projeto"}, file:{title:"Sobre", path}};
+
+  if (path === "about.md") {
+    return {
+      domain: { id: "project", title: "Projeto" },
+      file: { title: "Sobre", path: path }
+    };
+  }
+
   return null;
 }
 
-function setPageToc(items) {
-  pageToc.innerHTML = items.map(h => `<a data-level="${h.level}" href="#${h.id}">${esc(h.title)}</a>`).join("");
+function closeMobileNavigation() {
+  sidebar.classList.remove("is-open");
+
+  if (window.Alpine) {
+    const bodyData = Alpine.$data(document.body);
+    if (bodyData) bodyData.navOpen = false;
+  }
 }
 
-function setActive(path) {
-  document.querySelectorAll(".file-link").forEach(a => a.classList.toggle("active", a.dataset.path === path));
+function buildSearchIndex() {
+  const documents = [];
+
+  for (const domain of manifest.domains) {
+    for (const file of domain.files) {
+      const markdown = cache.get(file.path) || "";
+      documents.push({
+        path: file.path,
+        title: file.title,
+        domain: domain.title,
+        headings: sourceHeadings(markdown).map(function (item) {
+          return item.title;
+        }).join(" "),
+        content: stripMarkdown(markdown)
+      });
+    }
+  }
+
+  const about = cache.get("about.md") || "";
+  documents.push({
+    path: "about.md",
+    title: "Sobre",
+    domain: "Projeto",
+    headings: sourceHeadings(about).map(function (item) {
+      return item.title;
+    }).join(" "),
+    content: stripMarkdown(about)
+  });
+
+  fuse = new Fuse(documents, {
+    keys: [
+      { name: "title", weight: 0.38 },
+      { name: "headings", weight: 0.30 },
+      { name: "domain", weight: 0.12 },
+      { name: "content", weight: 0.20 }
+    ],
+    threshold: 0.34,
+    distance: 120,
+    ignoreLocation: true,
+    includeScore: true,
+    minMatchCharLength: 2
+  });
+}
+
+function excerptFor(item, query) {
+  const text = item.content;
+  if (!text) return item.domain;
+
+  const normalizedText = text.toLocaleLowerCase("pt-BR");
+  const normalizedQuery = query.toLocaleLowerCase("pt-BR");
+  const position = normalizedText.indexOf(normalizedQuery);
+
+  if (position >= 0) {
+    const start = Math.max(0, position - 58);
+    const end = Math.min(text.length, position + query.length + 105);
+    return (start > 0 ? "…" : "") +
+      text.slice(start, end) +
+      (end < text.length ? "…" : "");
+  }
+
+  return text.length > 160 ? text.slice(0, 160) + "…" : text;
+}
+
+function resetKeyboardSearchSelection() {
+  keyboardResultIndex = -1;
+  document.querySelectorAll(".search-result").forEach(function (item) {
+    item.classList.remove("is-keyboard-active");
+  });
+}
+
+function renderSearchResults(query) {
+  const cleanQuery = query.trim();
+
+  if (cleanQuery.length < 2 || !fuse) {
+    searchResults.hidden = true;
+    searchResults.innerHTML = "";
+    resetKeyboardSearchSelection();
+    return;
+  }
+
+  const results = fuse.search(cleanQuery, { limit: 10 });
+
+  if (!results.length) {
+    searchResults.innerHTML =
+      '<div class="search-empty">' +
+      '<i class="ph ph-magnifying-glass" aria-hidden="true"></i> ' +
+      "Nenhum resultado para “" + escapeHtml(cleanQuery) + "”." +
+      "</div>";
+    searchResults.hidden = false;
+    resetKeyboardSearchSelection();
+    return;
+  }
+
+  searchResults.innerHTML = results.map(function (result) {
+    const item = result.item;
+    return (
+      '<a class="search-result" role="option" href="#/docs/' + item.path + '">' +
+        '<span class="search-result-icon">' +
+          '<i class="ph ph-file-text" aria-hidden="true"></i>' +
+        "</span>" +
+        "<span>" +
+          "<strong>" + escapeHtml(item.title) + "</strong>" +
+          "<small>" +
+            escapeHtml(item.domain) + " · " +
+            escapeHtml(excerptFor(item, cleanQuery)) +
+          "</small>" +
+        "</span>" +
+      "</a>"
+    );
+  }).join("");
+
+  searchResults.hidden = false;
+  resetKeyboardSearchSelection();
+}
+
+function moveSearchSelection(delta) {
+  const items = Array.from(searchResults.querySelectorAll(".search-result"));
+  if (!items.length || searchResults.hidden) return;
+
+  keyboardResultIndex = Math.max(
+    0,
+    Math.min(items.length - 1, keyboardResultIndex + delta)
+  );
+
+  items.forEach(function (item, index) {
+    item.classList.toggle("is-keyboard-active", index === keyboardResultIndex);
+  });
+
+  items[keyboardResultIndex].scrollIntoView({ block: "nearest" });
+}
+
+function setActiveFile(path) {
+  document.querySelectorAll(".file-overview").forEach(function (link) {
+    const active = link.dataset.path === path;
+    link.classList.toggle("active", active);
+
+    if (active) {
+      link.setAttribute("aria-current", "page");
+      const fileDetails = link.closest(".nav-file");
+      const domainDetails = link.closest(".nav-domain");
+      if (fileDetails) fileDetails.open = true;
+      if (domainDetails) domainDetails.open = true;
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  });
+}
+
+function setActiveTopic(topicId) {
+  document.querySelectorAll(".topic-link").forEach(function (link) {
+    link.classList.toggle(
+      "active",
+      link.dataset.path === currentPath && link.dataset.topic === topicId
+    );
+  });
+
+  document.querySelectorAll("#pageToc a").forEach(function (link) {
+    link.classList.toggle("active", link.dataset.topic === topicId);
+  });
+}
+
+function buildPageToc() {
+  const headings = Array.from(
+    content.querySelectorAll(".markdown-body h2, .markdown-body h3")
+  );
+
+  pageToc.innerHTML = headings.map(function (heading) {
+    const level = heading.tagName === "H2" ? 2 : 3;
+    const label = heading.dataset.cleanTitle || heading.textContent.trim();
+    return (
+      '<a data-level="' + level + '"' +
+      ' data-topic="' + heading.id + '"' +
+      ' href="#/docs/' + currentPath + "#" + heading.id + '">' +
+      escapeHtml(label) +
+      "</a>"
+    );
+  }).join("");
+
+  if (tocObserver) tocObserver.disconnect();
+
+  tocObserver = new IntersectionObserver(function (entries) {
+    const visible = entries
+      .filter(function (entry) {
+        return entry.isIntersecting;
+      })
+      .sort(function (a, b) {
+        return a.boundingClientRect.top - b.boundingClientRect.top;
+      });
+
+    if (visible.length) {
+      setActiveTopic(visible[0].target.id);
+    }
+  }, {
+    rootMargin: "-88px 0px -68% 0px",
+    threshold: 0
+  });
+
+  headings.forEach(function (heading) {
+    tocObserver.observe(heading);
+  });
+}
+
+function enhanceRenderedMarkdown() {
+  const usedIds = new Map();
+
+  content.querySelectorAll(
+    ".markdown-body h1, .markdown-body h2, .markdown-body h3"
+  ).forEach(function (heading) {
+    const cleanTitle = heading.textContent.trim();
+    const base = slugify(cleanTitle) || "secao";
+    const count = usedIds.get(base) || 0;
+
+    usedIds.set(base, count + 1);
+    heading.id = count ? base + "-" + (count + 1) : base;
+    heading.dataset.cleanTitle = cleanTitle;
+
+    if (heading.tagName !== "H1") {
+      const anchor = document.createElement("a");
+      anchor.className = "heading-anchor";
+      anchor.href = "#/docs/" + currentPath + "#" + heading.id;
+      anchor.setAttribute("aria-label", "Link para " + cleanTitle);
+      anchor.innerHTML = '<i class="ph ph-link" aria-hidden="true"></i>';
+      heading.append(anchor);
+    }
+  });
+
+  content.querySelectorAll('.markdown-body a[href^="http"]').forEach(function (link) {
+    link.target = "_blank";
+    link.rel = "noreferrer";
+  });
+
+  content.querySelectorAll(".markdown-body table").forEach(function (table) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "table-scroll";
+    table.parentNode.insertBefore(wrapper, table);
+    wrapper.append(table);
+  });
+
+  content.querySelectorAll(".markdown-body pre").forEach(function (pre) {
+    const code = pre.querySelector("code");
+    if (!code) return;
+
+    const button = document.createElement("button");
+    button.className = "code-copy";
+    button.type = "button";
+    button.setAttribute("aria-label", "Copiar código");
+    button.innerHTML = '<i class="ph ph-copy" aria-hidden="true"></i>';
+
+    button.addEventListener("click", async function () {
+      try {
+        await navigator.clipboard.writeText(code.textContent || "");
+        button.innerHTML = '<i class="ph ph-check" aria-hidden="true"></i>';
+        button.setAttribute("aria-label", "Código copiado");
+
+        setTimeout(function () {
+          button.innerHTML = '<i class="ph ph-copy" aria-hidden="true"></i>';
+          button.setAttribute("aria-label", "Copiar código");
+        }, 1300);
+      } catch {
+        button.setAttribute("aria-label", "Não foi possível copiar");
+      }
+    });
+
+    pre.append(button);
+  });
 }
 
 async function openDoc(path, anchor) {
   try {
-    const md = await loadText(path);
+    currentPath = path;
+    const markdown = await loadText(path);
     const meta = fileMeta(path);
-    content.innerHTML = `<div class="doc-kicker">${esc(meta?.domain.title || "Documentação")}</div>` + parseMarkdown(md);
-    setPageToc(headings(md));
-    setActive(path);
-    document.title = `${meta?.file.title || "Documentação"} — Petunia Design`;
-    if (anchor) requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView());
-    else window.scrollTo({top:0});
-    content.focus({preventScroll:true});
-    sidebar.classList.remove("open");
-    mobileMenu.setAttribute("aria-expanded","false");
-  } catch (err) {
-    content.innerHTML = `<div class="error-card"><strong>Não foi possível carregar a página.</strong><p>${esc(err.message)}</p><p>Sirva a pasta <code>website/</code> por HTTP; navegadores normalmente bloqueiam <code>fetch()</code> quando o HTML é aberto diretamente por <code>file://</code>.</p></div>`;
+
+    if (!window.marked) {
+      throw new Error("Marked não foi carregado pelo CDN.");
+    }
+
+    content.innerHTML =
+      '<div class="doc-context">' +
+        '<i class="ph ph-book-open-text" aria-hidden="true"></i>' +
+        "<span>" + escapeHtml(meta ? meta.domain.title : "Documentação") + "</span>" +
+      "</div>" +
+      '<article class="markdown-body">' +
+        marked.parse(markdown, { gfm: true, breaks: false }) +
+      "</article>";
+
+    enhanceRenderedMarkdown();
+    buildPageToc();
+    setActiveFile(path);
+
+    document.title =
+      (meta ? meta.file.title : "Documentação") + " — Petunia Design";
+
+    if (anchor) {
+      requestAnimationFrame(function () {
+        const target = document.getElementById(anchor);
+        if (target) target.scrollIntoView({ block: "start" });
+        setActiveTopic(anchor);
+      });
+    } else {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
+
+    content.focus({ preventScroll: true });
+    closeMobileNavigation();
+  } catch (error) {
+    content.innerHTML =
+      '<div class="error-card">' +
+        "<strong>Não foi possível carregar a página.</strong>" +
+        "<p>" + escapeHtml(error.message) + "</p>" +
+        "<p>Sirva a pasta website/ por HTTP; navegadores normalmente bloqueiam fetch() em file://.</p>" +
+      "</div>";
   }
 }
 
-async function buildNav() {
+async function buildNavigation() {
   nav.innerHTML = "";
+
   for (const domain of manifest.domains) {
-    const domainWrap = document.createElement("div");
-    domainWrap.className = "nav-domain";
-    const button = document.createElement("button");
-    button.className = "nav-toggle"; button.type = "button"; button.setAttribute("aria-expanded","true");
-    button.innerHTML = `<span class="chevron">›</span><span>${esc(domain.title)}</span>`;
-    const children = document.createElement("div"); children.className = "nav-children";
-    button.addEventListener("click", () => {
-      const open = button.getAttribute("aria-expanded") === "true";
-      button.setAttribute("aria-expanded", String(!open)); children.hidden = open;
-    });
-    domainWrap.append(button, children);
+    const domainDetails = document.createElement("details");
+    domainDetails.className = "nav-domain";
+    domainDetails.open = true;
+
+    const domainSummary = document.createElement("summary");
+    domainSummary.innerHTML =
+      '<i class="ph ' +
+      (domainIcons[domain.id] || "ph-folder") +
+      ' nav-domain-icon" aria-hidden="true"></i>' +
+      "<span>" + escapeHtml(domain.title) + "</span>" +
+      '<i class="ph ph-caret-right nav-caret" aria-hidden="true"></i>';
+
+    const domainChildren = document.createElement("div");
+    domainChildren.className = "nav-domain-children";
 
     for (const file of domain.files) {
-      const md = await loadText(file.path);
-      const wrap = document.createElement("div"); wrap.className = "nav-file";
-      const row = document.createElement("button"); row.className = "nav-toggle"; row.type = "button"; row.setAttribute("aria-expanded","false");
-      const link = document.createElement("a"); link.className = "file-link"; link.dataset.path = file.path; link.href = `#/docs/${file.path}`; link.textContent = file.title;
-      row.innerHTML = '<span class="chevron">›</span>';
-      row.append(link);
-      const topics = document.createElement("div"); topics.className = "nav-children"; topics.hidden = true;
-      headings(md).filter(h=>h.level===2).forEach(h => {
-        const a = document.createElement("a"); a.className = "topic-link"; a.href = `#/docs/${file.path}#${h.id}`; a.textContent = h.title; topics.append(a);
-      });
-      row.addEventListener("click", e => {
-        if (e.target.closest("a")) return;
-        const open = row.getAttribute("aria-expanded")==="true"; row.setAttribute("aria-expanded",String(!open)); topics.hidden=open;
-      });
-      wrap.append(row, topics); children.append(wrap);
+      const markdown = await loadText(file.path);
+      const fileDetails = document.createElement("details");
+      fileDetails.className = "nav-file";
+
+      const fileSummary = document.createElement("summary");
+      fileSummary.innerHTML =
+        '<i class="ph ph-caret-right nav-caret" aria-hidden="true"></i>' +
+        '<span class="nav-file-title">' + escapeHtml(file.title) + "</span>";
+
+      const fileChildren = document.createElement("div");
+      fileChildren.className = "nav-file-children";
+
+      const overview = document.createElement("a");
+      overview.className = "file-overview";
+      overview.href = "#/docs/" + file.path;
+      overview.dataset.path = file.path;
+      overview.textContent = "Visão geral";
+      fileChildren.append(overview);
+
+      sourceHeadings(markdown)
+        .filter(function (item) {
+          return item.level === 2;
+        })
+        .forEach(function (item) {
+          const link = document.createElement("a");
+          link.className = "topic-link";
+          link.href = "#/docs/" + file.path + "#" + item.id;
+          link.dataset.path = file.path;
+          link.dataset.topic = item.id;
+          link.textContent = item.title;
+          fileChildren.append(link);
+        });
+
+      fileDetails.append(fileSummary, fileChildren);
+      domainChildren.append(fileDetails);
     }
-    nav.append(domainWrap);
+
+    domainDetails.append(domainSummary, domainChildren);
+    nav.append(domainDetails);
   }
 }
 
-async function preload() {
-  await Promise.all(manifest.domains.flatMap(d => d.files.map(f => loadText(f.path))));
-  await loadText("about.md");
-}
+async function preloadDocumentation() {
+  const paths = manifest.domains.flatMap(function (domain) {
+    return domain.files.map(function (file) {
+      return file.path;
+    });
+  });
 
-function doSearch(q) {
-  q = q.trim().toLowerCase();
-  if (q.length < 2) { searchResults.hidden = true; return; }
-  const results = [];
-  for (const domain of manifest.domains) for (const file of domain.files) {
-    const md = cache.get(file.path) || "";
-    const hay = (file.title + "\n" + md).toLowerCase();
-    const pos = hay.indexOf(q);
-    if (pos >= 0) {
-      const plain = md.replace(/[#*\`>|]/g," ").replace(/\s+/g," ");
-      const p = plain.toLowerCase().indexOf(q);
-      const excerpt = p >= 0 ? plain.slice(Math.max(0,p-55), p+q.length+95) : domain.title;
-      results.push({domain:domain.title,file,excerpt});
-    }
-  }
-  searchResults.innerHTML = results.slice(0,12).map(r => `<a class="search-result" href="#/docs/${r.file.path}"><strong>${esc(r.file.title)}</strong><small>${esc(r.domain)} · …${esc(r.excerpt)}…</small></a>`).join("") || '<div class="search-result">Nenhum resultado.</div>';
-  searchResults.hidden = false;
+  paths.push("about.md");
+  await Promise.all(paths.map(loadText));
 }
 
 function route() {
   const raw = location.hash || "#/docs/00-architecture/boundaries.md";
-  const m = /^#\/docs\/([^#]+)(?:#(.+))?$/.exec(raw);
-  openDoc(m ? m[1] : "00-architecture/boundaries.md", m?.[2]);
+  const match = /^#\/docs\/([^#]+)(?:#(.+))?$/.exec(raw);
+
+  if (!match) {
+    openDoc("00-architecture/boundaries.md");
+    return;
+  }
+
+  openDoc(match[1], match[2]);
 }
 
-(async function init(){
-  const res = await fetch(MANIFEST_URL);
-  manifest = await res.json();
-  await preload();
-  await buildNav();
-  route();
-})();
+async function initialize() {
+  try {
+    const response = await fetch(MANIFEST_URL);
+    if (!response.ok) {
+      throw new Error("Manifesto da documentação indisponível.");
+    }
+
+    manifest = await response.json();
+
+    await preloadDocumentation();
+    await buildNavigation();
+    buildSearchIndex();
+    route();
+  } catch (error) {
+    content.innerHTML =
+      '<div class="error-card">' +
+        "<strong>Falha ao iniciar a documentação.</strong>" +
+        "<p>" + escapeHtml(error.message) + "</p>" +
+      "</div>";
+  }
+}
+
+search.addEventListener("input", function () {
+  renderSearchResults(search.value || "");
+});
+
+search.addEventListener("wa-clear", function () {
+  renderSearchResults("");
+});
+
+search.addEventListener("keydown", function (event) {
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    moveSearchSelection(1);
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    moveSearchSelection(-1);
+  } else if (event.key === "Enter" && keyboardResultIndex >= 0) {
+    const items = Array.from(searchResults.querySelectorAll(".search-result"));
+    if (items[keyboardResultIndex]) items[keyboardResultIndex].click();
+  } else if (event.key === "Escape") {
+    searchResults.hidden = true;
+    keyboardResultIndex = -1;
+    search.blur();
+  }
+});
+
+searchResults.addEventListener("click", function (event) {
+  if (event.target.closest(".search-result")) {
+    searchResults.hidden = true;
+    search.value = "";
+    keyboardResultIndex = -1;
+  }
+});
+
+document.addEventListener("keydown", function (event) {
+  if (
+    event.key === "/" &&
+    document.activeElement !== search &&
+    !["INPUT", "TEXTAREA"].includes(
+      document.activeElement ? document.activeElement.tagName : ""
+    )
+  ) {
+    event.preventDefault();
+    search.focus();
+  }
+});
+
+document.addEventListener("click", function (event) {
+  if (!event.target.closest(".search-wrap")) {
+    searchResults.hidden = true;
+    keyboardResultIndex = -1;
+  }
+});
+
+collapseAll.addEventListener("click", function () {
+  document.querySelectorAll(".doc-nav details").forEach(function (details) {
+    details.open = false;
+  });
+});
 
 window.addEventListener("hashchange", route);
-search.addEventListener("input", () => doSearch(search.value));
-search.addEventListener("keydown", e => { if (e.key==="Escape") { search.value=""; searchResults.hidden=true; search.blur(); }});
-document.addEventListener("keydown", e => { if (e.key==="/" && document.activeElement !== search) { e.preventDefault(); search.focus(); }});
-document.addEventListener("click", e => { if (!e.target.closest(".search-wrap")) searchResults.hidden = true; });
-mobileMenu.addEventListener("click", () => { const open=sidebar.classList.toggle("open"); mobileMenu.setAttribute("aria-expanded",String(open)); });
-document.querySelector("#collapseAll").addEventListener("click", () => {
-  document.querySelectorAll(".nav-toggle").forEach(b=>b.setAttribute("aria-expanded","false"));
-  document.querySelectorAll(".nav-children").forEach(el=>el.hidden=true);
-});
+window.addEventListener("DOMContentLoaded", initialize);
