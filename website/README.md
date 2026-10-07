@@ -16,7 +16,7 @@ Tudo é carregado diretamente por CDN:
 | Phosphor Icons Web | 2.1.2 | iconografia |
 | Alpine.js | 3.17.4 | estado pequeno de interface/mobile |
 | Marked | 18.0.14 | Markdown → HTML |
-| Fuse.js | 7.5.0 | busca fuzzy tolerante a erros |
+| Fuse.js | 7.5.0 | busca fuzzy via módulo ESM; fallback textual se o CDN falhar |
 | Markdown | — | fonte canônica da documentação |
 
 O CSS local não copia o Primer. Ele adota os mesmos **princípios semânticos**: canvas/foreground/border/accent, hierarquia tipográfica discreta, bordas sutis, linhas de leitura curtas, estados claros e responsividade.
@@ -31,6 +31,7 @@ website/
 ├── README.md
 └── docs/
     ├── manifest.json
+    ├── home.md
     ├── about.md
     ├── 00-architecture/
     ├── 01-core/
@@ -104,3 +105,10 @@ Se no futuro a documentação precisar funcionar 100% offline, os mesmos assets 
 ## Segurança do Markdown
 
 O conteúdo Markdown é considerado **conteúdo confiável do próprio repositório**. Marked não é um sanitizador HTML. Se no futuro o site aceitar Markdown de usuários ou fontes externas, adicionar sanitização explícita antes de inserir o HTML no DOM.
+
+
+## Entrada da documentação
+
+A rota padrão é `#/docs/home.md`. A home apresenta brevemente a arquitetura e aponta a ordem de leitura recomendada.
+
+Web Awesome carrega apenas `styles/themes/default.css` + autoloader. O stylesheet agregado `webawesome.css` não é usado porque ele também habilita Native Styles e passaria a estilizar elementos nativos da navegação, como `details` e `summary`.
