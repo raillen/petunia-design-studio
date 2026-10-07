@@ -2,7 +2,7 @@
 
 Editor desktop open source de **vetor + raster + layout**, construído em Rust com arquitetura modular e edição não destrutiva.
 
-A interface escolhida é **egui**. Core, Engine e Render permanecem independentes da UI.
+A interface escolhida é **Qt/QML via CXX-Qt**. Core, Engine e Render permanecem independentes da UI.
 
 ## Workspace
 
@@ -11,7 +11,7 @@ crates/
 ├── petunia-core    # documento, scene, paths, cor e invariantes
 ├── petunia-engine  # geometria, snapping, commands e avaliação
 ├── petunia-render  # rasterização, composição, caches e output
-└── petunia-ui      # egui, ferramentas, workspace e interação
+└── petunia-ui      # Qt/QML via CXX-Qt, ferramentas, workspace e interação
 ```
 
 A direção arquitetural é:
@@ -26,7 +26,7 @@ Engine não depende de Render/UI. Render não depende de Engine/UI. Core não de
 ## Stack base
 
 - Rust
-- egui — interface
+- Qt/QML via CXX-Qt — interface
 - kurbo — curvas e geometria
 - i_overlay — operações booleanas/topologia
 - palette — matemática de cor
@@ -38,7 +38,7 @@ Engine não depende de Render/UI. Render não depende de Engine/UI. Core não de
 - uuid — identidade
 - thiserror — erros tipados
 
-A integração concreta de `egui` será adicionada ao `petunia-ui` conforme a implementação da interface avançar; a escolha arquitetural já está definida.
+A integração concreta de Qt/QML via `CXX-Qt` será adicionada ao `petunia-ui` conforme a implementação da interface avançar; a escolha arquitetural já está definida.
 
 ## Comandos
 
