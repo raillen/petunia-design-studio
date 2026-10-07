@@ -434,6 +434,14 @@ function enhanceRenderedMarkdown() {
     const code = pre.querySelector("code");
     if (!code) return;
 
+    if (window.hljs) {
+      try {
+        hljs.highlightElement(code);
+      } catch (error) {
+        console.warn("Falha ao aplicar syntax highlight.", error);
+      }
+    }
+
     const button = document.createElement("button");
     button.className = "code-copy";
     button.type = "button";
