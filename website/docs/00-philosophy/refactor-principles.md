@@ -65,7 +65,7 @@ Quando tudo muda ao mesmo tempo, fica difícil provar o que causou uma regressã
 
 Nenhuma crate externa define a arquitetura do produto.
 
-Tipos de `kurbo`, `egui`, `i_overlay`, `palette` ou qualquer dependência devem atravessar camadas apenas quando essa exposição for deliberada e estável.
+Tipos de `kurbo`, Qt/CXX-Qt, `i_overlay`, `palette` ou qualquer dependência devem atravessar camadas apenas quando essa exposição for deliberada e estável.
 
 Quando a dependência é detalhe de implementação, encapsule-a.
 
