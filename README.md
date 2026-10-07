@@ -1,49 +1,64 @@
 # Petunia Design Studio
 
-Desktop creative editor (vector + raster + layout) — Python 3.14 / PySide6 / Qt **QML (Qt Quick)**, C++23 core, nanobind bindings.
+Editor desktop open source de **vetor + raster + layout**, construído em Rust com arquitetura modular e edição não destrutiva.
 
-## Bootstrap
+A interface escolhida é **egui**. Core, Engine e Render permanecem independentes da UI.
 
-```bash
-uv venv --python 3.14 .venv
-uv pip install --python .venv/bin/python nanobind pytest ruff pyright PySide6 jsonschema pyclipper
-cmake --preset debug -Dnanobind_DIR=$(.venv/bin/python -m nanobind --cmake_dir)
-cmake --build --preset debug
+## Workspace
+
+```text
+crates/
+├── petunia-core    # documento, scene, paths, cor e invariantes
+├── petunia-engine  # geometria, snapping, commands e avaliação
+├── petunia-render  # rasterização, composição, caches e output
+└── petunia-ui      # egui, ferramentas, workspace e interação
 ```
 
-## Everyday commands
+A direção arquitetural é:
 
-```bash
-# C++ tests
-./build/debug/cpp/petunia_core/tests/core_smoke
-ctest --preset debug
-
-# Python tests
-.venv/bin/python -m pytest
-
-# Lint / typecheck
-.venv/bin/ruff check python tests tooling
-.venv/bin/pyright
-
-# App smoke launch (offscreen)
-PYTHONPATH=python QT_QPA_PLATFORM=offscreen .venv/bin/python -m petunia_app --smoke
-
-# PTND schema validation
-.venv/bin/python tooling/validate_ptnd.py document examples/minimal.document.json
+```text
+UI → Engine → Core
+UI → Render → Core
 ```
 
-## Layout
+Engine não depende de Render/UI. Render não depende de Engine/UI. Core não depende dos outros domínios Petunia.
 
-- `cpp/petunia_core` — C++23 core (ids, math, error, document, command, jobs)
-- `bindings/python` — nanobind module `petunia_native`
-- `python/petunia_app` — PySide6 application shell
-- `python/petunia_app/qml/main.qml` — Qt Quick studio shell (toolbar, canvas, inspector, layers)
-- `python/petunia_app/bridge.py` — QObject bridge between QML and document model (G014/G016/G017)
-- `python/petunia_app/model.py` — document model, commands, history, snapping, groups (G023–G025 baseline)
-- `python/petunia_app/paths.py` — canonical VectorPath/Contour/Node model, cubic math, topology ops (G029)
-- `python/petunia_app/boolean.py` — boolean engine, compound paths, Shape Builder region engine (G031)
-- `python/stubs/pyclipper.pyi` — type stubs for the pyclipper backend
-- `python/petunia_app/exporters.py` — SVG export baseline (G027)
-- `schemas/ptnd/v1` — PTND v1 JSON schemas
-- `docs/` — canonical design notebook (779 docs)
-- `examples/` — minimal valid PTND JSON
+## Stack base
+
+- Rust
+- egui — interface
+- kurbo — curvas e geometria
+- i_overlay — operações booleanas/topologia
+- palette — matemática de cor
+- rustybuzz — text shaping
+- fontdue — rasterização de glifos
+- image — codecs bitmap
+- rayon — paralelismo de CPU
+- serde — persistência
+- uuid — identidade
+- thiserror — erros tipados
+
+A integração concreta de `egui` será adicionada ao `petunia-ui` conforme a implementação da interface avançar; a escolha arquitetural já está definida.
+
+## Comandos
+
+```bash
+cargo check --workspace
+cargo test --workspace
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets
+```
+
+## Documentação
+
+A documentação técnica navegável vive em `website/`.
+
+Para executar localmente:
+
+```bash
+python3 -m http.server 8080 -d website
+```
+
+Abra `http://localhost:8080`.
+
+A documentação é a fonte canônica das decisões arquiteturais, filosofia, roadmap e matriz de implementação.
