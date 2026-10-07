@@ -9,7 +9,7 @@ Manter quatro fronteiras claras:
 - **Núcleo** — dados persistentes e invariantes.
 - **Engine** — algoritmos e avaliação.
 - **Render** — pixels, composição e visualização.
-- **Interface** — interação, Qt/QML, ferramentas e workspace.
+- **Interface** — interação, egui, ferramentas e workspace.
 
 ## Como usar esta documentação
 
