@@ -32,7 +32,21 @@ struct EffectStack {
 }
 ```
 
-Porém algumas operações possuem múltiplas entradas: Live Boolean, blend entre objetos, máscaras compostas e grupos de warp. Portanto o modelo de avaliação deve aceitar uma **DAG** — Directed Acyclic Graph — mesmo que a UI inicialmente mostre uma stack.
+Porém algumas operações possuem múltiplas entradas: Live Boolean, blend entre objetos, máscaras compostas e grupos de warp. Portanto o modelo de avaliação deve aceitar uma **DAG** — *Directed Acyclic Graph*, ou **grafo direcionado sem ciclos** — mesmo que a UI inicialmente mostre uma stack.
+
+Um grafo é um conjunto de nós conectados. “Direcionado” significa que cada conexão possui sentido; “sem ciclos” significa que não pode existir um caminho que volte ao mesmo nó.
+
+~~~text
+Image
+  ↓
+Blur ──────┐
+           ↓
+        Composite
+           ↑
+Vector ────┘
+~~~
+
+Esse formato permite que uma operação dependa de mais de uma entrada sem permitir dependências infinitas como `A → B → A`.
 
 ```rust
 struct EffectInstance {
@@ -75,13 +89,15 @@ O usuário deve conseguir distinguir “adicionar live blur” de “aplicar blu
 
 ## Revisões e invalidação
 
-Cada objeto e operação precisa participar de revision tracking.
+Cada objeto e operação precisa participar de **revision tracking**: um número ou marcador muda quando aquele conteúdo é alterado.
+
+A revisão permite responder rapidamente: “o cache ainda representa exatamente estes dados?”
 
 ```text
 cache key =
 node_id
 + node_revision
-+ upstream_revision
++ upstream_revision  # revisão das entradas das quais este resultado depende
 + render_scale
 + working_color_space
 + backend_features
@@ -91,7 +107,21 @@ Ao alterar apenas a cor do fill, o sistema não deve recalcular uma operação g
 
 ## Region of Interest
 
-Filtros raster devem declarar quanto expandem a região necessária. Blur, shadow e glow precisam de pixels além do bounds original. O evaluator consulta o efeito de trás para frente para descobrir a área de entrada necessária e evita processar a tela inteira.
+**Region of Interest — ROI** é a menor região que precisa ser processada para gerar a saída solicitada.
+
+Filtros raster devem declarar quanto expandem essa região. Blur, shadow e glow precisam ler pixels além do bounds final porque pixels vizinhos influenciam o resultado.
+
+O **evaluator** — componente que percorre e calcula o grafo de operações — trabalha de trás para frente para descobrir a área de entrada necessária.
+
+~~~text
+viewport pede 300 × 200 px
+        ↓
+blur precisa +20 px de borda
+        ↓
+entrada necessária = 340 × 240 px
+~~~
+
+Assim evitamos processar a imagem inteira quando apenas uma pequena área está visível.
 
 ## Preview sem poluir undo
 
