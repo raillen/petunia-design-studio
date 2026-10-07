@@ -43,7 +43,7 @@ pub struct PointerSample {
 }
 ```
 
-CXX-Qt/Qt traduz eventos nativos para esse formato.
+A camada de integração com `egui` traduz os eventos recebidos pelo backend de janela para esse formato normalizado.
 
 ## Actions
 
