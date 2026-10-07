@@ -190,7 +190,7 @@ O código autoral de domínio deve usar:
 
 sempre que a crate permitir.
 
-FFI necessária fica confinada à integração CXX-Qt ou a adapters explicitamente auditados.
+FFI, quando realmente necessária para integração de plataforma ou bibliotecas nativas, fica confinada a adapters explicitamente auditados. `egui` não deve exigir que o domínio conheça FFI.
 
 Nunca usar `unsafe` para contornar uma dificuldade de ownership antes de revisar o desenho da API.
 
