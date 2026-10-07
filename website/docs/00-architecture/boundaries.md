@@ -34,12 +34,12 @@ petunia-render
 
 petunia-ui
 └── pode depender de Core, Engine e Render
-    egui existe somente nesta camada
+    Qt/QML via CXX-Qt existe somente nesta camada
 ```
 
 ### Core como base
 
-`petunia-core` contém a representação autoral e persistente. Ele não conhece `egui`, widgets, janela, renderer ou algoritmos de UI.
+`petunia-core` contém a representação autoral e persistente. Ele não conhece Qt/QML, CXX-Qt, widgets, janela, renderer ou algoritmos de UI.
 
 Isso permite testar e usar o domínio sem inicializar interface gráfica.
 
@@ -59,9 +59,9 @@ Essa regra aplica o princípio de não criar abstração antes de existir necess
 
 ### Interface
 
-`petunia-ui` usa `egui` para apresentação e interação.
+`petunia-ui` usa Qt/QML via CXX-Qt para apresentação e interação.
 
-`egui` pode conhecer:
+Qt/QML pode conhecer:
 
 - widgets;
 - painéis;
@@ -70,7 +70,7 @@ Essa regra aplica o princípio de não criar abstração antes de existir necess
 - estado transitório de ferramenta;
 - layout do workspace.
 
-`egui` não decide:
+Qt/QML não decide:
 
 - geometria;
 - topologia;
@@ -96,7 +96,7 @@ Exemplos:
 | `rayon` | Engine e Render, internamente |
 | `serde` | Core / persistência |
 | `uuid` | Core / identidade |
-| `egui` | UI |
+| Qt/QML via CXX-Qt | UI |
 
 “Proprietário” significa que aquele domínio decide como a biblioteca é encapsulada. Não significa que uma dependência nunca possa ser usada em outro lugar; exceções precisam de justificativa arquitetural.
 
@@ -190,4 +190,4 @@ Criar um ADR quando mudarem: representação canônica de paths; formato PTND; m
 
 **Headless** significa executar sem janela, display server ou interface gráfica.
 
-Pergunte: “consigo executar isto headless?”. Boolean, snapping, import, export, text layout e filtros devem funcionar sem `egui` e sem criar uma janela. Se uma operação matemática precisar de `egui::Context`, a fronteira está errada.
+Pergunte: “consigo executar isto headless?”. Boolean, snapping, import, export, text layout e filtros devem funcionar sem Qt e sem criar uma janela. Se uma operação matemática precisar de `QObject`, `QQuickItem` ou outro tipo Qt, a fronteira está errada.
