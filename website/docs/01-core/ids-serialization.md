@@ -23,7 +23,9 @@ Isso impede usar acidentalmente `ResourceId` onde a API espera `ObjectId`.
 
 ## UUID
 
-O projeto atual usa UUID v4. É adequado para identidade local/distribuída e deve continuar até existir motivo concreto para mudar. Ordenação temporal não deve ser requisito oculto do ID.
+**UUID — Universally Unique Identifier** é um identificador de 128 bits projetado para ter probabilidade extremamente baixa de colisão sem depender de um contador central.
+
+O projeto atual usa UUID v4, gerado aleatoriamente. É adequado para identidade local/distribuída e deve continuar até existir motivo concreto para mudar. Ordenação temporal não deve ser requisito oculto do ID.
 
 ## Índice não é ID
 
@@ -49,7 +51,7 @@ document.ptnd
     └── thumbnail.webp
 ```
 
-O container pode ser ZIP-like no futuro. JSON permanece excelente para metadata/schema; grandes rasters ficam binários.
+O container pode ser **ZIP-like** no futuro: um arquivo único que internamente contém várias entradas compactadas, semelhante a formatos como EPUB ou DOCX. JSON permanece excelente para metadata/schema; grandes rasters ficam binários.
 
 ## SchemaVersion
 
@@ -68,6 +70,8 @@ Não fazer `serde_json::from_str::<Document>` diretamente em arquivos não confi
 
 ## DTO versus domínio
 
+**DTO — Data Transfer Object** é uma estrutura usada apenas para transportar dados entre formatos/camadas.
+
 Schemas externos podem ter DTOs próprios. Isso permite renomear/refatorar structs Rust sem quebrar o formato do arquivo.
 
 ## Unknown fields
@@ -75,7 +79,7 @@ Schemas externos podem ter DTOs próprios. Isso permite renomear/refatorar struc
 Decidir por contexto:
 - formato nativo: preservar extensões namespaced quando possível.
 - estruturas críticas: rejeitar versões futuras incompatíveis.
-- plugin payload: preservar blob opaco se plugin ausente, sem executá-lo.
+- plugin payload: preservar **blob opaco** — bytes cujo conteúdo o Core não interpreta — se o plugin estiver ausente, sem executá-lo.
 
 ## Segurança
 
