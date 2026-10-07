@@ -63,6 +63,16 @@ Não explicar conceitos básicos repetidamente em todas as páginas.
 
 ## Algoritmos
 
+É proibido citar um algoritmo pelo nome e seguir adiante como se o leitor já soubesse o que ele faz.
+
+Se uma página disser “usar De Casteljau”, “usar RDP”, “usar BVH” ou qualquer técnica equivalente, ela deve explicar **o mecanismo mínimo necessário para alguém implementar ou revisar aquela decisão**.
+
+A profundidade depende da importância:
+
+- **menção incidental** — uma frase de definição;
+- **algoritmo usado diretamente pelo Petunia** — objetivo, ideia central, entrada, saída e motivo da escolha;
+- **algoritmo crítico para precisão/performance** — incluir etapas, tolerâncias, casos degenerados, complexidade quando relevante e pseudocódigo ou fórmula explicada.
+
 Algoritmos centrais devem documentar:
 
 - objetivo;
@@ -151,5 +161,8 @@ Antes de publicar uma seção, perguntar:
 6. A matemática é realmente necessária?
 7. Está claro o que é decisão e o que é hipótese?
 8. Um leitor consegue encontrar a regra principal rapidamente?
+9. Algum algoritmo foi citado apenas pelo nome?
+10. Alguma sigla apareceu sem ser expandida e explicada?
+11. Algum termo matemático importante depende de conhecimento prévio não apresentado?
 
-Se a resposta for “não”, reescrever antes de adicionar.
+Se a resposta for “não” às perguntas de clareza ou “sim” às perguntas de lacuna, reescrever antes de adicionar.
