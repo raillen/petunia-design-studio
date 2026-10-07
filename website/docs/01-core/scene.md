@@ -41,7 +41,9 @@ pub struct SceneNode {
 }
 ```
 
-Container e leaf precisam de invariantes claros. Se `children` fica no node comum, folhas devem rejeitar filhos; se fica em Group/Artboard, traversal usa trait/match. Escolher um e testar.
+Um **container** é um node que pode possuir filhos, como Group ou Artboard. Um **leaf** é um node final, como uma imagem ou path sem filhos.
+
+Container e leaf precisam de invariantes claros. Se `children` fica no node comum, folhas devem rejeitar filhos; se fica em Group/Artboard, **traversal** — percorrer a árvore de nodes — usa trait/match. Escolher um e testar.
 
 ## Parent + children
 
@@ -49,11 +51,15 @@ Guardar apenas children torna parent lookup caro; guardar ambos exige consistên
 
 ## Ordem de pintura
 
+**Z-order** é a ordem de empilhamento visual: qual objeto aparece acima ou abaixo de outro.
+
 A ordem de `children` é z-order autoral. Nunca usar ordem de `HashMap` para render.
 
 ## Transform
 
-Cada node armazena **local transform**. World transform é derivado e cacheável.
+Cada node armazena **local transform**: transformação em relação ao próprio pai.
+
+**World transform** é a transformação acumulada desde a raiz até o objeto e é derivada/cacheável.
 
 ```text
 world(node) = world(parent) × local(node)
@@ -67,15 +73,18 @@ Alterar parent invalida world transform e bounds dos descendentes.
 
 ## Clip versus mask
 
-- Clip: geometria binária/coverage que limita região.
-- Mask: modulação contínua alpha/luminance.
+- **Clip**: geometria que limita onde o conteúdo pode aparecer.
+- **Mask**: modulação contínua de visibilidade por alpha ou luminância.
+- **Coverage**: valor de 0 a 1 indicando quanto de um pixel/região está coberto.
 - PowerClip-like containers: relação estrutural explicitamente serializada.
 
 Evitar representar tudo como “mask” porque exportadores tratam os conceitos de modo diferente.
 
 ## Symbols e instances
 
-`SymbolDefinition` vive em uma registry do documento; `SymbolInstance` guarda referência + overrides. Não duplicar toda subárvore em cada instância.
+`SymbolDefinition` vive em uma **registry** — coleção central indexada por ID — do documento.
+
+`SymbolInstance` guarda referência + **overrides**, isto é, diferenças locais aplicadas à instância sem duplicar toda a definição. Não duplicar toda subárvore em cada instância.
 
 ## Revisões
 
@@ -83,7 +92,9 @@ Cada node deve ter `revision` transitória ou um mecanismo de change tracking eq
 
 ## Ciclos
 
-Reparent, masks, symbols e referências entre nodes devem validar DAG/árvore conforme a relação. Reparent de um grupo para um descendente é erro do Core.
+**Reparent** significa mover um node para outro pai.
+
+Reparent, masks, symbols e referências entre nodes devem validar DAG/árvore conforme a relação. Uma **DAG** é um grafo direcionado sem ciclos; referências não podem formar dependências infinitas. Reparent de um grupo para um descendente é erro do Core.
 
 ## Remoção
 
@@ -91,10 +102,12 @@ Definir política:
 - `remove_node(id)` remove subtree?
 - promove children?
 - preserva resources órfãos?
-- referências externas ficam dangling?
+- referências externas ficam **dangling** — apontando para um objeto que não existe mais?
 
 Recomendação: Commands explicitam `DeleteSubtree`, `Ungroup` e `Detach`; o método baixo nível não adivinha intenção.
 
 ## Snapshot
+
+Um **snapshot** é uma visão imutável e consistente de uma revisão da cena.
 
 Renderer não deve receber `&mut SceneGraph`. Evoluir para snapshot imutável/compilado que separa authoring graph do render graph.
