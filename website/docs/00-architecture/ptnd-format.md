@@ -230,6 +230,50 @@ Precisa declarar ou ser associado a uma revision/content identity para o loader 
 
 Preview nunca é fonte autoral.
 
+## Schemas executáveis
+
+Os schemas estruturais da v0.1 vivem em:
+
+~~~text
+schemas/ptnd/v1/
+├── manifest.schema.json
+└── document.schema.json
+~~~
+
+Fixtures mínimas vivem em:
+
+~~~text
+examples/
+├── minimal.manifest.json
+└── minimal.document.json
+~~~
+
+JSON Schema valida **estrutura externa**, não substitui o Core.
+
+Exemplos de regras que permanecem em Domain Validation:
+
+- ObjectId único;
+- parent/children consistentes;
+- ausência de ciclos;
+- references obrigatórias existentes;
+- text ranges em UTF-8 boundaries;
+- transforms finitos/numericamente válidos;
+- effect params coerentes com seu kind/version;
+- symbol/clip/mask dependency cycles;
+- resource kind compatível com a referência.
+
+Alguns payloads internos do schema são estruturalmente abertos de propósito quando sua validação tipada pertence ao adapter/domain específico. Isso não autoriza `HashMap<String, Value>` como modelo de domínio.
+
+~~~text
+JSON Schema
+→ “a forma externa é plausível”
+
+Core/Engine validator
+→ “a semântica é válida”
+~~~
+
+Mudanças nos schemas seguem a política de [Versionamento e compatibilidade](#/docs/00-architecture/versioning-compatibility.md).
+
 ## Load
 
 ~~~text
