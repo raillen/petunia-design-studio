@@ -37,6 +37,24 @@ A UI coleta e normaliza apenas o formato do evento. Ela não decide a forma do p
 
 ## Stabilizer
 
+A v0.1 terá dois modos explícitos:
+
+~~~text
+Off
+OneEuro
+~~~
+
+`OneEuro` usa o **One Euro Filter**, um filtro adaptativo para sinais interativos.
+
+A ideia é:
+
+- em movimento lento, aplica mais suavização;
+- em movimento rápido, aumenta a resposta para reduzir atraso percebido.
+
+Ele combina um filtro passa-baixa com cutoff dinâmico calculado a partir da velocidade estimada do sinal. Assim evita o compromisso fixo “linha suave porém atrasada” de uma média móvel simples.
+
+O preset persiste parâmetros semânticos do filtro, não buffers internos.
+
 Um **stabilizer** suaviza pequenas variações do movimento do ponteiro antes de gerar o stroke.
 
 A ideia básica é introduzir uma pequena inércia ou janela de suavização:
@@ -51,11 +69,17 @@ trajetória estabilizada
 
 Quanto maior a estabilização, mais suave a linha e maior a sensação de atraso.
 
-A política concreta precisa equilibrar:
+Parâmetros principais do One Euro são:
 
-- suavidade;
-- latência;
-- previsibilidade.
+~~~text
+min_cutoff → suavização em baixa velocidade
+beta       → quanto o cutoff cresce com velocidade
+d_cutoff   → suavização da derivada/velocidade
+~~~
+
+Todos precisam ser finitos e validados.
+
+A política concreta equilibra suavidade, latência e previsibilidade. Nenhum valor padrão vira contrato arquitetural antes de teste com mouse/caneta reais.
 
 ## Resampling by arc length
 
@@ -277,3 +301,193 @@ Uma operação é **determinística** quando a mesma entrada e os mesmos parâme
 O software/reference path deve ser determinístico para testes.
 
 Uma implementação GPU pode usar otimizações diferentes, mas deve permanecer dentro das tolerâncias documentadas.
+
+
+## Interpolação de samples
+
+Resampling cria samples novos entre eventos reais.
+
+Posição usa interpolação linear ao longo do segmento local. Pressure, tilt e rotation também precisam ser interpolados de forma contínua, com tratamento correto para ângulos que cruzam 360°/2π.
+
+Timestamp intermediário é derivado proporcionalmente.
+
+Não copiar simplesmente o último pressure para todos os dabs: isso gera degraus visíveis em dispositivos com baixa frequência de eventos.
+
+## Spacing
+
+Spacing é definido como distância relativa ao diâmetro efetivo do dab:
+
+~~~text
+spacing_distance =
+effective_diameter × spacing_ratio
+~~~
+
+Isso mantém densidade aproximadamente consistente ao mudar brush size.
+
+Presets podem futuramente oferecer spacing absoluto, mas a semântica precisa ser explícita; não misturar as duas unidades no mesmo campo.
+
+## Randomness
+
+Scatter, rotation jitter, size jitter e texture jitter usam gerador pseudoaleatório determinístico com seed explícita por stroke/operação.
+
+~~~text
+stroke seed
++ dab index
++ dynamics parameters
+→ deterministic jitter
+~~~
+
+A implementação do PRNG precisa ser versionada se seu output for necessário para replay/recovery. Se o histórico raster guarda tiles materializados, Undo não depende de rerodar o PRNG; preview e commit ainda precisam compartilhar a mesma seed.
+
+Não usar RNG global ou relógio em cada dab.
+
+## Dab compositor
+
+Cada dab é avaliado em espaço local e composto somente nos tiles intersectados.
+
+Pipeline:
+
+~~~text
+DabSpec
+↓ bounds
+candidate tiles
+↓
+coverage/nozzle evaluation
+↓
+blend in working raster space
+↓
+modified tile versions
+~~~
+
+Dabs que não intersectam um tile nunca devem tocar sua memória.
+
+## Hardness
+
+Para brush redondo básico, hardness controla o tamanho do núcleo opaco/forte antes do falloff.
+
+A curva exata precisa ser única entre software renderer e preview. A v0.1 usa falloff monotônico e contínuo; presets de textura podem fornecer coverage próprio.
+
+Hardness não é sinônimo de opacity.
+
+## Blend semântico
+
+Brush blend usa o mesmo vocabulário de BlendMode do compositor, mas a implementação raster deve obedecer ao mesmo contrato de alpha/color space.
+
+Não criar uma matemática de Multiply exclusiva do brush.
+
+## Selection mask no brush
+
+Coverage final do dab é multiplicada pela selection mask quando existe:
+
+~~~text
+dab coverage
+× selection coverage
+→ effective coverage
+~~~
+
+Essa operação acontece antes do composite no destination tile.
+
+Selection mask continua Session State enquanto não for materializada como Mask documental.
+
+## Grow / Shrink
+
+A v0.1 implementa Grow/Shrink de selection mask com **distance transform**.
+
+**Distance transform** calcula, para cada pixel, a distância até a fronteira/região oposta.
+
+~~~text
+binary/coverage mask
+↓ distance field
+↓ threshold at ±radius
+grown/shrunk mask
+~~~
+
+Isso é mais previsível para raios grandes do que aplicar dilatação/erosão unitária repetidamente.
+
+Bordas e coverage precisam ser definidas em pixel space da selection surface.
+
+## Feather
+
+Feather usa blur Gaussiano da coverage mask com sigma derivado do radius definido pelo contrato.
+
+O mesmo kernel/semântica do Gaussian Blur deve ser reutilizado; não criar um blur especial incompatível só para seleção.
+
+## Filter edge modes
+
+Filtros que consultam pixels fora da surface precisam declarar edge behavior:
+
+~~~text
+Transparent
+Clamp
+Repeat
+Mirror
+~~~
+
+O default de efeitos documentais é parte do Effect contract. Nunca deixar backend CPU/GPU escolher comportamentos diferentes.
+
+## Liquify
+
+Para live Liquify, a representação autoral é um **displacement field** ou operação equivalente versionada.
+
+**Displacement field** armazena um vetor de deslocamento por região/amostra:
+
+~~~text
+position
+↓
+(dx, dy)
+↓
+sample source at displaced coordinate
+~~~
+
+Brush interativo atualiza o campo transitório; commit grava a operação/field quando o modo é live.
+
+Modo destrutivo é Command separado que materializa pixels.
+
+A resolução/representação exata do field será escolhida por profiling; não embutir uma grade gigante fixa no SceneNode.
+
+## Raster transaction
+
+Um stroke raster commitado precisa ser uma única Transaction.
+
+Direção:
+
+~~~text
+begin stroke
+↓ capture original tile refs lazily
+preview/edit COW tiles
+↓ pointer up
+commit tile-version replacements
+↓
+1 HistoryEntry
+~~~
+
+Cancel descarta versões transitórias e restaura references sem reprocessar o stroke.
+
+## Memory guards
+
+Operações raster validam:
+
+- surface dimensions;
+- tile count;
+- bytes por tile;
+- temporary ROI size;
+- blur/filter expansion;
+- maximum allocation por job.
+
+Erro de allocation/guard é tipado e não deixa PixelSurface parcialmente atualizada.
+
+## Invariantes
+
+1. UI fornece samples; Engine define stroke.
+2. One Euro é o stabilizer padrão disponível na v0.1; Off sempre existe.
+3. Resampling é por arc length e interpola dynamics continuamente.
+4. Spacing relativo usa diâmetro efetivo.
+5. Jitter usa seed determinística por stroke/operação.
+6. Brush altera somente tiles intersectados.
+7. Undo raster troca versões/refs de tiles, não copia canvas inteiro.
+8. Selection mask modula coverage e continua Session State até materialização.
+9. Grow/Shrink usam distance transform; Feather reutiliza Gaussian semantics.
+10. Filtros declaram edge mode e ROI.
+11. Live Liquify persiste deformação, não pixels já deformados.
+12. Stroke commitado corresponde a uma Transaction.
+13. CPU/GPU obedecem à mesma matemática de blend/filter.
