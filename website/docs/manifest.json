@@ -111,6 +111,10 @@
           "path": "01-core/document.md"
         },
         {
+          "title": "guides + grids + slices",
+          "path": "01-core/guides-grids-slices.md"
+        },
+        {
           "title": "appearance + effects",
           "path": "01-core/appearance-effects.md"
         },
