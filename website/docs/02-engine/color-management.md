@@ -18,7 +18,7 @@ CMM
 CMYK da impressora
 ~~~
 
-Para ICC, a opção Rust madura a avaliar é `lcms2`, wrapper de Little CMS. O domínio deve escondê-lo atrás de trait para permitir testes e troca futura.
+Para a v0.1, o backend ICC definido é Little CMS 2, acessado por binding Rust mantido e encapsulado pelo adapter Petunia. Tipos e handles do backend não atravessam a API do Engine.
 
 ~~~rust
 pub trait ColorManagementEngine {
