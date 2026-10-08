@@ -1,6 +1,6 @@
 # Smart Measure — medir sem interromper criação
 
-**Estado:** sistema aceito; aparência de overlays e de annotation sujeita à revisão de GUI/UX.
+**Estado (2026-10-08):** sistema aprovado; UX de Hover Measure/Pin Dimension **aprovada por delegação** em [Smart Measure — interação](#/docs/04-ui/smart-measure-interaction.md). Detalhes pixel-perfect de overlays continuam calibráveis; não implementado/testado.
 
 ## Referência
 
@@ -38,4 +38,4 @@ Usar f64; formatação não muta Document; DPI de export e pixel de tela não s�
 
 Casos: transforms não uniformes, negativos, rotação, groups, self-intersections, zero-length, delete source, locked/hidden objects, mixed units, save/load, Undo/Redo, headless export.
 
-[Core Model](#/docs/01-core/creative-features.md) · [Geometry](#/docs/02-engine/geometry.md)
+[Smart Measure — interação](#/docs/04-ui/smart-measure-interaction.md) · [Core Model](#/docs/01-core/creative-features.md) · [Geometry](#/docs/02-engine/geometry.md)
