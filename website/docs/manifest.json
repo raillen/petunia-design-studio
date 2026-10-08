@@ -123,6 +123,10 @@
           "path": "01-core/appearance-effects.md"
         },
         {
+          "title": "modelos de ferramentas criativas",
+          "path": "01-core/creative-features.md"
+        },
+        {
           "title": "crop + clipping",
           "path": "01-core/crop-clipping.md"
         },
@@ -143,6 +147,10 @@
         {
           "title": "geometry",
           "path": "02-engine/geometry.md"
+        },
+        {
+          "title": "creative operations",
+          "path": "02-engine/creative-operations.md"
         },
         {
           "title": "spatial + snapping",
@@ -227,6 +235,34 @@
         {
           "title": "ferramentas",
           "path": "04-ui/tools.md"
+        },
+        {
+          "title": "catálogo de ferramentas criativas",
+          "path": "04-ui/creative-tools-overview.md"
+        },
+        {
+          "title": "Smart Path",
+          "path": "04-ui/smart-path.md"
+        },
+        {
+          "title": "Smart Region",
+          "path": "04-ui/smart-region.md"
+        },
+        {
+          "title": "Smart Distribution",
+          "path": "04-ui/smart-distribution.md"
+        },
+        {
+          "title": "Smart Color",
+          "path": "04-ui/smart-color.md"
+        },
+        {
+          "title": "Smart Measure",
+          "path": "04-ui/smart-measure.md"
+        },
+        {
+          "title": "ferramentas criativas avançadas",
+          "path": "04-ui/advanced-creative-tools.md"
         },
         {
           "title": "workspace",
