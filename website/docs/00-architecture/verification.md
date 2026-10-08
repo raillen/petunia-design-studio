@@ -156,9 +156,89 @@ Test corpus inclui:
 - variable fonts;
 - ligatures;
 - line-break edge cases;
-- linked-frame overflow.
+- linked-frame overflow;
+- COLR/CPAL glyphs;
+- embedded raster glyphs;
+- SVG-in-OpenType fallback/safety;
+- missing/unsupported color glyph.
 
 Comparar shaping/layout contra fixtures versionadas e, quando útil, contra resultados de referência da biblioteca upstream.
+
+## Generated content tests
+
+### Image Trace
+
+Fixtures obrigatórias:
+
+- logo high-contrast;
+- line art com antialias;
+- holes;
+- diagonais;
+- transparência;
+- limited-color illustration;
+- gradiente;
+- imagem ruidosa/fotográfica;
+- source muito grande com cancelamento.
+
+Validar:
+
+~~~text
+same source bytes/profile
++ same TraceSpec
++ same semantic version
+→ same palette/regions/order/geometry contract
+~~~
+
+Métricas incluem:
+
+- max geometric deviation;
+- número de regions;
+- número de nodes;
+- erro de cor;
+- memória;
+- tempo;
+- deterministic ordering.
+
+Preview e Authoring podem usar quality diferente, mas `Expand Trace` nunca materializa geometria de preview.
+
+### QR Code
+
+Usar test vectors do standard/backend e validar a matrix produzida antes de testar Render.
+
+Além disso:
+
+~~~text
+QrCodeSpec
+↓ Engine
+VectorPath
+↓ software renderer
+bitmap
+↓ decoder independente
+payload original
+~~~
+
+Cobrir:
+
+- todos os níveis ECC;
+- Auto/Fixed Version;
+- Auto/Fixed Mask;
+- payload Unicode/bytes;
+- limites de capacidade;
+- quiet zone;
+- transform não uniforme diagnosticado.
+
+### Barcode
+
+Para Code 128, EAN-13 e UPC-A:
+
+- test vectors de module pattern;
+- charset inválido;
+- checksum válido/inválido;
+- check digit calculado;
+- quiet zone;
+- roundtrip por decoder independente quando disponível.
+
+O teste não depende apenas da aparência visual.
 
 ## Raster/Brush tests
 
@@ -237,6 +317,55 @@ candidate image
 ~~~
 
 Diferença precisa ficar dentro do contrato visual da operação. Backend não pode mudar semântica para ficar mais rápido.
+
+## DocumentFragment tests
+
+Copy/Paste e Duplicate precisam validar:
+
+- dependency closure mínima e completa;
+- ID remapping de Object/Node/Effect/Resource/Style/Symbol;
+- referências internas preservadas;
+- dangling reference rejeitada;
+- clip/mask dependencies;
+- symbol definition + overrides;
+- linked/embedded resources;
+- font/resource policy;
+- paste entre Pages/Documents;
+- Paste in Place;
+- fragment schema migration;
+- input hostil/oversized.
+
+Propriedade importante:
+
+~~~text
+build fragment
+↓ remap
+↓ paste
+↓ undo
+↓ redo
+→ mesmos IDs novos do primeiro paste
+~~~
+
+Duplicate reutiliza o mesmo pipeline e precisa produzir semântica equivalente sem serialização textual obrigatória.
+
+## Persistence + Recovery tests
+
+Além do save principal, testar recovery como sistema independente:
+
+- checkpoint válido + journal;
+- record final truncado;
+- checksum inválido;
+- replay interrompido em Transaction inválida;
+- crash durante rotação de checkpoint;
+- recovery de PixelLayer/tile/resource;
+- documento nunca salvo;
+- clean shutdown;
+- recovery schema migration;
+- budget/pruning sem remover recovery do documento dirty aberto.
+
+Propriedade principal:
+
+> qualquer prefixo confirmado do journal precisa reconstruir um Document válido ou falhar no último estado consistente conhecido.
 
 ## Serialization tests
 
@@ -341,6 +470,53 @@ Verificar:
 - repeated open/close não cresce indefinidamente;
 - history pruning libera payloads;
 - render surface pool não cresce sem limite.
+
+## Plugin + automation tests
+
+Host API e automação são fronteiras de segurança e precisam de testes próprios.
+
+### Capability tests
+
+Para cada capability:
+
+~~~text
+permission absent
+→ operation denied
+
+permission granted
+→ request still passes Engine/Core validation
+~~~
+
+Permissão nunca transforma input inválido em operação válida.
+
+### WASM host contract
+
+Testar:
+
+- invalid/oversized messages;
+- memory/fuel/stack limit;
+- cancelled invocation;
+- plugin crash/trap;
+- stale handles;
+- excessive job creation;
+- resource stream limits;
+- no direct filesystem/network without grant;
+- no partial Transaction on failure.
+
+O runtime concreto pode mudar; o mesmo contract suite precisa passar em qualquer runtime aprovado.
+
+### MCP
+
+Testar Query/Command equivalência com a API normal do Engine:
+
+~~~text
+same command payload
+via app
+via MCP
+→ same validation + transaction semantics
+~~~
+
+Também testar servidor disabled-by-default e denial de capabilities não concedidas.
 
 ## Concurrency tests
 
