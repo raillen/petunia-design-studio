@@ -259,7 +259,11 @@ Não existe decomposição intuitiva única em todos os casos, especialmente com
 - skew;
 - transforms near-singular.
 
-A representação autoral final de transform deve considerar essas ambiguidades quando chegarmos ao modelo de objetos. Não assumir que decomposição é trivial.
+`Transform2D` matricial é a representação autoral canônica do SceneNode. Translation/rotation/scale/skew exibidos por ferramentas são uma decomposição derivada para edição e podem não ser únicos.
+
+Ao editar um componente decomposto, o Engine precisa aplicar uma policy determinística de decomposição/recomposição e produzir uma nova matriz. A matriz persistida continua sendo a autoridade.
+
+Não persistir simultaneamente matriz + rotation + scale + skew como quatro verdades concorrentes.
 
 ## Convenção canônica 2D
 
