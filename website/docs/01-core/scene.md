@@ -357,3 +357,75 @@ SceneGraph válido garante:
 10. Symbol instance referencia definition; não duplica subtree.
 11. Delete não destrói Resource automaticamente.
 12. Renderer nunca recebe `&mut SceneGraph`.
+
+## Decisões adicionais de Scene
+
+### ObjectId global
+
+`ObjectId` é único em todo o Document, inclusive nodes usados por `SymbolDefinition`. Isso mantém remapping, overrides, queries e diagnóstico uniformes.
+
+### Storage v0.1
+
+A v0.1 começa com storage simples indexado por `ObjectId` e listas ordenadas de children:
+
+~~~text
+HashMap<ObjectId, SceneNode>
++
+Vec<ObjectId> por container/Page
+~~~
+
+Lookup e ordem autoral continuam separados. Generational Arena permanece otimização futura condicionada a profiling.
+
+### Mutação estrutural
+
+`parent` e `children` não são mutados separadamente por consumidores. SceneGraph expõe operações estreitas como `insert_child`, `remove_subtree`, `reparent_keeping_local`, `reparent_keeping_world` e `reorder_child`, sempre validando os dois lados antes do commit.
+
+### Clip e Mask
+
+Binding persiste também como o source participa da cena:
+
+~~~rust
+pub enum BindingSourceUse {
+    BindingOnly,
+    AlsoVisible,
+}
+~~~
+
+`BindingOnly` é o default para source usado exclusivamente como clip/mask. `AlsoVisible` torna explícito que a mesma entidade também pinta normalmente.
+
+Clip/Mask não muda parent estrutural automaticamente. Hierarquia e binding são relações diferentes; um Command de ferramenta pode alterar ambas na mesma Transaction quando essa for a intenção.
+
+Cycle validation considera parent/children, clip/mask, relações live e dependencies de symbol que participem do evaluator.
+
+### Layer
+
+Layer é container explícito com children ordenados e propriedades comuns de SceneNode. A v0.1 não cria um segundo conjunto de regras de render só para Layer quando Group + propriedades comuns já representam a semântica.
+
+### Artboard
+
+`ArtboardData` persiste área local, background policy, `clip_to_bounds` e children. Background não é um Rectangle child oculto. Artboard continua dentro de Page e não substitui a unidade editorial Page.
+
+### SymbolDefinition
+
+Nodes internos de Symbols também possuem ObjectIds globais do Document. SymbolInstance referencia `SymbolId`; expansão da definition é Derived State.
+
+Symbols não podem formar ciclos diretos ou indiretos. A validação ocorre no Core quando a relation é criada, não apenas durante Render.
+
+Overrides built-in apontam para IDs estáveis e usam tipos conhecidos, como TextContent, Paint/Color, Visibility e Resource. Não usar property paths arbitrários em strings para overrides nativos.
+
+### Queries
+
+Engine acessa Scene por APIs estáveis como `get`, `parent_of`, `children_of`, `ancestors`, `descendants` e `is_descendant_of`, sem depender do layout de storage.
+
+## Invariantes adicionais
+
+13. ObjectId é único em todo o Document, inclusive SymbolDefinitions.
+14. Storage runtime não define z-order.
+15. Parent/children nunca são mutados separadamente por consumidores.
+16. Clip/Mask source use é explícito.
+17. Hierarquia e binding são relações distintas.
+18. Artboard background/clip são propriedades explícitas.
+19. World transform e effective visibility são derivados.
+20. Symbol cycles são rejeitados no Core.
+21. Overrides built-in são tipados.
+22. Scene queries escondem o layout de storage.
