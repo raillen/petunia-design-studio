@@ -119,6 +119,10 @@
           "path": "01-core/appearance-effects.md"
         },
         {
+          "title": "crop + clipping",
+          "path": "01-core/crop-clipping.md"
+        },
+        {
           "title": "texto, raster e recursos",
           "path": "01-core/text-raster-resources.md"
         },
