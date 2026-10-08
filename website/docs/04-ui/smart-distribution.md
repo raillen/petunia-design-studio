@@ -1,6 +1,6 @@
 # Smart Distribution — Repeat, Symmetry, Blend, Objects on Path
 
-**Estado:** aprovado como família; gestos/inspector serão revisados em conjunto. Uma infraestrutura de distribuição com estratégias distintas, sem duplicação implícita de SceneNodes.
+**Estado (2026-10-08):** família aprovada e UX detalhada **aprovada por delegação** em [Smart Distribution — interação](#/docs/04-ui/smart-distribution-interaction.md); não implementada/testada. Uma infraestrutura de distribuição com estratégias distintas, sem duplicação implícita de SceneNodes.
 
 ## Referências
 
@@ -31,7 +31,7 @@ Source editable in place. Repeat Count limitado por budget e diagnóstico; inst�
 **Radial:** center, start angle, angular span, count, orientation, rotate-with-tangent.
 **Mirror:** axis position/direction, reflection policy, optional multiple axes.
 
-Fluxo comum: selecionar object(s) → escolher modo → preview imediato → ajustar on-canvas handles ou números exatos → manter source editável → expand/release opcional. Não congelar atalhos aqui.
+Fluxo comum: selecionar object(s) → escolher modo → preview imediato → ajustar on-canvas handles ou números exatos → manter source editável → expand/release explícitos. A UX e as alternativas de teclado são detalhadas na [página de interação](#/docs/04-ui/smart-distribution-interaction.md); atalhos concretos seguem remapeáveis.
 
 ## Symmetry Draw
 
