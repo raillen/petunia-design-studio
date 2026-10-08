@@ -268,6 +268,81 @@ fallback compatível
 
 A ausência de fonte nunca deve reescrever automaticamente o `FontRef` original. O documento precisa continuar sabendo qual fonte o autor pediu.
 
+## Font resolution policy
+
+`FontRef` é intenção autoral; `ResolvedFontId` é Derived State.
+
+A resolução segue ordem determinística:
+
+1. fonte incorporada explicitamente referenciada pelo documento;
+2. face instalada que corresponda à família/style/axes pedidos;
+3. fallback de script/language configurado pelo resolver;
+4. fallback genérico da plataforma somente como último recurso.
+
+O resolver produz também um **font fingerprint** derivado — identidade baseada em conteúdo/face/variation usada — para cache e diagnóstico.
+
+~~~text
+FontRef
+↓
+ResolvedFont {
+  source,
+  face_index,
+  content_hash/fingerprint,
+  variation_coordinates
+}
+~~~
+
+O fingerprint não substitui FontRef e não é persistido como verdade autoral.
+
+Quando fallback de plataforma muda entre computadores, o documento continua válido, mas Render/Export produz diagnóstico de substituição. Para output reproduzível, a fonte precisa ser incorporada ou explicitamente empacotada quando a licença permitir.
+
+## Glyph representation
+
+Depois do shaping, um glyph resolvido pode possuir diferentes representações:
+
+~~~text
+Outline glyph
+COLR/CPAL color glyph
+Embedded raster glyph
+SVG-in-OpenType glyph
+Missing/unsupported glyph
+~~~
+
+O Text Engine resolve qual representação está disponível; Render recebe um contrato derivado e não redescobre intenção tipográfica no SceneGraph.
+
+### Outline glyph
+
+Outline normal usa `ttf-parser` para metadata/outlines quando precisamos de vetor e `fontdue` para coverage raster no software renderer.
+
+### COLR/CPAL
+
+Glyph colorido COLR/CPAL é avaliado como paint graph/layers derivados, respeitando palette da fonte e foreground color quando aplicável.
+
+Ele entra no Render Model como primitivas/paint data derivados; não é achatado para bitmap autoral.
+
+### Embedded raster glyph
+
+Quando a fonte oferece bitmap embutido apropriado ao tamanho, o resolver pode expô-lo como recurso raster derivado.
+
+Decode respeita os mesmos limites de segurança de images/resources.
+
+### SVG-in-OpenType
+
+SVG glyph é conteúdo externo incorporado à fonte e portanto input não confiável.
+
+A v0.1 pode:
+
+- usar o pipeline SVG seguro do importer/render adapter quando disponível;
+- ou retornar `UnsupportedColorGlyph` e tentar outline fallback da mesma fonte.
+
+Nunca executar scripts, external URLs ou conteúdo ativo de SVG de fonte.
+
+### Fallback final
+
+Se nenhuma representação utilizável existir, o layout preserva advance/cluster quando possível e Render usa missing-glyph/tofu diagnosticável.
+
+Não substituir silenciosamente o caractere por outro code point.
+
 ## Frame text
 
 Layout recebe:
