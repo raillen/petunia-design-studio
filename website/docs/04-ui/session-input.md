@@ -44,6 +44,10 @@ Escape cancela drag/preview primeiro e somente depois, quando ocioso, desempilha
 
 Seleção mista não perde silenciosamente objetos ao entrar em multi-path editing. Entrada explícita pode selecionar apenas alvos elegíveis depois de informar a exclusão.
 
+### Seleção de área, candidatos e teclado aprovados
+
+A [especificação canônica de seleção](#/docs/04-ui/selection-nodes-handles.md) registra Marquee por Contenção padrão/Interseção explícita/Direcional opt-in, Lasso contextual Replace/Add/Subtract, Shift toggle, transform bounds para 2+ nodes, candidatos sobrepostos com alternância por ActionId e navegação semântica por teclado. Essas operações atualizam **SelectionState/foco/TransientEdits** conforme o caso e não alteram `DocumentRevision` apenas por selecionar. A UI pode guardar preferência de política na Session/Workspace sem persistir no documento PTND. Os tipos concretos de evento e remapeamento de shortcuts permanecem matéria de implementação.
+
 [Especificação de interação](#/docs/04-ui/vector-edit-interaction.md)
 
 ## ViewState
