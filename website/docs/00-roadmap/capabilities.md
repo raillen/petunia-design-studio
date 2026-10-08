@@ -52,6 +52,83 @@ As capacidades abaixo já tiveram o **contrato de motor** amadurecido. Isso não
 
 O custo é uma estimativa relativa. Ele será revisto depois que conhecermos a implementação real das fundações.
 
+## Ferramentas criativas aprovadas
+
+**Aprovadas para fazer parte do produto e modeladas na documentação.** Isso não significa que já estejam implementadas, que todas tenham o mesmo esforço ou que a v0.1 vá entregá-las integralmente.
+
+A interface dessas ferramentas será detalhada e fechada em discussão conjunta. Os contratos de Core/Engine/Render que já puderam ser estabelecidos estão em [Modelos autorais](#/docs/01-core/creative-features.md), [Creative Operations](#/docs/02-engine/creative-operations.md) e [Catálogo de ferramentas](#/docs/04-ui/creative-tools-overview.md).
+
+| Família | Capacidade | Etapa técnica | Referência prioritária |
+|---|---|---|---|
+| Smart Path | Select/Node/Pen aprimorados | Base | Figma Draw / Illustrator |
+| Smart Path | Direct Bend (arrastar segmento) | Base geométrica | Figma Draw / edição direta |
+| Smart Path | Smart Delete Node | Base geométrica | Illustrator / curve fitting |
+| Smart Path | Simplify e Smooth | Base geométrica | Inkscape / Illustrator |
+| Smart Path | Clean Vector + relatório/previews | Base geométrica | Inkscape cleanup + diferencial Petunia |
+| Smart Path | Select Same/Similar | Base | Affinity / Illustrator |
+| Smart Region | Shape Builder | Após planar subdivision | Illustrator / Affinity / Inkscape / Figma |
+| Smart Region | Region Select | Após region graph | Figma / Petunia |
+| Smart Region | Region Paint | Após region graph | Illustrator Live Paint / Affinity Flood Fill |
+| Smart Region | Detect Gap + Virtual Bridge + Close Geometry | Após region graph | Live Paint + diferencial Petunia |
+| Smart Region | Intertwine/Weave | Após region graph + masks | Illustrator Intertwine |
+| Smart Distribution | Linear/Grid/Radial Repeat | Após live generators | Figma Draw / Illustrator |
+| Smart Distribution | Mirror Repeat | Após live generators | Illustrator / CorelDRAW |
+| Smart Distribution | Symmetry Draw | Após Mirror | CorelDRAW Symmetry |
+| Smart Distribution | Objects on Path | Após arc-length layout | Illustrator |
+| Smart Distribution | Blend: transforms/colors/opacity | Após live generators | Illustrator Blend |
+| Smart Distribution | Blend Geometry Morph + manual correspondence | Avançado | Illustrator Blend |
+| Smart Distribution | Scatter / Distribution Brush | Após distribution | Figma Draw |
+| Smart Color | Palette Extraction | Color Engine | Illustrator / ferramentas de paleta |
+| Smart Color | Recolor Lab | Color/Appearance | Illustrator Recolor |
+| Smart Color | Recolor from Image | Após Palette Extract | diferencial Petunia |
+| Smart Color | Replace Color | Color/Appearance | Illustrator / Affinity |
+| Smart Color | Harmonies, locks e contrast/luminance mapping | Color Management | Illustrator / diferencial Petunia |
+| Smart Color | Global Swatches / linked styles | Core Styles | Illustrator / Figma variables |
+| Smart Measure | Hover Measure: W/H, angle, length | Spatial/Geometry | Affinity / diferencial Petunia |
+| Smart Measure | Area / Perimeter / Radius / Diameter | Geometry | Affinity / Illustrator |
+| Smart Measure | Pin Dimension: linear/angular/radial | Após DimensionObject | Illustrator Dimension |
+| Smart Measure | Persistent associative dimensions | Após anchor contracts | Illustrator + diferencial Petunia |
+| Advanced | Variable Width / Width Profiles | Stroke Engine | Illustrator / CorelDRAW |
+| Advanced | Pattern Editor on-canvas | Após PatternDefinition | Inkscape / Figma |
+| Advanced | Brand Sheet Generator | Após Styles + Fragment | diferencial Petunia |
+| Advanced | Vector Feather / Variable Edge Softness | Após Render/Mask | experimental Petunia |
+| Advanced | Perspective/Envelope Warp | Pós-v0.1-stable | Illustrator / CorelDRAW |
+| Advanced | True Vector Brushes (Stretch/Scatter/Art) | Após Brush + Distribution | Illustrator / Figma |
+| Advanced | Mesh Gradient avançado | Exploração pós-v0.1-stable | Illustrator / Inkscape |
+| Advanced | Knife / Scissors / Vector Eraser / Raster Eraser | Conforme Geometry/Raster | Illustrator / Affinity / Inkscape |
+
+**Etapa técnica** indica dependências, não data de entrega. “Base” não implica funcionalidade codificada hoje. “Exploração pós-v0.1-stable” registra a capacidade para investigação, sem compromisso de implementação enquanto modelo/custo não estiverem maduros.
+
+### Estratégia de implementação
+
+~~~text
+Select / Node / Pen / Select Similar
+    ↓
+Smart Delete + Simplify/Smooth + Clean Vector + Hover Measure
+    ↓
+Shape Builder / Region Graph → Region Paint / Close Gap
+    ↓
+Stroke Width + Pattern + Recolor
+    ↓
+Live Distribution → Repeat/Mirror → Symmetry / Objects on Path
+    ↓
+Intertwine + Blend + Associative Dimension
+    ↓
+Brand Sheet + Vector Brushes + Vector Feather
+    ↓
+Perspective/Envelope Warp + Mesh Gradient avançado (pós-stable)
+~~~
+
+**Reutilização não pode disfarçar custo.** O Region Graph ajuda Region Paint, mas remap de faces durante source edits é difícil; Blend geométrico exige correspondence real; annotations associativas exigem referências estáveis; Vector Feather precisa suporte de máscaras/ROI.
+
+### Killer features escolhidas
+
+As diferenciações de produto que mais combinam alto valor com infraestrutura compartilhada são:
+
+**Clean Vector com diagnóstico**, **Smart Delete com limite de desvio**, **Direct Bend**, **Close Gap não destrutivo**, **Recolor from Image**, **Smart Measure associado** e **Brand Sheet Generator**.
+
+Não serão shortcuts destrutivos disfarçados de assistentes: sempre apresentar preview, diagnóstico, custo quando relevante e Apply/Cancellation controlados.
+
 ## Sequência técnica preferencial
 
 Esta ordem descreve dependência arquitetural, não obrigatoriamente release:
@@ -159,13 +236,11 @@ As capacidades abaixo ficam preservadas para estudo, mas **não são compromisso
 
 - suporte de alta fidelidade a PSD;
 - edição PDF mais profunda;
-- mesh gradients avançados;
 - ferramentas avançadas para variable fonts;
 - desenvolvimento RAW completo;
 - content-aware fill;
 - recursos generativos opcionais;
 - prepress e separações profissionais mais avançadas;
-- perspective/envelope warp avançado;
 - animation/motion.
 
 Cada uma será avaliada por utilidade real, custo, manutenção, dependências e coerência com a filosofia do produto.
