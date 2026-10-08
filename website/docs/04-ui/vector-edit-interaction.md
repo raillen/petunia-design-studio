@@ -134,7 +134,7 @@ Sair do modo por toolbar ou breadcrumb, sem commit pendente, usa a mesma lógica
 - Node navigation por teclado deve ter caminho viável sem mouse, mas tab/order, setas e modificadores serão refinados na etapa de acessibilidade.
 - O canvas não intercepta teclas reservadas ao gerenciador de janelas ou entrada de texto.
 
-A próxima camada de especificação está em [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md). Ela detalha hit-test, multisseleção, visibilidade de handles, constraints e a proposta de context bar; as escolhas A/B/C da página ainda aguardam revisão conjunta.
+A próxima camada de especificação está em [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md). Ela detalha hit-test, multisseleção, visibilidade de handles, constraints e a proposta de context bar; tipos e indicadores dos nodes, handles progressivos e precisão estão aprovados, enquanto marquee, transformação de multisseleção, gestos e precedência de alvos sobrepostos seguem em revisão conjunta.
 
 ## Seleção e sub-selection
 
@@ -151,7 +151,7 @@ A ordem leva em conta operation, zoom, target eligibility e hit region:
 | Contexto | Prioridade proposta |
 |---|---|
 | Select | bounding handles explícitos → strokes/fills elegíveis por z-order → fundo para marquee |
-| Vector/Node | node selecionado/hover → handles selecionados → node não selecionado → segmento/outline → vazio |
+| Vector/Node | candidatos node/handle elegíveis → segmento/outline → vazio; a precedência fina de alvos coincidentes **ainda será fechada** com rota de desambiguação |
 | Vector/Bend | nodes/handles protegidos → segmento para deformação → vazio |
 | Vector/Width | width points/handles → spine para criar width point → vazio |
 | Vector/Cut | segment/param position sob cursor → vazio |
