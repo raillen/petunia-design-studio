@@ -1,6 +1,6 @@
 # Vector Edit — interação híbrida contextual
 
-**Estado:** modelo híbrido **aprovado em 2026-10-08** (ADR-0011). Seleção Marquee/Lasso, 2+ nodes transformáveis, ciclo de alvos coincidentes, Shift e navegação semântica por teclado também **aprovados** na [página canônica de seleção](#/docs/04-ui/selection-nodes-handles.md). Prioridade fina em coincidência exata, manipulação de tangentes/snapping, atalhos secundários e apresentação final de GUI continuam em revisão conjunta. Documento de arquitetura-alvo, **não afirma implementação**.
+**Estado:** modelo híbrido **aprovado em 2026-10-08** (ADR-0011). Seleção A–F, constraints dos handles, snapping contextual, Auto Smooth one-shot, Pen e operações assistidas detalhadas foram **aprovados/documentados** por delegação. Estão nas páginas canônicas [Selection](#/docs/04-ui/selection-nodes-handles.md), [Precision](#/docs/04-ui/vector-edit-precision.md), [Pen](#/docs/04-ui/pen-path-creation.md) e [Smart Path operations](#/docs/04-ui/smart-path-operations.md). Visual final e casos de ambiguidade exata podem ser refinados após testes. É arquitetura-alvo, **não implementação**.
 
 ## Objetivo
 
@@ -134,7 +134,7 @@ Sair do modo por toolbar ou breadcrumb, sem commit pendente, usa a mesma lógica
 - Node navigation por teclado deve ter caminho viável sem mouse, mas tab/order, setas e modificadores serão refinados na etapa de acessibilidade.
 - O canvas não intercepta teclas reservadas ao gerenciador de janelas ou entrada de texto.
 
-A próxima camada de especificação está em [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md). Ela contém os contratos **aprovados** de Marquee por Contenção (Interseção por ação, Direcional opt-in), Lasso, Shift, transformação de 2+ nodes, desambiguação e teclado. Permanece aberta a precedência fina em coincidência exata e o desenho detalhado de handles/tangentes, snapping e context bar.
+A próxima camada de especificação está em [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md). Ela contém os contratos **aprovados** de Marquee, Lasso, Shift, bounds de 2+ nodes, desambiguação e teclado; a [página de precisão](#/docs/04-ui/vector-edit-precision.md) fecha a semântica de tangentes, snapping e edição numérica. Restam refinamentos visuais e a precedência fina em coincidência exata, sujeitos a testes.
 
 ## Seleção e sub-selection
 
@@ -188,7 +188,7 @@ Click + drag sobre segmento modifica Bézier por solver geométrico, com ghost d
 
 ### Pen
 
-Pen inicia/continua contour elegível, fornece preview de novo segmento e snapping. Confirmar e fechar respeitam estados do controller. Não criar novo Path escondido ao entrar no modo; a escolha Create New/Continue Existing é explícita.
+Pen inicia/continua contour elegível, fornece preview de novo segmento e snapping. Confirmar e fechar respeitam estados do controller. Não criar novo Path escondido ao entrar no modo; a escolha Create New/Continue Existing é explícita. [UX completa de Pen](#/docs/04-ui/pen-path-creation.md).
 
 ### Cut, Smooth e Width
 
