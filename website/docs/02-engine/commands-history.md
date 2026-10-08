@@ -532,7 +532,7 @@ document owner / commit lane
 → atualiza History/Revision
 ~~~
 
-Na v0.1, esse owner pode ser o serviço de documento coordenado pela aplicação. A arquitetura não deve depender de espalhar `Arc<Mutex<Document>` pela aplicação.
+Na v0.1, esse owner pode ser o serviço de documento coordenado pela aplicação. A arquitetura não deve depender de espalhar `Arc<Mutex<Document>>` pela aplicação.
 
 ## Background jobs
 
@@ -630,6 +630,135 @@ Operações vetoriais normalmente conseguem guardar inverse operations ou pequen
 
 Raster exige política diferente: um brush stroke não deve copiar uma imagem inteira. O histórico raster deve trabalhar com tiles, diffs ou copy-on-write conforme definido no Raster Engine.
 
+## Budget e pruning do histórico
+
+History é Runtime State da sessão. Ele precisa de limite de memória independente do cache de Render.
+
+Cada `HistoryEntry` estima seu custo de payload:
+
+~~~text
+inverse geometry
+resource refs
+tile/version refs
+metadata
+↓
+approx_history_bytes
+~~~
+
+O valor não precisa ser perfeito; serve para política de retenção.
+
+### Soft e hard budget
+
+Direção:
+
+- **soft budget** — ao ultrapassar, pruning pode começar;
+- **hard budget** — nova operação muito grande precisa liberar histórico antigo ou falhar/degradar explicitamente antes de comprometer a estabilidade da aplicação.
+
+Os números absolutos dependem da memória disponível e ficam em Application Settings/runtime.
+
+Não entram no PTND.
+
+### Pruning
+
+Na v0.1, History é linear.
+
+Quando precisa liberar memória, remover primeiro o prefixo mais antigo que já não é alcançável pela política de Undo configurada.
+
+~~~text
+oldest                                  current
+  R1 → R2 → R3 → R4 → R5 → R6 → R7
+  └──── prune candidate ────┘
+~~~
+
+Pruning reduz profundidade de Undo; nunca altera o Document atual.
+
+O usuário não pode “desfazer além” do primeiro estado retido.
+
+### Save checkpoint não exige payload histórico eterno
+
+`saved_revision` é uma identidade de estado, não uma obrigação de manter todas as inverse operations até ela.
+
+Se a revisão salva já ficou fora da janela de Undo:
+
+~~~text
+saved_revision = R2
+oldest retained = R5
+current = R7
+~~~
+
+o documento continua dirty porque R7 != R2.
+
+A aplicação simplesmente não consegue navegar de volta até R2 por Undo.
+
+Não reter gigabytes de histórico apenas para preservar a possibilidade de tornar o documento clean por Undo.
+
+### Redo e nova edição
+
+Undo cria uma região de redo no histórico linear.
+
+Nova edição depois de Undo:
+
+~~~text
+R1 → R2 → R3 → R4
+          ↑ current
+
+new edit
+          ↓
+         R5
+
+R3/R4 redo antigo é descartado
+~~~
+
+Payload de redo descartado precisa liberar referências a resources/tiles quando nenhum outro owner existir.
+
+### Entries grandes
+
+Uma única operação pode ultrapassar o budget, por exemplo rasterização de uma imagem enorme.
+
+A Transaction continua atômica.
+
+Política:
+
+1. estimar custo antes/ao preparar;
+2. tentar pruning de entries antigas;
+3. usar COW/deltas/resource blobs quando possível;
+4. se ainda inviável, recusar a operação com erro de memória/limite antes de commit.
+
+Não executar operação e depois descobrir que não existe memória para o Undo exigido.
+
+### History references e Resource GC
+
+Um Resource aparentemente não usado pela cena pode continuar necessário por History.
+
+~~~text
+Scene
+✗ não referencia Resource R
+
+History inverse
+✓ referencia Resource R
+~~~
+
+`Purge Unused Resources` precisa considerar History/recovery policy antes de remover storage necessário.
+
+Quando HistoryEntry é pruned, suas referências podem ser liberadas.
+
+### Recovery é separado
+
+History pruning nunca decide sozinho o que pode ser apagado do Recovery Store.
+
+Recovery possui checkpoint/journal próprios e lifecycle independente.
+
+### Invariantes de memória do History
+
+1. History possui budget runtime próprio.
+2. Pruning remove estados antigos, nunca o Document atual.
+3. Saved revision não precisa manter payload de Undo eternamente.
+4. Nova edição depois de Undo libera redo branch antigo.
+5. Transaction grande é rejeitada antes do commit se não puder oferecer Undo seguro.
+6. Raster history usa COW/diffs/tile refs em vez de cópia integral.
+7. Resource GC considera referências mantidas pelo History.
+8. Recovery lifecycle é independente do pruning de History.
+
 ## Invariantes
 
 1. Toda mutação autoral entra por Command/Transaction.
@@ -642,3 +771,5 @@ Raster exige política diferente: um brush stroke não deve copiar uma imagem in
 8. Undo/Redo navega entre revisions de estados documentais.
 9. Plugins, scripts e macros usam a mesma Command API.
 10. Core valida invariantes mesmo quando Engine já validou a operação.
+11. History respeita budget runtime e pode podar o prefixo antigo sem alterar o estado atual.
+12. Operação não é commitada se o sistema não puder preservar sua atomicidade/Undo conforme o contrato.
