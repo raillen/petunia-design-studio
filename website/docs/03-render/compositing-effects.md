@@ -134,9 +134,17 @@ Isso é chamado de **filtro separável** e reduz bastante o custo em relação a
 
 ### Radius e sigma
 
-A UI pode apresentar radius, mas a implementação precisa definir de forma estável como esse valor vira sigma e até onde o kernel é amostrado.
+`Sigma` é o único parâmetro autoral canônico do Gaussian Blur.
 
-Essa relação não pode variar entre CPU e GPU.
+O Render não recebe um segundo parâmetro `radius` concorrente. A extensão inicial do kernel é definida pelo contrato já fechado:
+
+~~~text
+kernel_extent = ceil(3 × sigma)
+~~~
+
+por eixo, com pesos truncados renormalizados.
+
+Se a UI futura apresentar uma unidade chamada “radius”, ela será apenas uma transformação de apresentação para `sigma`; essa conversão ficará fora do documento e deverá ser única entre CPU/GPU.
 
 ## Region of Interest — ROI
 
