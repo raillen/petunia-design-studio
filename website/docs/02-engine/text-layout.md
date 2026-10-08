@@ -28,6 +28,19 @@ Uma **ligature** substitui uma sequência por um glifo combinado quando a fonte 
 
 **Kerning** ajusta a distância entre pares específicos de glifos, como “A” e “V”.
 
+### Stack definida
+
+A v0.1 usa uma pipeline Rust pequena e especializada:
+
+- `rustybuzz` para shaping OpenType;
+- `unicode-segmentation` para grapheme/word boundaries;
+- `unicode-bidi` para o Unicode Bidirectional Algorithm;
+- `unicode-linebreak` ou implementação equivalente estritamente baseada em UAX #14 para oportunidades de quebra;
+- parser de fonte dedicado como `ttf-parser` para metadata/outlines quando necessário;
+- `fontdue` apenas para rasterização de cobertura de glifos, não para shaping nem extração autoral de outlines.
+
+Essas bibliotecas ficam atrás de tipos Petunia. IDs de glifo, structs de fonte e buffers externos não entram no Core.
+
 O workspace já usa `rustybuzz`, que realiza shaping considerando:
 
 - fonte;
@@ -132,7 +145,21 @@ tação
 
 O Engine não deve aplicar regras de português a um parágrafo marcado como inglês.
 
-Dicionários/regras concretas serão definidos quando fecharmos a implementação de layout.
+A v0.1 trata hyphenation como serviço opcional por idioma atrás de `HyphenationProvider`.
+
+~~~rust
+pub trait HyphenationProvider {
+    fn opportunities(
+        &self,
+        language: LanguageTag,
+        word: &str,
+    ) -> HyphenationOpportunities;
+}
+~~~
+
+O layout funciona corretamente sem dicionário, apenas com oportunidades normais de line break. Quando existe dicionário, ele adiciona pontos de hifenização. Isso impede que a ausência de um pacote linguístico torne o Text Engine inválido.
+
+Dicionários são recursos versionados, não lógica embutida em QML.
 
 ## Font resolution
 
@@ -287,3 +314,174 @@ reutilizado em várias posições
 Isso reduz trabalho e chamadas de render.
 
 O atlas é cache derivado. Nunca faz parte do documento.
+
+
+## Pipeline canônica de parágrafo
+
+Para cada parágrafo:
+
+~~~text
+UTF-8 source
+↓ validate TextRange boundaries
+grapheme / word segmentation
+↓
+BiDi paragraph resolution
+↓
+style/script/language runs
+↓
+font resolution + fallback runs
+↓
+rustybuzz shaping
+↓
+line-break opportunities + optional hyphenation
+↓
+line fitting
+↓
+justification/alignment
+↓
+positioned GlyphRuns
+~~~
+
+A pipeline pode fazer passes adicionais para fallback, mas a ordem semântica acima é fixa.
+
+## Font fallback
+
+Fallback é resolvido **por cluster**, não trocando a fonte inteira do parágrafo por conveniência.
+
+Direção:
+
+1. tentar a FontRef solicitada;
+2. identificar clusters sem cobertura;
+3. procurar fallback compatível com script/language;
+4. reagrupar somente trechos necessários;
+5. shape novamente os trechos afetados;
+6. manter a FontRef autoral inalterada.
+
+Fallback precisa preservar cluster boundaries. Não dividir uma sequência combinante entre fontes quando isso produzir shaping inválido.
+
+## Line fitting
+
+A v0.1 usa algoritmo guloso determinístico para quebra de linha:
+
+1. acumular clusters/runs enquanto cabem;
+2. guardar a última oportunidade válida de quebra;
+3. quando exceder largura, quebrar na última oportunidade;
+4. se não houver oportunidade e a política permitir, usar hyphenation;
+5. se uma unidade indivisível ainda exceder o frame, marcar overflow.
+
+Algoritmos globais de otimização tipográfica podem ser adicionados depois, mas não são necessários para uma base previsível.
+
+## Justification
+
+Justification distribui espaço somente em pontos permitidos pelo script/layout.
+
+Não implementar “justificar adicionando espaço entre todos os glyphs”.
+
+A v0.1 prioriza:
+
+- espaços expansíveis;
+- regras do script;
+- tracking somente quando a política permitir;
+- nenhum alongamento arbitrário de formas de glifo.
+
+Justificação avançada para scripts específicos pode evoluir sem mudar o modelo autoral.
+
+## Incremental layout
+
+Text layout é derivado e precisa poder ser invalidado por região lógica.
+
+Uma alteração em um parágrafo:
+
+~~~text
+paragraph N changed
+↓
+reshape N
+↓
+relayout N
+↓
+se altura/overflow mudou
+   invalidate downstream linked frames
+~~~
+
+Não relayoutar o documento inteiro por padrão.
+
+## Outlines de texto
+
+Converter texto para curves é Command explícito.
+
+Pipeline:
+
+~~~text
+TextObject
+↓ resolve fonts
+shape
+↓ glyph IDs + positions
+font outline extraction
+↓ transform glyph outlines
+VectorPath objects
+~~~
+
+`fontdue` não serve para essa etapa porque rasteriza glifos. Outline extraction usa parser/font backend apropriado.
+
+O Command precisa:
+
+- falhar claramente se outline não estiver disponível;
+- preservar Appearance onde aplicável;
+- gerar ObjectId/ContourId/NodeId novos para a geometria materializada;
+- armazenar inverse data para Undo.
+
+## Tables
+
+Tables permanecem **pós-v0.1-stable** no motor editorial. Não introduzir um modelo incompleto no Core apenas para antecipá-las.
+
+O Layout Engine permanece preparado para blocos/frames compostos, mas a especificação de Table terá página própria quando entrar no roadmap de implementação.
+
+## Data merge
+
+Data merge é Engine/automation, não um tipo especial de layout.
+
+Template permanece Document normal. O merge recebe dataset externo validado e produz documentos/instâncias através de Commands/export pipeline.
+
+## Cache keys
+
+Cache de shaping/layout usa pelo menos:
+
+~~~text
+text revision/content hash
++ CharacterStyle
++ ParagraphStyle
++ resolved font identity/content hash
++ language/script/direction
++ frame geometry
++ layout policy
+~~~
+
+Glyph raster cache não faz parte dessa key; é responsabilidade do Render.
+
+## Erros
+
+Separar:
+
+~~~text
+MissingRequestedFont → degraded com fallback
+MissingGlyph         → degraded/tofu conforme policy
+InvalidTextRange     → domain/command error
+ShapingFailure       → engine error
+LayoutOverflow       → estado de layout, não erro fatal
+CyclicTextFlow       → rejeitado pelo Core
+~~~
+
+Overflow é resultado válido e consultável.
+
+## Invariantes
+
+1. Unicode source e estilos são autorais; glyph IDs/positions são derivados.
+2. Grapheme, BiDi, shaping e line breaking permanecem etapas distintas.
+3. `rustybuzz` é o shaper OpenType inicial.
+4. Fallback acontece por clusters e nunca reescreve FontRef.
+5. Hyphenation é serviço opcional por idioma.
+6. A v0.1 usa line fitting guloso, determinístico e testável.
+7. Layout incremental invalida somente texto/frames downstream necessários.
+8. Convert to Curves é materialização explícita e usa outlines, não raster glyphs.
+9. Glyph atlas pertence ao Render.
+10. Tables não entram com modelo incompleto antes de sua especificação.
