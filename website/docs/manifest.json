@@ -79,6 +79,10 @@
           "path": "01-core/shape.md"
         },
         {
+          "title": "conteúdo vetorial gerado",
+          "path": "01-core/generated-content.md"
+        },
+        {
           "title": "scene.rs",
           "path": "01-core/scene.md"
         },
