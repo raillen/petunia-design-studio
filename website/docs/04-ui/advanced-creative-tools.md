@@ -1,6 +1,6 @@
 # Ferramentas criativas avançadas
 
-**Estado:** todas constam como capacidades do projeto; implementation stage não é promessa de release. GUI/UX exata será discutida conjuntamente.
+**Estado (2026-10-08):** capacidades preservadas no roadmap; contratos de UX **aprovados por delegação** em [Ferramentas avançadas — interação](#/docs/04-ui/advanced-creative-tools-interaction.md). Estágio de implementação não é promessa de lançamento nem comprovação de código/testes prontos.
 
 ## Variable Width Stroke
 
@@ -51,4 +51,4 @@ Não criar implementação única para todos. Todos usam Commands e Undo; input 
 
 Live Corners, Offset, Image Trace, Crop/Clipping, Masks, Text on Path, QR/Barcode, adjustments e pattern fills já têm especificação de motor; integram Tools/Actions quando implementados.
 
-[Catálogo](#/docs/04-ui/creative-tools-overview.md) · [Engine](#/docs/02-engine/creative-operations.md)
+[UX das ferramentas avançadas](#/docs/04-ui/advanced-creative-tools-interaction.md) · [Catálogo](#/docs/04-ui/creative-tools-overview.md) · [Engine](#/docs/02-engine/creative-operations.md)
