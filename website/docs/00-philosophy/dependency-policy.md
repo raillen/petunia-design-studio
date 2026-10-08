@@ -48,8 +48,9 @@ Dependências e papéis já definidos pela arquitetura:
 | Text shaping | `rustybuzz` | definido |
 | Grapheme segmentation | `unicode-segmentation` | definido |
 | BiDi | `unicode-bidi` | definido |
-| Line break | `unicode-linebreak` ou implementação UAX #14 equivalente | contrato definido |
-| Font metadata/outlines | `ttf-parser` ou backend equivalente | contrato definido |
+| Line break | `unicode-linebreak` | definido |
+| Font metadata/outlines | `ttf-parser` | definido |
+| Hyphenation | `hypher` atrás de adapter | definido |
 | Glyph raster coverage | `fontdue` | definido |
 | Bitmap codecs | `image` | definido |
 | Data parallelism | `rayon` | definido |
@@ -58,8 +59,6 @@ Dependências e papéis já definidos pela arquitetura:
 | Errors | `thiserror` | definido |
 | UI | Qt/QML via CXX-Qt | definido |
 | Plugin runtime WASM | runtime concreto | medir no milestone de plugins |
-
-“Contrato definido” significa que a função arquitetural está fechada, mas a crate concreta pode ser substituída por equivalente sem mudar o domínio.
 
 O runtime WASM fica propositalmente aberto até o milestone porque tamanho de binário, startup, sandbox e throughput precisam ser medidos. Essa abertura não muda o Host API ou o formato de plugin.
 
