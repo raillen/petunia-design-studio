@@ -4,22 +4,92 @@
   "title": "PTND document.json v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "documentId", "surfaces"],
+  "required": [
+    "version",
+    "document_id",
+    "metadata",
+    "setup",
+    "pages",
+    "spreads",
+    "scene",
+    "resources",
+    "styles",
+    "symbols",
+    "swatches",
+    "guides",
+    "grids",
+    "slices"
+  ],
   "properties": {
-    "version": { "const": 1 },
-    "documentId": { "$ref": "#/$defs/uuid" },
-    "name": { "type": "string" },
-    "surfaces": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/surface" }
+    "version": {
+      "const": 1
     },
-    "libraries": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/assetLibrary" }
+    "document_id": {
+      "$ref": "#/$defs/uuid"
     },
-    "stories": {
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "setup": {
+      "$ref": "#/$defs/document_setup"
+    },
+    "pages": {
       "type": "array",
-      "items": { "$ref": "#/$defs/textStory" }
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/page"
+      }
+    },
+    "spreads": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/spread"
+      }
+    },
+    "scene": {
+      "$ref": "#/$defs/scene"
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/resource_record"
+      }
+    },
+    "styles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/style_record"
+      }
+    },
+    "symbols": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/symbol_definition"
+      }
+    },
+    "swatches": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/swatch"
+      }
+    },
+    "guides": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/guide"
+      }
+    },
+    "grids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/grid"
+      }
+    },
+    "slices": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/slice"
+      }
     }
   },
   "$defs": {
@@ -27,281 +97,817 @@
       "type": "string",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
     },
-    "finiteNumber": { "type": "number" },
-    "color": {
+    "finite_number": {
+      "type": "number"
+    },
+    "point": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["colorSpace", "values"],
+      "required": ["x", "y"],
       "properties": {
-        "colorSpace": { "enum": ["srgb", "display-p3", "cmyk", "lab", "gray", "spot"] },
-        "values": { "type": "array", "items": { "type": "number" }, "minItems": 1 }
+        "x": { "$ref": "#/$defs/finite_number" },
+        "y": { "$ref": "#/$defs/finite_number" }
+      }
+    },
+    "vec2": {
+      "$ref": "#/$defs/point"
+    },
+    "size2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "minimum": 0 },
+        "height": { "type": "number", "minimum": 0 }
       }
     },
     "rect": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["x", "y", "width", "height"],
+      "required": ["min", "max"],
       "properties": {
-        "x": { "$ref": "#/$defs/finiteNumber" },
-        "y": { "$ref": "#/$defs/finiteNumber" },
-        "width": { "$ref": "#/$defs/finiteNumber" },
-        "height": { "$ref": "#/$defs/finiteNumber" }
+        "min": { "$ref": "#/$defs/point" },
+        "max": { "$ref": "#/$defs/point" }
       }
     },
-    "objectBase": {
-      "type": "object",
-      "required": ["id", "type", "name"],
-      "properties": {
-        "id": { "$ref": "#/$defs/uuid" },
-        "type": { "type": "string" },
-        "name": { "type": "string" },
-        "visible": { "type": "boolean", "default": true },
-        "children": { "type": "array", "items": { "$ref": "#/$defs/object" } },
-        "symbolId": { "$ref": "#/$defs/uuid" },
-        "styleId": { "$ref": "#/$defs/uuid" },
-        "storyId": { "$ref": "#/$defs/uuid" },
-        "overrides": { "type": "object" }
-      }
-    },
-    "rectangle": {
-      "allOf": [
-        { "$ref": "#/$defs/objectBase" },
-        {
-          "properties": {
-            "type": { "const": "rectangle" },
-            "frame": { "$ref": "#/$defs/rect" }
-          },
-          "required": ["frame"]
-        }
-      ]
-    },
-    "ellipse": {
-      "allOf": [
-        { "$ref": "#/$defs/objectBase" },
-        {
-          "properties": {
-            "type": { "const": "ellipse" },
-            "frame": { "$ref": "#/$defs/rect" }
-          },
-          "required": ["frame"]
-        }
-      ]
-    },
-    "group": {
-      "allOf": [
-        { "$ref": "#/$defs/objectBase" },
-        { "properties": { "type": { "const": "group" } } }
-      ]
-    },
-    "ptndNode": {
+    "insets": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "x", "y", "kind"],
+      "required": ["left", "top", "right", "bottom"],
       "properties": {
-        "id": { "$ref": "#/$defs/uuid" },
-        "x": { "$ref": "#/$defs/finiteNumber" },
-        "y": { "$ref": "#/$defs/finiteNumber" },
-        "kind": { "enum": ["cusp", "smooth", "symmetric"] },
-        "inHandle": {
-          "type": ["array", "null"],
-          "items": { "type": "number" },
-          "minItems": 2,
-          "maxItems": 2
-        },
-        "outHandle": {
-          "type": ["array", "null"],
-          "items": { "type": "number" },
-          "minItems": 2,
-          "maxItems": 2
+        "left": { "$ref": "#/$defs/finite_number" },
+        "top": { "$ref": "#/$defs/finite_number" },
+        "right": { "$ref": "#/$defs/finite_number" },
+        "bottom": { "$ref": "#/$defs/finite_number" }
+      }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["a", "b", "c", "d", "tx", "ty"],
+      "properties": {
+        "a": { "$ref": "#/$defs/finite_number" },
+        "b": { "$ref": "#/$defs/finite_number" },
+        "c": { "$ref": "#/$defs/finite_number" },
+        "d": { "$ref": "#/$defs/finite_number" },
+        "tx": { "$ref": "#/$defs/finite_number" },
+        "ty": { "$ref": "#/$defs/finite_number" }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "created": { "type": "string", "format": "date-time" },
+        "modified": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" },
+        "custom": {
+          "type": "object",
+          "additionalProperties": true
         }
       }
     },
-    "ptndContour": {
+    "color_space_ref": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "name"],
+          "properties": {
+            "kind": { "const": "builtin" },
+            "name": {
+              "enum": ["srgb", "display-p3", "lab-d50", "gray"]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "resource_id"],
+          "properties": {
+            "kind": { "const": "icc" },
+            "resource_id": { "$ref": "#/$defs/uuid" }
+          }
+        }
+      ]
+    },
+    "document_setup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "default_raster_dpi", "color"],
+      "properties": {
+        "unit": {
+          "enum": ["px", "pt", "mm", "cm", "inch", "pica"]
+        },
+        "default_raster_dpi": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "color": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rgb_working", "rendering_defaults"],
+          "properties": {
+            "rgb_working": { "$ref": "#/$defs/color_space_ref" },
+            "cmyk_working": {
+              "oneOf": [
+                { "$ref": "#/$defs/color_space_ref" },
+                { "type": "null" }
+              ]
+            },
+            "gray_working": {
+              "oneOf": [
+                { "$ref": "#/$defs/color_space_ref" },
+                { "type": "null" }
+              ]
+            },
+            "rendering_defaults": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["intent", "black_point_compensation"],
+              "properties": {
+                "intent": {
+                  "enum": ["relative_colorimetric", "absolute_colorimetric", "perceptual", "saturation"]
+                },
+                "black_point_compensation": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "page_spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["size", "margins", "bleed"],
+      "properties": {
+        "size": { "$ref": "#/$defs/size2" },
+        "margins": { "$ref": "#/$defs/insets" },
+        "bleed": { "$ref": "#/$defs/insets" }
+      }
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "spec", "root_children"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string" },
+        "spec": { "$ref": "#/$defs/page_spec" },
+        "root_children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/uuid" }
+        }
+      }
+    },
+    "spread": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "pages"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "pages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["page", "origin"],
+            "properties": {
+              "page": { "$ref": "#/$defs/uuid" },
+              "origin": { "$ref": "#/$defs/point" }
+            }
+          }
+        }
+      }
+    },
+    "parent_ref": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "id"],
+          "properties": {
+            "kind": { "const": "page" },
+            "id": { "$ref": "#/$defs/uuid" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "id"],
+          "properties": {
+            "kind": { "const": "object" },
+            "id": { "$ref": "#/$defs/uuid" }
+          }
+        }
+      ]
+    },
+    "node_flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["visible", "locked", "exportable"],
+      "properties": {
+        "visible": { "type": "boolean" },
+        "locked": { "type": "boolean" },
+        "exportable": { "type": "boolean" }
+      }
+    },
+    "blend_mode": {
+      "enum": [
+        "normal",
+        "multiply",
+        "screen",
+        "overlay",
+        "darken",
+        "lighten",
+        "color_dodge",
+        "color_burn",
+        "hard_light",
+        "soft_light",
+        "difference",
+        "exclusion",
+        "hue",
+        "saturation",
+        "color",
+        "luminosity"
+      ]
+    },
+    "binding_source_use": {
+      "enum": ["binding_only", "also_visible"]
+    },
+    "clip_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "source_use"],
+      "properties": {
+        "source": { "$ref": "#/$defs/uuid" },
+        "source_use": { "$ref": "#/$defs/binding_source_use" }
+      }
+    },
+    "mask_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "source_use", "mode"],
+      "properties": {
+        "source": { "$ref": "#/$defs/uuid" },
+        "source_use": { "$ref": "#/$defs/binding_source_use" },
+        "mode": { "enum": ["alpha", "luminance"] }
+      }
+    },
+    "effect_instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "opacity", "blend_mode", "kind", "schema_version", "params"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "enabled": { "type": "boolean" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "blend_mode": { "$ref": "#/$defs/blend_mode" },
+        "kind": { "type": "string", "minLength": 1 },
+        "schema_version": { "type": "integer", "minimum": 1 },
+        "params": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "path_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "position", "kind", "outgoing"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "position": { "$ref": "#/$defs/point" },
+        "handle_in": {
+          "oneOf": [
+            { "$ref": "#/$defs/point" },
+            { "type": "null" }
+          ]
+        },
+        "handle_out": {
+          "oneOf": [
+            { "$ref": "#/$defs/point" },
+            { "type": "null" }
+          ]
+        },
+        "kind": { "enum": ["cusp", "smooth", "symmetric"] },
+        "outgoing": { "enum": ["line", "cubic"] }
+      }
+    },
+    "contour": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "nodes", "closed"],
       "properties": {
         "id": { "$ref": "#/$defs/uuid" },
-        "closed": { "type": "boolean" },
-        "nodes": { "type": "array", "items": { "$ref": "#/$defs/ptndNode" } }
+        "nodes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/path_node" }
+        },
+        "closed": { "type": "boolean" }
       }
     },
-    "ptndPath": {
+    "vector_path": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["fillRule", "contours"],
+      "required": ["fill_rule", "contours"],
       "properties": {
-        "fillRule": { "enum": ["nonzero", "evenodd"] },
-        "contours": { "type": "array", "items": { "$ref": "#/$defs/ptndContour" } }
+        "fill_rule": { "enum": ["nonzero", "evenodd"] },
+        "contours": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/contour" }
+        }
       }
     },
-    "ptndLive": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["op", "sourceIds"],
-      "properties": {
-        "op": { "enum": ["union", "subtract", "intersect", "xor", "divide"] },
-        "sourceIds": { "type": "array", "items": { "$ref": "#/$defs/uuid" } }
-      }
-    },
-    "path": {
-      "allOf": [
-        { "$ref": "#/$defs/objectBase" },
-        {
-          "properties": {
-            "type": { "const": "path" },
-            "frame": { "$ref": "#/$defs/rect" },
-            "path": { "$ref": "#/$defs/ptndPath" },
-            "live": { "$ref": "#/$defs/ptndLive" }
-          },
-          "required": ["frame", "path"]
-        }
-      ]
-    },
-    "text": {
-      "allOf": [
-        { "$ref": "#/$defs/objectBase" },
-        {
-          "properties": {
-            "type": { "const": "text" },
-            "frame": { "$ref": "#/$defs/rect" }
-          },
-          "required": ["frame"]
-        }
-      ]
-    },
-    "object": {
+    "parametric_shape": {
       "oneOf": [
-        { "$ref": "#/$defs/rectangle" },
-        { "$ref": "#/$defs/ellipse" },
-        { "$ref": "#/$defs/group" },
-        { "$ref": "#/$defs/path" },
-        { "$ref": "#/$defs/text" }
-      ]
-    },
-    "surface": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "canvas", "objects"],
-      "properties": {
-        "id": { "$ref": "#/$defs/uuid" },
-        "name": { "type": "string" },
-        "canvas": {
+        {
           "type": "object",
-          "required": ["width", "height"],
+          "additionalProperties": false,
+          "required": ["kind", "size", "corners"],
           "properties": {
-            "width": { "type": "number", "exclusiveMinimum": 0 },
-            "height": { "type": "number", "exclusiveMinimum": 0 }
+            "kind": { "const": "rectangle" },
+            "size": { "$ref": "#/$defs/size2" },
+            "corners": { "type": "object", "additionalProperties": true }
           }
         },
-        "objects": { "type": "array", "items": { "$ref": "#/$defs/object" } }
-      }
-    },
-    "symbolDefinition": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "source"],
-      "properties": {
-        "id": { "$ref": "#/$defs/uuid" },
-        "name": { "type": "string" },
-        "source": { "$ref": "#/$defs/object" }
-      }
-    },
-    "objectStyle": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "kind"],
-      "properties": {
-        "id": { "$ref": "#/$defs/uuid" },
-        "name": { "type": "string" },
-        "kind": { "const": "object" },
-        "fill": { "type": "string" },
-        "gradient": { "type": "array", "items": { "type": "string" } },
-        "stroke": { "type": "string" },
-        "strokeWidth": { "$ref": "#/$defs/finiteNumber" },
-        "visible": { "type": "boolean" }
-      }
-    },
-    "textStyle": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "kind"],
-      "properties": {
-        "id": { "$ref": "#/$defs/uuid" },
-        "name": { "type": "string" },
-        "kind": { "enum": ["character", "paragraph"] },
-        "properties": { "type": "object" }
-      }
-    },
-    "style": {
-      "oneOf": [
-        { "$ref": "#/$defs/objectStyle" },
-        { "$ref": "#/$defs/textStyle" }
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "radii", "arc"],
+          "properties": {
+            "kind": { "const": "ellipse" },
+            "radii": { "$ref": "#/$defs/vec2" },
+            "arc": { "type": "object", "additionalProperties": true }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "sides", "radius", "rotation"],
+          "properties": {
+            "kind": { "const": "polygon" },
+            "sides": { "type": "integer", "minimum": 3 },
+            "radius": { "type": "number", "minimum": 0 },
+            "rotation": { "$ref": "#/$defs/finite_number" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "points", "outer_radius", "inner_ratio", "rotation"],
+          "properties": {
+            "kind": { "const": "star" },
+            "points": { "type": "integer", "minimum": 2 },
+            "outer_radius": { "type": "number", "minimum": 0 },
+            "inner_ratio": { "type": "number", "minimum": 0 },
+            "rotation": { "$ref": "#/$defs/finite_number" }
+          }
+        }
       ]
     },
-    "assetLibrary": {
+    "appearance": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "scope"],
+      "required": ["items"],
       "properties": {
-        "id": { "$ref": "#/$defs/uuid" },
-        "name": { "type": "string" },
-        "scope": { "enum": ["document", "user"] },
-        "symbols": {
+        "items": {
           "type": "array",
-          "items": { "$ref": "#/$defs/symbolDefinition" }
-        },
-        "styles": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/style" }
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "enabled", "opacity", "blend_mode", "kind", "payload"],
+            "properties": {
+              "id": { "$ref": "#/$defs/uuid" },
+              "enabled": { "type": "boolean" },
+              "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+              "blend_mode": { "$ref": "#/$defs/blend_mode" },
+              "kind": { "enum": ["fill", "stroke"] },
+              "payload": { "type": "object", "additionalProperties": true }
+            }
+          }
         }
       }
     },
-    "inlineField": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["start", "end", "kind", "value"],
-      "properties": {
-        "start": { "type": "integer", "minimum": 0 },
-        "end": { "type": "integer", "minimum": 0 },
-        "kind": { "type": "string" },
-        "value": { "type": "string" },
-        "fallback": { "type": "string" }
-      }
+    "appearance_source": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "appearance"],
+          "properties": {
+            "kind": { "const": "local" },
+            "appearance": { "$ref": "#/$defs/appearance" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "style_id"],
+          "properties": {
+            "kind": { "const": "style" },
+            "style_id": { "$ref": "#/$defs/uuid" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "style_id", "overrides"],
+          "properties": {
+            "kind": { "const": "style_with_overrides" },
+            "style_id": { "$ref": "#/$defs/uuid" },
+            "overrides": { "type": "object", "additionalProperties": true }
+          }
+        }
+      ]
     },
-    "characterRun": {
+    "text_range": {
       "type": "object",
       "additionalProperties": false,
       "required": ["start", "end"],
       "properties": {
         "start": { "type": "integer", "minimum": 0 },
-        "end": { "type": "integer", "minimum": 0 },
-        "styleId": { "$ref": "#/$defs/uuid" },
-        "overrides": { "type": "object" }
+        "end": { "type": "integer", "minimum": 0 }
       }
     },
-    "paragraphSpan": {
+    "text_object": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["start", "end"],
+      "required": ["text", "runs", "paragraphs", "container", "flow"],
       "properties": {
-        "start": { "type": "integer", "minimum": 0 },
-        "end": { "type": "integer", "minimum": 0 },
-        "styleId": { "$ref": "#/$defs/uuid" },
-        "overrides": { "type": "object" }
+        "text": { "type": "string" },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["range", "style"],
+            "properties": {
+              "range": { "$ref": "#/$defs/text_range" },
+              "style": { "$ref": "#/$defs/uuid" }
+            }
+          }
+        },
+        "paragraphs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["range", "style"],
+            "properties": {
+              "range": { "$ref": "#/$defs/text_range" },
+              "style": { "$ref": "#/$defs/uuid" }
+            }
+          }
+        },
+        "container": { "type": "object", "additionalProperties": true },
+        "flow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["next"],
+          "properties": {
+            "next": {
+              "oneOf": [
+                { "$ref": "#/$defs/uuid" },
+                { "type": "null" }
+              ]
+            }
+          }
+        }
       }
     },
-    "textStory": {
+    "trace_spec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "text", "paragraphs", "runs"],
+      "required": [
+        "mode",
+        "alpha_policy",
+        "threshold",
+        "min_region_area_px",
+        "corner_sensitivity",
+        "smoothing",
+        "curve_tolerance"
+      ],
+      "properties": {
+        "mode": { "type": "object", "additionalProperties": true },
+        "alpha_policy": { "type": "object", "additionalProperties": true },
+        "threshold": { "type": "number" },
+        "min_region_area_px": { "type": "number", "minimum": 0 },
+        "corner_sensitivity": { "type": "number" },
+        "smoothing": { "type": "number" },
+        "curve_tolerance": { "type": "number", "exclusiveMinimum": 0 },
+        "ignore_background": { "type": ["object", "null"], "additionalProperties": true }
+      }
+    },
+    "generator_spec": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "spec"],
+          "properties": {
+            "kind": { "const": "qr_code" },
+            "spec": { "type": "object", "additionalProperties": true }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "spec"],
+          "properties": {
+            "kind": { "const": "barcode" },
+            "spec": { "type": "object", "additionalProperties": true }
+          }
+        }
+      ]
+    },
+    "scene_item": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "children"],
+          "properties": {
+            "type": { "const": "group" },
+            "children": { "type": "array", "items": { "$ref": "#/$defs/uuid" } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "children"],
+          "properties": {
+            "type": { "const": "layer" },
+            "children": { "type": "array", "items": { "$ref": "#/$defs/uuid" } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path", "appearance"],
+          "properties": {
+            "type": { "const": "path" },
+            "path": { "$ref": "#/$defs/vector_path" },
+            "appearance": { "$ref": "#/$defs/appearance_source" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "shape", "appearance"],
+          "properties": {
+            "type": { "const": "shape" },
+            "shape": { "$ref": "#/$defs/parametric_shape" },
+            "appearance": { "$ref": "#/$defs/appearance_source" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "text"],
+          "properties": {
+            "type": { "const": "text" },
+            "text": { "$ref": "#/$defs/text_object" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "resource", "sampling"],
+          "properties": {
+            "type": { "const": "image" },
+            "resource": { "$ref": "#/$defs/uuid" },
+            "source_rect": {
+              "oneOf": [
+                { "$ref": "#/$defs/rect" },
+                { "type": "null" }
+              ]
+            },
+            "sampling": { "enum": ["nearest", "bilinear"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "surface"],
+          "properties": {
+            "type": { "const": "pixel_layer" },
+            "surface": { "$ref": "#/$defs/uuid" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "source", "spec"],
+          "properties": {
+            "type": { "const": "trace" },
+            "source": { "$ref": "#/$defs/uuid" },
+            "spec": { "$ref": "#/$defs/trace_spec" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "generator", "appearance"],
+          "properties": {
+            "type": { "const": "generated_vector" },
+            "generator": { "$ref": "#/$defs/generator_spec" },
+            "appearance": { "$ref": "#/$defs/appearance_source" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "spec", "children"],
+          "properties": {
+            "type": { "const": "artboard" },
+            "spec": { "type": "object", "additionalProperties": true },
+            "children": { "type": "array", "items": { "$ref": "#/$defs/uuid" } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "definition", "overrides"],
+          "properties": {
+            "type": { "const": "symbol_instance" },
+            "definition": { "$ref": "#/$defs/uuid" },
+            "overrides": { "type": "object", "additionalProperties": true }
+          }
+        }
+      ]
+    },
+    "scene_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "parent",
+        "transform",
+        "flags",
+        "opacity",
+        "blend_mode",
+        "geometry_effects",
+        "post_effects",
+        "clip",
+        "mask",
+        "item"
+      ],
       "properties": {
         "id": { "$ref": "#/$defs/uuid" },
-        "text": { "type": "string" },
-        "revision": { "type": "integer", "minimum": 0 },
-        "paragraphs": { "type": "array", "items": { "$ref": "#/$defs/paragraphSpan" } },
-        "runs": { "type": "array", "items": { "$ref": "#/$defs/characterRun" } },
-        "fields": { "type": "array", "items": { "$ref": "#/$defs/inlineField" } }
+        "name": { "type": "string" },
+        "parent": { "$ref": "#/$defs/parent_ref" },
+        "transform": { "$ref": "#/$defs/transform" },
+        "flags": { "$ref": "#/$defs/node_flags" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "blend_mode": { "$ref": "#/$defs/blend_mode" },
+        "geometry_effects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/effect_instance" }
+        },
+        "post_effects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/effect_instance" }
+        },
+        "clip": {
+          "oneOf": [
+            { "$ref": "#/$defs/clip_binding" },
+            { "type": "null" }
+          ]
+        },
+        "mask": {
+          "oneOf": [
+            { "$ref": "#/$defs/mask_binding" },
+            { "type": "null" }
+          ]
+        },
+        "item": { "$ref": "#/$defs/scene_item" }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodes"],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/scene_node" }
+        }
+      }
+    },
+    "resource_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "source", "metadata"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "kind": {
+          "enum": ["image", "font", "icc_profile", "pixel_surface", "pattern", "blob"]
+        },
+        "source": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "entry"],
+              "properties": {
+                "kind": { "const": "embedded" },
+                "entry": { "type": "string", "minLength": 1 }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "uri"],
+              "properties": {
+                "kind": { "const": "linked" },
+                "uri": { "type": "string", "minLength": 1 }
+              }
+            }
+          ]
+        },
+        "content_hash": {
+          "type": ["string", "null"],
+          "pattern": "^blake3:[0-9a-f]{64}$"
+        },
+        "metadata": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "style_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "kind", "payload"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string" },
+        "kind": { "enum": ["appearance", "character", "paragraph"] },
+        "payload": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "symbol_definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "root_children", "nodes"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string" },
+        "root_children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/uuid" }
+        },
+        "nodes": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "swatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "value"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string" },
+        "value": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "guide": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "axis", "position", "locked", "scope"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "axis": { "enum": ["horizontal", "vertical"] },
+        "position": { "$ref": "#/$defs/finite_number" },
+        "locked": { "type": "boolean" },
+        "scope": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "grid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "scope", "origin", "kind", "spacing", "subdivisions"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "scope": { "type": "object", "additionalProperties": true },
+        "origin": { "$ref": "#/$defs/point" },
+        "kind": { "type": "string", "minLength": 1 },
+        "spacing": { "$ref": "#/$defs/vec2" },
+        "subdivisions": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "slice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "name", "export_presets"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "source": { "type": "object", "additionalProperties": true },
+        "name": { "type": "string" },
+        "export_presets": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        }
       }
     }
   }
