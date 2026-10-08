@@ -1,6 +1,6 @@
 # Smart Color — extrair, relacionar e trocar cores
 
-**Estado:** capacidades aceitas; UX exata será discutida em conjunto.
+**Estado (2026-10-08):** capacidades aceitas; UX de Palette Extract/Recolor Lab/Global Swatches **aprovada por delegação** e detalhada em [Smart Color — interação](#/docs/04-ui/smart-color-interaction.md). Documentado, não implementado/testado.
 
 ## Referências
 
@@ -48,4 +48,4 @@ Há quatro operações diferentes: editar Swatch global; alterar color local; ap
 
 Gradients com alpha, ICC ausente, CMYK/Lab, Spot, out-of-gamut, nested symbols, text runs, colorspaces misturados, Undo/Redo, seed, palette clustering determinístico.
 
-[Core Color](#/docs/01-core/color.md) · [Color Management](#/docs/02-engine/color-management.md) · [Engine](#/docs/02-engine/creative-operations.md)
+[Interação e UX Smart Color](#/docs/04-ui/smart-color-interaction.md) · [Core Color](#/docs/01-core/color.md) · [Color Management](#/docs/02-engine/color-management.md) · [Engine](#/docs/02-engine/creative-operations.md)
