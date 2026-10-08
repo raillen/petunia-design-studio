@@ -68,3 +68,10 @@ Pontos que dependem de benchmark permanecem explicitamente abertos na Matriz de 
 O [Roadmap de capacidades](#/docs/00-roadmap/capabilities.md) registra as funcionalidades aprovadas para o horizonte do produto sem congelar APIs antes da hora.
 
 As features são especificadas em detalhe somente quando o domínio técnico que as sustenta estiver maduro. **Placed 3D permanece explicitamente pós-`v0.1.0-stable`.**
+
+
+## Referências técnicas e estudos de código
+
+A seção [Referências Técnicas](#/docs/06-references/index.md) reúne uma auditoria de arquitetura, código e contratos de três editores open source em Rust: [VectorCraft](#/docs/06-references/vectorcraft.md), [PhotoCraft](#/docs/06-references/photocraft.md) e [LightCraft](#/docs/06-references/lightcraft.md). O estudo inclui [matriz de integração](#/docs/06-references/integration-matrix.md) para o Core/Engine/Render/UI do Petunia e [protocolo de leitura para agentes](#/docs/06-references/agent-research-protocol.md).
+
+Referências são **fontes de estudo, não dependências aprovadas nem código portado**. Os módulos upstream têm diferenças de modelo autoral, interface, licenças e gerenciamento de cor que precisam de adapters e testes antes de qualquer aproveitamento.
