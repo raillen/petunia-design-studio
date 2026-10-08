@@ -114,9 +114,16 @@ u = m
 → u' = 0.5
 ~~~
 
-Midpoint precisa ficar dentro de range seguro aberto, por exemplo validado longe de 0/1 para evitar singularidade numérica.
+O contrato persistente é exatamente:
 
-O range exato serializado é definido pelo tipo/validator, não por clamp silencioso no Render.
+~~~text
+midpoint finito
+0 < midpoint < 1
+~~~
+
+`0` e `1` são inválidos porque tornam a parametrização singular. Não inventar clamp silencioso como `0.01…0.99` no Render.
+
+Para valores internos muito próximos dos extremos, a implementação usa cálculo numericamente estável em log/pow e retorna erro/degradação apenas se o valor deixar de ser finito. A UI futura pode escolher um range ergonômico menor para sliders sem reduzir o domínio autoral permitido.
 
 # Interpolation spaces
 
