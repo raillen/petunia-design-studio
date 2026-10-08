@@ -369,7 +369,7 @@ pub struct ImageObject {
 
 SceneNode transform posiciona a imagem.
 
-Crop não destrutivo modifica source rect/clip intent, não reescreve bytes da imagem original.
+Crop não destrutivo preserva a source e segue o contrato de [Crop e Clipping não destrutivos](#/docs/01-core/crop-clipping.md): ImageObject usa `source_rect` normalizado; outros conteúdos reutilizam `ClipBinding` quando aplicável.
 
 ## ImageObject versus PixelLayer
 
