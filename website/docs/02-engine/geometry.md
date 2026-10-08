@@ -483,6 +483,275 @@ Usar estratégia local:
 
 Isso preserva melhor intenção e reduz drift.
 
+# Smooth e Cleanup
+
+`Simplify`, `Smooth` e `Cleanup` são operações diferentes. Não usar um único botão/algoritmo interno com parâmetros ocultos para as três.
+
+~~~text
+Simplify
+→ reduzir complexidade sob limite de erro
+
+Smooth
+→ reduzir irregularidade/ruído geométrico
+
+Cleanup
+→ remover degenerações/redundâncias explicitamente selecionadas
+~~~
+
+Todas operam no Engine, nunca automaticamente durante save.
+
+## Smooth Handles
+
+`Smooth Handles` mantém os anchors selecionados e ajusta somente tangentes/handles.
+
+É apropriado quando o usuário quer continuidade visual sem deslocar nodes.
+
+Direção:
+
+~~~rust
+pub struct SmoothHandlesSpec {
+    pub strength: f64,
+    pub preserve_corners: bool,
+}
+~~~
+
+`strength` fica em 0…1.
+
+Para cada node elegível:
+
+1. obter direções dos segmentos adjacentes;
+2. estimar uma tangente alvo ponderada pela geometria local;
+3. preservar o anchor;
+4. interpolar as direções dos handles em direção à tangente alvo por `strength`;
+5. preservar comprimentos quando possível ou recalculá-los apenas segundo policy explícita;
+6. respeitar endpoints de contours abertos;
+7. não atravessar corners protegidos quando `preserve_corners = true`.
+
+O resultado altera handles/NodeKind por Command explícito.
+
+`NodeKind::Smooth` é uma **constraint de edição**. `Smooth Handles` é uma **operação**. Não confundir os dois conceitos.
+
+## Smooth Path
+
+`Smooth Path` pode mover geometria e por isso exige contrato de erro.
+
+A v0.1 reutiliza a infraestrutura de resampling + cubic curve fitting do Geometry Engine, em vez de introduzir Chaikin/Catmull-Rom como uma segunda geometria canônica.
+
+Pipeline:
+
+~~~text
+source VectorPath
+↓ arc-length resampling
+samples
+↓ protected-corner detection
+sections
+↓ low-pass/local smoothing of sample positions
+smoothed samples
+↓ Schneider cubic fitting
+VectorPath result
+↓ max-deviation verification against smoothed target
+~~~
+
+### Por que não Chaikin como padrão
+
+Chaikin subdivide e aproxima uma polyline cortando corners repetidamente. É útil em contextos específicos, mas:
+
+- tende a encolher a forma;
+- muda anchors;
+- exige política extra para cubics;
+- não oferece diretamente um limite de erro autoral em relação ao alvo suavizado.
+
+Ele pode existir futuramente como método opcional, mas não é a semântica padrão.
+
+## SmoothPathSpec
+
+Direção:
+
+~~~rust
+pub struct SmoothPathSpec {
+    pub strength: f64,
+    pub sample_spacing: f64,
+    pub max_deviation: f64,
+    pub preserve_corners: bool,
+    pub preserve_endpoints: bool,
+}
+~~~
+
+Regras:
+
+- valores finitos;
+- `strength` em 0…1;
+- `sample_spacing > 0`;
+- `max_deviation > 0`;
+- endpoints de contour aberto permanecem quando solicitado;
+- FillRule/open/closed continuam iguais;
+- corners protegidos dividem o fitting em seções.
+
+`strength = 0` é identidade semântica.
+
+A função de smoothing sobre samples precisa ser determinística e simétrica no interior da seção. A implementação inicial usa uma janela local ponderada com pesos normalizados e número de passes derivado de `strength`; alterar essa mapping de maneira visualmente incompatível exige semantic version da operação se ela for persistida como Live Effect.
+
+## Live Smooth versus materialização
+
+O mesmo cálculo pode ser usado de duas maneiras:
+
+~~~text
+Live Smooth
+→ GeometryEffect
+→ source preservada
+
+Smooth Path Command
+→ materializa novo VectorPath
+→ source anterior permanece no Undo
+~~~
+
+A UI futura decide como expor essas duas ações. O Engine não precisa de dois algoritmos.
+
+Preview usa o mesmo evaluator e apenas qualidade/tolerância permitida diferente.
+
+## Topologia de Smooth
+
+Smooth não:
+
+- une contours separados;
+- fecha contour aberto;
+- remove holes deliberadamente;
+- troca FillRule;
+- muda número de contours por conveniência.
+
+Se smoothing produzir self-intersection, o resultado pode continuar válido como VectorPath; uma operação de cleanup/topology separada é necessária se o usuário quiser corrigir isso.
+
+Não executar boolean cleanup implicitamente depois de Smooth, pois isso mudaria regiões preenchidas.
+
+# Cleanup
+
+Cleanup é uma composição **explícita** de regras pequenas.
+
+Direção:
+
+~~~rust
+pub struct CleanupSpec {
+    pub merge_distance: Option<f64>,
+    pub remove_zero_length: bool,
+    pub remove_duplicate_consecutive_nodes: bool,
+    pub dissolve_collinear: Option<f64>,
+    pub remove_empty_contours: bool,
+}
+~~~
+
+Nenhuma opção escondida.
+
+## Ordem canônica
+
+Quando múltiplas opções estão ativas:
+
+~~~text
+validate finite input
+↓
+remove exact/near duplicate consecutive nodes
+↓
+merge by distance
+↓
+remove zero-length segments
+↓
+dissolve collinear nodes
+↓
+remove structurally empty contours if requested
+↓
+validate result
+~~~
+
+A ordem é parte do contrato porque regras diferentes podem interagir.
+
+## Duplicate consecutive nodes
+
+Remove nodes consecutivos que representam o mesmo anchor dentro da tolerância selecionada e cuja remoção não perde handles/corner semantics relevantes.
+
+Se ambos possuem handles incompatíveis, não descartar um deles apenas por posição igual; retornar/registrar que o caso exige outra policy.
+
+## Zero-length segments
+
+Segmento de comprimento geométrico abaixo da tolerância pode ser removido quando:
+
+- não é o único elemento que preserva um contour semanticamente necessário;
+- sua remoção não elimina um handle/corner explicitamente protegido;
+- closed/open continua coerente.
+
+Não converter contour inteiro de área zero em nada salvo `remove_empty_contours` ou Command específico.
+
+## Merge by Distance
+
+Merge by Distance já definido continua sendo a operação que realmente **move/funde anchors** dentro de uma distância.
+
+Ele não é usado como efeito colateral de simplification, import ou save.
+
+Quando vários nodes formam um cluster dentro do threshold, a escolha do representative point é determinística.
+
+A v0.1 usa média ponderada uniforme dos anchors participantes, salvo quando um anchor está explicitamente protegido; nesse caso o protegido é o representative.
+
+Se houver mais de um protegido incompatível, não fundir o cluster.
+
+## Collinear dissolve
+
+Em trechos lineares, um node intermediário pode ser removido quando a distância à chord dos vizinhos e a mudança angular ficam dentro da tolerância especificada.
+
+Em cubics, `dissolve_collinear` não força conversão para line. Curve-native dissolve usa fitting/deviation contract já descrito em Simplificação.
+
+## Empty contours
+
+`remove_empty_contours` remove somente contours sem segmentos úteis segundo a política definida.
+
+Não remover contour pequeno apenas por área visual. “Remove small objects/regions” exige parâmetro próprio e não faz parte do Cleanup padrão.
+
+## IDs e Cleanup
+
+Entidades sobreviventes mantêm IDs.
+
+~~~text
+node movido/ajustado → mantém NodeId
+node removido → ID desaparece do branch ativo
+node criado por fitting → novo NodeId
+undo → restaura IDs originais
+~~~
+
+Quando fitting substitui uma seção e não existe correspondência inequívoca entre nodes antigos e novos, gerar IDs novos em vez de reaproveitar identidade arbitrariamente.
+
+## Determinismo
+
+Smooth/Cleanup precisam produzir mesma ordem e mesma decisão sem depender de HashMap, número de workers ou ordem de scheduling.
+
+Se processamento paralelo for usado entre contours independentes, o resultado final volta à ordem original/canônica antes de materializar.
+
+## Diagnostics
+
+Resultado pode incluir relatório derivado:
+
+~~~rust
+pub struct CleanupReport {
+    pub merged_nodes: usize,
+    pub removed_nodes: usize,
+    pub removed_segments: usize,
+    pub removed_contours: usize,
+}
+~~~
+
+O relatório ajuda diagnóstico/UI futura, mas não é Document State.
+
+## Invariantes de Smooth/Cleanup
+
+1. Simplify, Smooth e Cleanup têm semânticas distintas.
+2. Smooth Handles preserva anchors.
+3. Smooth Path reutiliza resampling + fitter cúbico do Engine.
+4. Smooth não altera topologia deliberadamente nem executa boolean cleanup implícito.
+5. Live Smooth e Smooth materializado reutilizam o mesmo cálculo.
+6. Cleanup possui opções explícitas e ordem canônica.
+7. Merge by Distance nunca roda automaticamente no save.
+8. Cleanup não remove regiões pequenas por heurística oculta.
+9. IDs sobreviventes são preservados; geometria nova sem correspondência recebe IDs novos.
+10. Preview e commit usam a mesma semântica.
+11. Resultado é determinístico independentemente de scheduling.
+12. CleanupReport é derivado e não persistente.
+
 # Curve fitting
 
 Para converter amostras em cubics, usar como base o método clássico de fitting iterativo associado a Philip J. Schneider/Graphics Gems.
@@ -666,8 +935,10 @@ Todos os algoritmos:
 5. Boolean usa overlay robusto com aproximação explicitamente controlada.
 6. Offset/stroke expansion são aproximações com erro documentado.
 7. RDP é usado em polyline; curve-native simplify preserva cubics.
-8. Curve fitting usa erro máximo explícito e corner detection.
-9. Shape Builder usa arrangement/half-edge graph transitório.
-10. Provenance é preservada o suficiente para reconstruir source curves quando possível.
-11. Nenhum cleanup altera Source sem Command.
-12. Resultado parcial nunca é apresentado como sucesso total.
+8. Smooth reutiliza resampling + curve fitting e não altera topologia implicitamente.
+9. Cleanup é uma composição explícita de regras e nunca roda automaticamente no save.
+10. Curve fitting usa erro máximo explícito e corner detection.
+11. Shape Builder usa arrangement/half-edge graph transitório.
+12. Provenance é preservada o suficiente para reconstruir source curves quando possível.
+13. Nenhum cleanup altera Source sem Command.
+14. Resultado parcial nunca é apresentado como sucesso total.
