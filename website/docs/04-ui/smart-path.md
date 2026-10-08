@@ -14,6 +14,8 @@ Smart Path usa [Select + Vector Edit híbridos](#/docs/04-ui/vector-edit-interac
 
 O modo **Node é a operação padrão** em Vector Edit. Bend, Cut, Width e outras operações podem ser ativadas mantendo a sub-selection, sem aplicar alterações por simples hover. Um drag em segmento **não deforma** no modo Node sem ativar Bend ou ação explícita.
 
+O desenho completo de seleção e manipulação de nodes está em [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md) (**proposta para revisão conjunta**, diferente do modelo híbrido já aprovado).
+
 ## Select e Node — fundação
 
 **Select:** click/lasso/marquee; cycle through overlapping objects; select behind; multi-selection; group/inside navigation; respect layer visibility/lock/selection filter. Bounds e handles são overlays derivados. Duplicar é Command, não efeito colateral do controlador.
