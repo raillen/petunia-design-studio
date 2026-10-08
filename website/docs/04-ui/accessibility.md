@@ -6,6 +6,23 @@ Acessibilidade é requisito de arquitetura de UI, não etapa final de polishing.
 
 Toda ação de ponteiro relevante deve possuir rota de teclado quando semanticamente possível. Tab/focus order previsível; canvas possui comandos alternativos para operações precisas.
 
+## Vector Edit — acesso cognitivo e por teclado
+
+O [modelo híbrido aprovado](#/docs/04-ui/vector-edit-interaction.md) não pode exigir mouse para abrir e sair do modo, escolher nodes ou executar ações geométricas. Enter sobre um Path elegível acessa Vector Edit, e Escape cancela a interação antes de sair do contexto. Os controles e actions precisam de nomes semânticos, alternativas de navegação e foco visível.
+
+O usuário deve conseguir responder, sem inferência visual:
+
+- estou selecionando objetos ou editando geometria?
+- qual objeto/grupo está aberto?
+- qual operação está ativa (Node, Bend, Cut, Width etc.)?
+- que Node/Segment está selecionado?
+- a operação pode ser executada neste alvo?
+- houve Commit, Cancel ou erro?
+
+O canvas deve expor uma **árvore semântica navegável** de objetos, nodes e ações (sem exigir que o screen reader interprete pixels), com foco separado de hover e de Selection State. Mensagens durante drag não podem inundar a saída de voz; priorizar início, mudança significativa, confirmação/cancelamento e erro.
+
+A troca de Node para Bend mantém seleção quando válida, reduzindo esforço de navegação. Editar texto, nomes e valores numéricos tem prioridade de teclado sobre comandos do canvas.
+
 ## Screen reader
 
 Componentes Qt/QML precisam expor semântica de acessibilidade:
