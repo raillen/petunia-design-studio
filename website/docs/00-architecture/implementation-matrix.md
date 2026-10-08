@@ -10,8 +10,9 @@ A documentação de arquitetura/Core/Engine/Render já define o alvo. A tabela a
 |---|---|---|
 | Core / Color | RGBA + poucos espaços | valor + perfil/espaço explícito, Spot, Swatches, gradients |
 | Core / Math | tipos básicos | f64 canônico, coordenadas Y-down, tolerâncias contextuais, transforms robustos |
-| Core / Path | nodes cúbicos + contours | Line+Cubic, IDs estáveis, parametric shapes, fill semantics |
-| Core / Scene | Path/Group simples | hierarquia ordenada, bindings, symbols, atomic structural mutations |
+| Core / Path | nodes cúbicos + contours | Line+Cubic, IDs estáveis, fill semantics; ParametricShape separado em `shape.rs` |
+| Core / Generated Content | ausente | TraceObject + GeneratedVectorObject, source/params autorais e geometria derivada |
+| Core / Scene | Path/Group simples | hierarquia ordenada, bindings, symbols, generated content e atomic structural mutations |
 | Core / Document | canvas + scene | Pages/Spreads/Artboards, registries, resources, styles e setup |
 | Engine / Commands | undo/redo básico | Command → DocumentOp → Transaction → HistoryEntry |
 | Engine / Geometry | parcial | Bézier, boolean, offset, simplify, curve fit, Shape Builder e provenance |
@@ -20,7 +21,9 @@ A documentação de arquitetura/Core/Engine/Render já define o alvo. A tabela a
 | Engine / Text/Layout | parcial | Unicode/BiDi/shaping/line layout/fallback/linked frames |
 | Engine / Color | parcial | Little CMS 2 encapsulado, ICC transforms, proofing e cache |
 | Engine / I/O/Plugins | parcial | import/export contracts, scheduler, WASM plugins, MCP adapter |
-| Render Model | ainda ausente | contrato imutável Engine → Render |
+| Engine / Persistence | conceitual | save por snapshot, PTND ZIP/ZIP64, autosave separado, checkpoint + recovery journal |
+| Engine / Fragments | ausente | DocumentFragment, dependency closure, ID remapping e copy/paste atômico |
+| Render Model | ainda ausente | contrato imutável Engine → Render já definido arquiteturalmente |
 | Render | software mínimo | tiled software reference renderer + render graph + compositor |
 | UI | sessão mínima | **fora deste fechamento; volta para discussão conjunta** |
 
@@ -34,6 +37,7 @@ petunia-core/src/
 ├── id.rs
 ├── path.rs
 ├── shape.rs
+├── generated.rs
 ├── paint.rs
 ├── appearance.rs
 ├── effects.rs
@@ -77,6 +81,8 @@ petunia-engine/src/
 ├── color/
 ├── import/
 ├── export/
+├── persistence/
+├── fragments/
 ├── jobs/
 └── plugins/
 ```
@@ -142,12 +148,42 @@ Qt/QML e CXX-Qt permanecem na borda de UI. Nenhum tipo Qt deve entrar em Core, E
 6. Implementar raster tiles/brush/filter pipeline.
 7. Integrar Color Management com Little CMS 2.
 8. Completar Text/Layout + font resolution/outlines.
-9. Consolidar I/O, save/load/migrations, import/export.
-10. Implementar scheduler/jobs, plugin Host API WASM e MCP adapter.
-11. Executar verification/benchmarks/fuzzing e corrigir gargalos.
-12. **Parar antes de Tools/Workspace/Acessibilidade/GUI e retomar discussão conjunta.**
+9. Consolidar PTND ZIP/ZIP64, save/load/migrations, recovery e DocumentFragment/copy-paste.
+10. Consolidar import/export e capability negotiation.
+11. Implementar scheduler/jobs, plugin Host API WASM e MCP adapter.
+12. Executar diagnostics/observability, verification, benchmarks e fuzzing; corrigir gargalos.
+13. **Parar antes de Tools/Workspace/Acessibilidade/GUI e retomar discussão conjunta.**
 
 A ordem privilegia invariantes e contratos antes da camada de interação.
+
+## Fechamento técnico antes da UI
+
+A especificação de arquitetura/motor é considerada **fechada o suficiente para implementação incremental** quando todas as áreas abaixo possuírem contrato, invariantes e quality gate:
+
+| Área | Status documental |
+|---|---|
+| Fronteiras, estado, concorrência e scheduler | ✅ Definido |
+| Precisão, determinismo e matemática base | ✅ Definido |
+| IDs, serialização e PTND | ✅ Definido |
+| Não destrutibilidade/evaluation | ✅ Definido |
+| Core Path/Shape/Color/Appearance | ✅ Definido |
+| Core Scene/Document/Text/Raster/Resources | ✅ Definido |
+| Conteúdo gerado: Trace/QR/Barcode | ✅ Definido |
+| Commands/History + memory budget | ✅ Definido |
+| Geometry + Shape Builder | ✅ Definido |
+| Spatial/Hit-test/Snapping | ✅ Definido |
+| Brush/Raster/Filters | ✅ Definido |
+| Text/Layout/Unicode | ✅ Definido |
+| Color Management | ✅ Definido |
+| I/O/Export/Plugins/MCP | ✅ Contrato definido |
+| Save/Autosave/Recovery | ✅ Definido |
+| DocumentFragment/Copy-Paste | ✅ Definido |
+| Render Model/Pipeline/Compositor/Paint/Adjustments | ✅ Definido |
+| Cache/Output/Headless | ✅ Definido |
+| Diagnostics/Verification/Security limits | ✅ Definido |
+| Tools/Workspace/Acessibilidade/GUI/UX | ⏸ discussão conjunta |
+
+“Definido” não significa “já implementado”. Significa que a implementação possui uma direção técnica única e critérios de correção suficientes para começar sem rediscutir a arquitetura a cada módulo.
 
 ## Decisões propositalmente não congeladas
 
