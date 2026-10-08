@@ -141,6 +141,10 @@
           "path": "02-engine/io-jobs-plugins.md"
         },
         {
+          "title": "persistência + recovery",
+          "path": "02-engine/persistence-recovery.md"
+        },
+        {
           "title": "image analysis + vectorization",
           "path": "02-engine/image-analysis-vectorization.md"
         },
