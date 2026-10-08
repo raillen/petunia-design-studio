@@ -25,11 +25,17 @@ petunia-core
 └── não depende de nenhum outro domínio Petunia
 
 petunia-engine
-└── pode depender de petunia-core
+└── depende de petunia-core
+    pode produzir contratos de petunia-render-model
     não depende de petunia-render ou petunia-ui
 
+petunia-render-model
+└── contrato imutável entre Engine e Render
+    pode depender de tipos estáveis de petunia-core
+    não contém backend nem algoritmos de Engine
+
 petunia-render
-└── pode depender de petunia-core
+└── depende de petunia-core + petunia-render-model
     não depende de petunia-engine ou petunia-ui
 
 petunia-ui
@@ -53,9 +59,17 @@ Bibliotecas como `kurbo` e `i_overlay` podem ser usadas internamente, mas seus t
 
 `petunia-render` transforma estado de leitura em pixels. Ele pode conhecer tipos estáveis do Core, mas não deve executar algoritmos que pertencem ao Engine nem modificar o documento.
 
-Se Engine e Render passarem a precisar compartilhar um modelo derivado significativo, uma crate neutra de contrato poderá ser extraída. **Não criaremos essa quinta crate antecipadamente.**
+A definição do pipeline mostrou uma necessidade concreta: Engine precisa entregar geometria, texto e efeitos avaliados ao Render sem criar uma dependência Engine↔Render.
 
-Essa regra aplica o princípio de não criar abstração antes de existir necessidade real.
+Por isso fica **✅ Definido** criar `petunia-render-model` como crate interna de contrato. Ela contém apenas estruturas imutáveis como `RenderSnapshot`, primitivas avaliadas, referências de recursos e descritores de efeitos/composição. Não contém rasterizador, cache, backend CPU/GPU, Qt ou algoritmos geométricos.
+
+```text
+Engine ──→ RenderModel ←── Render
+   ↓                       ↓
+ Core                    Core
+```
+
+A abstração deixou de ser preventiva: agora resolve uma fronteira real.
 
 ### Interface
 
