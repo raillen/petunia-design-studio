@@ -240,11 +240,22 @@ TextPrimitive já contém glyph IDs/positions resolvidos pelo Text Engine.
 Render:
 
 1. resolve/rasteriza glyph coverage;
-2. usa `fontdue` ou backend equivalente para bitmap coverage;
+2. usa `fontdue` para bitmap coverage de glyphs outline convencionais;
 3. aplica transform/paint;
 4. reutiliza glyph cache quando key compatível.
 
 Convert to Curves não passa por fontdue; essa materialização já acontece no Engine via outlines.
+
+Fontes coloridas seguem o contrato produzido pelo Text Engine:
+
+~~~text
+Outline        → fontdue coverage + Paint
+COLR/CPAL      → derived vector/paint layers
+Raster glyph   → decoded raster primitive
+SVG glyph      → safe SVG-derived primitive ou diagnóstico/fallback
+~~~
+
+Glyph atlas pode conter coverage ou raster variants, mas atlas slot continua Runtime State. O Render não transforma color glyph em estado autoral.
 
 ## Image/Raster rendering
 
