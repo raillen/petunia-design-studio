@@ -134,6 +134,8 @@ Sair do modo por toolbar ou breadcrumb, sem commit pendente, usa a mesma lógica
 - Node navigation por teclado deve ter caminho viável sem mouse, mas tab/order, setas e modificadores serão refinados na etapa de acessibilidade.
 - O canvas não intercepta teclas reservadas ao gerenciador de janelas ou entrada de texto.
 
+A próxima camada de especificação está em [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md). Ela detalha hit-test, multisseleção, visibilidade de handles, constraints e a proposta de context bar; as escolhas A/B/C da página ainda aguardam revisão conjunta.
+
 ## Seleção e sub-selection
 
 **Select:** click escolhe objeto elegível mais alto no hit-test; multi-select pode adicionar/remover; click vazio limpa seleção por padrão; marquee iniciado no vazio. Select Behind / Cycle Overlapping deve ter ação explícita, sem exigir Alt+click (frequentemente reservado pelo WM no Linux).
