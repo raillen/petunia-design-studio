@@ -91,6 +91,29 @@ valores RGB/CMYK podem mudar
 
 Por isso são Commands diferentes.
 
+## Transform contract
+
+Uma transformação de cor é identificada por suas entradas semânticas, não por um ponteiro de backend.
+
+~~~text
+source profile/content hash
++
+destination profile/content hash
++
+pixel/color format
++
+rendering intent
++
+BPC
++
+flags semânticos
+→ ColorTransformKey
+~~~
+
+Transformações são cache derivado. Alterar perfil ou intent produz outra key; nunca modifica valores autorais sem Command de Convert.
+
+Para cores escalares, o Engine pode usar a mesma transformação conceitual utilizada para pixels, evitando duas matemáticas divergentes.
+
 ## Working space
 
 O **working space** é o espaço de cor principal no qual o documento trabalha.
@@ -237,3 +260,46 @@ Por isso a arquitetura não deve assumir que todos os canais ficam permanentemen
 Valores float intermediários podem ultrapassar esse intervalo antes da etapa de output/tone mapping.
 
 A política HDR completa fica aberta até existir caso de uso concreto.
+
+
+## Pipeline definido
+
+Para conteúdo RGB comum:
+
+~~~text
+encoded source values
+↓ source profile / transfer function
+managed linear working representation quando a operação exigir luz linear
+↓ effects/compositing
+output transform
+↓ display/export profile
+~~~
+
+Não existe regra “converter tudo para sRGB”. O espaço de trabalho e o destino determinam a transformação.
+
+Para CMYK autoral, preservar os canais/perfil enquanto a operação não exigir conversão para outro espaço. Render de tela pode usar uma representação RGB derivada; isso não reescreve CMYK do Document.
+
+## Política de perfis ausentes ou inválidos
+
+- perfil incorporado válido → usar;
+- perfil referenciado ausente → manter referência e marcar estado unresolved;
+- arquivo RGB sem perfil → aplicar a política explícita de import, nunca adivinhar silenciosamente depois;
+- perfil corrompido/inseguro → rejeitar transformação e produzir diagnóstico;
+- soft proof sem perfil de destino resolvido → indisponível, sem alterar o Document.
+
+## Threading
+
+Objetos de transformação do CMM podem ser caros. O cache precisa respeitar a segurança de thread do backend utilizado.
+
+A API Petunia não expõe handles mutáveis do CMM para workers. Se o backend exigir handles por thread, o adapter cria/cacheia instâncias adequadas internamente.
+
+## Invariantes
+
+1. Little CMS 2 é o backend ICC inicial, encapsulado atrás da API Petunia.
+2. Tipos/handles do CMM nunca entram no Core ou PTND.
+3. Assign e Convert continuam Commands semanticamente distintos.
+4. Soft proof é View State e nunca reescreve cores autorais.
+5. Transform cache é derivado e chaveado por perfis + parâmetros semânticos.
+6. Conteúdo sem perfil segue política explícita de import; não é reinterpretado silenciosamente.
+7. CMYK/Spot autoral é preservado sempre que a operação não exige materialização/conversão.
+8. Render/output usa transformações derivadas; não altera o Document.
