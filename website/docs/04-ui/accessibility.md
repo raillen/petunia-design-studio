@@ -23,6 +23,8 @@ O canvas deve expor uma **árvore semântica navegável** de objetos, nodes e a�
 
 A troca de Node para Bend mantém seleção quando válida, reduzindo esforço de navegação. Editar texto, nomes e valores numéricos tem prioridade de teclado sobre comandos do canvas.
 
+**Decisão de seleção aprovada (2026-10-08):** a estrutura acessível navega PathObject → ContourId → NodeId → HandleRef. Foco e seleção são independentes: chegar ao node por teclado não o seleciona nem altera geometria automaticamente. ActionIds permitem selecionar/desselecionar, alternar candidatos coincidentes, inverter/selecionar tudo no escopo, operar Marquee/Lasso, alternar tipo de node e mover por incrementos configuráveis em unidades documentais independentes do zoom. UI deve comunicar o escopo e oferecer alternativas a Shift e ao Alt frequentemente reservado pelo sistema operacional. Veja [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md).
+
 ## Screen reader
 
 Componentes Qt/QML precisam expor semântica de acessibilidade:
