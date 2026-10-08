@@ -403,14 +403,7 @@ Trace simplesmente não gera vector region para aquele cluster.
 
 ## Live Trace model
 
-Direção conceitual:
-
-~~~rust
-pub struct LiveTrace {
-    pub source: ResourceId,
-    pub params: TraceSpec,
-}
-~~~
+O modelo autoral canônico é `TraceObject` definido no Core em [conteúdo vetorial gerado](#/docs/01-core/generated-content.md). O Engine apenas interpreta `ImageTraceSpec` e produz geometria derivada.
 
 Evaluation:
 
