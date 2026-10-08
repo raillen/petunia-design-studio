@@ -14,12 +14,16 @@ crates/
 └── petunia-ui      # Qt/QML via CXX-Qt, ferramentas, workspace e interação
 ```
 
-A direção arquitetural é:
+A direção arquitetural alvo é:
 
 ```text
 UI → Engine → Core
 UI → Render → Core
+
+Engine ─→ petunia-render-model ←─ Render
 ```
+
+`petunia-render-model` é uma crate interna de contrato já definida na documentação, mas ainda não existe no workspace atual. Ela será criada quando o pipeline Engine → RenderSnapshot for implementado.
 
 Engine não depende de Render/UI. Render não depende de Engine/UI. Core não depende dos outros domínios Petunia.
 
