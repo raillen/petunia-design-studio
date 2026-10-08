@@ -39,7 +39,21 @@ As novas ferramentas foram modeladas como **capacidades do produto**, não como 
 - [Smart Measure](#/docs/04-ui/smart-measure.md): measurements e annotations associativas
 - [Avançadas](#/docs/04-ui/advanced-creative-tools.md): Variable Width, Pattern Editor, Brand Sheet, Vector Feather, Warp, Vector Brushes, Mesh Gradient, Knife/Erasers
 
-A interação exata, atalhos, nomes exibidos, agrupamento da toolbar, painéis, feedback visual e acessibilidade seguem **em discussão conjunta**. Nenhuma dessas páginas declara que a funcionalidade já está implementada.
+O **modelo de navegação e interação híbrido** foi aprovado; atalhos secundários, nomes exibidos, agrupamento final da toolbar, detalhes visuais e acessibilidade seguem **em discussão conjunta**. Nenhuma dessas páginas declara que a funcionalidade já está implementada.
+
+## Modelo híbrido Select + Vector Edit
+
+**Decisão aprovada:** Select para objetos/hierarquia e Vector Edit para nodes, segmentos e handles, com Node Tool disponível explicitamente.
+
+O contexto de edição é acessado por duplo clique em Path elegível, Enter sobre Path selecionado ou ação de Node. Group/Text/Shape/Symbol abrem contextos próprios, sem conversão destrutiva.
+
+Dentro de Vector Edit, Node/Bend/Pen/Cut/Smooth/Width são operações disponíveis sob a mesma seleção, com mudanças de operação previsíveis. Drag de segmento em Node não executa Bend inesperadamente.
+
+**Escape cancela primeiro a interação capturada; quando ocioso, sai um nível de contexto.** Todos os previews são transitórios, e Commit é uma Transaction.
+
+O contrato completo, incluindo multi-selection, Group Isolation, focus, pointer capture e feedback, está em [Vector Edit — interação híbrida](#/docs/04-ui/vector-edit-interaction.md); a decisão registrada está no [ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md).
+
+Os atalhos secundários e a apresentação visual final seguem para discussão conjunta.
 
 ## Pen Tool
 
