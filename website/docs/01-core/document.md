@@ -116,65 +116,30 @@ Document válido possui pelo menos uma Page.
 
 Documento “canvas livre” pode ser representado futuramente por PageSpec de canvas/infinite mode, mas não introduzir um segundo root system antes de necessidade concreta.
 
-## Guides
+## Guides, Grids e Slices
 
-~~~rust
-pub struct Guide {
-    pub id: GuideId,
-    pub axis: GuideAxis,
-    pub position: f64,
-    pub locked: bool,
-    pub scope: GuideScope,
-}
+O modelo detalhado desses três recursos vive em [Guides, Grids e Export Slices](#/docs/01-core/guides-grids-slices.md).
 
-pub enum GuideScope {
-    Document,
-    Page(PageId),
-    Artboard(ObjectId),
-}
+Resumo de ownership:
+
+~~~text
+Guide/Grid geometry + lock/spec
+→ Document State
+
+Guide/Grid visibility + snap enabled
+→ View/Session State
+
+grid lines + snap candidates
+→ Derived State
+
+ExportSlice + reproducible export presets
+→ Document State
+
+filesystem destination + export progress
+→ Application/Job State
 ~~~
 
-Guide geometry/lock é Document State.
-
-Visibility de guides é View State.
-
-Snapping é Engine.
-
-## Grids
-
-GridDefinition é persistente quando faz parte da construção.
-
-~~~rust
-pub struct GridDefinition {
-    pub id: GridId,
-    pub scope: GridScope,
-    pub origin: Point,
-    pub kind: GridKind,
-    pub spacing: Vec2,
-    pub subdivisions: u32,
-}
-~~~
-
-GridKind pode evoluir para Cartesian, Isometric, Axonometric e Perspective através de specs tipados.
-
-Grid visibility e snap enabled não pertencem ao Document.
-
-## Slices
-
-Export Slice é intenção autoral reutilizável.
-
-~~~rust
-pub struct ExportSlice {
-    pub id: SliceId,
-    pub source: SliceSource,
-    pub name: String,
-    pub export_presets: Vec<ExportPresetRef>,
-}
-~~~
-
-Slice pode referenciar Artboard/Object/Rect documental.
-
-A exportação em si pertence ao Engine.
+`Document` continua contendo os registries correspondentes, mas não duplica a matemática de geração de grid nem a lógica de export.
 
 ## Resources
 
@@ -342,7 +307,7 @@ I/O Engine coordena save/load, migrations e atomic replace.
 4. Page possui root children ordenados.
 5. SceneNode possui owner estrutural explícito por ParentRef.
 6. Document válido possui pelo menos uma Page.
-7. Guide/Grid geometry pode ser documental; visibility é View State.
+7. Guide/Grid geometry é Document State quando criada no documento; visibility e snap settings são View/Session State.
 8. Registries não usam ordem de HashMap como semântica.
 9. Session/Dirty/Job state não entra no PTND.
 10. Resource blobs não são duplicados em SceneNodes.
