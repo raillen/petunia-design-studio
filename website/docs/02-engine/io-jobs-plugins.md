@@ -221,34 +221,309 @@ Cancelamento solicitado pelo usuário é um resultado esperado de controle de fl
 
 ## Plugins
 
-Plugin API não expõe `&mut Document`.
+A arquitetura de plugins segue **sandbox e capabilities por padrão**.
 
-Capacidades:
-- Command API
-- query snapshot
-- importer/exporter
-- effect/filter
-- tool logic
-- panel/UI extension separada.
+A v0.1 não carrega bibliotecas nativas arbitrárias de terceiros dentro do processo principal.
+
+### Modelo de extensão
+
+Existem três classes conceituais:
+
+~~~text
+Built-in extension
+→ crate compilada com o Petunia
+
+Sandboxed plugin
+→ WebAssembly + Host API
+
+Native external integration
+→ processo separado + IPC, futuro
+~~~
+
+**Built-in** é código do próprio produto/distribuição e segue as mesmas regras de crates internas.
+
+**Sandboxed plugin** é o formato público inicial para extensões de Engine.
+
+**Native external integration** fica reservado a integrações que realmente precisem de bibliotecas/sistemas não viáveis em WASM; roda fora do processo para limitar impacto de crash/corrupção.
+
+### Por que WebAssembly
+
+**WASM — WebAssembly** fornece bytecode portátil executado dentro de runtime controlado.
+
+O plugin não recebe automaticamente:
+
+- memória do processo;
+- filesystem inteiro;
+- network;
+- process spawning;
+- ponteiros Rust;
+- Qt;
+- `&mut Document`.
+
+Ele recebe somente funções explicitamente oferecidas pelo Host API.
+
+A escolha do runtime Rust concreto pode ser feita no milestone de implementação com benchmark de tamanho, startup e desempenho. O formato/Host API não depende do runtime.
+
+### Plugin Manifest
+
+Pacote de plugin contém manifest versionado:
+
+~~~text
+plugin_id
+plugin_version
+host_api_version
+entrypoints
+capabilities
+permissions requested
+metadata
+optional resources
+~~~
+
+`plugin_id` usa namespace estável, por exemplo domínio reverso ou UUID definido pelo autor.
+
+Não usar nome de exibição localizado como identidade.
+
+### Host API
+
+Host API é capability-oriented.
+
+Exemplos:
+
+~~~text
+document.query
+command.submit
+resource.read
+import.register
+export.register
+effect.evaluate
+log.write
+job.spawn-scoped
+~~~
+
+Um plugin só recebe handles opacos e DTOs estáveis.
+
+Nunca recebe:
+
+~~~rust
+&mut Document
+&SceneGraph
+QObject*
+raw Rust trait object
+~~~
+
+### Queries
+
+Leitura acontece por snapshot/query.
+
+~~~text
+Plugin
+↓ query request
+Host
+↓ validated snapshot DTO
+Plugin
+~~~
+
+Queries grandes precisam paginação/streaming ou handles de leitura para evitar copiar o documento inteiro para linear memory do WASM.
+
+### Mutação
+
+Mutação sempre volta pela Command API:
+
+~~~text
+Plugin intent
+↓
+Host Command DTO
+↓ validation
+Engine Command Handler
+↓
+Transaction
+↓
+Document
+~~~
+
+Assim plugin ganha automaticamente Undo/Redo, atomicidade, revision validation e invariantes de Core.
+
+### Effects e filters
+
+Plugin effect declara contrato equivalente a um effect built-in:
+
+- input/output kind;
+- parameters/schema version;
+- bounds expansion;
+- ROI/input region;
+- color-space semantics;
+- deterministic requirements;
+- cancellation;
+- materialization behavior.
+
+Na v0.1, plugin effect CPU trabalha em buffers/tiles fornecidos pelo host.
+
+Plugins não recebem handle GPU nativo. GPU plugin API pública fica fora do escopo inicial porque quebraria portabilidade e sandbox.
+
+### Importer/exporter plugins
+
+Importer recebe bytes/stream autorizado pelo host, não path arbitrário.
+
+Exporter recebe snapshot DTO/Render service e um output stream autorizado.
+
+Isso permite aplicar os mesmos limites de memória, paths e permissões do I/O nativo.
+
+### Tool logic e UI extension
+
+Tool logic pode futuramente usar a Command/Query API.
+
+**Panel/UI extension não é especificada aqui**. Ela será discutida junto com GUI/UX para não congelar um modelo de extensão de Qt sem revisar a experiência completa.
 
 ## Segurança de plugins
 
-Permissões/capabilities explícitas para filesystem, network, process e UI. Plugin crash não deve corromper documento.
+Permissions são deny-by-default.
+
+Classes:
+
+~~~text
+filesystem.read-selected
+filesystem.write-selected
+network
+clipboard
+process
+ui-extension
+~~~
+
+A concessão é feita pela aplicação/usuário conforme política futura.
+
+Plugin sem capability não consegue a operação correspondente.
+
+### Filesystem
+
+O host prefere handles de arquivos/diretórios concedidos pelo usuário, não paths globais.
+
+Mesmo com permissão, normalizar paths e bloquear traversal fora do escopo concedido.
+
+### Network e process
+
+Desabilitados por padrão.
+
+Plugin de filtro/import normal não precisa de network.
+
+Process spawning não existe para plugin WASM v0.1.
+
+### Limits
+
+Runtime aplica limites:
+
+- memória linear;
+- tempo/fuel quando suportado;
+- tamanho de mensagens;
+- número de handles;
+- recursion/stack;
+- jobs simultâneos;
+- output size.
+
+Exceder limite termina a invocação do plugin sem corromper Document.
+
+### Crash/failure
+
+Falha do plugin produz erro tipado e descarta a operação em andamento.
+
+Nenhuma Transaction parcialmente aplicada.
 
 ## ABI
 
-**ABI — Application Binary Interface** define como código compilado conversa em nível binário: layout de dados, convenção de chamadas, símbolos e outras regras.
+**ABI — Application Binary Interface** define como código compilado conversa em nível binário.
 
-A ABI Rust não é estável entre versões do compilador, então trait objects Rust não devem ser contrato binário público de plugins.
+A ABI Rust não é contrato público estável. Portanto:
 
-Alternativas:
+> trait objects Rust, layouts de structs Rust e symbols internos nunca são a ABI de plugins.
 
-- **C ABI** — interface binária simples e amplamente estável;
-- **IPC — Inter-Process Communication** — plugin roda em outro processo e conversa por mensagens;
-- **WASM — WebAssembly** — formato sandboxável com host API controlada.
+Para WASM, o contrato público é Host API versionada + DTOs/handles.
 
-A escolha só deve ser fechada quando o sistema de plugins entrar em implementação.
+### Native external plugins
+
+Se surgir necessidade de integração nativa de alto desempenho, a direção é **processo separado + IPC**.
+
+**IPC — Inter-Process Communication** significa trocar mensagens entre processos.
+
+~~~text
+Petunia
+↓ protocol
+Plugin Host Process
+↓ native library
+~~~
+
+Um crash do processo externo pode encerrar a integração sem destruir memória do processo principal.
+
+C ABI in-process não é caminho público inicial.
 
 ## Scripting
 
-Script chama Commands e queries do mesmo host de plugins. Macro recorder grava intenção/Commands, não eventos de mouse crus.
+Scripting e macro usam o mesmo Command/Query host.
+
+A linguagem concreta de scripting não precisa ser decidida para estabilizar o motor: o contrato é independente da linguagem.
+
+Macro recorder grava intenção semântica/Commands, não eventos crus.
+
+## MCP
+
+**MCP — Model Context Protocol** entra como camada de automação externa sobre as mesmas APIs de Query/Command, não como atalho para o domínio.
+
+Direção:
+
+~~~text
+MCP Client / Agent
+↓
+Petunia MCP Adapter
+├── read/query tools
+├── resource inspection
+├── render/export requests
+└── command submission
+        ↓
+     Engine
+        ↓
+   Transaction
+~~~
+
+### Segurança MCP
+
+Servidor MCP:
+
+- desabilitado por padrão;
+- iniciado explicitamente pela aplicação/usuário;
+- usa transporte local por padrão;
+- não expõe filesystem ou network além das capabilities autorizadas;
+- não fornece ponteiro/objeto Qt;
+- mutações passam por Commands;
+- operações destrutivas continuam Commands explícitos;
+- pode exigir confirmação/policy na camada de aplicação para ações sensíveis.
+
+A especificação concreta de UX/permissões do MCP será discutida junto com GUI/UX, mas a fronteira de motor fica definida agora.
+
+## Versionamento de extensões
+
+Separar:
+
+~~~text
+Plugin package version
+Host API version
+Plugin data schema version
+~~~
+
+Uma atualização do plugin não implica mudança de Host API.
+
+Payload persistente de plugin usa namespace + versão e pode ser preservado opacamente quando plugin está ausente.
+
+Load do documento nunca executa plugin automaticamente apenas porque um payload está presente.
+
+## Invariantes de plugins/automação
+
+1. Plugins públicos de Engine são sandboxed por padrão.
+2. WASM + Host API versionada é o formato público inicial.
+3. Código nativo arbitrário não roda in-process na v0.1.
+4. Plugins leem via Query/Snapshot e mutam via Command.
+5. Plugin não recebe tipos Rust internos, Qt ou `&mut Document`.
+6. Permissions são deny-by-default.
+7. Effect/filter plugins obedecem ROI, color, determinism e cancellation contracts.
+8. UI extension fica para a discussão de GUI/UX.
+9. Native high-performance extension, se necessária, usa processo separado + IPC.
+10. MCP usa a mesma Query/Command boundary.
+11. Load de PTND não executa payload de plugin/MCP automaticamente.
+12. Host API, package version e data schema version são independentes.
