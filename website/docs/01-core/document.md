@@ -1,13 +1,14 @@
 # document.rs
 
-`Document` é a raiz persistente do arquivo PTND. Ele reúne configuração, scene, páginas, recursos e registries; não deve acumular algoritmos.
+`Document` é a raiz autoral persistente do PTND.
 
-## Estrutura-alvo
+Ele reúne configuração, páginas, SceneGraph e registries, mas **não executa algoritmos** e não conhece UI, renderer ou filesystem.
 
-```rust
+## Estrutura
+
+~~~rust
 pub struct Document {
     pub id: DocumentId,
-    pub schema_version: SchemaVersion,
     pub metadata: DocumentMetadata,
     pub setup: DocumentSetup,
     pub pages: PageCollection,
@@ -16,86 +17,334 @@ pub struct Document {
     pub styles: StyleRegistry,
     pub symbols: SymbolRegistry,
     pub swatches: SwatchRegistry,
-    pub guides: GuideSet,
+    pub guides: GuideRegistry,
+    pub grids: GridRegistry,
+    pub slices: SliceRegistry,
 }
-```
+~~~
+
+`SchemaVersion` não precisa ser campo do Domain Document. Ele pertence ao DTO/container de persistência.
 
 ## DocumentSetup
 
-Precisa decidir:
-
-```rust
+~~~rust
 pub struct DocumentSetup {
     pub units: Unit,
-    pub dpi: f64,
+    pub default_raster_dpi: f64,
     pub color: DocumentColorSpec,
     pub default_page: PageSpec,
 }
-```
+~~~
 
-Width/height globais deixam de ser suficientes quando houver páginas/artboards de tamanhos diferentes.
+`default_raster_dpi` é default para operações que precisam converter medida física para raster. Não representa Device Pixel Ratio da tela.
 
-## Pages, spreads e artboards
+## Pages
 
-Separar:
-- Page: unidade editorial.
-- Spread: arranjo de páginas para layout.
-- Artboard: área de design independente dentro de uma página/canvas.
+Page é unidade editorial/documental.
 
-Não usar o mesmo tipo com flags obscuras.
+~~~rust
+pub struct Page {
+    pub id: PageId,
+    pub name: String,
+    pub spec: PageSpec,
+    pub root_children: Vec<ObjectId>,
+}
 
-## Guias e grids
+pub struct PageSpec {
+    pub size: Size2,
+    pub margins: Insets,
+    pub bleed: Insets,
+}
+~~~
 
-Persistir guias e configurações documentais:
+Cada objeto principal pertence a exatamente uma Page através de parent/root semantics.
 
-```rust
+A ordem de `root_children` é z-order daquela Page.
+
+## ParentRef
+
+Para evitar root implícito ambíguo, SceneNode deve evoluir para:
+
+~~~rust
+pub enum ParentRef {
+    Page(PageId),
+    Object(ObjectId),
+}
+~~~
+
+Assim um node sempre possui owner estrutural explícito.
+
+SymbolDefinition usa subtree própria no SymbolRegistry e não reaproveita ParentRef da cena principal sem adapter/modelo dedicado.
+
+## Spread
+
+Spread organiza páginas para layout/editorial.
+
+~~~rust
+pub struct Spread {
+    pub id: SpreadId,
+    pub pages: Vec<PageId>,
+    pub arrangement: SpreadArrangement,
+}
+~~~
+
+Spread não muda ownership dos SceneNodes; apenas organiza Pages.
+
+Isso evita usar o mesmo tipo para Page e Spread com flags obscuras.
+
+## Artboard
+
+Artboard continua sendo SceneItem/container dentro de uma Page.
+
+~~~text
+Document
+└── Page
+    ├── Artboard A
+    │   └── objects
+    └── Artboard B
+        └── objects
+~~~
+
+Page e Artboard possuem propósitos diferentes:
+
+- Page: unidade documental/editorial;
+- Artboard: região de design dentro da Page/canvas.
+
+## Página mínima
+
+Document válido possui pelo menos uma Page.
+
+Documento “canvas livre” pode ser representado futuramente por PageSpec de canvas/infinite mode, mas não introduzir um segundo root system antes de necessidade concreta.
+
+## Guides
+
+~~~rust
 pub struct Guide {
     pub id: GuideId,
-    pub orientation: GuideOrientation,
+    pub axis: GuideAxis,
     pub position: f64,
     pub locked: bool,
     pub scope: GuideScope,
 }
-```
 
-O desenho da guia é Render; drag é UI; snapping é Engine.
+pub enum GuideScope {
+    Document,
+    Page(PageId),
+    Artboard(ObjectId),
+}
+~~~
 
-## Recursos
+Guide geometry/lock é Document State.
 
-Documento guarda referências a imagens, perfis ICC, fontes incorporáveis, padrões e outros assets. Bytes grandes não devem ser duplicados em cada SceneNode.
+Visibility de guides é View State.
+
+Snapping é Engine.
+
+## Grids
+
+GridDefinition é persistente quando faz parte da construção.
+
+~~~rust
+pub struct GridDefinition {
+    pub id: GridId,
+    pub scope: GridScope,
+    pub origin: Point,
+    pub kind: GridKind,
+    pub spacing: Vec2,
+    pub subdivisions: u32,
+}
+~~~
+
+GridKind pode evoluir para Cartesian, Isometric, Axonometric e Perspective através de specs tipados.
+
+Grid visibility e snap enabled não pertencem ao Document.
+
+## Slices
+
+Export Slice é intenção autoral reutilizável.
+
+~~~rust
+pub struct ExportSlice {
+    pub id: SliceId,
+    pub source: SliceSource,
+    pub name: String,
+    pub export_presets: Vec<ExportPresetRef>,
+}
+~~~
+
+Slice pode referenciar Artboard/Object/Rect documental.
+
+A exportação em si pertence ao Engine.
+
+## Resources
+
+ResourceRegistry centraliza imagens, pixel surfaces, perfis ICC, fontes incorporadas, patterns e outros assets.
+
+SceneNodes guardam ResourceId; não duplicam blobs.
+
+## Styles
+
+StyleRegistry mantém estilos compartilhados.
+
+Mudança em style linked pode afetar múltiplos objetos sem copiar Appearance para cada um.
+
+Styles possuem IDs próprios e payload tipado.
+
+## Symbols
+
+SymbolRegistry mantém definitions separadas das instances do SceneGraph.
+
+Definition é Document State e usa IDs estáveis em sua subtree.
+
+## Swatches
+
+Swatches são recursos de cor/gradient reutilizáveis.
+
+`SwatchId` permite vínculo explícito entre Paint e palette documental.
 
 ## Metadata
 
-Separar metadata funcional de metadata editorial:
-- title/author
-- created/modified
-- generator/version
-- custom metadata
-- document notes.
+Separar metadata autoral/editorial de dados operacionais.
 
-Timestamp de “modified” deve ser atualizado em save, não em cada pointer move.
+Exemplos:
 
-## Sessão NÃO pertence ao documento
+- title;
+- author;
+- created timestamp;
+- modified timestamp;
+- document notes;
+- custom metadata namespaced.
 
-Não colocar aqui:
-- active tool
-- selection
-- hover
-- zoom/pan
-- panel layout
-- search state
-- clipboard.
+`modified` é atualizado no save bem-sucedido, não a cada pointer move.
 
-Esses dados ficam em `StudioSession`/app settings.
+Application version que salvou pode existir em manifest/tooling metadata, mas não é semântica do Document.
+
+## Units
+
+Document unit define apresentação/entrada padrão.
+
+A geometria continua em document units canônicas; mudar preferência de exibição não converte silenciosamente todas as coordenadas.
 
 ## Dirty state
 
-`is_dirty` é derivado de revision/history checkpoint. Não serializar um boolean “dirty”.
+Não existe boolean autoritativo `Document.is_dirty`.
+
+~~~text
+is_dirty =
+current_revision != saved_revision
+~~~
+
+History/DocumentSession controla checkpoint.
+
+Dirty não é serializado.
+
+## Session não pertence ao Document
+
+Não armazenar:
+
+- active tool;
+- selection;
+- hover;
+- zoom/pan;
+- canvas rotation;
+- panel layout;
+- focused widget;
+- search state;
+- clipboard;
+- progress de jobs.
+
+Esses dados são Session/Application State.
 
 ## Autosave e recovery
 
-Autosave usa snapshot/journal fora do modelo autoral. Um recovery file precisa registrar schema version, base save revision e transações necessárias para restaurar estado.
+Autosave trabalha sobre snapshot consistente.
+
+Recovery é infraestrutura separada.
+
+~~~text
+last safe PTND
++
+recovery journal/snapshot
+↓
+recovered Document
+~~~
+
+Recovery metadata pode guardar base revision, timestamps e transactions necessárias.
+
+Não adicionar estado de ferramenta transitório ao PTND só para recovery.
+
+## Registries e ordem
+
+Registry é lookup por ID, não necessariamente ordem autoral.
+
+Quando ordem possui semântica, ela é armazenada explicitamente em coleção separada.
+
+Exemplo:
+
+~~~text
+SwatchRegistry lookup
++
+Palette order Vec<SwatchId>
+~~~
+
+Não deixar HashMap iteration definir UI, export ou serialização.
+
+## Ownership
+
+Uma entidade persistente possui owner claro.
+
+Exemplos:
+
+~~~text
+SceneNode → Page/Object parent
+SymbolDefinition → SymbolRegistry
+Resource → ResourceRegistry
+Style → StyleRegistry
+Guide → GuideRegistry
+~~~
+
+Não duplicar a mesma entidade autoritativa em dois registries.
+
+## Validação do Document
+
+Construção/commit precisam garantir:
+
+- DocumentId válido;
+- pelo menos uma Page;
+- PageIds únicos;
+- Page root children consistentes com SceneGraph;
+- referências de registries existentes;
+- SceneGraph válido;
+- Guide/Grid scopes válidos;
+- ColorSpec válido;
+- nenhum número não finito;
+- nenhum dangling reference obrigatório.
 
 ## Serialização
 
-`to_json/from_json` atuais servem ao bootstrap. A API futura deve chamar um `serialization` module para separar modelo de estratégia de arquivo, permitir migrations e blobs binários sem transformar `Document` em I/O service.
+Domain Document não implementa estratégia de container diretamente.
+
+~~~text
+Document
+↓ DTO adapter
+Current DocumentDto
+↓ serializer
+PTND container
+~~~
+
+I/O Engine coordena save/load, migrations e atomic replace.
+
+## Invariantes
+
+1. Document é aggregate root autoral, não service.
+2. SchemaVersion pertence à persistência, não ao Domain Document.
+3. Page, Spread e Artboard são conceitos distintos.
+4. Page possui root children ordenados.
+5. SceneNode possui owner estrutural explícito por ParentRef.
+6. Document válido possui pelo menos uma Page.
+7. Guide/Grid geometry pode ser documental; visibility é View State.
+8. Registries não usam ordem de HashMap como semântica.
+9. Session/Dirty/Job state não entra no PTND.
+10. Resource blobs não são duplicados em SceneNodes.
+11. Recovery é infraestrutura externa ao modelo autoral.
+12. Serialization passa por DTO/I/O layer.
