@@ -1,12 +1,17 @@
 {
-  "formatId": "ptnd.document",
-  "containerVersion": 1,
-  "schemaVersion": 1,
-  "minimumReaderVersion": "1.0",
-  "writer": { "appVersion": "0.1.0" },
-  "documentId": "11111111-2222-3333-4444-555555555555",
-  "requiredCapabilities": ["ptnd.core.vector-path.v1"],
+  "format": "petunia-design-document",
+  "container_version": 1,
+  "schema_version": 1,
+  "minimum_reader_version": "0.1.0",
+  "writer": {
+    "app_version": "0.1.0"
+  },
+  "document_id": "11111111-2222-3333-4444-555555555555",
+  "required_capabilities": [
+    "core.scene.v1",
+    "core.parametric-shape.v1"
+  ],
   "resources": [],
   "extensions": [],
-  "interchange": []
+  "previews": []
 }
