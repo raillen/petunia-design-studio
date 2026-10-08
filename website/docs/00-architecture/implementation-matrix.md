@@ -190,6 +190,23 @@ A especificação de arquitetura/motor é considerada **fechada o suficiente par
 
 “Definido” não significa “já implementado”. Significa que a implementação possui uma direção técnica única e critérios de correção suficientes para começar sem rediscutir a arquitetura a cada módulo.
 
+## Novo sistema de ferramentas criativas — contratos adicionados
+
+As cinco famílias e as ferramentas avançadas foram aprovadas como escopo funcional documentado. A implementação ainda precisa seguir fundações, sem criar motores redundantes:
+
+| Sistema | Core | Engine | Render | UI |
+|---|---|---|---|---|
+| Smart Path | Path/NodeId | fitting, simplify, cleanup, queries | overlays | proposta de ferramentas |
+| Smart Region | Region bindings/provenance | planar arrangement, gap, weave | region mask/occlusion | proposta de ferramentas |
+| Smart Distribution | DistributionObject e refs | live transforms/arc-length/blend | virtual instances | proposta de ferramentas |
+| Smart Color | Swatches/ColorMappingSpec | extraction, color matching, constraints | live recolor | proposta de ferramentas |
+| Smart Measure | DimensionObject/anchors | measurement + validation | annotations/overlays | proposta de ferramentas |
+| Advanced | WidthProfile/Pattern/Effects/Warp specs | Stroke/Pattern/Brush/Warp | masks/effects | proposta de ferramentas |
+
+A especificação canônica vive em [Core Models](#/docs/01-core/creative-features.md), [Creative Operations](#/docs/02-engine/creative-operations.md) e [Tools Overview](#/docs/04-ui/creative-tools-overview.md).
+
+**Estado real:** contratos escritos no site; crates e funcionalidades ainda precisam ser codificadas e verificadas. A definição de GUI/UX ainda exige a discussão conjunta.
+
 ## Decisões propositalmente não congeladas
 
 Esses pontos **não foram esquecidos**. Permanecem abertos porque a filosofia do projeto exige evidência de implementação/profiling ou discussão de experiência:
