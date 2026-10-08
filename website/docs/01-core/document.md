@@ -348,3 +348,85 @@ I/O Engine coordena save/load, migrations e atomic replace.
 10. Resource blobs não são duplicados em SceneNodes.
 11. Recovery é infraestrutura externa ao modelo autoral.
 12. Serialization passa por DTO/I/O layer.
+
+## Convenção de Page e coordenadas
+
+Cada SceneNode pertence a uma Page por `ParentRef` direto ou por ancestry.
+
+A coordenada autoral da Page segue `math.rs`: origem no canto superior esquerdo, +X para a direita e +Y para baixo.
+
+Objetos podem existir fora do retângulo visível da Page; continuam pertencendo à mesma Page. Isso permite pasteboard local sem introduzir um segundo root global.
+
+Export/print da Page usa `PageSpec` + bleed/output policy para decidir a região final.
+
+## Spread placement
+
+Spread organiza Pages editorialmente, mas não muda a coordenada autoral interna de cada Page.
+
+Direção:
+
+~~~rust
+pub struct Spread {
+    pub id: SpreadId,
+    pub pages: Vec<SpreadPagePlacement>,
+}
+
+pub struct SpreadPagePlacement {
+    pub page: PageId,
+    pub origin: Point,
+}
+~~~
+
+`origin` é posição da Page dentro do espaço do Spread/pasteboard editorial. SceneNodes continuam em coordenadas locais da própria Page.
+
+Isso evita reescrever todos os objetos quando uma página muda de posição no spread.
+
+Facing-page presets podem gerar placements automaticamente, mas o resultado persistente é determinístico.
+
+## PageSpec invariants
+
+`PageSpec.size.width` e `height` precisam ser finitos e maiores que zero.
+
+Margins e bleed são finitos e podem ser zero. Valores negativos só entram se uma feature futura definir semântica explícita; v0.1 rejeita.
+
+## Document timestamps
+
+`created` é metadata persistente criada uma vez.
+
+`modified` é atualizado apenas após save bem-sucedido do novo estado autoral. Preview, selection, cache rebuild e autosave temporário não mudam esse valor no Document salvo principal.
+
+## Registries
+
+Registry oferece identidade/lookup; ordem visível ou autoral usa coleção ordenada separada quando necessária.
+
+Exemplo:
+
+~~~text
+SwatchRegistry: SwatchId → Swatch
+PaletteOrder: Vec<SwatchId>
+~~~
+
+O mesmo princípio vale para Styles, Symbols, Resources e presets documentais.
+
+## Package/Collect
+
+Operações como `Package`/`Collect for Output` pertencem ao I/O Engine.
+
+Elas podem:
+
+- incorporar linked resources permitidos;
+- copiar fontes permitidas;
+- gerar relatório de recursos ausentes;
+- preservar ResourceId quando a entidade lógica continua a mesma;
+- produzir novo PTND/package sem alterar o Document aberto até Command explícito.
+
+## Invariantes adicionais
+
+13. Scene geometry é Page-local; reposicionar Page no Spread não move seus SceneNodes.
+14. Page usa origem top-left, +X direita, +Y baixo.
+15. Objeto fora dos bounds da Page continua válido e pertence à Page.
+16. Spread placement é separado de Page-local geometry.
+17. Page size é finita e positiva.
+18. `modified` muda no save bem-sucedido, não durante estado transitório.
+19. Registry lookup e ordem autoral são estruturas semanticamente distintas.
+20. Package/Collect é I/O, não responsabilidade de Document.
