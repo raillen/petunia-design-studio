@@ -13,6 +13,7 @@ A matriz registra **arquivos existentes**, responsabilidades atuais e módulos n
 | Core | `document.rs` | canvas + scene | pages/artboards, color setup, resources, styles |
 | Engine | `command.rs` | Command + undo/redo | transactions, merge/coalescing, preview/commit |
 | Engine | `snapping.rs` | guide/grid básico | candidatos, prioridades, screen-space threshold |
+| Render Model | nova crate | não existe | contratos imutáveis Engine → Render |
 | Render | `backend.rs` | trait mínimo | snapshot + render graph + targets |
 | UI | `app.rs` | sessão mínima | tool controllers e estado transitório separado |
 
@@ -72,6 +73,22 @@ petunia-engine/src/
 ├── jobs/
 └── plugins/
 ```
+
+## Arquivos-alvo do Render Model
+
+```text
+petunia-render-model/src/
+├── snapshot.rs
+├── primitive.rs
+├── paint.rs
+├── text.rs
+├── image.rs
+├── effect.rs
+├── composite.rs
+└── resource.rs
+```
+
+A crate contém apenas DTOs/runtime contracts imutáveis de renderização. Sem backend, cache, Qt ou algoritmos geométricos.
 
 ## Arquivos-alvo do Render
 
