@@ -1,12 +1,18 @@
 # Smart Path — editar curvas sem lutar com os handles
 
-**Estado:** catálogo aceito; interação exata, atalhos, ícones e affordances sujeitos à revisão conjunta de GUI/UX.
+**Estado:** modelo híbrido Select/Vector Edit aceito; gestos fundamentais documentados. Atalhos secundários, ícones, estados visuais detalhados e affordances finais sujeitos à revisão conjunta de GUI/UX.
 
 ## Referências
 
 Figma Draw: multi-node editing, Shape Builder, melhorias em handles e seleção ([referência](https://www.figma.com/blog/introducing-figma-draw/)). Illustrator: edição de anchor/handles, Simplify; Inkscape: path operations e LPE com atenção à quantidade de nodes ([referência](https://wiki.inkscape.org/wiki/Release_notes/1.3.1)).
 
 A proposta Petunia mantém path canônico **Line/Cubic** e IDs estáveis: a interação pode ser simples sem precisar de Vector Networks como formato autoral.
+
+## Modelo de interação aprovado
+
+Smart Path usa [Select + Vector Edit híbridos](#/docs/04-ui/vector-edit-interaction.md). A entrada por duplo clique/Enter/Node, a hierarquia de contextos, a precedência de Escape e a separação entre hover, seleção e mutação estão definidas no [ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md).
+
+O modo **Node é a operação padrão** em Vector Edit. Bend, Cut, Width e outras operações podem ser ativadas mantendo a sub-selection, sem aplicar alterações por simples hover. Um drag em segmento **não deforma** no modo Node sem ativar Bend ou ação explícita.
 
 ## Select e Node — fundação
 
