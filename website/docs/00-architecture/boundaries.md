@@ -106,8 +106,15 @@ Exemplos:
 |---|---|
 | `kurbo` | Engine / Geometry |
 | `i_overlay` | Engine / Geometry |
+| `rstar` | Engine / Spatial |
 | `palette` | Engine / Color |
-| `rustybuzz` | Engine / Text |
+| `lcms2` / Little CMS 2 | Engine / Color Management |
+| `rustybuzz` | Engine / Text shaping |
+| `unicode-segmentation` | Engine / Text boundaries |
+| `unicode-bidi` | Engine / BiDi |
+| `unicode-linebreak` | Engine / line breaking |
+| `ttf-parser` | Engine / font metadata + outlines |
+| `hypher` | Engine / hyphenation |
 | `fontdue` | Render / rasterização de glifos |
 | `rayon` | Engine e Render, internamente |
 | `serde` | Core / persistência |
