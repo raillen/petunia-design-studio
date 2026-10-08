@@ -1,6 +1,6 @@
 # Smart Path — editar curvas sem lutar com os handles
 
-**Estado:** modelo híbrido Select/Vector Edit aprovado, assim como semântica/forma de Cusp, Smooth e Symmetric, visibilidade progressiva dos handles e princípios de feedback/precisão para nodes (2026-10-08). Marquee, gestos, atalhos, prioridade de alvos coincidentes, barra contextual e affordances finais seguem em discussão conjunta de GUI/UX.
+**Estado (2026-10-08):** aprovados modelo híbrido, tipos/indicadores Cusp/Smooth/Symmetric, handles progressivos, Marquee Contenção/Interseção/Direcional opt-in, Lasso contextual, transformação multi-node com bounds discretos, desambiguação de alvos, Shift para seleção múltipla e navegação semântica/numérica por teclado. **Ainda em discussão** manipulação fina dos handles/tangentes, snapping, prioridades em coincidência exata e apresentação final da barra contextual. **Não declarar como implementado.**
 
 ## Referências
 
@@ -14,7 +14,7 @@ Smart Path usa [Select + Vector Edit híbridos](#/docs/04-ui/vector-edit-interac
 
 O modo **Node é a operação padrão** em Vector Edit. Bend, Cut, Width e outras operações podem ser ativadas mantendo a sub-selection, sem aplicar alterações por simples hover. Um drag em segmento **não deforma** no modo Node sem ativar Bend ou ação explícita.
 
-O desenho completo de seleção e manipulação de nodes está em [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md) (**parte semântica dos nodes e handles aprovada; regras de seleção, prioridade e gestos ainda em revisão conjunta**).
+O desenho completo de seleção e manipulação de nodes está em [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md) (**seleção e subseleção A–F aprovadas; manipulação detalhada de handles e snapping em próxima rodada de UX**).
 
 ## Select e Node — fundação
 
