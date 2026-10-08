@@ -41,6 +41,54 @@ A v0.1 usa uma pipeline Rust pequena e especializada:
 
 Essas bibliotecas ficam atrás de tipos Petunia. IDs de glifo, structs de fonte e buffers externos não entram no Core.
 
+### Contrato Unicode
+
+A v0.1 segue os standards Unicode como fonte de semântica, em vez de inventar regras locais:
+
+- **UAX #29 — Unicode Text Segmentation** para grapheme e word boundaries;
+- **UAX #9 — Unicode Bidirectional Algorithm** para BiDi;
+- **UAX #14 — Unicode Line Breaking Algorithm** para oportunidades de quebra;
+- **BCP 47** para tags de idioma, usadas por shaping, fallback e hyphenation quando relevante.
+
+**UAX** significa *Unicode Standard Annex*: documento normativo complementar ao Unicode Standard.
+
+**BCP 47** define a sintaxe de tags como `pt-BR`, `en-US` e `ar`.
+
+A versão Unicode suportada precisa ser tratada como dependência técnica versionada. Atualizar crates Unicode pode alterar boundaries ou classificação de caracteres; por isso upgrade exige corpus/regression tests de texto.
+
+O documento persiste texto e tags sem “normalizar para acompanhar a biblioteca” durante load.
+
+### Normalização Unicode
+
+Petunia **não normaliza automaticamente o conteúdo textual** para NFC/NFD ao salvar.
+
+Duas sequências Unicode visualmente equivalentes podem possuir significado técnico diferente para edição, interoperabilidade ou fonte.
+
+Normalização só acontece quando:
+
+- um algoritmo específico exige uma representação temporária;
+- a conversão é Derived State;
+- ou existe Command explícito do usuário.
+
+Shaping recebe a source original conforme o contrato da biblioteca.
+
+### Indexação
+
+`TextRange` autoral usa offsets UTF-8 definidos no Core.
+
+O Engine pode construir índices derivados para:
+
+~~~text
+byte offset
+↔ grapheme index
+↔ code point position
+↔ cluster mapping
+~~~
+
+Esses mapas são caches/Derived State.
+
+Nunca persistir glyph cluster indices como substitutos dos ranges Unicode autorais.
+
 O workspace já usa `rustybuzz`, que realiza shaping considerando:
 
 - fonte;
@@ -485,3 +533,6 @@ Overflow é resultado válido e consultável.
 8. Convert to Curves é materialização explícita e usa outlines, não raster glyphs.
 9. Glyph atlas pertence ao Render.
 10. Tables não entram com modelo incompleto antes de sua especificação.
+11. Grapheme/BiDi/line-break seguem UAX #29/#9/#14, respectivamente.
+12. Tags de idioma seguem BCP 47.
+13. Texto autoral não é normalizado Unicode silenciosamente.
