@@ -12,6 +12,7 @@ A documentação de arquitetura/Core/Engine/Render já define o alvo. A tabela a
 | Core / Math | tipos básicos | f64 canônico, coordenadas Y-down, tolerâncias contextuais, transforms robustos |
 | Core / Path | nodes cúbicos + contours | Line+Cubic, IDs estáveis, fill semantics; ParametricShape separado em `shape.rs` |
 | Core / Generated Content | ausente | TraceObject + GeneratedVectorObject, source/params autorais e geometria derivada |
+| Core / Styles + Symbols | parcial | styles flat/linkable com overrides tipados; symbols acíclicos, nested e detach explícito |
 | Core / Scene | Path/Group simples | hierarquia ordenada, bindings, symbols, generated content e atomic structural mutations |
 | Core / Document | canvas + scene | Pages/Spreads/Artboards, registries, resources, styles e setup |
 | Engine / Commands | undo/redo básico | Command → DocumentOp → Transaction → HistoryEntry |
@@ -168,6 +169,7 @@ A especificação de arquitetura/motor é considerada **fechada o suficiente par
 | Não destrutibilidade/evaluation | ✅ Definido |
 | Core Path/Shape/Color/Appearance | ✅ Definido |
 | Core Scene/Document/Text/Raster/Resources | ✅ Definido |
+| Core Styles/Symbols | ✅ Definido |
 | Conteúdo gerado: Trace/QR/Barcode | ✅ Definido |
 | Commands/History + memory budget | ✅ Definido |
 | Geometry + Shape Builder | ✅ Definido |
