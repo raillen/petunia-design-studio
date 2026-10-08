@@ -75,6 +75,10 @@
           "path": "01-core/path.md"
         },
         {
+          "title": "shape.rs",
+          "path": "01-core/shape.md"
+        },
+        {
           "title": "scene.rs",
           "path": "01-core/scene.md"
         },
