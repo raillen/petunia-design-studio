@@ -1299,7 +1299,7 @@ fn render(
 ) -> Result<RenderStats>;
 ~~~
 
-`RenderSnapshot` é uma direção arquitetural, não uma crate ou formato já congelado.
+`RenderSnapshot` é o contrato imutável definido em `petunia-render-model`. A crate contém somente dados avaliados/serialização runtime de render; não contém backend, cache, Qt ou algoritmos de Engine.
 
 Nunca:
 
