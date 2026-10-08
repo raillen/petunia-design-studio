@@ -6,7 +6,7 @@ Spatial responde perguntas de proximidade, hit-test, alinhamento, measurement e 
 
 ## Spatial index
 
-A implementação de produção usa **R*-tree** através de adapter, com `rstar` como dependência preferencial.
+A implementação de produção da v0.1 usa **R*-tree** através de adapter, com `rstar` como dependência definida.
 
 R*-tree agrupa AABBs espacialmente e suporta consulta por retângulo, nearest-neighbor e atualização dinâmica.
 
@@ -30,6 +30,24 @@ pub trait SpatialIndex {
 ~~~
 
 Uma implementação linear simples pode existir apenas como referência/teste e baseline de benchmark.
+
+### Por que `rstar`
+
+A escolha fica fechada para a v0.1 porque o problema já é concreto: precisamos de R*-tree dinâmica, consulta por envelope e nearest-neighbor sem implementar uma árvore espacial proprietária.
+
+`rstar` permanece encapsulada:
+
+~~~text
+Petunia Rect/ObjectId
+↓ adapter
+rstar::RTree
+↓ query
+ObjectId candidates
+~~~
+
+Se profiling futuro mostrar limitação real, o trait `SpatialIndex` permite substituir a implementação sem alterar Scene, PTND, snapping ou hit-test.
+
+Não manter simultaneamente R-tree e BVH de produção sem caso de uso medido.
 
 ## AABB
 
