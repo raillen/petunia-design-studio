@@ -148,3 +148,24 @@ Qt/QML e CXX-Qt permanecem na borda de UI. Nenhum tipo Qt deve entrar em Core, E
 12. **Parar antes de Tools/Workspace/Acessibilidade/GUI e retomar discussão conjunta.**
 
 A ordem privilegia invariantes e contratos antes da camada de interação.
+
+## Decisões propositalmente não congeladas
+
+Esses pontos **não foram esquecidos**. Permanecem abertos porque a filosofia do projeto exige evidência de implementação/profiling ou discussão de experiência:
+
+| Tema | Motivo |
+|---|---|
+| Generational Arena | só entra se storage atual justificar por performance/ergonomia |
+| Tile size raster/render | depende de cache locality, brush, blur e memória |
+| Número de worker threads | depende de hardware e budget interativo |
+| Threshold incremental vs rebuild do R*-tree | benchmark |
+| Runtime WASM concreto | medir startup/binário/sandbox/throughput |
+| Backend GPU | pós software-reference; precisa preservar semântica |
+| HDR completo | exige política de luminância/output real |
+| Mesh Gradient avançado | precisa modelo próprio, não enum reservado |
+| Tables/editorial avançado | pós-v0.1-stable |
+| UI plugin extension | será discutida com GUI/UX |
+| Tools, Workspace, Acessibilidade e GUI/UX | discussão conjunta com o usuário |
+
+Uma decisão “aberta por evidência” não autoriza implementações incompatíveis. Os contratos ao redor já estão definidos.
+
