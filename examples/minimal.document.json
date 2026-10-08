@@ -1,21 +1,106 @@
 {
   "version": 1,
-  "documentId": "11111111-2222-3333-4444-555555555555",
-  "name": "Minimal",
-  "surfaces": [
+  "document_id": "11111111-2222-3333-4444-555555555555",
+  "metadata": {
+    "title": "Minimal"
+  },
+  "setup": {
+    "unit": "px",
+    "default_raster_dpi": 96.0,
+    "color": {
+      "rgb_working": {
+        "kind": "builtin",
+        "name": "srgb"
+      },
+      "cmyk_working": null,
+      "gray_working": null,
+      "rendering_defaults": {
+        "intent": "relative_colorimetric",
+        "black_point_compensation": true
+      }
+    }
+  },
+  "pages": [
     {
       "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
       "name": "Page 1",
-      "canvas": { "width": 1000, "height": 1000 },
-      "objects": [
-        {
-          "id": "01010101-0101-0101-0101-010101010101",
-          "type": "rectangle",
-          "name": "Hero",
-          "visible": true,
-          "frame": { "x": 0, "y": 0, "width": 320, "height": 200 }
+      "spec": {
+        "size": {
+          "width": 1000.0,
+          "height": 1000.0
+        },
+        "margins": {
+          "left": 0.0,
+          "top": 0.0,
+          "right": 0.0,
+          "bottom": 0.0
+        },
+        "bleed": {
+          "left": 0.0,
+          "top": 0.0,
+          "right": 0.0,
+          "bottom": 0.0
         }
+      },
+      "root_children": [
+        "01010101-0101-4101-8101-010101010101"
       ]
     }
-  ]
+  ],
+  "spreads": [],
+  "scene": {
+    "nodes": [
+      {
+        "id": "01010101-0101-4101-8101-010101010101",
+        "name": "Hero",
+        "parent": {
+          "kind": "page",
+          "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        },
+        "transform": {
+          "a": 1.0,
+          "b": 0.0,
+          "c": 0.0,
+          "d": 1.0,
+          "tx": 40.0,
+          "ty": 40.0
+        },
+        "flags": {
+          "visible": true,
+          "locked": false,
+          "exportable": true
+        },
+        "opacity": 1.0,
+        "blend_mode": "normal",
+        "geometry_effects": [],
+        "post_effects": [],
+        "clip": null,
+        "mask": null,
+        "item": {
+          "type": "shape",
+          "shape": {
+            "kind": "rectangle",
+            "size": {
+              "width": 320.0,
+              "height": 200.0
+            },
+            "corners": {}
+          },
+          "appearance": {
+            "kind": "local",
+            "appearance": {
+              "items": []
+            }
+          }
+        }
+      }
+    ]
+  },
+  "resources": [],
+  "styles": [],
+  "symbols": [],
+  "swatches": [],
+  "guides": [],
+  "grids": [],
+  "slices": []
 }
