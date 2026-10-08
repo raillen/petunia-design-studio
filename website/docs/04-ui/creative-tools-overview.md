@@ -1,6 +1,6 @@
 # Ferramentas criativas — catálogo e contrato
 
-**Estado: especificação funcional proposta para revisão conjunta de GUI/UX.** Todas as capacidades estão aceitas para o escopo do produto, mas isso não indica implementação pronta nem compromisso de entrega na v0.1.
+**Estado (2026-10-08):** capacidades já aceitas como escopo e contratos de UX aprovados por delegação nas respectivas páginas de interação. **Especificação não equivale a implementação, teste ou compromisso de entrega na v0.1.** O design visual final é refinável por testes de usabilidade e acessibilidade.
 
 ## Princípio
 
@@ -69,5 +69,7 @@ Itens de custo baixo **dependem do motor base**: Region Paint não é barato ant
 ## Critérios de qualidade
 
 Nenhuma ferramenta é “pronta” sem seleção precisa, teclado, cancel, preview consistente, 1 undo lógico, modo headless quando aplicável, estados vazios/degenerados, diagnóstico claro e regressão em documentos reais.
+
+**Interações aprovadas:** [Vector Edit precision](#/docs/04-ui/vector-edit-precision.md) · [Pen](#/docs/04-ui/pen-path-creation.md) · [Smart Path operations](#/docs/04-ui/smart-path-operations.md) · [Smart Region](#/docs/04-ui/smart-region-interaction.md) · [Distribution](#/docs/04-ui/smart-distribution-interaction.md) · [Color](#/docs/04-ui/smart-color-interaction.md) · [Measure](#/docs/04-ui/smart-measure-interaction.md) · [Advanced](#/docs/04-ui/advanced-creative-tools-interaction.md).
 
 [Dados persistentes e tipos](#/docs/01-core/creative-features.md) · [Operações do motor](#/docs/02-engine/creative-operations.md) · [Quality gates](#/docs/00-architecture/verification.md)
