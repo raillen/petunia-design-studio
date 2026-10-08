@@ -27,6 +27,20 @@ Pode solicitar:
 
 Isso mantém QML/Qt fora da lógica de domínio.
 
+## Ferramentas criativas por sistema
+
+As novas ferramentas foram modeladas como **capacidades do produto**, não como obrigação de colocar um ícone independente para cada operação.
+
+- [Catálogo + contrato transversal](#/docs/04-ui/creative-tools-overview.md)
+- [Smart Path](#/docs/04-ui/smart-path.md): Direct Bend, Smart Delete, Clean Vector, Select Similar
+- [Smart Region](#/docs/04-ui/smart-region.md): Shape Builder, Region Paint, Close Gap, Intertwine
+- [Smart Distribution](#/docs/04-ui/smart-distribution.md): Repeat, Symmetry, Objects on Path, Blend
+- [Smart Color](#/docs/04-ui/smart-color.md): Palette Extract, Recolor, harmonies, linked swatches
+- [Smart Measure](#/docs/04-ui/smart-measure.md): measurements e annotations associativas
+- [Avançadas](#/docs/04-ui/advanced-creative-tools.md): Variable Width, Pattern Editor, Brand Sheet, Vector Feather, Warp, Vector Brushes, Mesh Gradient, Knife/Erasers
+
+A interação exata, atalhos, nomes exibidos, agrupamento da toolbar, painéis, feedback visual e acessibilidade seguem **em discussão conjunta**. Nenhuma dessas páginas declara que a funcionalidade já está implementada.
+
 ## Pen Tool
 
 UI/controller: pointer state e modifiers. Geometry: Bézier/snap. Core: Path data. Render: preview segment, nodes, handles.
