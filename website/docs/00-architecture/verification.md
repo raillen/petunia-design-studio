@@ -585,6 +585,20 @@ Testes de unidade/integração de UI devem confirmar:
 
 **Concluir apenas a documentação não equivale a esses testes terem passado.** Implementação e QA de GUI/UX continuam futuros.
 
+### Testes adicionais de seleção, nodes e handles
+
+A proposta detalhada de [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md) define testes a serem fechados com a decisão de UX:
+
+- click em node selecionado versus não selecionado durante multi-node drag;
+- hit-test de handle × node sobrepostos, com desambiguação;
+- conversão Cusp/Smooth/Symmetric preservando invariantes e IDs;
+- show selected/all handles não alterando conteúdo documental;
+- bounding transform em seleção degenerada sem NaN;
+- seleção de objetos por containment/crossing conforme política escolhida;
+- click/drag threshold, pointer capture e focus por device/zoom/DPR.
+
+O modelo híbrido está aprovado, mas as três escolhas específicas de UX dessa página ainda **não** estão congeladas.
+
 ## Ferramentas criativas — testes de aceitação do motor
 
 Cada capability adicionada ao roadmap tem testes de Query/Preview/Commit/Undo/Redo/Save/Load, além de falha tipada, limites e cancelamento quando aplicável.
