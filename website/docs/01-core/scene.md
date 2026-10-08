@@ -227,6 +227,9 @@ Rasterize é Command explícito entre esses conceitos.
 
 ## Clip e Mask
 
+> Crop não destrutivo reutiliza estas relações em vez de criar um segundo sistema paralelo. A especificação completa está em [Crop e Clipping não destrutivos](#/docs/01-core/crop-clipping.md).
+
+
 Clip e Mask são bindings persistentes, não “um child especial escondido por posição”.
 
 ~~~rust
