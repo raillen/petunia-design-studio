@@ -1,6 +1,6 @@
 # Vector Edit — interação híbrida contextual
 
-**Estado:** modelo de interação Select + Vector Edit **aprovado em 2026-10-08**. Este documento detalha seu contrato funcional. Atalhos secundários, apresentação definitiva, densidade da toolbar, cores, tamanho dos alvos e algumas escolhas de gestos continuam reservados à revisão conjunta de GUI/UX.
+**Estado:** modelo híbrido **aprovado em 2026-10-08** (ADR-0011). Seleção Marquee/Lasso, 2+ nodes transformáveis, ciclo de alvos coincidentes, Shift e navegação semântica por teclado também **aprovados** na [página canônica de seleção](#/docs/04-ui/selection-nodes-handles.md). Prioridade fina em coincidência exata, manipulação de tangentes/snapping, atalhos secundários e apresentação final de GUI continuam em revisão conjunta. Documento de arquitetura-alvo, **não afirma implementação**.
 
 ## Objetivo
 
@@ -134,13 +134,13 @@ Sair do modo por toolbar ou breadcrumb, sem commit pendente, usa a mesma lógica
 - Node navigation por teclado deve ter caminho viável sem mouse, mas tab/order, setas e modificadores serão refinados na etapa de acessibilidade.
 - O canvas não intercepta teclas reservadas ao gerenciador de janelas ou entrada de texto.
 
-A próxima camada de especificação está em [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md). Ela detalha hit-test, multisseleção, visibilidade de handles, constraints e a proposta de context bar; tipos e indicadores dos nodes, handles progressivos e precisão estão aprovados, enquanto marquee, transformação de multisseleção, gestos e precedência de alvos sobrepostos seguem em revisão conjunta.
+A próxima camada de especificação está em [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md). Ela contém os contratos **aprovados** de Marquee por Contenção (Interseção por ação, Direcional opt-in), Lasso, Shift, transformação de 2+ nodes, desambiguação e teclado. Permanece aberta a precedência fina em coincidência exata e o desenho detalhado de handles/tangentes, snapping e context bar.
 
 ## Seleção e sub-selection
 
-**Select:** click escolhe objeto elegível mais alto no hit-test; multi-select pode adicionar/remover; click vazio limpa seleção por padrão; marquee iniciado no vazio. Select Behind / Cycle Overlapping deve ter ação explícita, sem exigir Alt+click (frequentemente reservado pelo WM no Linux).
+**Select:** click escolhe objeto elegível mais alto no hit-test; Shift+click alterna seleção; clique vazio limpa por padrão. Marquee inicia no vazio e usa Contenção por padrão, com Interseção via ActionId e modo Direcional opcional. Lasso é contextual, com Replace/Add/Subtract. Select Behind / Cycle Overlapping possuem ações próprias sem exigir Alt+click (frequentemente reservado pelo WM no Linux).
 
-**Vector Edit:** click em Node seleciona o NodeId; click em segmento identifica o segmento como alvo local; clique vazio limpa a sub-selection, **sem sair do contexto**. Marquee/lasso atuam sobre nodes dos paths elegíveis, sem selecionar objetos fora do contexto por acidente.
+**Vector Edit:** click em Node seleciona o NodeId; Shift+click alterna sub-selection; clique em segmento identifica alvo local; clique vazio limpa apenas sub-selection. Marquee/lasso atuam sobre **centros geométricos dos nodes** dos paths elegíveis, sem puxar outros objetos nem usar a área expandida do hit target. Com 2+ nodes distintos aparece bounding box discreta e desativável; candidatos sobrepostos podem ser percorridos por ActionId e seletor contextual. Árvore semântica/teclado permite alcançar nodes/handles e realizar nudges por unidades do documento, sem dependência de zoom.
 
 **Não há modo de alteração oculta:** arrastar handle move handle; arrastar Node move node; arrastar segmento somente inicia Bend quando Bend está ativo. Na operação Node padrão, arrastar segmento não deforma a curva sem ação/contexto explícito.
 
