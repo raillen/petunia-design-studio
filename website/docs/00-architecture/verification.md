@@ -564,6 +564,27 @@ Cada parser/job com input potencialmente hostil possui testes nos limites:
 - duplicate IDs;
 - cycle attempts.
 
+## Vector Edit contextual — testes de interação
+
+O [ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md) estabelece a fronteira Select / Vector Edit e a regra de que hover não muta documento.
+
+Testes de unidade/integração de UI devem confirmar:
+
+- duplo clique em Path, Enter com Path selecionado e ativação explícita de Node entram no mesmo contexto sem criar HistoryEntry;
+- Group, Text, Shape e Symbol abrem seus contextos sem Convert to Curves;
+- Escape durante drag/preview cancela sem Commit; Escape ocioso sobe exatamente um contexto;
+- Enter em controle de texto/foco não aciona Vector Edit;
+- Node→Bend→Node preserva sub-selection válida e nunca deforma segmento sem Bend explícito;
+- documento não muda por hover, seleção, marquee ou mudança de ferramenta;
+- paths locked/hidden e seleção mista não recebem mutação silenciosa;
+- captura de pointer persiste ao sair dos limites da viewport até Up/Cancel;
+- zoom, DPR, rotação de canvas e transform de grupo preservam significado do hit-test;
+- keyboard/screen reader conseguem localizar modo, targets e actions;
+- commit de um drag cria uma única entrada de Undo;
+- stale revision rejeita aplicação silenciosa do resultado antigo.
+
+**Concluir apenas a documentação não equivale a esses testes terem passado.** Implementação e QA de GUI/UX continuam futuros.
+
 ## Ferramentas criativas — testes de aceitação do motor
 
 Cada capability adicionada ao roadmap tem testes de Query/Preview/Commit/Undo/Redo/Save/Load, além de falha tipada, limites e cancelamento quando aplicável.
