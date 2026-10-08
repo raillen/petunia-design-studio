@@ -245,12 +245,24 @@
           "path": "04-ui/selection-nodes-handles.md"
         },
         {
+          "title": "Vector Edit — precisão e snapping",
+          "path": "04-ui/vector-edit-precision.md"
+        },
+        {
+          "title": "Pen — criação de paths",
+          "path": "04-ui/pen-path-creation.md"
+        },
+        {
           "title": "catálogo de ferramentas criativas",
           "path": "04-ui/creative-tools-overview.md"
         },
         {
           "title": "Smart Path",
           "path": "04-ui/smart-path.md"
+        },
+        {
+          "title": "Smart Path — operações assistidas",
+          "path": "04-ui/smart-path-operations.md"
         },
         {
           "title": "Smart Region",
