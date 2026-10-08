@@ -1,6 +1,6 @@
 # Smart Path — editar curvas sem lutar com os handles
 
-**Estado (2026-10-08):** aprovados modelo híbrido, tipos/indicadores Cusp/Smooth/Symmetric, handles progressivos, Marquee Contenção/Interseção/Direcional opt-in, Lasso contextual, transformação multi-node com bounds discretos, desambiguação de alvos, Shift para seleção múltipla e navegação semântica/numérica por teclado. **Ainda em discussão** manipulação fina dos handles/tangentes, snapping, prioridades em coincidência exata e apresentação final da barra contextual. **Não declarar como implementado.**
+**Estado (2026-10-08):** aprovados modelo híbrido e seleção A–F, bem como manipulação Cusp/Smooth/Symmetric A–D, extração/recolhimento de handles, Auto Smooth one-shot e snapping contextual. Pen e operações Smart Path receberam especificações detalhadas de UX por delegação. **Não declarar como implementado ou testado.** Acabamento visual final e precedência exata entre candidatos perfeitamente coincidentes permanecem refináveis em testes de usabilidade.
 
 ## Referências
 
@@ -14,7 +14,7 @@ Smart Path usa [Select + Vector Edit híbridos](#/docs/04-ui/vector-edit-interac
 
 O modo **Node é a operação padrão** em Vector Edit. Bend, Cut, Width e outras operações podem ser ativadas mantendo a sub-selection, sem aplicar alterações por simples hover. Um drag em segmento **não deforma** no modo Node sem ativar Bend ou ação explícita.
 
-O desenho completo de seleção e manipulação de nodes está em [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md) (**seleção e subseleção A–F aprovadas; manipulação detalhada de handles e snapping em próxima rodada de UX**).
+O contrato de seleção está em [Seleção, nodes e handles](#/docs/04-ui/selection-nodes-handles.md); a manipulação de handles, tangentes, snapping e números em [Vector Edit — precisão](#/docs/04-ui/vector-edit-precision.md); o fluxo de criação em [Pen](#/docs/04-ui/pen-path-creation.md).
 
 ## Select e Node — fundação
 
@@ -23,6 +23,8 @@ O desenho completo de seleção e manipulação de nodes está em [Seleção, no
 **Node:** seleção por NodeId, rectangle/lasso, edição multi-path, cusp/smooth/symmetric, convert Line↔Cubic, join/split/close, handles alinhados, subselect sem forçar troca de objeto autoral. Mover nodes precisa de preview/1 Transaction.
 
 **Pen:** estados Idle/Placing/Dragging/Closing/Continuing, preview de próximo segmento, snapping, curva suave ou canto; Escape cancela o segmento transitório, Enter confirma quando aplicável.
+
+As operações assistidas, seus estados, análise, erros e preview estão especificadas em [Smart Path — operações assistidas](#/docs/04-ui/smart-path-operations.md).
 
 ## Direct Bend
 
