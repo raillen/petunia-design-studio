@@ -10,6 +10,7 @@ Esta documentação descreve **as decisões antes da implementação** — tipos
 |---|---|
 | **Núcleo** | Documento, scene graph, paths, cores, texto, recursos e dados persistentes. |
 | **Engine** | Geometria, snapping, brushes, raster, layout, color management, commands e I/O. |
+| **Render Model** | Contrato imutável Engine → Render, sem backend. |
 | **Render** | Rasterização, composição, efeitos, caches, overlays e saída para tela/export. |
 | **Interface** | Workspace, ferramentas, input, painéis, atalhos, acessibilidade e integração Qt/QML via CXX-Qt. |
 
@@ -30,9 +31,36 @@ Se você está entrando no projeto agora, leia nesta ordem:
 3. [Qualidade de código](#/docs/00-philosophy/code-quality.md)
 4. [Fronteiras e invariantes](#/docs/00-architecture/boundaries.md)
 5. [Não destrutibilidade](#/docs/00-architecture/non-destructive.md)
-6. Depois avance para o domínio que estiver implementando.
+6. [Verificação e quality gates](#/docs/00-architecture/verification.md)
+7. Depois avance para o domínio que estiver implementando.
 
 A documentação é iterativa: decisões consolidadas devem acompanhar o código, e mudanças estruturais importantes devem ser registradas como ADR.
+
+## Estado da especificação
+
+A arquitetura técnica de **Core, Engine, Render Model e Render** está fechada em nível suficiente para orientar implementação incremental.
+
+Isso inclui:
+
+- identidade/persistência PTND;
+- modelo não destrutivo;
+- paths/shapes;
+- color/appearance;
+- scene/document/resources;
+- transactions/history;
+- Geometry/Shape Builder;
+- Spatial/Snapping;
+- Brush/Raster;
+- Text/Layout;
+- ICC Color Management;
+- I/O, scheduler, plugins WASM e MCP;
+- RenderSnapshot, software tiled renderer, compositor, cache/output;
+- testes, fuzzing, profiling e quality gates.
+
+Pontos que dependem de benchmark permanecem explicitamente abertos na Matriz de Implementação.
+
+**Tools, Workspace, Acessibilidade e GUI/UX/UI não foram congelados**. Essa parte volta para discussão colaborativa antes de avançar.
+
 
 
 ## Roadmap
