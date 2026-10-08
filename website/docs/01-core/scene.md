@@ -6,14 +6,15 @@ Ela não é uma lista de draw calls e não contém caches do renderer.
 
 ## SceneGraph
 
+SceneGraph armazena nodes por ObjectId. A ordem dos roots pertence à Page correspondente.
+
 ~~~rust
 pub struct SceneGraph {
-    pub root_children: Vec<ObjectId>,
     // storage interno indexado por ObjectId
 }
 ~~~
 
-`root_children` possui ordem autoral explícita. Storage pode começar com HashMap e evoluir depois; ordem de storage nunca define z-order.
+Cada Page possui uma lista ordenada de objetos raiz. Storage pode começar com HashMap e evoluir depois; ordem de storage nunca define z-order.
 
 ## SceneNode
 
