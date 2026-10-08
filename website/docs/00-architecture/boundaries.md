@@ -854,6 +854,221 @@ Para edição interativa, reduzir latência costuma ser mais importante do que m
 
 A implementação concreta de scheduler fica para o tópico de jobs/performance. Aqui definimos somente a política.
 
+## Scheduler e threading concreto
+
+O **scheduler** decide qual trabalho executa, com qual prioridade e quando um resultado deve ser descartado ou entregue.
+
+A arquitetura distingue autoridade lógica de thread física.
+
+~~~text
+Qt Main Thread
+├── QML / QObject / input / presentation
+│
+├── Document Commit Lane
+│   ├── Transaction
+│   ├── History
+│   ├── Revision
+│   └── publish snapshot
+│
+└── Worker Pool
+    ├── Geometry
+    ├── Raster
+    ├── Trace
+    ├── Effects
+    ├── Layout
+    └── Export
+~~~
+
+**Document Commit Lane** é uma autoridade lógica: o caminho único pelo qual commits autorais entram no Document.
+
+Na v0.1 ela não precisa ser uma thread própria. Pode executar no fluxo principal da aplicação, desde que cálculos caros aconteçam fora desse caminho.
+
+### Frame budget
+
+**Frame budget** é o tempo disponível para produzir uma atualização visual antes que a interface comece a perder fluidez.
+
+Em uma tela a 60 Hz:
+
+~~~text
+1 segundo / 60
+≈ 16,67 ms por frame
+~~~
+
+Esse tempo também é usado por Qt/QML, renderização e sistema operacional. Portanto uma operação executada diretamente no caminho de input deve ter latência pequena e mensurável.
+
+Não congelar metas numéricas como “snap < 2 ms” sem benchmark. A regra é medir o caminho interativo e impedir trabalho pesado nele.
+
+### Scheduler mínimo
+
+O scheduler da v0.1 precisa apenas de conceitos próprios do Petunia:
+
+~~~text
+JobId
+JobClass
+Cancellation
+DocumentRevision
+Progress
+Result
+~~~
+
+Não criar scheduler distribuído, dependency graph genérico ou work-stealing próprio.
+
+### Interactive não significa assíncrono
+
+Uma operação Interactive barata, como ranking de poucos candidatos de snap, pode executar imediatamente.
+
+~~~text
+operação de microssegundos
+→ executa diretamente
+~~~
+
+Transformar cada cálculo pequeno em job, channel e callback pode custar mais que o próprio cálculo.
+
+### Rayon não é Job API
+
+`rayon` resolve data parallelism CPU.
+
+Ele pode aparecer dentro de um job:
+
+~~~text
+Petunia Job
+    ↓
+algoritmo
+    ↓
+rayon divide tiles/objetos
+~~~
+
+Evitar chamadas de `rayon::spawn` espalhadas por UI e ferramentas como mecanismo de jobs do produto.
+
+### Jobs substituíveis
+
+Previews caros podem ficar obsoletos antes de terminar.
+
+~~~text
+Blur 10 → job A
+Blur 15 → job B
+Blur 25 → job C
+~~~
+
+Se A e B representam o mesmo preview que C substitui, processar todos até o fim desperdiça CPU.
+
+Uma futura `ReplacementKey` pode identificar jobs cujo resultado mais novo substitui o anterior.
+
+Isso é uma capacidade planejada quando surgir o primeiro caso real; não é requisito estrutural do scheduler MVP.
+
+### Backpressure
+
+**Backpressure** impede que trabalho seja produzido mais rápido do que o consumidor consegue processar.
+
+~~~text
+120 eventos/s
+↓
+cada preview custa 40 ms
+↓
+fila cresce indefinidamente
+✗
+~~~
+
+Em previews interativos, normalmente vale a política:
+
+> **latest state wins** — o estado mais recente vale mais que processar uma fila histórica de previews obsoletos.
+
+O scheduler pode cancelar, substituir ou descartar trabalho antigo conforme o tipo de operação.
+
+### Debounce e throttle
+
+**Debounce** espera a atividade parar antes de executar.
+
+~~~text
+evento evento evento
+        ↓ pausa
+      executa
+~~~
+
+**Throttle** permite execução contínua, mas limita sua frequência.
+
+~~~text
+100 eventos/s
+     ↓
+limite
+     ↓
+20 atualizações/s
+~~~
+
+Usar apenas onde a semântica permitir:
+
+- busca textual pode usar debounce;
+- progress visual pode usar throttle;
+- pointer geometry normalmente não deve usar debounce porque atrasaria a interação.
+
+### Progress
+
+Progress é feedback, não telemetria de cada iteração interna.
+
+Um worker pode atualizar seu progresso frequentemente, mas a UI não precisa receber milhares de mensagens por segundo.
+
+A frequência de publicação deve ser limitada quando necessário para evitar que feedback vire nova fonte de contenção.
+
+### Render thread
+
+A arquitetura **não define uma thread física fixa para Render**.
+
+Qt Quick pode possuir seu próprio modelo de render thread conforme backend e configuração. Headless/CPU render pode executar em workers.
+
+A regra é somente:
+
+> Render é logicamente independente da UI e trabalha sobre estado de leitura; a thread física pertence à implementação do backend.
+
+### Snapshot por revision, não por frame
+
+Não criar deep copy do Document em todo frame.
+
+~~~text
+revision não mudou
+→ reutiliza snapshot
+
+revision mudou
+→ publica snapshot novo
+~~~
+
+Preview também não cria revision autoral artificial:
+
+~~~text
+Snapshot 54
++
+TransientOverrides
++
+Overlays
+→ frame
+~~~
+
+### Erros de worker
+
+Worker nunca mostra diálogo ou manipula QML diretamente.
+
+Ele retorna erro tipado. A camada de aplicação decide se deve:
+
+- ignorar cancelamento esperado;
+- tentar novamente;
+- recalcular;
+- mostrar mensagem ao usuário;
+- registrar diagnóstico.
+
+### Invariantes do scheduler
+
+1. Qt Main Thread é dona dos objetos Qt e da apresentação.
+2. Document Commit Lane é autoridade lógica e não exige thread dedicada na v0.1.
+3. Trabalho caro não executa no caminho da UI.
+4. O scheduler distingue Interactive, Background e Batch.
+5. Operação Interactive pequena pode executar diretamente.
+6. `rayon` implementa paralelismo interno; não é a Job API do produto.
+7. Jobs são identificáveis e canceláveis quando longos.
+8. Resultados voltam por message passing.
+9. A thread física de Render depende do backend.
+10. Snapshot é reutilizado enquanto a revision não muda.
+11. Preview usa snapshot base + estado transitório.
+12. Filas aplicam backpressure; previews obsoletos podem ser descartados.
+
 ## Message passing
 
 **Message passing** significa trocar mensagens ou resultados entre componentes em vez de permitir acesso livre ao mesmo estado mutável.
