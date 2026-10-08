@@ -456,3 +456,69 @@ Preview opcional no PTND é acelerador descartável e precisa ser marcado como d
 12. Delete de objeto não purga Resource automaticamente.
 13. Font embedding respeita política/licença.
 14. Glyph cache, mipmaps e previews são Derived State.
+
+## Decisões adicionais de raster/resources
+
+### Alpha autoral de PixelSurface
+
+PixelSurface autoral usa **straight alpha** como semântica canônica, consistente com `ColorValue`. Buffers temporários do Brush/Render podem usar premultiplied alpha, mas isso é representação derivada.
+
+Se um formato importado usa premultiplied storage, o importer precisa declarar/converter corretamente; não reinterpretar bytes sem metadata.
+
+### Tile coordinates
+
+Tiles usam coordenadas inteiras estáveis dentro da surface:
+
+~~~rust
+pub struct TileCoord {
+    pub x: u32,
+    pub y: u32,
+}
+~~~
+
+A última linha/coluna de tiles pode ter extent lógico menor que o tile nominal. Algoritmos nunca leem padding não inicializado como pixels autorais.
+
+### Tile storage lógico
+
+PixelSurface referencia um mapa lógico de `TileCoord -> TileVersion/TileBlob`. O layout físico no PTND pode evoluir sem mudar essa semântica.
+
+Isso permite save incremental futuro e COW sem expor filenames internos como parte do domínio.
+
+### Compression
+
+Compression de tile é detalhe do container/resource storage. Ela deve ser lossless para PixelLayer autoral. O codec concreto só vira parte do schema físico quando medido; não hard-code um codec na API de Core.
+
+### Resource state
+
+Resolução runtime de Resource é derivada:
+
+~~~text
+Resolved
+Unresolved
+ChangedExternally
+Invalid
+~~~
+
+Esses estados não substituem o `ResourceRecord` persistente. `ChangedExternally` pode ser detectado por metadata/hash e exige uma ação explícita para atualizar o conteúdo autoral quando necessário.
+
+### Linked file update
+
+Detectar que o arquivo externo mudou não reescreve automaticamente o Resource durante save. Atualização/reload do linked resource é Command explícito quando puder afetar a aparência do documento.
+
+### Embedded resource identity
+
+Embedding ou unembedding preserva `ResourceId` quando continua sendo o mesmo recurso lógico. O que muda é `ResourceSource` e possivelmente `ContentHash`/metadata.
+
+### Resource package safety
+
+Resource loaders recebem streams/bytes validados e limites de tamanho. Font, ICC, image e outros parsers são tratados como fronteiras de input não confiável.
+
+## Invariantes adicionais
+
+15. PixelSurface autoral usa straight alpha canônico.
+16. Tile coordinates são runtime/domain logic; paths físicos do container não vazam para Core.
+17. Compression de PixelLayer é sempre lossless.
+18. Resolução de Resource é Derived State.
+19. Mudança externa não reescreve Resource silenciosamente.
+20. Embed/Unembed pode preservar ResourceId da mesma entidade lógica.
+21. Todos os parsers de resource respeitam limites de input não confiável.
