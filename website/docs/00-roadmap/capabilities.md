@@ -12,42 +12,43 @@ Isso evita desenhar UI ou APIs sobre fundações ainda instáveis.
 
 | Estado | Significado |
 |---|---|
-| **Planejado** | capacidade aprovada para o produto; fase exata ainda depende da arquitetura |
+| **Planejado** | capacidade aprovada para o produto; contrato técnico ainda não está fechado |
+| **Especificado (motor)** | Core/Engine/Render e invariantes estão definidos; implementação e experiência de ferramenta/GUI ainda podem faltar |
 | **Pós-v0.1.0-stable** | não entra antes da primeira base estável |
 | **Exploração futura** | ideia preservada, mas sem compromisso de implementação |
 | **Fora de escopo atual** | deliberadamente não faz parte do produto neste ciclo |
 
 ## Capacidades planejadas
 
-As capacidades abaixo serão revisitadas quando o tópico técnico relacionado for amadurecido.
+As capacidades abaixo já tiveram o **contrato de motor** amadurecido. Isso não significa que a ferramenta, a interação ou a GUI estejam fechadas; essas camadas serão discutidas em conjunto.
 
-| Capacidade | Custo esperado | Domínio que desbloqueia a decisão |
-|---|---:|---|
-| Live Effects / Effect Stack | médio | Não destrutibilidade · Appearance/Effects · Render |
-| Image Trace / Live Trace | baixo–médio | Geometry · Raster · Vectorization |
-| Simplify / Smooth / Cleanup | baixo–médio | Path · Geometry |
-| Crop não destrutivo | baixo | Scene · Masks/Clipping |
-| Linked Images + Relink | baixo | Resources · Document · I/O |
-| Palette Extraction | baixo | Color · Raster |
-| Remove White / Color to Alpha | baixo | Raster · Effects |
-| Invert / Grayscale / Posterize | baixo | Raster · Effects |
-| Brightness / Contrast / Levels | baixo | Effects · Color |
-| HSL / Vibrance | baixo–médio | Effects · Color |
-| Blend Modes | baixo–médio | Compositor |
-| Drop Shadow / Glow | médio | Effects · Compositor |
-| Live Corners | baixo–médio | Path · Geometry · Non-destructive effects |
-| Live Offset / Contour | médio | Geometry · Non-destructive effects |
-| Pattern Fill | baixo–médio | Paint · Appearance |
-| Conical Gradient | baixo | Paint · Render |
-| Clipping / Opacity Masks | médio | Scene · Compositor |
-| Export Slices | baixo–médio | Document · Render · Export |
-| QR Code / Barcode Generator | baixo | Tools · Vector output |
-| Cartesian Grid | baixo | Spatial · Snapping |
-| Isometric Grid | baixo | Spatial · Snapping |
-| Axonometric Grid | baixo | Spatial · Snapping |
-| Pixel Grid | baixo | Spatial · Viewport |
-| Baseline Grid | baixo | Text · Layout · Snapping |
-| Perspective Grid | médio | Math · Spatial · Snapping |
+| Capacidade | Estado técnico | Custo esperado | Contrato |
+|---|---|---:|---|
+| Live Effects / Effect Stack | **Especificado (motor)** | médio | Non-destructive · Appearance/Effects · Render |
+| Image Trace / Live Trace | **Especificado (motor)** | baixo–médio | Generated Content · Vectorization · Geometry |
+| Simplify / Smooth / Cleanup | **Especificado (motor)** | baixo–médio | Path · Geometry |
+| Crop não destrutivo | **Especificado (motor)** | baixo | Crop/Clipping · Scene |
+| Linked Images + Relink | **Especificado (motor)** | baixo | Resources · Commands · I/O |
+| Palette Extraction | **Especificado (motor)** | baixo | Image Analysis · Color |
+| Remove White / Color to Alpha | **Especificado (motor)** | baixo | Adjustments |
+| Invert / Grayscale / Posterize | **Especificado (motor)** | baixo | Adjustments |
+| Brightness / Contrast / Levels | **Especificado (motor)** | baixo | Adjustments |
+| HSL / Vibrance | **Especificado (motor)** | baixo–médio | Adjustments · Color |
+| Blend Modes | **Especificado (motor)** | baixo–médio | Compositor |
+| Drop Shadow / Glow | **Especificado (motor)** | médio | Appearance/Effects · Compositor |
+| Live Corners | **Especificado (motor)** | baixo–médio | Geometry Effects |
+| Live Offset / Contour | **Especificado (motor)** | médio | Geometry Effects |
+| Pattern Fill | **Especificado (motor)** | baixo–médio | Appearance · Paint Evaluation |
+| Conical Gradient | **Especificado (motor)** | baixo | Color · Paint Evaluation |
+| Clipping / Opacity Masks | **Especificado (motor)** | médio | Scene · Crop/Clipping · Compositor |
+| Export Slices | **Especificado (motor)** | baixo–médio | Guides/Grids/Slices · ExportPlan |
+| QR Code / Barcode Generator | **Especificado (motor)** | baixo | Generated Content · Vector Generators |
+| Cartesian Grid | **Especificado (motor)** | baixo | AffineGrid · Spatial |
+| Isometric Grid | **Especificado (motor)** | baixo | AffineGrid · Spatial |
+| Axonometric Grid | **Especificado (motor)** | baixo | AffineGrid · Spatial |
+| Pixel Grid | **Especificado (motor)** | baixo | View-derived Grid · Spatial |
+| Baseline Grid | **Especificado (motor)** | baixo | BaselineGrid · Text/Layout · Spatial |
+| Perspective Grid | **Especificado (motor)** | médio | ProjectiveGrid · Spatial |
 
 O custo é uma estimativa relativa. Ele será revisto depois que conhecermos a implementação real das fundações.
 
@@ -91,7 +92,7 @@ preview
 
 O usuário só materializa paths normais quando executar **Expand Trace**.
 
-A biblioteca ou algoritmo concreto será decidido quando chegarmos ao tópico de vectorization. O roadmap não congela uma dependência antecipadamente.
+O contrato de vectorization já está definido em `Image Analysis + Vectorization`: quantização perceptual compartilhada, contour extraction determinística, simplificação controlada e curve fitting reutilizado do Geometry Engine. Dependências concretas adicionais continuam sujeitas à política de dependências.
 
 ## Efeitos e ajustes
 
@@ -195,4 +196,4 @@ Uma feature sai de “planejada” e ganha especificação definitiva apenas qua
 9. Como funciona sem UI quando aplicável?
 10. Quais testes provam que está correta?
 
-Até essas respostas existirem, o roadmap registra intenção — não uma API congelada.
+Quando essas respostas existem, a feature pode ser marcada **Especificado (motor)**. Isso congela o contrato técnico necessário para implementação, mas não congela Tools, acessibilidade ou GUI/UX antes da discussão correspondente.
