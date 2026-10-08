@@ -43,6 +43,10 @@
           "path": "00-architecture/non-destructive.md"
         },
         {
+          "title": "Formato PTND",
+          "path": "00-architecture/ptnd-format.md"
+        },
+        {
           "title": "Verificação e quality gates",
           "path": "00-architecture/verification.md"
         }
