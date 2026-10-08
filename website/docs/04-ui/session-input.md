@@ -18,6 +18,34 @@ pub struct EditorSession {
 
 History pertence ao serviço de documento/Engine, não ao widget.
 
+## Contextos de edição aprovados
+
+O modelo híbrido Select/Vector Edit é [decisão aceita](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md). Além da ferramenta ativa, EditorSession precisa de **ContextStack**:
+
+~~~text
+Scene
+↓ Group Isolation (se necessário)
+↓ Vector Edit(targets, operation)
+↓ operation transient
+~~~
+
+- **Scene / Select**: Object Selection, transforms e navegação na hierarquia.
+- **Vector Edit**: NodeId/segment/handle sub-selection de paths elegíveis.
+- **Group/Text/Shape/Symbol**: contextos distintos, sem materialização implícita.
+- **TransientInteraction**: pointer capture, preview e estado provisório de um único gesto.
+
+Uma operação não deve ficar ativa fora de contexto elegível. Trocar Node→Bend preserva seleção por IDs sempre que ela continuar válida; sair do contexto mantém a seleção de objetos e não muda DocumentRevision.
+
+O `ToolKind` atualmente implementado é uma enumeração simples e **não** constitui o contrato final. Event routing e dispatch devem respeitar prioridade: controle focado (campo/text editor/diálogo) → interação capturada → operação contextual → actions de canvas → shortcuts globais não conflitantes.
+
+### Escape, Enter e double-click
+
+Escape cancela drag/preview primeiro e somente depois, quando ocioso, desempilha um nível de contexto. Enter em Select sobre path elegível abre Vector Edit; Enter em Pen/editor de texto/controle focado mantém a semântica desse contexto. Duplo clique abre o editor correto ao tipo: Path→Vector, Group→Isolation, Shape→paramétrico, Text→texto, Symbol→instância/overrides.
+
+Seleção mista não perde silenciosamente objetos ao entrar em multi-path editing. Entrada explícita pode selecionar apenas alvos elegíveis depois de informar a exclusão.
+
+[Especificação de interação](#/docs/04-ui/vector-edit-interaction.md)
+
 ## ViewState
 
 - zoom
