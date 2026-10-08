@@ -495,14 +495,454 @@ A matriz recomendada é:
 
 Geometria usa `f64` porque operações booleanas, interseções e sequências longas de transforms acumulam erro. Render pode converter para `f32` no limite da GPU.
 
-## Regras de mutabilidade
+## Snapshots e concorrência
 
-1. O documento autoritativo é alterado por transações explícitas.
-2. Previews são transitórios e não entram no histórico a cada movimento do ponteiro.
-3. Jobs de background recebem snapshots imutáveis.
-4. Jobs retornam resultados/patches; não guardam `&mut Document`.
-5. Caches são descartáveis e reconstruíveis.
-6. O Renderer é logicamente read-only em relação ao documento.
+O Petunia usa **single writer + snapshots imutáveis** como modelo principal de concorrência.
+
+**Concorrência** significa permitir que diferentes trabalhos avancem sem obrigar todos a acessar o mesmo estado mutável ao mesmo tempo.
+
+A regra é:
+
+> O Document autoritativo possui um único escritor. Leitores concorrentes recebem visões imutáveis de uma revisão.
+
+~~~text
+                 Single Writer
+                      │
+               Authoring Document
+                      │
+                 commit 42
+                      ↓
+              Immutable Snapshot
+              ↙       ↓       ↘
+          Render    Engine     Jobs
+                                │
+                                ↓
+                         resultado tipado
+                                │
+                                ↓
+                          Transaction API
+                                │
+                                ↓
+                           Single Writer
+~~~
+
+### Single writer
+
+**Single writer** significa que somente um fluxo possui autoridade para alterar o Document.
+
+Isso não significa que a aplicação possua apenas uma thread. Geometry, raster, export e outros trabalhos podem ocorrer em paralelo.
+
+Significa apenas:
+
+~~~text
+workers
+→ leitura imutável
+
+document owner
+→ única autoridade de commit
+~~~
+
+Evitar espalhar `Arc<Mutex<Document>>` pela aplicação.
+
+`Arc` permite compartilhar ownership de um valor entre threads por contagem de referências.
+
+`Mutex` permite acesso exclusivo a um valor compartilhado: apenas um fluxo por vez entra na seção protegida.
+
+Ambos são ferramentas válidas. O problema é transformá-los no modelo geral de acesso ao Document, o que aumentaria contenção, dificuldade de raciocínio e risco de deadlocks.
+
+### Deadlock
+
+**Deadlock** ocorre quando dois fluxos esperam indefinidamente recursos que o outro possui.
+
+~~~text
+Thread A
+segura Lock 1
+↓
+espera Lock 2
+
+Thread B
+segura Lock 2
+↓
+espera Lock 1
+
+→ nenhum avança
+~~~
+
+Single writer e snapshots imutáveis reduzem drasticamente essa classe de problema.
+
+## Snapshot
+
+Um **snapshot** é uma visão consistente e somente-leitura do documento em uma `DocumentRevision` específica.
+
+Direção conceitual:
+
+~~~rust
+pub struct DocumentSnapshot {
+    pub revision: DocumentRevision,
+    pub scene: SceneSnapshot,
+    pub resources: ResourceSnapshot,
+    pub styles: StyleSnapshot,
+}
+~~~
+
+A estrutura exata ainda não está congelada. O contrato é mais importante que a implementação:
+
+- representa uma única revision;
+- não pode ser alterado pelo consumidor;
+- pode ser compartilhado com workers;
+- deixa de ser necessário quando nenhum consumidor o referencia.
+
+### Snapshot não é PTND
+
+Snapshot é estrutura runtime.
+
+PTND é formato persistente.
+
+Não serializar o Document para JSON e desserializar novamente para produzir um snapshot durante uso normal.
+
+~~~text
+Document
+↓
+snapshot runtime
+✓
+
+Document
+↓
+JSON/PTND
+↓
+parse novamente
+↓
+snapshot
+✗
+~~~
+
+Persistência e leitura concorrente têm objetivos diferentes.
+
+### Consistência de revisão
+
+Um snapshot nunca mistura partes de revisions diferentes.
+
+Inválido:
+
+~~~text
+Scene      → revision 40
+Resources  → revision 42
+Styles     → revision 41
+~~~
+
+Válido:
+
+~~~text
+DocumentSnapshot
+revision = 42
+├── Scene consistente com 42
+├── Resources consistentes com 42
+└── Styles consistentes com 42
+~~~
+
+A criação do snapshot precisa ser logicamente atômica mesmo que internamente reutilize memória.
+
+## Structural sharing
+
+**Structural sharing** significa que dois estados imutáveis podem reutilizar partes idênticas em memória em vez de copiá-las.
+
+~~~text
+Revision 41
+├── A ─────────────┐
+├── B              │
+└── C ──────────┐  │
+                 │  │
+Revision 42      │  │
+├── A ───────────┘  │  compartilhado
+├── B'               │  alterado
+└── C ───────────────┘  compartilhado
+~~~
+
+Isso pode ser implementado com técnicas como `Arc<T>`, copy-on-write ou estruturas persistentes.
+
+A escolha concreta **não está definida ainda**. Primeiro mediremos custo, padrões de edição e pressão de memória.
+
+Não adotar uma estrutura complexa apenas porque snapshots existem.
+
+## Copy-on-write
+
+**Copy-on-write — COW** significa compartilhar dados enquanto há apenas leitura e copiar somente quando uma escrita precisa produzir uma versão diferente.
+
+~~~text
+Snapshot 40 ─┐
+             ├── Tile A
+Snapshot 41 ─┘
+~~~
+
+Se Tile A muda na nova revisão:
+
+~~~text
+Snapshot 40 → Tile A
+Snapshot 41 → Tile A'
+~~~
+
+COW é especialmente promissor para:
+
+- raster tiles;
+- imagens decodificadas grandes;
+- blobs de recursos;
+- outros dados grandes e imutáveis.
+
+Não assumir que COW é melhor para cada node pequeno do SceneGraph. Isso precisa ser medido.
+
+## Jobs
+
+Um **job** é um trabalho que pode continuar fora do fluxo interativo principal, como Image Trace, thumbnail, import pesado ou export.
+
+Conceitualmente:
+
+~~~rust
+pub struct JobInput<T> {
+    pub revision: DocumentRevision,
+    pub snapshot: DocumentSnapshot,
+    pub request: T,
+}
+~~~
+
+Fluxo:
+
+~~~text
+Document revision 120
+        ↓
+     Snapshot
+        ↓
+   Background Job
+        ↓
+   resultado tipado
+expected_revision = 120
+        ↓
+  Document Owner
+        ↓
+validate + Transaction
+~~~
+
+O worker nunca recebe `&mut Document`.
+
+### Validação de resultado na v0.1
+
+Na v0.1, resultados de jobs que pretendem alterar o documento usam a revision documental completa como barreira de segurança.
+
+~~~text
+job expected = 120
+current      = 120
+→ pode preparar commit
+
+job expected = 120
+current      = 123
+→ resultado potencialmente obsoleto
+~~~
+
+Isso é conservador: uma alteração não relacionada pode invalidar um job mesmo quando suas entradas específicas não mudaram.
+
+Aceitamos esse custo inicial por simplicidade e segurança.
+
+No futuro, se profiling demonstrar necessidade, podemos validar por **dependency revisions**: revisions específicas das entradas realmente usadas pelo job.
+
+Não implementar isso antecipadamente.
+
+## Cancellation
+
+Jobs longos precisam suportar **cancelamento cooperativo**.
+
+Cooperativo significa que o algoritmo verifica periodicamente se ainda deve continuar e encerra em um ponto seguro.
+
+~~~text
+processa lote
+↓
+cancelled?
+├── não → próximo lote
+└── sim → encerra limpo
+~~~
+
+Não matar threads à força.
+
+O intervalo entre verificações depende do custo de cada etapa: cancelamento deve responder rápido sem transformar cada operação microscópica em consulta ao token.
+
+## Progress
+
+Progresso de job é Session/Application State, não Document State.
+
+Direção:
+
+~~~rust
+pub struct JobProgress {
+    pub completed: u64,
+    pub total: Option<u64>,
+    pub phase: JobPhase,
+}
+~~~
+
+Engine/job publica dados. QML decide como mostrar porcentagem, fase ou indicador indeterminado.
+
+Jobs não chamam componentes Qt diretamente.
+
+## Qt thread affinity
+
+**Thread affinity** significa que um objeto está associado a uma thread e deve respeitar as regras de acesso dessa thread.
+
+Objetos Qt como `QObject` e itens visuais como `QQuickItem` permanecem na thread de UI conforme as regras do Qt.
+
+~~~text
+Qt UI thread
+├── QML
+├── QObject / QQuickItem
+├── foco e input
+└── apresentação
+
+Workers
+├── geometry
+├── image processing
+├── text/layout computation
+├── export
+└── evaluation pesada
+~~~
+
+Worker retorna dados Rust/contratos Petunia para a fronteira de aplicação. A entrega para Qt acontece depois, de forma compatível com o modelo de threading do Qt.
+
+Engine, Core e Render não carregam ponteiros Qt em jobs.
+
+## Task concurrency e data parallelism
+
+São problemas diferentes.
+
+**Task concurrency** executa trabalhos independentes ao mesmo tempo:
+
+~~~text
+thumbnail
++
+image trace
++
+export
+~~~
+
+**Data parallelism** divide um mesmo trabalho em partes:
+
+~~~text
+1000 tiles
+    ↓
+workers
+    ↓
+resultado combinado
+~~~
+
+`rayon` é adequado principalmente para data parallelism e tarefas CPU-bound, mas não define a arquitetura de jobs.
+
+**CPU-bound** significa que o custo principal é computação no processador, e não espera por disco, rede ou UI.
+
+## Classes de trabalho
+
+Usar três classes conceituais:
+
+| Classe | Objetivo | Exemplos |
+|---|---|---|
+| **Interactive** | proteger latência da interação | hit-test, snapping, viewport evaluation |
+| **Background** | trabalho útil sem bloquear edição | thumbnail, image trace, preload |
+| **Batch** | throughput de operações grandes | export de muitas páginas, processamento em lote |
+
+**Latência** é o tempo entre uma ação e a resposta percebida.
+
+**Throughput** é a quantidade total de trabalho concluída em um período.
+
+Para edição interativa, reduzir latência costuma ser mais importante do que maximizar throughput.
+
+> Trabalho Background ou Batch nunca deve saturar a máquina a ponto de tornar pointer, snapping ou viewport visivelmente lentos.
+
+A implementação concreta de scheduler fica para o tópico de jobs/performance. Aqui definimos somente a política.
+
+## Message passing
+
+**Message passing** significa trocar mensagens ou resultados entre componentes em vez de permitir acesso livre ao mesmo estado mutável.
+
+~~~text
+Document Owner
+     │ request
+     ▼
+   Worker
+     │ result
+     ▼
+Document Owner
+~~~
+
+Não congelamos nesta página qual crate de channel será usada.
+
+O contrato importa mais que o mecanismo.
+
+## Renderer
+
+Render também trabalha sobre estado de leitura.
+
+Direção:
+
+~~~rust
+fn render(
+    snapshot: &RenderSnapshot,
+    frame: &FrameContext,
+    target: &mut RenderTarget,
+) -> Result<RenderStats>;
+~~~
+
+`RenderSnapshot` é uma direção arquitetural, não uma crate ou formato já congelado.
+
+Nunca:
+
+~~~rust
+fn render(document: &mut Document)
+~~~
+
+Render pode possuir caches internos mutáveis porque eles são Derived State, não estado autoral.
+
+## Cache e sincronização
+
+Antes de criar um cache global com lock, perguntar se ele realmente precisa ser compartilhado.
+
+Preferir quando adequado:
+
+- scratch memory por thread;
+- cache local de job;
+- cache de propriedade exclusiva do renderer;
+- dados imutáveis compartilhados.
+
+**Scratch memory** é memória temporária reutilizada durante cálculos para evitar alocações repetidas.
+
+Sincronização compartilhada entra quando houver benefício medido, não como padrão automático.
+
+## Lifetime de snapshots
+
+Aqui, **lifetime** significa por quanto tempo o snapshot permanece retido em memória.
+
+Jobs concluídos ou cancelados devem liberar suas referências:
+
+~~~text
+job termina
+↓
+drop snapshot
+↓
+partes sem outras referências podem ser liberadas
+~~~
+
+Não criar um registry global que retenha indefinidamente todas as revisions.
+
+Histórico e snapshots possuem necessidades diferentes: manter uma HistoryEntry não implica manter para sempre um snapshot completo daquela revision.
+
+## Invariantes de concorrência
+
+1. O Document autoritativo possui um único escritor.
+2. Leitores concorrentes recebem snapshots imutáveis.
+3. Um snapshot representa exatamente uma `DocumentRevision`.
+4. Snapshot runtime não é serialização PTND.
+5. Workers nunca recebem tipos Qt ou `&mut Document`.
+6. Jobs retornam dados tipados; alterações voltam pela Transaction API.
+7. Na v0.1, jobs mutadores validam contra a revision documental completa.
+8. Jobs longos suportam cancelamento cooperativo.
+9. `rayon` é mecanismo de paralelismo, não arquitetura.
+10. Trabalho Interactive possui prioridade sobre Background e Batch.
+11. Caches compartilhados continuam sendo Derived State.
+12. `Arc<Mutex<Document>>` não é o modelo geral de concorrência do Petunia.
 
 ## Vocabulário obrigatório
 
