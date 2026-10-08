@@ -145,6 +145,10 @@
           "path": "02-engine/persistence-recovery.md"
         },
         {
+          "title": "fragmentos + copy/paste",
+          "path": "02-engine/document-fragments.md"
+        },
+        {
           "title": "image analysis + vectorization",
           "path": "02-engine/image-analysis-vectorization.md"
         },
