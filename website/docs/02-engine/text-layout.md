@@ -33,13 +33,63 @@ Uma **ligature** substitui uma sequência por um glifo combinado quando a fonte 
 A v0.1 usa uma pipeline Rust pequena e especializada:
 
 - `rustybuzz` para shaping OpenType;
-- `unicode-segmentation` para grapheme/word boundaries;
-- `unicode-bidi` para o Unicode Bidirectional Algorithm;
-- `unicode-linebreak` ou implementação equivalente estritamente baseada em UAX #14 para oportunidades de quebra;
-- parser de fonte dedicado como `ttf-parser` para metadata/outlines quando necessário;
+- `unicode-segmentation` para grapheme/word boundaries conforme UAX #29;
+- `unicode-bidi` para o Unicode Bidirectional Algorithm conforme UAX #9;
+- `unicode-linebreak` para oportunidades de quebra conforme UAX #14;
+- `ttf-parser` para metadata, permissions, variable-font metadata e extração de outlines;
+- `hypher` para hifenização baseada em padrões de idioma, atrás de adapter Petunia;
 - `fontdue` apenas para rasterização de cobertura de glifos, não para shaping nem extração autoral de outlines.
 
 Essas bibliotecas ficam atrás de tipos Petunia. IDs de glifo, structs de fonte e buffers externos não entram no Core.
+
+### Font outline backend
+
+`ttf-parser` é o parser definido para metadata e outlines de fontes na v0.1.
+
+Ele é usado atrás de adapter para:
+
+- family/style metadata;
+- métricas;
+- embedding permissions;
+- variation axes;
+- glyph outline extraction;
+- bounding boxes;
+- identificação de glyphs coloridos/raster/SVG quando necessário.
+
+A API Petunia nunca expõe `ttf_parser::Face`, `GlyphId` ou `OutlineBuilder` como modelo persistente.
+
+Outline extraído é Derived State até um Command explícito como `Convert Text to Curves`. Font permissions precisam ser respeitadas em embed/package/export.
+
+### Hyphenation backend
+
+A v0.1 usa `hypher` como backend inicial de hifenização.
+
+Razões:
+
+- implementação pequena e focada;
+- padrões embutidos e determinísticos;
+- suporte a múltiplos idiomas, incluindo português;
+- sem necessidade de carregar dicionário arbitrário durante o layout;
+- fica atrás de uma interface Petunia, portanto não contamina o modelo autoral.
+
+Contrato:
+
+~~~rust
+pub trait Hyphenator {
+    fn opportunities(
+        &self,
+        word: &str,
+        language: &LanguageTag,
+        out: &mut Vec<HyphenOpportunity>,
+    ) -> Result<()>;
+}
+~~~
+
+`LanguageTag` continua BCP 47 no Core. O adapter mapeia tags suportadas para o idioma do backend.
+
+Idioma sem padrão disponível não produz hifenização automática; line breaking continua funcionando sem inventar pontos de quebra.
+
+Atualizar os padrões/backend pode alterar oportunidades de hifenização. Isso exige corpus de regressão e, quando afetar documentos de layout fixo de forma incompatível, `OperationSemanticVersion` do layout.
 
 ### Contrato Unicode
 
