@@ -564,6 +564,34 @@ Cada parser/job com input potencialmente hostil possui testes nos limites:
 - duplicate IDs;
 - cycle attempts.
 
+## Ferramentas criativas — testes de aceitação do motor
+
+Cada capability adicionada ao roadmap tem testes de Query/Preview/Commit/Undo/Redo/Save/Load, além de falha tipada, limites e cancelamento quando aplicável.
+
+| Grupo | Caso de referência obrigatório |
+|---|---|
+| Smart Delete | dentro/fora da tolerância; cusp; closed path; preservar IDs sobreviventes |
+| Direct Bend | mesmo resultado Preview/Commit; tangentes/limite de erro; cursor em extremos |
+| Clean Vector | relatório sem alterar source; idempotência; max deviation; no accidental topology change |
+| Select Similar | comparação perceptual/escopo; locked/hidden; nunca dirty |
+| Shape Builder | overlaps, holes, tangency, touch-only, FillRule, style conflict |
+| Region Paint | stable binding; source edit; ambiguous remap unresolved; virtual gap sem editar source |
+| Close Gap | nearest gap != always correct; no bridge across barriers; undo |
+| Intertwine | local z-order sem alterar global; multi-way crossing; release |
+| Repeat/Symmetry | deterministic transforms; source edit live; mirror seam; no SceneNode explosion |
+| Objects on Path | arc-length spacing; cusps; source removal; reverse spine |
+| Blend | transforms/colors/easing; contour mismatch -> diagnostic or crossfade, never bogus morph |
+| Scatter/Brushes | seeded determinism, pressure, memory budget, cancellation |
+| Recolor | ICC/Spot/alpha; lock handling; gamut warnings; swatch bindings |
+| Dimensions | accurate f64 geometry; source edit recomputes; target deleted unresolved |
+| Width/Pattern | profiles and tile transforms survive save/load; Expand equivalence |
+| Brand Sheet | generated objects remain editable; refs; profile-dependent values |
+| Vector Feather | holes, acute corners, zoom, nested masks, ROI, falloff |
+| Perspective/Envelope | degenerate projection rejected; visual-error bound |
+| Mesh Gradient | when specified: patch continuity, interpolation, rendering accuracy |
+
+Testar documents pequenos e grandes; working color profiles, nested groups, symbols, masks e mixed unit types. A comparação CPU reference renderer vs futuras acelerações usa tolerância visual documentada, nunca divergência silenciosa.
+
 ## CI gates
 
 Antes de merge em código técnico afetado:
