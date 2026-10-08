@@ -269,20 +269,40 @@
           "path": "04-ui/smart-region.md"
         },
         {
+          "title": "Smart Region — interação",
+          "path": "04-ui/smart-region-interaction.md"
+        },
+        {
           "title": "Smart Distribution",
           "path": "04-ui/smart-distribution.md"
+        },
+        {
+          "title": "Smart Distribution — interação",
+          "path": "04-ui/smart-distribution-interaction.md"
         },
         {
           "title": "Smart Color",
           "path": "04-ui/smart-color.md"
         },
         {
+          "title": "Smart Color — interação",
+          "path": "04-ui/smart-color-interaction.md"
+        },
+        {
           "title": "Smart Measure",
           "path": "04-ui/smart-measure.md"
         },
         {
+          "title": "Smart Measure — interação",
+          "path": "04-ui/smart-measure-interaction.md"
+        },
+        {
           "title": "ferramentas criativas avançadas",
           "path": "04-ui/advanced-creative-tools.md"
+        },
+        {
+          "title": "Ferramentas avançadas — interação",
+          "path": "04-ui/advanced-creative-tools-interaction.md"
         },
         {
           "title": "workspace",
