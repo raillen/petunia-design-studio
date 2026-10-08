@@ -261,6 +261,42 @@ Não existe decomposição intuitiva única em todos os casos, especialmente com
 
 A representação autoral final de transform deve considerar essas ambiguidades quando chegarmos ao modelo de objetos. Não assumir que decomposição é trivial.
 
+## Convenção canônica 2D
+
+O Petunia usa a seguinte convenção autoral:
+
+~~~text
+origin da Page = canto superior esquerdo
++X = direita
++Y = baixo
+angles = radianos
+positive visual rotation = sentido horário
+~~~
+
+Essa escolha reduz conversões com Qt, raster e SVG, que naturalmente trabalham com Y crescente para baixo em grande parte do pipeline de tela.
+
+A convenção vale para tipos Petunia. Adapters para formatos/bibliotecas com Y-up fazem a conversão somente na fronteira.
+
+Exemplo: PDF pode exigir transformação vertical ao exportar. Isso não muda as coordenadas autorais armazenadas.
+
+### Orientação e winding
+
+Como +Y aponta para baixo, o sinal algébrico de áreas/cross products pode parecer invertido em relação a livros que assumem Y-up.
+
+Por isso APIs não devem espalhar testes como `area > 0` para significar clockwise/counter-clockwise. Centralizar em helpers semanticamente nomeados:
+
+~~~text
+contour_orientation()
+is_clockwise()
+orientation(a,b,c)
+~~~
+
+Os helpers incorporam a convenção Petunia.
+
+### Ângulos
+
+Com Y-down, a matriz afim canônica faz ângulo positivo aparecer visualmente no sentido horário. UI e Engine usam essa convenção; import/export convertem quando o formato externo definir outra.
+
 ## Sistemas de coordenadas
 
 ~~~text
