@@ -190,6 +190,14 @@ A especificação de arquitetura/motor é considerada **fechada o suficiente par
 
 “Definido” não significa “já implementado”. Significa que a implementação possui uma direção técnica única e critérios de correção suficientes para começar sem rediscutir a arquitetura a cada módulo.
 
+## Decisão de interação Vector Edit
+
+**✅ Modelo híbrido aprovado:** Select para objetos e hierarquia; Vector Edit contextual para nodes/segmentos/handles, com operação Node padrão e Bend/Cut/Width explícitas.
+
+**⏸ Em discussão conjunta:** visual final, toolbar, atalhos secundários, UX de operações específicas e critérios finais de acessibilidade.
+
+Detalhes: [Vector Edit — especificação](#/docs/04-ui/vector-edit-interaction.md) e [ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md). O código atual ainda não implementa ContextStack e ToolControllers completos.
+
 ## Novo sistema de ferramentas criativas — contratos adicionados
 
 As cinco famílias e as ferramentas avançadas foram aprovadas como escopo funcional documentado. A implementação ainda precisa seguir fundações, sem criar motores redundantes:
