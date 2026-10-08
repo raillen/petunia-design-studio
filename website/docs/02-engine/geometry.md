@@ -1,12 +1,18 @@
 # Geometry Engine
 
-Geometry transforma e consulta geometria; não possui widgets nem estado de seleção.
+Geometry transforma, consulta e materializa geometria. Não possui widgets, seleção autoral ou estado de documento mutável.
 
-## Biblioteca base
+A regra principal é:
 
-O workspace já possui `kurbo` e `i_overlay`. Kurbo fornece tipos e operações para curvas Bézier; iOverlay fornece operações booleanas robustas sobre contornos.
+> **Core define a geometria. Geometry Engine calcula sobre snapshots/inputs imutáveis e devolve resultados tipados.**
 
-Essas bibliotecas ficam atrás de APIs Petunia. O documento não deve depender dos tipos públicos de uma biblioteca substituível.
+## Dependências
+
+`kurbo` é adapter/base para operações Bézier e matemática geométrica onde sua semântica atende ao Petunia.
+
+`i_overlay` é backend preferencial para overlay/topologia poligonal robusta.
+
+Tipos dessas crates não atravessam a API pública do Engine.
 
 ## Módulos
 
@@ -19,6 +25,7 @@ geometry/
 ├── intersections.rs
 ├── boolean.rs
 ├── offset.rs
+├── corners.rs
 ├── simplify.rs
 ├── stroke_expand.rs
 ├── curve_fit.rs
@@ -26,38 +33,58 @@ geometry/
 └── shape_builder.rs
 ~~~
 
-## Bézier
+Não criar um `geometry.rs` monolítico.
 
-Uma **curva Bézier** é uma curva definida por pontos de controle. Ela não passa necessariamente por todos esses pontos; os controles internos determinam a direção e a curvatura.
+# Tolerâncias
 
-Para uma Bézier cúbica:
+Toda operação que aproxima ou decide coincidência recebe contexto de tolerância explícito.
 
-- `P0` — ponto inicial;
-- `P1` — primeiro controle;
-- `P2` — segundo controle;
-- `P3` — ponto final;
-- `t` — posição ao longo da curva, de `0` a `1`.
-
-~~~text
-B(t) = (1-t)³P0
-     + 3(1-t)²tP1
-     + 3(1-t)t²P2
-     + t³P3
+~~~rust
+pub struct GeometryTolerance {
+    pub coincidence: f64,
+    pub flatten: f64,
+    pub intersection: f64,
+    pub fit: f64,
+}
 ~~~
 
-Quando `t = 0`, o resultado é `P0`. Quando `t = 1`, é `P3`.
+Essa struct é direção de API, não obrigação de agrupar todos os valores se funções mais estreitas forem melhores.
 
-### De Casteljau
+Não existe EPSILON global.
 
-**De Casteljau** é um algoritmo para calcular um ponto de uma curva Bézier por sucessivas interpolações lineares.
+## Quality presets
 
-Uma **interpolação linear** entre dois pontos `A` e `B` significa caminhar uma fração `t` da distância entre eles:
+UI/Render podem pedir classes:
 
 ~~~text
-lerp(A, B, t) = A × (1 - t) + B × t
+InteractivePreview
+Authoring
+Export
 ~~~
 
-Para uma curva cúbica, calculamos:
+Cada classe resolve para tolerâncias documentadas.
+
+Nunca permitir que quality menor altere topologia persistida em Commit. Preview pode aproximar mais, mas materialização usa Authoring/Export contract apropriado.
+
+# Bézier
+
+## Cubic Bézier
+
+~~~text
+B(t) =
+(1-t)³ P0
++ 3(1-t)²t P1
++ 3(1-t)t² P2
++ t³ P3
+~~~
+
+`t` varia de 0 a 1.
+
+P0/P3 são anchors. P1/P2 são controls.
+
+## De Casteljau
+
+De Casteljau avalia/subdivide Bézier usando interpolações lineares sucessivas.
 
 ~~~text
 Q0 = lerp(P0, P1, t)
@@ -70,234 +97,577 @@ R1 = lerp(Q1, Q2, t)
 B  = lerp(R0, R1, t)
 ~~~
 
-Visualmente:
+`lerp(A,B,t) = A(1-t) + Bt`.
+
+Para split, os mesmos pontos formam duas cubics:
 
 ~~~text
-P0 ───── P1 ───── P2 ───── P3
- \       / \       /
-  Q0 ─── Q1 ─── Q2
-    \    / \    /
-      R0 ─── R1
-         \ /
-          B
+left  = P0, Q0, R0, B
+right = B, R1, Q2, P3
 ~~~
 
-O ponto `B` é o ponto da curva em `t`.
+A soma das duas representa exatamente a curva original.
 
-#### Por que usar De Casteljau
+Usar De Casteljau para split, node insertion e subdivisão adaptativa.
 
-Ele é especialmente útil no Petunia porque:
+# Flattening
 
-- é numericamente estável;
-- funciona para Bézier de qualquer grau;
-- permite subdividir uma curva exatamente em duas curvas menores;
-- serve de base para flattening adaptativo, hit-testing e vários cálculos geométricos.
+**Flattening** aproxima curva por segmentos de reta.
 
-Para subdividir, os pontos intermediários calculados por De Casteljau também formam os controles das duas curvas resultantes. Portanto não precisamos aproximar a subdivisão.
+É Derived State.
 
-## Flattening
+## Critério de flatness
 
-**Flattening** converte temporariamente uma curva em vários segmentos de reta.
-
-Isso é necessário porque alguns algoritmos trabalham melhor com linhas do que com curvas contínuas.
-
-O Petunia deve usar flattening **adaptativo**:
-
-1. observar um trecho da curva;
-2. medir o quanto ele se afasta de uma reta equivalente;
-3. se o erro estiver dentro da tolerância, usar uma reta;
-4. se estiver fora, subdividir a curva com De Casteljau;
-5. repetir nas duas metades.
+Para cubic, medir o afastamento dos controls em relação à chord P0→P3.
 
 ~~~text
-curva
-  ↓
-erro <= tolerância? ── sim ─→ segmento
-  │
-  não
-  ↓
-subdivide
- ↙       ↘
-repete   repete
+controls suficientemente próximos da chord?
+├── sim → aceitar segmento P0→P3
+└── não → split em t=0.5 e repetir
 ~~~
 
-A tolerância depende do uso: preview, boolean, hit-test ou export.
+A fórmula exata do bound pode usar implementação validada do backend, mas precisa garantir erro <= tolerância dentro do contrato definido.
 
-O flatten é sempre **derivado**. Ele nunca substitui a curva autoral.
+## Guards
 
-## Bounds
+Flatten adaptativo precisa de:
 
-**Bounds** é o menor retângulo que contém uma geometria.
+- tolerância positiva/finita;
+- limite de profundidade;
+- handling de zero-length;
+- saída deterministicamente ordenada.
 
-Para uma Bézier, usar apenas os anchors pode produzir um bounds incorreto porque a curva pode atingir máximos ou mínimos entre as extremidades.
+Se atingir depth guard sem satisfazer tolerância, retornar estado degradado/erro em vez de loop infinito.
 
-O cálculo correto precisa analisar onde a derivada da curva é zero em X ou Y. Esses pontos são chamados de **extrema internas**.
+## Provenance de flatten
 
-Em termos simples:
+Quando Shape Builder/boolean precisar reconstruir source, cada edge derivada pode carregar:
 
-> procuramos onde a curva para de crescer e começa a diminuir — ou o contrário — em cada eixo.
+~~~text
+ObjectId
+ContourId
+source segment/node
+t0
+t1
+~~~
 
-Esses pontos, junto com as extremidades, definem o bounds geométrico exato.
+Esse metadata é transitório.
 
-## Boolean
+# Bounds
 
-Operações booleanas combinam áreas preenchidas.
+## Line
+
+Bounds = min/max dos endpoints.
+
+## Cubic
+
+Bounds exato considera endpoints e roots da derivada em X/Y dentro de 0..1.
+
+A derivada de cubic é uma quadratic. Resolver suas roots permite encontrar extrema internas.
+
+~~~text
+B'(t).x = 0
+B'(t).y = 0
+~~~
+
+Avaliar B(t) nos roots válidos e unir com P0/P3.
+
+Não usar apenas control-point box como bounds final exato; ele é conservador, não mínimo.
+
+## Visual bounds
+
+Stroke/effects não pertencem ao Geometry bounds puro. Appearance/Render expandem conforme semântica.
+
+# Arc length
+
+Cubic geralmente não possui primitive elementar simples para comprimento.
+
+Usar integração/aproximação adaptativa.
+
+Direção:
+
+1. estimar comprimento grosseiro;
+2. subdividir;
+3. comparar soma refinada;
+4. aceitar quando diferença <= tolerance;
+5. repetir.
+
+Guardar lookup table derivada quando muitos queries usam distance→t.
+
+## Distance-to-t
+
+Dash, text-on-path e variable width precisam converter distância acumulada em parâmetro t.
+
+Usar tabela monotônica de amostras + busca binária + refinamento local.
+
+Não assumir `t = distance / total_length`.
+
+# Nearest point
+
+Objetivo:
+
+~~~text
+query point P
+↓
+nearest position on path
+↓
+(segment, t, point, distance)
+~~~
+
+Pipeline robusto:
+
+1. broad phase por bounds;
+2. subdividir cubics candidatas;
+3. obter intervalos t promissores;
+4. refinar localmente;
+5. comparar distância final.
+
+Refinamento pode usar iteração numérica sobre derivada da distância ao quadrado, com fallback para subdivisão quando não converge.
+
+Nunca depender apenas de uma única estimativa Newton-like sem bracket/fallback.
+
+# Intersections
+
+## Line-line
+
+Usar predicate robusto de orientação/cross product com tratamento explícito para:
+
+- crossing;
+- endpoint touch;
+- parallel;
+- collinear overlap.
+
+Overlap não é “um único ponto”; precisa de resultado próprio.
+
+## Cubic-cubic
+
+Direção:
+
+1. testar bounds;
+2. subdividir curva com maior incerteza;
+3. descartar pairs de bounds disjuntos;
+4. quando ambos trechos estão suficientemente flat/small, intersectar chords;
+5. refinar parâmetros t/u contra curvas originais;
+6. deduplicar roots dentro de IntersectionTolerance.
+
+Resultado:
 
 ~~~rust
-pub enum BooleanOp {
-    Union,
-    Intersect,
-    Subtract,
-    Xor,
-    Divide,
+pub struct CurveIntersection {
+    pub t_a: f64,
+    pub t_b: f64,
+    pub point: Point,
+    pub kind: IntersectionKind,
 }
 ~~~
 
-- **Union** — mantém tudo que pertence a qualquer forma.
-- **Intersect** — mantém apenas a área comum.
-- **Subtract** — remove a área de uma forma usando outra.
-- **Xor** — mantém áreas que pertencem a apenas uma forma.
-- **Divide** — separa as regiões criadas pelas interseções.
+Kinds precisam distinguir cross/touch/overlap quando semanticamente possível.
 
-Live Boolean mantém as formas originais e apenas avalia o resultado. **Expand Boolean** materializa paths novos.
+## Tangential intersections
 
-## Offset / Contour
+Quando curvas apenas se tocam, sinais podem não trocar de lado.
 
-**Offset** cria uma curva paralela a uma distância definida da curva original.
+Algoritmo não pode depender somente de crossing sign.
 
-Em cantos, o algoritmo precisa decidir como unir os lados:
+Tangência exige derivadas/tolerância e deduplicação cuidadosa.
 
-- `round` — arco arredondado;
-- `bevel` — corte reto;
-- `miter` — prolonga as bordas até elas se encontrarem.
+# Boolean
 
-Um **miter limit** impede que cantos muito agudos criem pontas extremamente longas.
-
-Offsets podem criar auto-interseções. Por isso o resultado precisa passar por limpeza topológica antes de ser aceito como geometria final.
-
-## Simplificação
-
-“Simplificar” não é um único algoritmo.
-
-### Merge de pontos próximos
-
-Une pontos cuja distância está abaixo de uma tolerância definida. É útil depois de import, tracing ou operações que geram vértices quase coincidentes.
-
-### Remoção de pontos colineares
-
-Três pontos são **colineares** quando estão praticamente na mesma linha. Se o ponto central não altera a forma dentro da tolerância, ele pode ser removido.
-
-### Ramer–Douglas–Peucker — RDP
-
-**RDP** simplifica uma polyline preservando os pontos que mais alteram sua forma.
-
-Passos:
-
-1. ligar o primeiro e o último ponto por uma reta;
-2. encontrar o ponto intermediário mais distante dessa reta;
-3. se essa distância for menor que a tolerância, remover todos os pontos intermediários;
-4. caso contrário, manter o ponto mais distante e repetir o processo dos dois lados.
+Boolean combina regiões preenchidas:
 
 ~~~text
-A · · · X · · B
-\_____________/
-
-X é o ponto que mais se afasta da reta A–B.
+Union
+Intersect
+Subtract
+Xor
+Divide
 ~~~
 
-Quanto maior a tolerância, menos pontos permanecem.
+## Pipeline v0.1
 
-RDP trabalha originalmente com polylines. Em curvas autorais ele deve atuar sobre amostras ou contornos derivados, não destruir handles diretamente.
+`i_overlay` é backend topológico preferencial atrás de adapter.
 
-### Visvalingam–Whyatt
-
-**Visvalingam–Whyatt** mede a importância de cada ponto pela área do triângulo formado com seus dois vizinhos.
+Como o path nativo contém cubics e overlay trabalha sobre contornos poligonais, a avaliação usa:
 
 ~~~text
-A
-|\
-| \
-B--C
+VectorPath
+↓ adaptive flatten(BooleanTolerance)
+polylines + provenance
+↓ overlay/topology
+polygon result
+↓ cleanup/canonicalization
+↓ optional curve reconstruction/refit
+VectorPath result
 ~~~
 
-Quanto menor a área do triângulo `A-B-C`, menor a contribuição de `B` para a forma. O algoritmo remove progressivamente os pontos de menor área e recalcula os vizinhos.
+Source nunca é alterada.
 
-Ele costuma produzir uma simplificação visual mais gradual que RDP.
+## FillRule
 
-### Decisão ainda aberta
+Adapter precisa respeitar NonZero/EvenOdd.
 
-RDP e Visvalingam são candidatos, não uma escolha fechada.
+Orientação de contours pode ser normalizada internamente apenas se a conversão preservar a mesma região semântica.
 
-A decisão deve ser tomada separadamente para polyline importada, contour de Image Trace, Pencil e cleanup pós-boolean.
+## Canonicalização do resultado
 
-O critério principal deve ser erro visual máximo e preservação de cantos, não quantidade arbitrária de pontos.
+Antes de materializar:
 
-## Curve fitting
+- remover edges numéricas zero-length dentro da tolerance;
+- unir vértices equivalentes de forma controlada;
+- ordenar contours deterministicamente;
+- normalizar start point do contour apenas quando isso não afeta provenance/IDs;
+- preservar fill semantics.
 
-**Curve fitting** transforma uma sequência de pontos amostrados em uma quantidade menor de curvas Bézier.
+Não usar “cleanup” genérico que altera forma acima da tolerance.
+
+## Curve reconstruction
+
+Boolean live pode inicialmente retornar polygonal derived path se quality/tolerance permitir.
+
+Para resultado autoral/Expand, preferir reconstrução:
+
+1. usar provenance para recuperar trechos que correspondem a source cubics;
+2. cortar source cubic por t0/t1 via De Casteljau;
+3. para edges realmente novos/aproximados, usar curve fitting com max error explícito.
+
+Assim evitamos transformar toda curva original em centenas de lines no Expand.
+
+## Erros
+
+Boolean retorna erro tipado para:
+
+- non-finite input;
+- tolerance inválida;
+- topologia não resolvida;
+- resource/adapter failure;
+- guard de complexidade excedido.
+
+Não retornar partial success como se fosse completo.
+
+# Offset / Contour
+
+Offset exato de uma Bézier geral não é, em geral, outra Bézier do mesmo grau.
+
+Portanto offset é aproximação controlada.
+
+## Pipeline
 
 ~~~text
-amostras do Pencil
-· · · · · · · · · ·
-        ↓
-   Bézier cúbica
+source segment
+↓ adaptive subdivision por curvatura/erro
+samples + tangents
+↓ deslocar pela normal
+offset samples
+↓ joins
+↓ curve fit
+↓ self-intersection cleanup
+↓ result
 ~~~
 
-O algoritmo tenta encontrar controles `P1` e `P2` que mantenham a curva dentro de um erro máximo em relação às amostras.
+### Normal
 
-Quando uma única curva não consegue respeitar a tolerância:
-
-1. localizar a região de maior erro;
-2. dividir as amostras;
-3. ajustar curvas menores;
-4. repetir até o erro ficar aceitável.
-
-**Corner detection** identifica mudanças bruscas de direção. Um canto real não deve virar uma curva suave apenas para reduzir a quantidade de segmentos.
-
-## Shape Builder
-
-Shape Builder precisa descobrir as regiões fechadas produzidas por várias formas sobrepostas.
-
-### Planar subdivision
-
-**Planar subdivision** significa dividir a geometria exatamente nos pontos onde segmentos se cruzam, formando uma rede de arestas e regiões.
+Para tangent T=(x,y), uma normal 2D possível é:
 
 ~~~text
-formas sobrepostas
+N = normalize(-y, x)
+~~~
+
+O sinal da distância escolhe o lado.
+
+## Joins
+
+- Miter: interseção das tangentes/offset lines, limitado por miter limit;
+- Bevel: conecta endpoints diretamente;
+- Round: arco circular aproximado por Cubic dentro da tolerance.
+
+## Self-intersection
+
+Offsets de concavidades frequentemente se cruzam.
+
+Depois de gerar candidate outline, usar overlay/topology cleanup para selecionar a boundary semanticamente correta.
+
+Não “apagar loops pequenos” por área arbitrária sem parâmetro/política.
+
+# Stroke expansion
+
+Stroke expansion reutiliza offset semantics:
+
+~~~text
+center path
+├→ offset +width/2
+└→ offset -width/2
       ↓
-encontrar interseções
+joins + caps
       ↓
-quebrar contornos nesses pontos
+combine contours
       ↓
-identificar regiões fechadas
+topology cleanup
 ~~~
 
-Pipeline:
+Inside/Outside alteram as distâncias em closed paths.
 
-1. avaliar os contornos participantes;
-2. detectar interseções;
-3. dividir os segmentos nas interseções;
-4. construir as regiões fechadas;
-5. fazer hit-test para descobrir em qual região o ponteiro está;
-6. marcar regiões para union ou subtract;
-7. reconstruir os paths resultantes.
+Dash é aplicado por arc length **antes** da expansão de cada dash segment.
 
-### Provenance
+Variable width fornece distância local variável e exige sampling/refinement apropriado.
 
-**Provenance** registra de qual objeto original cada trecho resultante veio.
+# Live Corners
 
-Isso permite preservar atributos quando possível:
+Live Corners é Geometry Effect compartilhado.
+
+## Line-line
+
+Para duas edges que se encontram em vertex:
+
+1. calcular angle;
+2. limitar radius ao espaço disponível;
+3. encontrar tangent points em ambas edges;
+4. remover a parte próxima do corner;
+5. inserir arco/cubic round ou corner style escolhido.
+
+Radius autoral pode exceder o máximo geométrico. O evaluator pode usar effective radius menor sem reescrever o parâmetro, permitindo que corner volte a crescer se o shape mudar.
+
+## Curved neighbors
+
+Para curve-line/curve-curve, tangent points exigem solve por arc length/geometria local.
+
+Suporte pode entrar incrementalmente; o contrato do effect permanece o mesmo.
+
+Não duplicar algoritmo em Rectangle, Polygon e Star.
+
+# Simplificação
+
+“Simplify” não é uma única operação.
+
+## Merge by Distance
+
+Une vertices distintos apenas quando o usuário/Command pede cleanup e a distância <= tolerance.
+
+Não executar implicitamente em save.
+
+## Collinear cleanup
+
+Para polyline, remover vertex intermediário quando sua distância à line dos vizinhos <= tolerance e a mudança de direção não representa corner protegido.
+
+## Ramer-Douglas-Peucker
+
+RDP simplifica **polyline** com limite de erro perpendicular.
 
 ~~~text
-segmento resultante
-→ veio do objeto A
-→ pode herdar aparência compatível
+A ........ X .... B
+\______________/
+
+X = maior distância à chord AB
 ~~~
 
-Preview de região é transitório. Somente o commit gera Command.
+Se max distance <= tolerance, todos os intermediários podem ser removidos.
 
-## Robustez
+Caso contrário, dividir em X e repetir.
 
-Todo algoritmo geométrico recebe tolerância explícita e retorna erro tipado quando não consegue produzir resultado válido.
+Decisão v0.1:
 
-Não aceitar silenciosamente NaN, infinito, loops de topologia inválida ou resultado parcial apresentado como sucesso.
+> RDP é o simplificador padrão de amostras/polylines derivadas quando precisamos de erro geométrico explícito.
+
+Visvalingam-Whyatt não entra inicialmente; adicioná-lo só se benchmark visual demonstrar vantagem concreta.
+
+## Curve-native simplify
+
+Para VectorPath cubic já autoral, não flatten + RDP + re-fit indiscriminadamente.
+
+Usar estratégia local:
+
+1. escolher node candidato;
+2. tentar substituir segmentos adjacentes por uma cubic;
+3. medir max deviation contra trecho original;
+4. preservar corners protegidos;
+5. aceitar apenas se erro <= tolerance.
+
+Isso preserva melhor intenção e reduz drift.
+
+# Curve fitting
+
+Para converter amostras em cubics, usar como base o método clássico de fitting iterativo associado a Philip J. Schneider/Graphics Gems.
+
+## Ideia
+
+1. receber pontos ordenados;
+2. estimar tangentes inicial/final;
+3. atribuir parâmetros iniciais por chord length;
+4. resolver controls da cubic que melhor se ajustam;
+5. medir ponto de maior erro;
+6. se erro <= tolerance, aceitar;
+7. tentar reparameterization;
+8. se ainda falhar, dividir no maior erro e repetir.
+
+## Chord-length parameterization
+
+Cada sample recebe t proporcional à distância acumulada entre samples.
+
+~~~text
+u_i =
+distance acumulada até i
+/
+distance total
+~~~
+
+É estimativa inicial, não verdade final.
+
+## Reparameterization
+
+Ajustamos os t dos samples para que correspondam melhor à cubic atual.
+
+Pode usar iteração Newton-Raphson: método numérico que aproxima root usando valor e derivada local.
+
+Se a iteração sair do intervalo ou não melhorar, manter/fallback para o parâmetro anterior.
+
+## Corner detection
+
+Antes de fitting suave, detectar mudanças de direção acima de threshold/tolerance.
+
+Corner verdadeiro vira boundary de fit; não arredondar só para reduzir node count.
+
+# Shape Builder
+
+Shape Builder usa a mesma topologia do boolean, mas expõe **faces locais** das sobreposições.
+
+É uma feature central e precisa preservar curvas/aparência melhor que “flatten e esquecer”.
+
+## Arrangement
+
+**Arrangement** é a subdivisão do plano criada por todas as edges/intersections.
+
+~~~text
+input boundaries
+↓
+intersections
+↓
+split edges
+↓
+vertices + half-edges
+↓
+faces
+~~~
+
+## Half-edge graph
+
+Usar uma estrutura transitória inspirada em **DCEL — Doubly Connected Edge List**.
+
+Cada edge geométrica possui duas half-edges em direções opostas.
+
+~~~text
+A -------- B
+A→B      B→A
+~~~
+
+Cada half-edge conhece conceitualmente:
+
+- origin vertex;
+- twin;
+- next around face;
+- source provenance.
+
+Isso permite caminhar boundaries de cada face sem persistir uma malha no Document.
+
+## Pipeline
+
+1. avaliar shapes/paths selecionados;
+2. flatten com ShapeBuilderTolerance carregando provenance;
+3. detectar/split intersections;
+4. canonicalizar vertices coincidentes;
+5. construir half-edges;
+6. ordenar outgoing edges por angle;
+7. ligar next edges para formar faces;
+8. classificar faces contra FillRule dos sources;
+9. construir spatial lookup de faces para hover;
+10. aplicar escolha union/subtract;
+11. extrair boundary resultante;
+12. reconstruir trechos de curva a partir da provenance;
+13. gerar Transaction somente no commit.
+
+## Face walking
+
+Em cada vertex, outgoing half-edges são ordenadas por direção angular.
+
+Para caminhar uma face, escolhemos consistentemente a próxima edge que mantém a face de um lado definido.
+
+A convenção clockwise/counter-clockwise precisa ser única e testada.
+
+## Face classification
+
+Escolher um ponto interior seguro da face e avaliar membership nos source fills.
+
+Não usar simplesmente o centroid aritmético se ele puder cair fora de face côncava.
+
+Pode usar ponto derivado de edge + pequeno deslocamento para dentro, validado pelo próprio face polygon.
+
+## Provenance
+
+Cada derived edge registra origem:
+
+~~~text
+ObjectId
+ContourId
+source segment
+source t interval
+appearance source
+~~~
+
+Quando boundary final segue uma curva source, reconstruir o slice da cubic original via De Casteljau em vez de curve fitting.
+
+Isso é crucial para preservar precisão.
+
+## Aparência
+
+Quando todas as edges de uma face vêm de uma única source, aparência dessa source é candidata natural.
+
+Quando sources diferentes contribuem, política precisa ser determinística e o Command precisa escolher herança explícita.
+
+Engine produz provenance; Tool/UI futura decide exposição da política.
+
+## Complexidade
+
+Arrangement pode crescer aproximadamente com o número de intersections.
+
+Aplicar guards:
+
+- número máximo de input segments por operação interativa;
+- cancellation;
+- backpressure de preview;
+- fallback de qualidade preview;
+- diagnóstico em vez de freeze.
+
+Não impor limite pequeno arbitrário ao Document; o guard é operacional.
+
+# Warp
+
+Warp é domínio de Geometry, mas v0.1 mantém contrato estreito.
+
+Affine transform continua Transform2D do Core.
+
+Envelope/mesh warp avançado fica futuro e deve ser operation live, não reescrita silenciosa de nodes.
+
+# Robustez
+
+Todos os algoritmos:
+
+- rejeitam NaN/Inf;
+- recebem tolerance explícita;
+- possuem guards de recursion/complexity;
+- retornam erro tipado;
+- não mutam Document;
+- não usam UI state;
+- produzem ordem determinística quando resultado vira autoral.
+
+## Invariantes
+
+1. Geometry opera sobre tipos Petunia via adapters.
+2. De Casteljau é base de split/subdivision.
+3. Flatten é derivado e bounded por tolerance.
+4. Bounds cubic considera extrema.
+5. Boolean usa overlay robusto com aproximação explicitamente controlada.
+6. Offset/stroke expansion são aproximações com erro documentado.
+7. RDP é usado em polyline; curve-native simplify preserva cubics.
+8. Curve fitting usa erro máximo explícito e corner detection.
+9. Shape Builder usa arrangement/half-edge graph transitório.
+10. Provenance é preservada o suficiente para reconstruir source curves quando possível.
+11. Nenhum cleanup altera Source sem Command.
+12. Resultado parcial nunca é apresentado como sucesso total.
