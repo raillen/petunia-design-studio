@@ -13,10 +13,12 @@ A documentação de arquitetura/Core/Engine/Render já define o alvo. A tabela a
 | Core / Path | nodes cúbicos + contours | Line+Cubic, IDs estáveis, fill semantics; ParametricShape separado em `shape.rs` |
 | Core / Generated Content | ausente | TraceObject + GeneratedVectorObject, source/params autorais e geometria derivada |
 | Core / Styles + Symbols | parcial | styles flat/linkable com overrides tipados; symbols acíclicos, nested e detach explícito |
+| Core / Guides + Grids + Slices | parcial | guides tipadas; affine/baseline/perspective grids; slices reproduzíveis sem path absoluto |
+| Core / Crop + Clipping | parcial | Image source_rect normalizado + ClipBinding; trim destrutivo separado |
 | Core / Scene | Path/Group simples | hierarquia ordenada, bindings, symbols, generated content e atomic structural mutations |
 | Core / Document | canvas + scene | Pages/Spreads/Artboards, registries, resources, styles e setup |
 | Engine / Commands | undo/redo básico | Command → DocumentOp → Transaction → HistoryEntry |
-| Engine / Geometry | parcial | Bézier, boolean, offset, simplify, curve fit, Shape Builder e provenance |
+| Engine / Geometry | parcial | Bézier, boolean, offset, simplify, smooth, cleanup, curve fit, Shape Builder e provenance |
 | Engine / Spatial | snapping básico | R*-tree, hit-test, candidates, ranking, hysteresis e grids |
 | Engine / Brush/Raster | parcial | One Euro, arc-length resampling, tiled COW, filters/ROI |
 | Engine / Text/Layout | parcial | Unicode/BiDi/shaping/line layout/fallback/linked frames |
@@ -170,6 +172,7 @@ A especificação de arquitetura/motor é considerada **fechada o suficiente par
 | Core Path/Shape/Color/Appearance | ✅ Definido |
 | Core Scene/Document/Text/Raster/Resources | ✅ Definido |
 | Core Styles/Symbols | ✅ Definido |
+| Guides/Grids/Slices + Crop/Clipping | ✅ Definido |
 | Conteúdo gerado: Trace/QR/Barcode | ✅ Definido |
 | Commands/History + memory budget | ✅ Definido |
 | Geometry + Shape Builder | ✅ Definido |
