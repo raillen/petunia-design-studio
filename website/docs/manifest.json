@@ -313,6 +313,36 @@
           "path": "04-ui/accessibility.md"
         }
       ]
+    },
+    {
+      "id": "references",
+      "title": "Referências técnicas",
+      "files": [
+        {
+          "title": "Visão geral · ArtCraft",
+          "path": "06-references/index.md"
+        },
+        {
+          "title": "VectorCraft — estudo do código",
+          "path": "06-references/vectorcraft.md"
+        },
+        {
+          "title": "PhotoCraft — estudo do código",
+          "path": "06-references/photocraft.md"
+        },
+        {
+          "title": "LightCraft — estudo do código",
+          "path": "06-references/lightcraft.md"
+        },
+        {
+          "title": "Matriz de integração",
+          "path": "06-references/integration-matrix.md"
+        },
+        {
+          "title": "Diretrizes para agentes",
+          "path": "06-references/agent-research-protocol.md"
+        }
+      ]
     }
   ]
 }
