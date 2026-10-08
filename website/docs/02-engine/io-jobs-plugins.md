@@ -53,6 +53,168 @@ Definir níveis:
 
 Nunca prometer roundtrip perfeito para formato que não representa features Petunia.
 
+## I/O contracts
+
+Import/export usam interfaces Petunia e adapters por formato. Parser/encoder externo nunca retorna SceneNode diretamente.
+
+~~~rust
+pub trait Importer {
+    fn probe(&self, input: &mut dyn ReadSeek) -> Result<ProbeResult>;
+    fn import(&self, input: &mut dyn ReadSeek, ctx: &ImportContext) -> Result<ImportResult>;
+}
+
+pub trait Exporter {
+    fn export(&self, snapshot: &DocumentSnapshot, spec: &ExportSpec, out: &mut dyn Write) -> Result<()>;
+}
+~~~
+
+A assinatura concreta pode variar, mas os papéis ficam separados.
+
+### Probe
+
+`probe` lê somente bytes mínimos necessários para identificar formato/capabilities. Não decodifica um documento inteiro só para descobrir se o arquivo é suportado.
+
+Resultado pode declarar confidence, format id e requisitos.
+
+### ImportResult
+
+Importer retorna DTO/intermediate validado + warnings estruturados.
+
+~~~text
+ImportedDocument
+ImportedObjects
+ImportedResource
+~~~
+
+Importar um SVG para o documento atual é diferente de abrir um PTND como novo Document.
+
+### Warnings
+
+Perda de fidelidade não é string solta.
+
+Direção:
+
+~~~text
+UnsupportedFeature
+RasterizedSubtree
+FontSubstituted
+ProfileUnavailable
+UnknownMetadataPreserved
+UnknownMetadataDropped
+~~~
+
+A UI futura decide como apresentar os warnings.
+
+## Política de formatos
+
+### PTND
+
+É o único formato com objetivo de roundtrip autoral lossless.
+
+Save usa DTO atual + container writer e escrita segura:
+
+~~~text
+snapshot/current DTO
+↓
+write temporary file
+↓
+finish container + flush
+↓
+validate minimum manifest/container integrity
+↓
+platform-safe replace
+~~~
+
+O arquivo antigo não é truncado antes do novo estar completo.
+
+### SVG
+
+SVG é formato vetorial de interchange de alta fidelidade, não formato nativo.
+
+Import preserva paths, groups, transforms, fills/strokes, gradients, text e masks quando o modelo Petunia possui semântica equivalente. Features sem equivalente geram warning e fallback explícito.
+
+Export tenta manter vetor. Um subtree que exija efeito não representável pode ser rasterizado isoladamente em vez de rasterizar a página inteira.
+
+### PDF
+
+PDF é principalmente formato de output/interchange final.
+
+Export preserva texto/vetor/spot/profile quando o backend e a feature permitirem. Effects não representáveis podem gerar transparency groups ou rasterização localizada.
+
+Import de PDF é best-effort e não promete reconstruir intenção editorial original; PDF descreve resultado gráfico, não necessariamente objetos de edição equivalentes.
+
+### Raster images
+
+PNG/JPEG/WebP e formatos suportados por decoder entram como ImageResource por padrão.
+
+Import como PixelLayer é ação explícita quando o usuário quiser pixels editáveis materializados.
+
+JPEG nunca é usado como storage lossless de PixelLayer autoral.
+
+## Export capability negotiation
+
+Cada exporter declara capabilities.
+
+~~~text
+vector paths
+live text
+gradients
+spot colors
+ICC profiles
+transparency
+blend modes
+raster effects
+multi-page
+~~~
+
+Antes do export, Engine percorre o snapshot e produz `ExportPlan`:
+
+~~~text
+preserve natively
+convert
+expand
+rasterize subtree
+warn/error
+~~~
+
+O exporter não decide silenciosamente como destruir uma feature.
+
+## Raster export sizing
+
+Raster export resolve tamanho por uma política explícita:
+
+~~~text
+document physical size + DPI
+ou
+pixel dimensions / scale
+~~~
+
+Não misturar Device Pixel Ratio da tela com DPI de export.
+
+## Metadata e privacy
+
+Exporters recebem policy explícita para metadata.
+
+Informações como author, timestamps, EXIF/XMP importado ou custom metadata não são copiadas para todo formato automaticamente sem policy.
+
+Isso evita vazamento acidental de metadata em assets publicados.
+
+## I/O resource limits
+
+Importers aplicam limites antes e durante parsing:
+
+- bytes de input;
+- tamanho descompactado;
+- dimensions;
+- object/node counts;
+- recursion depth;
+- string sizes;
+- embedded resource counts;
+- total embedded bytes.
+
+Formato válido mas acima do limite operacional retorna erro diagnosticável; não tenta alocar até o sistema falhar.
+
+
 ## Jobs
 
 Jobs são trabalhos potencialmente demorados que não devem bloquear a interação principal.
