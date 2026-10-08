@@ -16,11 +16,17 @@ pub struct ObjectId(Uuid);
 pub struct NodeId(Uuid);
 pub struct ContourId(Uuid);
 pub struct EffectId(Uuid);
+pub struct AppearanceItemId(Uuid);
 pub struct ResourceId(Uuid);
 pub struct StyleId(Uuid);
 pub struct SymbolId(Uuid);
+pub struct SpotColorId(Uuid);
+pub struct SwatchId(Uuid);
 pub struct GuideId(Uuid);
+pub struct GridId(Uuid);
 pub struct PageId(Uuid);
+pub struct SpreadId(Uuid);
+pub struct SliceId(Uuid);
 ~~~
 
 Isso impede usar, por acidente, um `ResourceId` em uma API que espera `ObjectId`.
