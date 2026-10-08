@@ -34,6 +34,35 @@ rayon          → paralelismo de dados
 
 Cada uma entra atrás de uma fronteira Petunia.
 
+## Mapa técnico atual
+
+Dependências e papéis já definidos pela arquitetura:
+
+| Área | Dependência / direção | Status |
+|---|---|---|
+| Bézier/matemática geométrica | `kurbo` | definido |
+| Boolean/topologia | `i_overlay` | definido |
+| Spatial index | `rstar` | definido |
+| Matemática de cor | `palette` | definido |
+| ICC/CMM | Little CMS 2 via binding Rust | definido |
+| Text shaping | `rustybuzz` | definido |
+| Grapheme segmentation | `unicode-segmentation` | definido |
+| BiDi | `unicode-bidi` | definido |
+| Line break | `unicode-linebreak` ou implementação UAX #14 equivalente | contrato definido |
+| Font metadata/outlines | `ttf-parser` ou backend equivalente | contrato definido |
+| Glyph raster coverage | `fontdue` | definido |
+| Bitmap codecs | `image` | definido |
+| Data parallelism | `rayon` | definido |
+| Persistência DTO | `serde` | definido |
+| Identidade | `uuid` | definido |
+| Errors | `thiserror` | definido |
+| UI | Qt/QML via CXX-Qt | definido |
+| Plugin runtime WASM | runtime concreto | medir no milestone de plugins |
+
+“Contrato definido” significa que a função arquitetural está fechada, mas a crate concreta pode ser substituída por equivalente sem mudar o domínio.
+
+O runtime WASM fica propositalmente aberto até o milestone porque tamanho de binário, startup, sandbox e throughput precisam ser medidos. Essa abertura não muda o Host API ou o formato de plugin.
+
 ## Dependência não vira modelo de domínio
 
 Evitar:
