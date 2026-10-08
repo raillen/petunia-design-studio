@@ -481,19 +481,201 @@ Render
 
 A UI nunca deve modificar `SceneNode` diretamente durante uma ferramenta. Ela solicita uma operação ao Engine; a alteração final entra no documento por Command/Transaction.
 
-## Precisão e tipos numéricos
+## Precisão numérica, tolerâncias e determinismo
 
-A matriz recomendada é:
+A representação numérica precisa preservar a obra sem transformar detalhes de implementação em alterações autorais.
+
+A matriz base é:
 
 | Uso | Tipo |
 |---|---|
-| Geometria, paths, transforms, bounds | `f64` |
+| Geometria, paths, transforms, bounds e medidas | `f64` |
 | Cor autoral e parâmetros normalizados | `f32` |
 | Buffers raster 8/16-bit | tipos inteiros explícitos |
 | Pipeline HDR/linear | `f16` ou `f32` conforme backend |
 | IDs persistentes | UUID fortemente tipado |
 
-Geometria usa `f64` porque operações booleanas, interseções e sequências longas de transforms acumulam erro. Render pode converter para `f32` no limite da GPU.
+Geometria canônica permanece em `f64`. Render/GPU pode converter para `f32` em uma fronteira controlada, sem reduzir a precisão armazenada no documento.
+
+### Formatação não é mutação
+
+A UI pode mostrar:
+
+```text
+12.345678901 mm
+↓ formatação
+12.35 mm
+```
+
+mas o valor autoral continua completo.
+
+> Exibir menos casas decimais nunca quantiza silenciosamente o Document.
+
+Somente uma edição explícita do usuário muda o valor.
+
+### Não existe EPSILON universal
+
+**Tolerância** é o erro máximo aceitável para uma decisão específica.
+
+Hit-test, snapping, boolean, flattening e inversão de matriz possuem significados diferentes de “próximo o suficiente”.
+
+Por isso não usar um único:
+
+```rust
+const EPSILON: f64 = ...;
+```
+
+para toda a aplicação.
+
+A API deve deixar o contexto explícito, por tipo ou nome:
+
+```text
+CoincidenceTolerance
+FlattenTolerance
+BooleanTolerance
+HitTestTolerancePx
+SnapTolerancePx
+```
+
+Esses tipos entram quando melhorarem segurança e leitura; não precisam ser criados preventivamente todos de uma vez.
+
+### Document-space e screen-space
+
+Tolerâncias geométricas autorais normalmente trabalham em **document-space**.
+
+Tolerâncias de interação normalmente trabalham em **screen-space**, isto é, pixels percebidos na tela.
+
+```text
+document_tolerance =
+screen_tolerance_px / view_scale
+```
+
+Isso mantém nodes, handles e snap utilizáveis em diferentes níveis de zoom.
+
+### Três noções de igualdade
+
+Não tratar todas as comparações da mesma maneira.
+
+- **Exact equality** — valores discretos que precisam ser idênticos, como IDs e enums.
+- **Semantic equality** — valores geométricos considerados equivalentes dentro de tolerância declarada.
+- **Visual equality** — diferenças menores que a percepção/output relevante da view atual.
+
+Uma tolerância algorítmica não autoriza modificar coordenadas permanentemente. “Considerar coincidente” e “fundir pontos” são decisões diferentes.
+
+### Valores não finitos
+
+`NaN`, `+Inf` e `-Inf` são rejeitados em Commands, import, plugins e outras fronteiras antes de entrar no Document.
+
+Eles quebram premissas de comparação, ordenação, bounds, índices espaciais e serialização.
+
+### Canonicalização numérica
+
+Persistência deve preservar round-trip de `f64` sem quantização de UI.
+
+Representações semanticamente irrelevantes podem ser canonicalizadas, por exemplo:
+
+```text
+-0.0 → 0.0
+```
+
+**Canonicalizar** significa escolher uma representação estável para valores semanticamente equivalentes.
+
+Isso reduz diffs, hashes e cache keys desnecessariamente diferentes.
+
+### Determinismo
+
+**Determinismo semântico** significa:
+
+> mesma entrada + mesmos parâmetros → mesmo resultado autoral relevante.
+
+Não permitir que ordem acidental de `HashMap`, scheduling de threads ou timing de execução determine:
+
+- z-order;
+- ordem persistida;
+- IDs derivados;
+- topologia;
+- serialização;
+- resultado lógico de operações.
+
+Quando um cálculo paralelo produz resultados em ordem arbitrária, normalizar/ordenar antes de transformar essa ordem em semântica persistente.
+
+### Floating point e paralelismo
+
+Aritmética de ponto flutuante não é perfeitamente associativa:
+
+```text
+(a + b) + c
+pode diferir levemente de
+a + (b + c)
+```
+
+Paralelismo pode alterar a ordem de combinação.
+
+Por isso o Petunia exige determinismo **semântico**, não promessa geral de framebuffer bit-a-bit idêntico em qualquer CPU/GPU.
+
+Bitwise determinism só é requisito onde uma página específica declarar explicitamente.
+
+### Aleatoriedade autoral
+
+Qualquer operação persistente que use aleatoriedade — brush jitter, scatter, noise ou pattern procedural — precisa de seed explícita.
+
+```text
+same input
++ same parameters
++ same seed
+→ same authored result
+```
+
+“Randomize” gera uma nova seed de forma explícita.
+
+Tempo do sistema não entra implicitamente em uma operação autoral estática.
+
+### Predicates robustos
+
+Um **predicate geométrico** responde uma decisão discreta, como orientação de três pontos ou lado de uma linha.
+
+Essas respostas podem definir topologia.
+
+```text
+orientation(A, B, C)
+→ clockwise
+→ counter-clockwise
+→ collinear
+```
+
+Predicates críticos precisam de implementações robustas e tolerâncias apropriadas. Comparações improvisadas perto de zero podem produzir loops, contornos invertidos ou booleans instáveis.
+
+### Testes
+
+O tipo de comparação precisa combinar com a semântica testada.
+
+| Caso | Comparação |
+|---|---|
+| IDs, enums, ordem autoral | exata |
+| pontos e bounds calculados | tolerância numérica específica |
+| topologia | estrutura/ordem definida |
+| renderer CPU | golden/reference conforme contrato |
+| GPU vs reference | tolerância visual definida |
+| serialization round-trip | equivalência canônica |
+
+Evitar tanto `assert_eq!` indiscriminado em floats quanto tolerâncias grandes o suficiente para esconder regressões.
+
+### Invariantes numéricas
+
+1. Geometria autoral usa `f64`; menor precisão só aparece em fronteiras controladas.
+2. Formatação da UI nunca quantiza silenciosamente dados autorais.
+3. Não existe tolerância global universal.
+4. Cada algoritmo usa tolerância coerente com sua semântica.
+5. Tolerância de interação é normalmente screen-space.
+6. NaN e infinito nunca entram no Document.
+7. Persistência preserva round-trip e pode canonicalizar representações equivalentes como `-0.0`.
+8. Ordem de containers não ordenados nunca define resultado persistente.
+9. Paralelismo não torna saída autoral dependente da ordem de execução.
+10. Determinismo exigido por padrão é semântico, não bitwise cross-platform.
+11. Aleatoriedade autoral usa seed explícita.
+12. Predicates topológicos críticos usam implementação robusta.
+13. Testes escolhem igualdade/tolerância conforme a semântica.
+14. Caches preferem revisions a inferir mudança comparando floats.
 
 ## Snapshots e concorrência
 
