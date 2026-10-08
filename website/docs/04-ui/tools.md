@@ -39,7 +39,7 @@ As novas ferramentas foram modeladas como **capacidades do produto**, não como 
 - [Smart Measure](#/docs/04-ui/smart-measure.md): measurements e annotations associativas
 - [Avançadas](#/docs/04-ui/advanced-creative-tools.md): Variable Width, Pattern Editor, Brand Sheet, Vector Feather, Warp, Vector Brushes, Mesh Gradient, Knife/Erasers
 
-O **modelo de navegação e interação híbrido** foi aprovado; atalhos secundários, nomes exibidos, agrupamento final da toolbar, detalhes visuais e acessibilidade seguem **em discussão conjunta**. Nenhuma dessas páginas declara que a funcionalidade já está implementada.
+O **modelo de navegação híbrido** e as decisões de seleção/precisão já estão aprovados. O usuário delegou a continuidade das recomendações de UX para as demais ferramentas em 2026-10-08: aprofundar contratos coerentes sem solicitar aprovações a cada pequeno detalhe, preservar Core/Engine/Render existentes e registrar distinções entre aprovado, especificado e implementado. Atalhos secundários/branding/medidas visuais continuam refináveis mediante testes. Nenhuma dessas páginas declara que a funcionalidade já está implementada.
 
 ## Modelo híbrido Select + Vector Edit
 
@@ -57,13 +57,13 @@ Os atalhos secundários e a apresentação visual final seguem para discussão c
 
 ## Pen Tool
 
-UI/controller: pointer state e modifiers. Geometry: Bézier/snap. Core: Path data. Render: preview segment, nodes, handles.
+[Contrato completo de criação/continuação/fechamento](#/docs/04-ui/pen-path-creation.md). UI/controller: pointer state e modifiers. Geometry: Bézier/snap. Core: Path data. Render: preview segment, nodes, handles.
 
 Estados explícitos: Idle, PlacingNode, DraggingHandle, ClosingContour, EditingContinuation.
 
 ## Node Tool
 
-Sub-selection usa NodeId, não índices. Move múltiplos nodes em transaction preview; smooth/symmetric constraints calculadas pelo Geometry Engine.
+[Handles, snapping e edição numérica](#/docs/04-ui/vector-edit-precision.md) e [operações assistidas](#/docs/04-ui/smart-path-operations.md). Sub-selection usa NodeId, não índices. Move múltiplos nodes em transaction preview; smooth/symmetric constraints calculadas pelo Geometry Engine.
 
 ## Move/Transform
 
