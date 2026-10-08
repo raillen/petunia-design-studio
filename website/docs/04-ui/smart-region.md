@@ -1,6 +1,6 @@
 # Smart Region — construir, pintar e entrelaçar áreas
 
-**Estado:** sistemas aceitos, UX final em discussão conjunta. Compartilham análise de regiões, mas **não** um único modelo autoral para operações diferentes.
+**Estado (2026-10-08):** escopo e arquitetura aprovados. Comportamentos de Build/Paint/Gap/Region Select/Weave **especificados e aprovados por delegação** em [Smart Region — interação](#/docs/04-ui/smart-region-interaction.md). A preferência de Live Build por padrão e Expand explícito é direção de UX, não confirmação de implementação. Compartilham análise de regiões, mas não um único modelo autoral.
 
 ## Referências
 
@@ -32,7 +32,7 @@ Uma região calculada não recebe ObjectId persistente até materialização. So
 3. Click marca face; drag atravessa faces e agrupa; subtração é ação distinta.
 4. Preview mostra resultado e quantidade de faces/contours, sem esconder definitivamente source.
 5. Confirmar = Command atômico; Cancel = nenhum Document change.
-6. **Live Build** mantém binding/operations; **Expand** gera paths normais. Escolha de default de UI permanece aberta.
+6. **Live Build** mantém binding/operations e é a opção padrão de UX aprovada; **Expand** gera paths normais explicitamente. Detalhes em [Smart Region — interação](#/docs/04-ui/smart-region-interaction.md).
 
 **Policy:** FillRule, holes, open paths, masked objects e strokes expandidos devem ser explicitados antes da operação. Evitar cor herdada arbitrariamente de uma source quando múltiplos styles divergem: perguntar/aplicar first-selected/default de modo configurável.
 
