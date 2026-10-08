@@ -1,6 +1,6 @@
 # Seleção, nodes e handles — Smart Path
 
-**Status misto (revisão de 2026-10-08):** **aprovados** a semântica Cusp/Smooth/Symmetric, seus indicadores por forma, a visibilidade progressiva dos handles, os estados visuais separados, a multisseleção de nodes, hit targets maiores que os marcadores, respeito a zoom/rotação/DPR e manipulação sem mudanças geométricas implícitas. **Ainda propostos** os detalhes de marquee/lasso, modificadores, desambiguação de alvos, transformação de multisseleção e apresentação definitiva da barra contextual. O **modelo híbrido Select + Vector Edit** já é decisão aceita no [ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md).
+**Status — decisões de UX aprovadas em 2026-10-08:** modelo híbrido Select + Vector Edit ([ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md)); tipos e indicadores Cusp/Smooth/Symmetric; visibilidade progressiva de handles; seleção Marquee por contenção como padrão, Interseção por ação e modo direcional opcional; Lasso contextual; transformação de 2+ nodes com bounding box discreta e desativável; desambiguação de alvos por candidatos; Shift para adicionar/remover seleção; navegação semântica por teclado e movimentos incrementais configuráveis. **Ainda em discussão:** prioridade fina para candidatos exatamente coincidentes, design final dos overlays e context bar, presets e atalhos secundários, regras detalhadas de tangência/snapping e manipulação de handles. **Não implementado/testado:** a aprovação documenta comportamento-alvo, não funcionalidade presente no código.
 
 Esta página especifica a próxima camada: seleção de objetos, hit-test, sub-selection, handles, gestos e controles contextuais. Não representa funcionalidade já codificada.
 
@@ -48,22 +48,26 @@ Definir **Cycle Overlapping Selection** como ActionId, com lista contextual opci
 
 O ciclo respeita o scope ativo e z-order. Ao abrir lista, não altera DocumentRevision.
 
-### Seleção por área
+### Seleção por área — política aprovada
 
-Marquee a partir do espaço vazio não move o objeto.
+Marquee começa em espaço vazio elegível do contexto ativo; o gesto não move nenhum objeto. Seleção por área é **Session State**, não Command autoral.
 
-**Duas políticas candidatas para fechar com o usuário:**
+1. **Padrão: Contenção**, independente da direção do arrasto. Para objetos, incluir somente quando a geometria selecionável efetiva está inteiramente no retângulo de seleção em coordenadas de tela, respeitando transformações, clipping e escopo; não assumir que um bounding box axis-aligned é a própria geometria.
+2. **Interseção (crossing):** disponível como ActionId e escolha de política na barra contextual; inclui também objetos cuja geometria selecionável toca/cruza a área.
+3. **Preferência avançada: Direcional**, opt-in. Esquerda→direita usa Contenção; direita→esquerda usa Interseção. A direção só determina a política no preset direcional; não modifica o comportamento padrão.
+4. **Lasso contextual:** ativação explícita por ActionId/controle contextual para região livre. Deve permitir substituir, adicionar ou subtrair seleção com rotas por modificadores configuráveis e UI acessível. Usar a mesma semântica de Contenção/Interseção, conforme a política ativa, sem selecionar itens fora do contexto de edição.
+5. Em **Vector Edit**, Marquee/Lasso testam o **centro geométrico do anchor/node** projetado em viewport, não sua área clicável ampliada. Handles e segmentos não passam a ser selecionados incidentalmente por essa regra: precisam de ação/escopo próprios.
 
-1. **Contenção simples:** seleciona objetos completamente dentro do retângulo, independente do sentido.
-2. **Direcional (estilo CAD):** esquerda→direita = inteiramente dentro; direita→esquerda = crossing/intersectando.
+Durante o gesto, mostrar preview reversível da área e dos candidatos; ao soltar, atualizar apenas SelectionState. Escape restaura a seleção anterior. Para objetos parcialmente clipados, a query considera sua porção selecionável/visível conforme o escopo; visibilidade e lock continuam determinantes. A aparência final de region fill/outline é item de GUI pendente.
 
-Lasso é ação explícita para contorno irregular. A política visual de preenchimento da marquee, cor e alvos por categoria ainda exige validação.
+### Multi-selection e modificadores — decisão aprovada
 
-### Multi-selection
-
-Adicionar/remover seleção por Action/Modifier nomeado, sem atalhos exclusivos hardcoded. Multi-selection mantém ordem determinística e âncora ativa para inspectors, alinhamento e transform.
-
-Mover um item da seleção **não** perde os demais, salvo click explícito que altere seleção. Esse comportamento deve ser idêntico em Mouse, Stylus e teclado.
+- **Shift + clique** alterna inclusão/remoção do alvo elegível, tanto em Select como em Vector Edit. O usuário pode remapear atalhos; menus, barra contextual, comando e teclado oferecem rota equivalente sem Shift.
+- Clique simples substitui seleção quando atingir alvo não selecionado; clique sobre item já selecionado preserva a seleção. Arrastar item já selecionado prepara deslocamento do conjunto, não reduz a seleção acidentalmente.
+- Ações de **Select Inside**, **Select Behind / Cycle Overlapping** e navegação profunda em groups têm ActionIds e alternativas visíveis/configuráveis. Não depender exclusivamente de Alt, reservado por vários gerenciadores de janelas Linux.
+- Marquee/Lasso suportam Replace/Add/Subtract por ações e modificadores configuráveis. Alternar a política de seleção não deve modificar silenciosamente o conjunto já selecionado.
+- **Select All / Invert Selection** operam dentro de um escopo informado (layer, group, paths editáveis etc.), respeitando locks e filtros. Inverter seleção não expande para documento inteiro sem o usuário conhecer o escopo.
+- O conjunto de seleção mantém ordem determinística e âncora ativa para inspectors, alinhamento e transformação. Mouse, caneta e teclado produzem a mesma semântica; pressure não atua como modificador de seleção.
 
 ## 3. Vector Edit — sub-selection
 
@@ -86,7 +90,7 @@ Object Selection
 - Click em segmento (Node operation): torna segmento alvo de inspeção/seleção contextual, **não** inicia Bend.
 - Click em handle visível: seleciona/ajusta o handle correspondente, dentro do modo Node.
 - Click vazio dentro de Vector Edit: limpa sub-selection, mas não sai do contexto e não apaga ObjectSelection.
-- Shift+Click é candidato de gesto multiplataforma para adicionar/remover nodes; atalho final e casos com caneta ficam para decisão conjunta.
+- Shift+Click alterna inclusão/remoção de nodes (decisão aprovada); caneta, teclado e tecnologias assistivas possuem ações equivalentes, sem necessidade de reproduzir o modificador físico.
 
 ### Arrasto quando vários nodes estão selecionados
 
@@ -106,13 +110,13 @@ Confinados a paths editáveis no contexto atual. Quando selecting multiple paths
 
 A seleção usa DocumentPoint→ViewPoint para consultar candidatos via Engine, mas visualiza overlay em logical pixels. Não projetar todo o hit-test em pixels de dispositivos sem DPR consistente.
 
-### Transformação de nodes
+### Transformação de nodes — decisão aprovada
 
-Selecionar **2 ou mais nodes** pode habilitar bounding box de sub-selection com Move/Scale/Rotate contextual, como no Figma. Ela não deve aparecer por default sobre um único node.
+Ao selecionar **2 ou mais nodes distintos**, apresentar automaticamente uma bounding box **discreta** com ações de Move/Scale/Rotate da subseleção, sem encobrir markers/handles nem roubar sua precedência de hit-test. Preferência visível permite desativar a bounding box automática; a ação **Transform Nodes** permanece disponível. Com um único node, não mostrar bounding box automaticamente.
 
-Transformar nodes não transforma o SceneNode inteiro; delta é convertido para o espaço local de cada path, preservando IDs, handles e constraints. Para bounding degenerada (todos em linha ou mesmo ponto), desabilitar eixo impossível em vez de dividir por zero.
+Transformar nodes não transforma o SceneNode inteiro. Delta de movimento/rotação/escala deve ser convertido ao espaço local de cada PathObject, preservando NodeId/ContourId e a integridade de constraints. Se a subseleção tem bounds degenerados (nodes colineares/coincidentes), oferecer somente graus de liberdade matematicamente válidos; não dividir por zero nem causar salto geométrico.
 
-Oferecer Transform Separately como ação avançada posterior, não default surpresa.
+Preview não modifica geometria autoral; confirmar múltiplos paths realiza uma Transaction atômica. **Transform Separately** pode surgir como comando avançado posterior e nunca como comportamento implícito.
 
 ## 4. Semântica dos nodes
 
@@ -169,9 +173,15 @@ A política de escolha deve ser única, inspecionável e testada:
 | Width | width handle/point → spine elegível → vazio |
 | Pen | endpoint para continuar/fechar → snap candidate válido → novo node |
 
-Ordenar por **intenção da operação, elegibilidade, alvo específico, distância em screen-space e z-order**. Quando há múltiplos candidatos equivalentes, oferecer ciclo/disambiguation, não escolher silenciosamente um node “errado”.
+### Candidatos de hit-test e desambiguação — decisão aprovada
 
-Quando um node e um handle se sobrepõem, a precedência não pode tornar impossível alcançar um deles: oferecer alternância de alvo ou ocultação contextual de handles.
+A query do Engine produz uma **lista estável de alvos elegíveis**, classificada por intenção da operação, elegibilidade, especificidade, proximidade em logical screen-space, selection/active state e z-order quando aplicável. A UI mostra o candidato ativo sem alterar Document nem SelectionState apenas por hover.
+
+Se dois nodes, ou node e handle, coincidirem ou competirem no mesmo hit region, oferecer **Cycle Overlapping Target** por ActionId/atalho configurável e um seletor contextual sob demanda com tipo, nome, path e estado locked/hidden quando informativo. Para caneta e toque, prever equivalente contextual acessível, sem exigir Alt nem gestos de precisão impossíveis. Uma seleção via Layers/árvore semântica também deve alcançar todos os candidatos. Fechar o seletor sem escolher não muda seleção.
+
+A **precedência exata entre node e handle perfeitamente coincidentes** ainda exige avaliação conjunta e testes de usabilidade; não congelar uma ordem rígida arbitrária. Independentemente dela, todo alvo elegível deve continuar selecionável. Separar seleção de alvo, foco e captura do gesto: uma vez capturado, outro candidato não rouba o pointer.
+
+A hierarquia de contextos, locks, revisão e mudança de target durante o ciclo seguem o contrato de Session/Input. Distância usa tolerâncias configuráveis de tela, não tolerâncias de geometria autoral.
 
 ## 7. Snapping sem tremer
 
@@ -222,13 +232,13 @@ As diferenças de estado devem funcionar em modo claro/escuro, alto contraste e 
 7. Transform de multi-node é atômico para todos os objetos afetados.
 8. Um handle inválido / constrained transform impossível devolve erro tipado; nunca deixa path parcialmente mutado.
 
-## 11. Acessibilidade e múltiplas formas de entrada
+## 11. Acessibilidade e múltiplas formas de entrada — decisão aprovada
 
-O canvas apresenta uma árvore semântica navegável para tecnologias assistivas (paths → contours → nodes) com ActionIds para selecionar, alterar tipo de node, mover em incrementos e revelar handles.
+O canvas oferece uma **árvore semântica navegável** por PathObject → ContourId → NodeId → HandleRef com ActionIds para focar, selecionar, alternar inclusão/remoção, inspecionar node/segment, acessar handles e invocar ações pertinentes. Navegar por foco **não** modifica automaticamente a seleção. O leitor de tela anuncia nome/tipo, posição, escopo, elegibilidade e estados úteis sem narrar cada frame de drag.
 
-Ações como Smart Delete e Clean Vector precisam de configuração/feedback textual e via teclado, sem exigir distinguir cores ou pequenos handles.
+Devem existir caminhos equivalentes para: entrar e sair de Vector Edit; alcançar node sobreposto; invocar Select All/Invert e Marquee/Lasso; alterar tipo; mover nodes por **incrementos configuráveis em unidades do documento**; abrir campo para coordenadas absolutas/relativas; e confirmar/cancelar com Undo atômico quando houver mutação. Incrementos não dependem do zoom do canvas. O mapeamento concreto de teclas e o modelo de focus traversal permanecem na etapa de acessibilidade detalhada.
 
-Pointer device e pressure não mudam o significado de seleção por si só. Preferências para tamanho de targets, foco, densidade de overlays, velocidade de drag e incremento de nudges devem ser controláveis.
+Ações como Smart Delete e Clean Vector precisam de configuração/feedback textual e via teclado. Preferências de tamanho de targets, foco, densidade de overlays, velocidade de drag e incremento de nudges devem ser controláveis; pressure não muda a semântica da seleção.
 
 ## 12. Quality gates
 
@@ -246,18 +256,12 @@ Pointer device e pressure não mudam o significado de seleção por si só. Pref
 - Error/revision conflict não gera commit parcial.
 - Screen reader/focus navega sem mouse.
 
-## 13. Pontos de decisão para revisão conjunta
+## 13. Registro de aprovação e próximos assuntos
 
-**A. Marquee em Select:** contenção uniforme ou seleção direcional (inside/crossing)? Definir também política de lasso e critérios de interseção para nodes/objetos.
+**Decisões A–F aprovadas em conjunto em 2026-10-08:** A. Marquee de Contenção por padrão, Interseção por ação e Direcional opt-in; B. Lasso contextual com Replace/Add/Subtract; C. bounds discretos automáticos e desativáveis para 2+ nodes; D. lista contextual/ciclo de alvos sobrepostos com alternativas ao Alt; E. Shift alterna seleção e ações de navegação profunda são configuráveis; F. árvore semântica e nudges independentes de zoom. Estas decisões não alteram o modelo autoral e não implicam implementação.
 
-**B. Transformação de subseleção:** bounding box aparece automaticamente com 2+ nodes selecionados, ou somente quando ativada ação Transform Nodes?
+**Próxima rodada de UX, ainda não aprovada:** controles de tangentes, handles em zero-length, quebra/reconexão de continuidade Cusp/Smooth/Symmetric, snapping e constraints durante drag, conversões sem saltos, manipulação numérica e feedback de ajuste.
 
-**C. Desambiguação de hit-test:** quando node e handle (ou dois nodes) coincidem, qual prioridade inicial, como alternar candidatos sem Alt reservado ao window manager e qual indicação no canvas?
-
-**D. Gestos de seleção:** clique/Shift/Ctrl, arrasto em seleção com modificador, invert selection e navegação por teclado, respeitando configuração de atalhos e tecnologias assistivas.
-
-**Já aprovado, não reabrir como escolha A/B/C:** handles selecionados visíveis por padrão, inclusive multisseleção, com opção de mostrar todos; tipos e formas dos nodes diferenciados; hover não altera geometria.
-
-Outras preferências — paleta, tamanho de anchors, scroll/drag-scrub, escolha de iconografia — pertencem à futura etapa de UX detalhada.
+**Pendente para fechamento posterior:** prioridade fina de hit-test em coincidência exata; aparência final da context bar, paleta, tamanho de anchors, ícones, atalhos secundários, scroll/drag-scrub e focus traversal pixel/tecla específicos.
 
 [Vector Edit](#/docs/04-ui/vector-edit-interaction.md) · [Smart Path](#/docs/04-ui/smart-path.md) · [Acessibilidade](#/docs/04-ui/accessibility.md) · [ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md)
