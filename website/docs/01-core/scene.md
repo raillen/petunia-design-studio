@@ -22,7 +22,7 @@ Cada Page possui uma lista ordenada de objetos raiz. Storage pode começar com H
 pub struct SceneNode {
     pub id: ObjectId,
     pub name: String,
-    pub parent: Option<ObjectId>,
+    pub parent: ParentRef,
     pub transform: Transform2D,
     pub flags: NodeFlags,
     pub opacity: f32,
