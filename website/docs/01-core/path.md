@@ -1,14 +1,20 @@
 # path.rs
 
-O path é a unidade geométrica editável mais importante do editor. A prioridade é preservar editabilidade, IDs estáveis e topologia clara.
+Path é a unidade vetorial editável fundamental do Petunia.
 
-## Representação canônica
+A representação precisa equilibrar quatro objetivos: precisão, edição previsível, IDs estáveis e kernel geométrico simples.
 
-O modelo atual usa anchors com handles cúbicos. Para um editor profissional, precisamos distinguir **topologia** de **segmento**.
+## Decisão canônica
 
-Modelo recomendado:
+O path nativo usa **Line + Cubic Bézier** como segmentos canônicos.
 
-```rust
+Quadratic Bézier importada é convertida **exatamente** para cubic. SVG elliptical arc e outras primitivas especiais são avaliadas por import/generators e convertidas para a representação Petunia quando materializadas.
+
+Essa decisão reduz o número de casos que boolean, offset, hit-test, simplify e Node Tool precisam tratar.
+
+## Modelo
+
+~~~rust
 pub struct VectorPath {
     pub contours: Vec<Contour>,
     pub fill_rule: FillRule,
@@ -16,130 +22,325 @@ pub struct VectorPath {
 
 pub struct Contour {
     pub id: ContourId,
-    pub start: NodeId,
-    pub segments: Vec<PathSegment>,
+    pub nodes: Vec<PathNode>,
     pub closed: bool,
 }
 
-pub enum PathSegment {
-    Line { to: NodeId },
-    Quad { ctrl: Point, to: NodeId },
-    Cubic { ctrl1: Point, ctrl2: Point, to: NodeId },
+pub struct PathNode {
+    pub id: NodeId,
+    pub position: Point,
+    pub handle_in: Option<Point>,
+    pub handle_out: Option<Point>,
+    pub kind: NodeKind,
+    pub outgoing: SegmentKind,
 }
-```
 
-`NodeId -> PathNode` mantém seleção e histórico estáveis. SVG arcs podem ser preservados como shape/metadata de import ou convertidos determinística e documentadamente; não misturar uma meia implementação de arc no kernel.
+pub enum SegmentKind {
+    Line,
+    Cubic,
+}
 
-## NodeKind
-
-```rust
 pub enum NodeKind {
     Cusp,
     Smooth,
     Symmetric,
 }
-```
-
-Isso é **regra de edição**, não muda a curva já armazenada até um handle ser manipulado.
-
-- Cusp: handles independentes.
-- Smooth: tangentes colineares; comprimentos independentes.
-- Symmetric: colineares e mesmo comprimento.
-
-## FillRule
-
-**Fill rule** define quais regiões de um path contam como “dentro” quando contornos se cruzam ou existem furos.
-
-### EvenOdd
-
-Traçamos conceitualmente uma linha do ponto até fora da forma e contamos quantas bordas ela cruza.
-
-- número ímpar de cruzamentos → dentro;
-- número par → fora.
-
-~~~text
-1 cruzamento  → dentro
-2 cruzamentos → fora
-3 cruzamentos → dentro
 ~~~
 
-### NonZero
+`outgoing` descreve o segmento entre este node e o próximo.
 
-NonZero considera também a direção em que cada contorno cruza a linha imaginária. Cruzamentos em sentidos opostos se cancelam.
+Em contour fechado, o último node conecta implicitamente ao primeiro. Não duplicar o primeiro node no final apenas para indicar fechamento.
 
-Em vez de apenas par/ímpar, acumulamos um **winding number** — um contador de orientação.
+## Por que Line + Cubic
 
-- resultado diferente de zero → dentro;
-- resultado zero → fora.
+Uma cubic Bézier possui:
 
-O Petunia deve suportar `NonZero` e `EvenOdd` porque SVG/PDF e compound paths dependem dessa semântica. A regra precisa ser persistida no Core, não inferida pelo renderer.
+~~~text
+P0 = anchor inicial
+P1 = control 1
+P2 = control 2
+P3 = anchor final
+~~~
 
-## Orientação de contorno
+Uma quadratic `Q0,Q1,Q2` vira cubic exatamente:
 
-Não depender da orientação para definir hole quando fill rule já carrega a semântica. Geometry Engine pode normalizar orientação para algoritmos específicos, mas não deve reordenar dados autorais silenciosamente.
+~~~text
+P0 = Q0
+P1 = Q0 + 2/3 × (Q1 - Q0)
+P2 = Q2 + 2/3 × (Q1 - Q2)
+P3 = Q2
+~~~
+
+Portanto manter `Quad` no formato nativo aumentaria branches sem ampliar capacidade geométrica.
+
+## Handles
+
+Para um segmento cubic entre node A e B:
+
+~~~text
+P0 = A.position
+P1 = A.handle_out ou A.position
+P2 = B.handle_in ou B.position
+P3 = B.position
+~~~
+
+Handle ausente equivale ao anchor naquele lado.
+
+Para `SegmentKind::Line`, handles não alteram o segmento.
+
+## NodeKind
+
+`NodeKind` é uma **restrição de edição**. Ele não reescreve automaticamente uma curva já armazenada.
+
+### Cusp
+
+Handles independentes em direção e comprimento.
+
+### Smooth
+
+Os dois handles permanecem colineares através do anchor, mas podem ter comprimentos diferentes.
+
+### Symmetric
+
+Handles permanecem colineares e com mesmo comprimento.
+
+Ao arrastar um handle, Tool/Engine calcula o outro conforme a constraint e gera a mutação final.
+
+## Continuidade
+
+Duas cubics podem ter níveis de continuidade.
+
+**C0**: as curvas apenas se encontram no mesmo anchor.
+
+**G1**: tangentes são colineares e a direção visual é contínua.
+
+**C1**: além da direção, a derivada parametrizada é compatível.
+
+Para edição visual, `Smooth` representa intenção de continuidade tangencial. C2 não é requisito da v0.1.
+
+## Open e closed contours
+
+`closed = false`:
+
+~~~text
+N1 → N2 → N3
+~~~
+
+Não existe segmento N3 → N1.
+
+`closed = true`:
+
+~~~text
+N1 → N2 → N3
+↑         ↓
+└─────────┘
+~~~
+
+O fechamento é propriedade do contour, não node duplicado.
 
 ## Degenerados
 
-Precisamos de política explícita para:
-- contour vazio
-- 1 node
-- segmento zero-length
-- handles coincidentes
-- contour fechado com último ponto igual ao primeiro
+Core tolera alguns estados geométricos degenerados porque podem surgir durante edição/import.
+
+Exemplos:
+
+- contour com um node;
+- segmento zero-length;
+- handles coincidentes;
+- dois nodes na mesma posição;
+- contour fechado de área zero;
 - self-intersection.
 
-O Core pode armazenar alguns degenerados durante edição, mas export/boolean precisa normalização controlada. Evitar “cleanup automático” que mude uma forma sem Command.
+**Degenerado** significa estruturalmente representável, mas especial ou sem área/length útil para alguma operação.
+
+Core valida finitude e estrutura; Engine decide se um algoritmo específico aceita aquele caso.
+
+Não fazer cleanup silencioso no Core.
+
+## Self-intersection
+
+Self-intersection é permitida em VectorPath.
+
+~~~text
+\ /
+ X
+/ \
+~~~
+
+FillRule define interior. Boolean, offset e outros algoritmos documentam como tratam esse caso.
+
+## FillRule
+
+### EvenOdd
+
+Um ponto está dentro se um raio cruza o boundary um número ímpar de vezes.
+
+~~~text
+1 → dentro
+2 → fora
+3 → dentro
+~~~
+
+Orientação do contour não altera EvenOdd.
+
+### NonZero
+
+Cada crossing contribui com sinal conforme a direção do contour. A soma é o **winding number**.
+
+~~~text
+winding != 0 → dentro
+winding == 0 → fora
+~~~
+
+Para NonZero, orientação dos contours **faz parte da semântica**.
+
+Portanto o Core preserva orientação; algoritmos não podem revertê-la silenciosamente se isso alterar fill.
+
+## Orientação
+
+Engine pode normalizar orientação internamente para um algoritmo, mas essa normalização é derivada.
+
+`Reverse Contour` é Command autoral explícito.
+
+## IDs
+
+`ContourId` e `NodeId` sobrevivem a edições normais.
+
+~~~text
+move node → mantém NodeId
+move handle → mantém NodeId
+split segment → nodes existentes mantêm IDs; novo node recebe novo ID
+delete + undo → ID original volta
+reverse contour → mesmos NodeIds, nova ordem
+~~~
+
+Operações que geram nova geometria sem correspondência inequívoca podem criar IDs novos.
+
+## Insert e split segment
+
+Inserir node em cubic precisa preservar a curva.
+
+Usar **De Casteljau** no parâmetro `t`.
+
+~~~text
+cubic original
+      ↓ split(t)
+left cubic + new node + right cubic
+~~~
+
+A geometria resultante é a mesma curva, apenas dividida em segmentos.
+
+## Delete node
+
+Remover node é edição geométrica, não simples remoção de vetor.
+
+Ferramentas podem oferecer:
+
+- delete direto;
+- delete + curve refit;
+- dissolve node.
+
+São Commands/algoritmos diferentes. Core oferece mutações estruturais validadas.
+
+## Reverse contour
+
+Reverter contour exige:
+
+- inverter ordem dos nodes;
+- trocar `handle_in ↔ handle_out`;
+- reassociar `SegmentKind` ao novo outgoing;
+- preservar NodeIds;
+- manter closed/open.
+
+A operação precisa de testes específicos para NonZero.
+
+## Bounds e length
+
+Bounds exato de cubic considera extrema internas.
+
+Arc length é derivado e calculado no Geometry Engine por aproximação adaptativa.
+
+Não persistir bounds ou length dentro de VectorPath como fonte da verdade.
+
+## Arc-length parameterization
+
+O parâmetro Bézier `t` não representa distância uniforme.
+
+~~~text
+t = 0.5
+≠ necessariamente metade do comprimento
+~~~
+
+Dash, text-on-path e variable width usam lookup/solver de arc length derivado.
 
 ## Shapes paramétricas
 
-Rectangle, ellipse, star, polygon, gear e rounded rectangle **não devem nascer como path cru**.
+Shapes paramétricas não são armazenadas como paths crus enquanto permanecerem paramétricas.
 
-```rust
-pub enum ParametricShape {
-    Rectangle(RectSpec),
-    Ellipse(EllipseSpec),
-    Star(StarSpec),
-    Polygon(PolygonSpec),
-    // ...
-}
-```
+~~~text
+ParametricShape
+      ↓ Engine evaluate
+VectorPath derivado
+~~~
 
-O Engine gera o path avaliável. `Convert to Curves` materializa um `VectorPath` por Command.
+`Convert to Curves` materializa VectorPath por Command.
 
-## Operações que NÃO ficam em path.rs
+Detalhes: [Shapes paramétricas](#/docs/01-core/parametric-shapes.md).
 
-- boolean
-- offset/contour
-- simplify
-- intersections
-- curve fitting
-- flatten
-- stroke expansion
-- nearest point
-- hit-test
+## O que não pertence a path.rs
 
-Todas são Geometry Engine.
+Não colocar no Core:
 
-## Curvas e precisão
+- boolean;
+- intersections;
+- offset;
+- simplify;
+- flattening;
+- curve fitting;
+- nearest point;
+- stroke expansion;
+- hit-test;
+- Shape Builder.
 
-A avaliação e subdivisão de Bézier deve usar **De Casteljau**, explicado em [Geometry Engine](#/docs/02-engine/geometry.md#de-casteljau).
+Esses algoritmos pertencem ao Geometry Engine.
 
-**Extrema internas** são pontos dentro da curva onde X ou Y atinge um máximo ou mínimo local. Bounds exatos precisam considerá-las, não apenas anchors.
+## Adapters
 
-**Arc length** é o comprimento ao longo da curva. Como uma Bézier cúbica normalmente não possui uma fórmula prática simples para comprimento exato, o Engine usa aproximação adaptativa:
+Tipos persistentes são Petunia.
 
-1. estima o comprimento do trecho;
-2. compara com uma aproximação mais refinada;
-3. se o erro for pequeno, aceita;
-4. caso contrário, subdivide;
-5. repete até atingir a tolerância.
+~~~text
+VectorPath
+↓ adapter
+kurbo / i_overlay representation
+↓ algorithm
+Petunia result
+~~~
 
-“Tolerância adaptativa” significa justamente isso: regiões simples usam poucas subdivisões; regiões curvas usam mais.
+Não serializar `kurbo::BezPath`.
 
-## IDs internos
+## Validação
 
-Adicionar `ContourId` e `NodeId` antes de ferramentas complexas. Histórico baseado em índice quebra quando inserimos/deletamos nós.
+VectorPath válido garante:
 
-## Migração do modelo atual
+- IDs internos únicos;
+- coordinates/handles finitos;
+- contours structurally consistent;
+- SegmentKind conhecido;
+- FillRule conhecido.
 
-`PathNode { point, handle_in, handle_out }` pode continuar como API de edição inicial. A migração deve acontecer antes de boolean live, text-on-path e node-level undo porque esses recursos exigem referências estáveis.
+Não exige que todo contour possua área, seja simples ou seja renderizável.
+
+## Invariantes
+
+1. Line + Cubic são segmentos canônicos nativos.
+2. Quadratic importada converte exatamente para Cubic.
+3. Closed contour não duplica o primeiro node.
+4. NodeKind é constraint de edição, não transformação automática.
+5. Self-intersection é permitida.
+6. FillRule é persistente.
+7. Orientação é semanticamente relevante para NonZero.
+8. Core não executa cleanup geométrico silencioso.
+9. NodeId/ContourId permanecem estáveis quando a mesma entidade continua existindo.
+10. Split de cubic usa De Casteljau para preservar geometria.
+11. Bounds/length são derivados.
+12. Algoritmos pesados ficam no Geometry Engine.
