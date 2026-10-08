@@ -61,6 +61,10 @@
         {
           "title": "Verificação e quality gates",
           "path": "00-architecture/verification.md"
+        },
+        {
+          "title": "Architecture Decision Records",
+          "path": "00-architecture/adr/index.md"
         }
       ]
     },
