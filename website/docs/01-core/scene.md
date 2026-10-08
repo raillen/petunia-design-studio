@@ -98,19 +98,11 @@ Artboard não substitui Page editorial. Pages pertencem ao Document model.
 
 ## Parent + children
 
-Node guarda parent para lookup conceitualmente direto; container guarda children ordenados.
+Parent usa `ParentRef` com dois casos: `Page(PageId)` ou `Object(ObjectId)`.
 
-Essa duplicação exige invariante forte:
+Se o parent for Object, o container correspondente deve conter o child exatamente uma vez. Se o parent for Page, o child deve aparecer exatamente uma vez em `Page.root_children`.
 
-~~~text
-child.parent == container
-⇔
-container.children contém child exatamente uma vez
-~~~
-
-Nenhum código altera um lado diretamente.
-
-SceneGraph fornece operações atômicas de insert/remove/reparent/reorder.
+Esses dois lados mudam juntos. Insert, remove, reparent e reorder são operações atômicas de SceneGraph.
 
 ## Z-order
 
