@@ -37,25 +37,13 @@ Render
 
 `Convert to Curves` materializa a geometria quando desejado.
 
-## Core model direction
+## Core model
 
-Direção:
+O modelo autoral canônico — `GeneratedVectorObject`, `GeneratorSpec`, `QrCodeSpec` e `BarcodeSpec` — pertence ao Core e está documentado em [conteúdo vetorial gerado](#/docs/01-core/generated-content.md).
 
-~~~rust
-pub struct GeneratedVectorObject {
-    pub generator: GeneratorSpec,
-    pub appearance: Appearance,
-}
+O Engine recebe esses specs, valida regras do standard que exigem algoritmo especializado e produz `VectorPath` derivado.
 
-pub enum GeneratorSpec {
-    QrCode(QrCodeSpec),
-    Barcode(BarcodeSpec),
-}
-~~~
-
-GeneratedVector vira `SceneItem` próprio.
-
-Não colocar QR/Barcode dentro de `ParametricShape`: eles não são primitivas geométricas do mesmo domínio de Rectangle/Ellipse/Star.
+GeneratedVector é `SceneItem` próprio e não pertence a `ParametricShape`: QR/Barcode não são primitivas geométricas do mesmo domínio de Rectangle/Ellipse/Star.
 
 ## QR Code
 
