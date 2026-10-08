@@ -47,6 +47,10 @@
           "path": "00-architecture/ptnd-format.md"
         },
         {
+          "title": "Modelo de segurança",
+          "path": "00-architecture/security-model.md"
+        },
+        {
           "title": "Diagnósticos + observabilidade",
           "path": "00-architecture/diagnostics-observability.md"
         },
