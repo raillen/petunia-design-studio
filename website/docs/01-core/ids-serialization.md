@@ -440,11 +440,22 @@ Não duplicar o Document inteiro no manifest.
 
 ### Container físico
 
-**◐ Em avaliação.**
+**✅ Definido para a v0.1: ZIP/ZIP64 compatível.**
 
-PTND é um container multi-entry.
+PTND usa ZIP como container multi-entry e aceita ZIP64 quando tamanho/quantidade de entries ultrapassar limites clássicos.
 
-ZIP-compatible é candidato inicial, mas o formato físico não fica congelado até avaliarmos streaming, segurança, atualização e custo de implementação.
+A escolha é deliberadamente conservadora:
+
+- formato amplamente suportado;
+- inspecionável sem ferramenta proprietária;
+- implementação madura em várias plataformas;
+- entries independentes para JSON, resources e previews;
+- permite streaming de leitura por entry;
+- combina bem com escrita temporária + atomic replace.
+
+A v0.1 aceita reescrever o container completo no save. Incremental save interno não é requisito inicial e não justifica um container proprietário.
+
+Detalhes físicos completos estão em [Formato PTND](#/docs/00-architecture/ptnd-format.md).
 
 ## Segurança de container
 
@@ -567,7 +578,7 @@ Detalhes variam por sistema operacional e pertencem ao I/O Engine.
 12. DTO persistente é separado do Domain Model.
 13. SchemaVersion é independente da versão do aplicativo.
 14. Load separa structural validation de domain validation.
-15. PTND é conceitualmente multi-entry; container físico ainda pode evoluir.
+15. PTND v0.1 usa ZIP/ZIP64 multi-entry; evolução futura exige migration/compatibility policy.
 16. UUIDs usam representação textual canônica.
 17. ContentHash não substitui identidade.
 18. Save deve permitir escrita temporária + replace seguro.
