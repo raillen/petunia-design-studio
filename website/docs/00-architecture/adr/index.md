@@ -24,6 +24,7 @@ Um ADR não substitui a documentação técnica detalhada. Ele explica **por que
 8. [ADR-0008 — Little CMS 2 como CMM](#/docs/00-architecture/adr/0008-color-management.md)
 9. [ADR-0009 — Raster autoral tiled + copy-on-write](#/docs/00-architecture/adr/0009-raster-tiles.md)
 10. [ADR-0010 — Plugins WASM + Host API](#/docs/00-architecture/adr/0010-plugin-abi.md)
+11. [ADR-0011 — Select + Vector Edit híbridos contextuais](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md)
 
 ## Regra
 
