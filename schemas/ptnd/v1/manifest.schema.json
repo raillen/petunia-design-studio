@@ -5,59 +5,191 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "formatId",
-    "containerVersion",
-    "schemaVersion",
-    "minimumReaderVersion",
+    "format",
+    "container_version",
+    "schema_version",
+    "minimum_reader_version",
     "writer",
-    "documentId",
-    "requiredCapabilities",
+    "document_id",
+    "required_capabilities",
     "resources",
     "extensions",
-    "interchange"
+    "previews"
   ],
   "properties": {
-    "formatId": { "const": "ptnd.document" },
-    "containerVersion": { "const": 1 },
-    "schemaVersion": { "const": 1 },
-    "minimumReaderVersion": { "type": "string", "minLength": 1 },
+    "format": {
+      "const": "petunia-design-document"
+    },
+    "container_version": {
+      "const": 1
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "minimum_reader_version": {
+      "type": "string",
+      "minLength": 1
+    },
     "writer": {
       "type": "object",
-      "required": ["appVersion"],
+      "additionalProperties": false,
+      "required": ["app_version"],
       "properties": {
-        "appVersion": { "type": "string" },
-        "buildId": { "type": "string" },
-        "platform": { "type": "string" },
-        "timestamp": { "type": "string" }
+        "app_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "build_id": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "saved_at": {
+          "type": "string",
+          "format": "date-time"
+        }
       }
     },
-    "documentId": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    "document_id": {
+      "$ref": "#/$defs/uuid"
     },
-    "requiredCapabilities": {
+    "required_capabilities": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "uniqueItems": true
     },
     "resources": {
       "type": "array",
       "items": {
-        "type": "object",
-        "required": ["id", "kind", "path", "mediaType", "byteSize", "sha256", "canonical"],
-        "properties": {
-          "id": { "type": "string" },
-          "kind": { "type": "string" },
-          "path": { "type": "string" },
-          "mediaType": { "type": "string" },
-          "byteSize": { "type": "integer", "minimum": 0 },
-          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-          "codecVersion": { "type": "integer" },
-          "canonical": { "type": "boolean" }
+        "$ref": "#/$defs/resource_entry"
+      }
+    },
+    "extensions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/extension_entry"
+      }
+    },
+    "previews": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/preview_entry"
+      }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "entry_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "resource_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "entry",
+        "media_type",
+        "byte_size",
+        "content_hash"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "image",
+            "font",
+            "icc_profile",
+            "pixel_surface",
+            "pattern",
+            "blob"
+          ]
+        },
+        "entry": {
+          "$ref": "#/$defs/entry_path"
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "byte_size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "content_hash": {
+          "$ref": "#/$defs/content_hash"
         }
       }
     },
-    "extensions": { "type": "array" },
-    "interchange": { "type": "array" }
+    "extension_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "namespace",
+        "schema_version",
+        "required"
+      ],
+      "properties": {
+        "namespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "entry": {
+          "$ref": "#/$defs/entry_path"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/content_hash"
+        }
+      }
+    },
+    "preview_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "entry"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "thumbnail"
+          ]
+        },
+        "entry": {
+          "$ref": "#/$defs/entry_path"
+        },
+        "source_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "content_hash": {
+          "$ref": "#/$defs/content_hash"
+        }
+      }
+    }
   }
 }
