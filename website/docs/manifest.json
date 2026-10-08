@@ -131,6 +131,14 @@
         {
           "title": "I/O, jobs e plugins",
           "path": "02-engine/io-jobs-plugins.md"
+        },
+        {
+          "title": "image analysis + vectorization",
+          "path": "02-engine/image-analysis-vectorization.md"
+        },
+        {
+          "title": "vector generators",
+          "path": "02-engine/vector-generators.md"
         }
       ]
     },
@@ -153,6 +161,14 @@
         {
           "title": "cache, overlays e output",
           "path": "03-render/cache-overlay-output.md"
+        },
+        {
+          "title": "paint evaluation",
+          "path": "03-render/paint-evaluation.md"
+        },
+        {
+          "title": "adjustments",
+          "path": "03-render/adjustments.md"
         }
       ]
     },
