@@ -50,6 +50,8 @@ pub enum SceneItem {
     Text(TextObject),
     Image(ImageObject),
     PixelLayer(PixelLayerRef),
+    Trace(TraceObject),
+    GeneratedVector(GeneratedVectorObject),
     Artboard(ArtboardData),
     SymbolInstance(SymbolInstance),
 }
@@ -58,6 +60,30 @@ pub enum SceneItem {
 Essa enumeração é persistente e versionada.
 
 Adicionar item novo exige definir serialização, bounds, render semantics, hit-test semantics e comportamento de export.
+
+### Trace e GeneratedVector
+
+`TraceObject` preserva a intenção de vetorizar uma source raster:
+
+~~~text
+ResourceId + ImageTraceSpec
+↓ Engine
+derived vector regions/paths
+↓ Render
+~~~
+
+`GeneratedVectorObject` preserva conteúdo estruturado como QR Code ou Barcode:
+
+~~~text
+GeneratorSpec
+↓ Engine
+derived VectorPath
+↓ Render
+~~~
+
+Esses itens não armazenam o `VectorPath` derivado como fonte da verdade. `Expand Trace` e `Convert to Curves` materializam paths por Command explícito.
+
+Eles também não são `ParametricShape`: Rectangle/Star descrevem primitivas geométricas; Trace depende de raster source e QR/Barcode depende de um standard de encoding.
 
 ## Containers
 
@@ -355,8 +381,9 @@ SceneGraph válido garante:
 8. Clip e Mask são bindings explícitos.
 9. Ciclos proibidos são rejeitados no Core.
 10. Symbol instance referencia definition; não duplica subtree.
-11. Delete não destrói Resource automaticamente.
-12. Renderer nunca recebe `&mut SceneGraph`.
+11. Trace/GeneratedVector persistem source + parâmetros, não paths derivados.
+12. Delete não destrói Resource automaticamente.
+13. Renderer nunca recebe `&mut SceneGraph`.
 
 ## Decisões adicionais de Scene
 
@@ -419,13 +446,13 @@ Engine acessa Scene por APIs estáveis como `get`, `parent_of`, `children_of`, `
 
 ## Invariantes adicionais
 
-13. ObjectId é único em todo o Document, inclusive SymbolDefinitions.
-14. Storage runtime não define z-order.
-15. Parent/children nunca são mutados separadamente por consumidores.
-16. Clip/Mask source use é explícito.
-17. Hierarquia e binding são relações distintas.
-18. Artboard background/clip são propriedades explícitas.
-19. World transform e effective visibility são derivados.
-20. Symbol cycles são rejeitados no Core.
-21. Overrides built-in são tipados.
-22. Scene queries escondem o layout de storage.
+14. ObjectId é único em todo o Document, inclusive SymbolDefinitions.
+15. Storage runtime não define z-order.
+16. Parent/children nunca são mutados separadamente por consumidores.
+17. Clip/Mask source use é explícito.
+18. Hierarquia e binding são relações distintas.
+19. Artboard background/clip são propriedades explícitas.
+20. World transform e effective visibility são derivados.
+21. Symbol cycles são rejeitados no Core.
+22. Overrides built-in são tipados.
+23. Scene queries escondem o layout de storage.
