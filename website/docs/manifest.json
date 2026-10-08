@@ -41,6 +41,10 @@
         {
           "title": "Não destrutibilidade",
           "path": "00-architecture/non-destructive.md"
+        },
+        {
+          "title": "Verificação e quality gates",
+          "path": "00-architecture/verification.md"
         }
       ]
     },
@@ -130,6 +134,10 @@
       "id": "render",
       "title": "Render · petunia-render",
       "files": [
+        {
+          "title": "render model",
+          "path": "03-render/render-model.md"
+        },
         {
           "title": "pipeline e render graph",
           "path": "03-render/pipeline.md"
