@@ -241,6 +241,10 @@
           "path": "04-ui/vector-edit-interaction.md"
         },
         {
+          "title": "Seleção, nodes e handles",
+          "path": "04-ui/selection-nodes-handles.md"
+        },
+        {
           "title": "catálogo de ferramentas criativas",
           "path": "04-ui/creative-tools-overview.md"
         },
