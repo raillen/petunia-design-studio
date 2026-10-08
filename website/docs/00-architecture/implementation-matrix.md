@@ -2,20 +2,27 @@
 
 A matriz registra **arquivos existentes**, responsabilidades atuais e módulos necessários para chegar a um editor profissional sem criar god modules.
 
-## Estado atual
+## Estado atual e alvo fechado
 
-| Crate | Arquivo atual | Estado | Próxima decisão estrutural |
-|---|---|---|---|
-| Core | `color.rs` | RGBA + 3 espaços | separar valor, encoding, perfil e alpha |
-| Core | `math.rs` | Point/Vec2/Rect/Transform2D | coordenadas, inversa, bounds robustos, units |
-| Core | `path.rs` | nodes cúbicos + contours | IDs internos, segmentos, invariantes e shapes paramétricos |
-| Core | `scene.rs` | Path/Group + fill/stroke | hierarquia real, appearance, masks, effects, blend |
-| Core | `document.rs` | canvas + scene | pages/artboards, color setup, resources, styles |
-| Engine | `command.rs` | Command + undo/redo | transactions, merge/coalescing, preview/commit |
-| Engine | `snapping.rs` | guide/grid básico | candidatos, prioridades, screen-space threshold |
-| Render Model | nova crate | não existe | contratos imutáveis Engine → Render |
-| Render | `backend.rs` | trait mínimo | snapshot + render graph + targets |
-| UI | `app.rs` | sessão mínima | tool controllers e estado transitório separado |
+A documentação de arquitetura/Core/Engine/Render já define o alvo. A tabela abaixo separa **implementação atual** de **contrato técnico fechado**, evitando tratar uma decisão já tomada como “próxima decisão”.
+
+| Área | Implementação atual | Contrato técnico |
+|---|---|---|
+| Core / Color | RGBA + poucos espaços | valor + perfil/espaço explícito, Spot, Swatches, gradients |
+| Core / Math | tipos básicos | f64 canônico, coordenadas Y-down, tolerâncias contextuais, transforms robustos |
+| Core / Path | nodes cúbicos + contours | Line+Cubic, IDs estáveis, parametric shapes, fill semantics |
+| Core / Scene | Path/Group simples | hierarquia ordenada, bindings, symbols, atomic structural mutations |
+| Core / Document | canvas + scene | Pages/Spreads/Artboards, registries, resources, styles e setup |
+| Engine / Commands | undo/redo básico | Command → DocumentOp → Transaction → HistoryEntry |
+| Engine / Geometry | parcial | Bézier, boolean, offset, simplify, curve fit, Shape Builder e provenance |
+| Engine / Spatial | snapping básico | R*-tree, hit-test, candidates, ranking, hysteresis e grids |
+| Engine / Brush/Raster | parcial | One Euro, arc-length resampling, tiled COW, filters/ROI |
+| Engine / Text/Layout | parcial | Unicode/BiDi/shaping/line layout/fallback/linked frames |
+| Engine / Color | parcial | Little CMS 2 encapsulado, ICC transforms, proofing e cache |
+| Engine / I/O/Plugins | parcial | import/export contracts, scheduler, WASM plugins, MCP adapter |
+| Render Model | ainda ausente | contrato imutável Engine → Render |
+| Render | software mínimo | tiled software reference renderer + render graph + compositor |
+| UI | sessão mínima | **fora deste fechamento; volta para discussão conjunta** |
 
 ## Arquivos-alvo do Núcleo
 
@@ -95,7 +102,7 @@ A crate contém apenas DTOs/runtime contracts imutáveis de renderização. Sem 
 ```text
 petunia-render/src/
 ├── backend.rs
-├── snapshot.rs
+├── frame.rs
 ├── graph.rs
 ├── vector/
 ├── raster/
@@ -127,13 +134,17 @@ Qt/QML e CXX-Qt permanecem na borda de UI. Nenhum tipo Qt deve entrar em Core, E
 
 ## Ordem de implementação recomendada
 
-1. Fechar `math`, `path`, `scene` e `document`.
-2. Introduzir `Appearance` e modelo não destrutivo de efeitos.
-3. Estabilizar Transactions/History.
-4. Construir Geometry + Spatial.
-5. Criar snapshot de render e compositor correto.
-6. Adicionar raster tiles e color management.
-7. Expandir text/layout.
-8. Só então ampliar Tools e painéis de UI.
+1. Consolidar Core: math/units/ids/path/shape/color/appearance/scene/document/resources.
+2. Implementar Transactions/History sobre o Core fechado.
+3. Implementar Geometry + Spatial e seus adapters.
+4. Introduzir `petunia-render-model` e compiler/evaluator Engine → RenderSnapshot.
+5. Implementar software tiled renderer, compositor e output.
+6. Implementar raster tiles/brush/filter pipeline.
+7. Integrar Color Management com Little CMS 2.
+8. Completar Text/Layout + font resolution/outlines.
+9. Consolidar I/O, save/load/migrations, import/export.
+10. Implementar scheduler/jobs, plugin Host API WASM e MCP adapter.
+11. Executar verification/benchmarks/fuzzing e corrigir gargalos.
+12. **Parar antes de Tools/Workspace/Acessibilidade/GUI e retomar discussão conjunta.**
 
-A ordem reduz retrabalho porque ferramentas avançadas dependem das invariantes anteriores.
+A ordem privilegia invariantes e contratos antes da camada de interação.
