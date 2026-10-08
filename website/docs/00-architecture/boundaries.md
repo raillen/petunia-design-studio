@@ -11,11 +11,13 @@ Esta página define **quem é dono de cada decisão**. A regra principal é simp
 A direção definida para a arquitetura atual é:
 
 ```text
-                 petunia-ui
-                ↙    ↓    ↘
-             Core  Engine  Render
-                    ↓       ↓
-                 petunia-core
+                    petunia-ui
+                 ↙       ↓       ↘
+          petunia-core  Engine   Render
+                         │         │
+                         └──→ Render Model ←──┘
+                              │
+                         petunia-core
 ```
 
 De forma explícita:
