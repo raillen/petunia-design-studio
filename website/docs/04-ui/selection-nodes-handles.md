@@ -1,6 +1,6 @@
 # Seleção, nodes e handles — Smart Path
 
-**Status:** **proposta detalhada para discussão conjunta de UX**, não decisão final sobre indicadores/gestos. O **modelo híbrido Select + Vector Edit** e a separação entre seleção e mutação já são decisões aceitas no [ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md).
+**Status misto (revisão de 2026-10-08):** **aprovados** a semântica Cusp/Smooth/Symmetric, seus indicadores por forma, a visibilidade progressiva dos handles, os estados visuais separados, a multisseleção de nodes, hit targets maiores que os marcadores, respeito a zoom/rotação/DPR e manipulação sem mudanças geométricas implícitas. **Ainda propostos** os detalhes de marquee/lasso, modificadores, desambiguação de alvos, transformação de multisseleção e apresentação definitiva da barra contextual. O **modelo híbrido Select + Vector Edit** já é decisão aceita no [ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md).
 
 Esta página especifica a próxima camada: seleção de objetos, hit-test, sub-selection, handles, gestos e controles contextuais. Não representa funcionalidade já codificada.
 
@@ -126,26 +126,26 @@ Para path aberto, só o handle pertinente existe nas extremidades. Não fabricar
 
 Converter tipos de node deve procurar preservar a forma dentro de tolerância; quando a geometria obrigatoriamente muda, preview mostra o resultado antes do Commit.
 
-### Formas dos indicadores — proposta inicial
+### Formas dos indicadores — tipos aprovados
 
 - **Cusp**: quadrado.
 - **Smooth**: círculo.
 - **Symmetric**: losango/diamante.
-- **Endpoint**: mantém tipo geométrico, mas recebe sinalização extra de início/fim (por exemplo pequeno indicador de direção em hover/seleção), para não misturar topologia com continuidade.
+- **Endpoint (detalhe ainda proposto)**: mantém tipo geométrico, mas pode receber sinalização extra de início/fim (por exemplo pequeno indicador de direção em hover/seleção), para não misturar topologia com continuidade.
 - **Active / Focus**: usa anel/outline adicional; não troca o tipo de node.
 
 Cores exatas são tokens temáticos, não cores rígidas desta especificação. Estados não dependem exclusivamente de cor.
 
 ## 5. Handles — visibilidade progressiva
 
-**Default recomendado:**
+**Política aprovada:**
 
 - Nodes pertencentes aos paths editáveis aparecem com marcadores discretos.
-- Handles dos nodes selecionados aparecem.
-- Quando muitos nodes estão selecionados, fornecer toggle **Mostrar handles dos selecionados**.
-- Fornecer opção **Mostrar todos os handles**, adequada a usuários que desejam comparação visual entre tangentes.
-- Handles de nodes não selecionados não precisam dominar a tela por default.
-- Zoom extremo pode simplificar linhas auxiliares de nodes distantes do foco, sem ocultar targets selecionados ou ações de acessibilidade.
+- Handles dos nodes selecionados aparecem por padrão, inclusive quando vários nodes estão selecionados.
+- Oferecer opção **Mostrar todos os handles** para comparação visual de tangentes.
+- Evitar poluição visual com handles de nodes não selecionados por padrão.
+- Zoom extremo pode simplificar linhas auxiliares distantes, sem ocultar targets selecionados ou rotas de acessibilidade.
+- Um controle para reduzir/ocultar handles em multisseleção é uma **preferência opcional ainda a detalhar**, não um motivo para contrariar a visibilidade aprovada.
 
 Essas políticas refletem a configurabilidade do Illustrator sem obrigar todos ao mesmo nível de informação.
 
@@ -164,7 +164,7 @@ A política de escolha deve ser única, inspecionável e testada:
 | Contexto | Preferência |
 |---|---|
 | Select | transform handle explicitamente ativo → objeto preenchido/stroke elegível pelo z-order → vazio |
-| Node | handle de node selecionado → node selecionado → node não selecionado → segment/ref → vazio |
+| Node | node/handle elegíveis → segment/ref → vazio; **ordem fina de node versus handle sobrepostos segue aberta** e deve ter desambiguação |
 | Bend | node/handle protegido → segmento alvo de Bend → vazio |
 | Width | width handle/point → spine elegível → vazio |
 | Pen | endpoint para continuar/fechar → snap candidate válido → novo node |
@@ -248,12 +248,16 @@ Pointer device e pressure não mudam o significado de seleção por si só. Pref
 
 ## 13. Pontos de decisão para revisão conjunta
 
-**A. Marquee em Select:** contenção uniforme ou seleção direcional (inside/crossing)?
+**A. Marquee em Select:** contenção uniforme ou seleção direcional (inside/crossing)? Definir também política de lasso e critérios de interseção para nodes/objetos.
 
 **B. Transformação de subseleção:** bounding box aparece automaticamente com 2+ nodes selecionados, ou somente quando ativada ação Transform Nodes?
 
-**C. Handles:** default selecionados + opção show-all, ou todos os handles sempre visíveis em Vector Edit?
+**C. Desambiguação de hit-test:** quando node e handle (ou dois nodes) coincidem, qual prioridade inicial, como alternar candidatos sem Alt reservado ao window manager e qual indicação no canvas?
 
-Outras preferências — atalhos, paleta, tamanho de anchors, scroll/drag-scrub, escolha de iconografia — pertencem à futura etapa de UX detalhada.
+**D. Gestos de seleção:** clique/Shift/Ctrl, arrasto em seleção com modificador, invert selection e navegação por teclado, respeitando configuração de atalhos e tecnologias assistivas.
+
+**Já aprovado, não reabrir como escolha A/B/C:** handles selecionados visíveis por padrão, inclusive multisseleção, com opção de mostrar todos; tipos e formas dos nodes diferenciados; hover não altera geometria.
+
+Outras preferências — paleta, tamanho de anchors, scroll/drag-scrub, escolha de iconografia — pertencem à futura etapa de UX detalhada.
 
 [Vector Edit](#/docs/04-ui/vector-edit-interaction.md) · [Smart Path](#/docs/04-ui/smart-path.md) · [Acessibilidade](#/docs/04-ui/accessibility.md) · [ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md)
