@@ -1,17 +1,25 @@
 # color.rs
 
-`color.rs` define **valores de cor e metadados semânticos**. Conversões ICC e transformações entre espaços ficam no Color Engine; composição fica no Render.
+`color.rs` define valores autorais de cor, espaços/perfis referenciados, swatches e parâmetros de gradiente.
 
-## Decisão 1 — representação de canais
+Conversão ICC pertence ao Color Management Engine. Composição pertence ao Render.
 
-Usar `f32` para cores autorais e parâmetros. Não usar `u8` como representação canônica porque 8-bit é formato de armazenamento/output, não precisão de edição.
+## Regra central
 
-```rust
+> **Canal numérico sem espaço/perfil não é uma cor gerenciada completa.**
+
+`RGB(1,0,0)` em sRGB e Display P3 não representa exatamente a mesma cor.
+
+## Canais
+
+Cores autorais usam `f32`.
+
+~~~rust
 pub struct Rgba {
     pub r: f32,
     pub g: f32,
     pub b: f32,
-    pub a: f32,
+    pub alpha: f32,
 }
 
 pub struct Cmyka {
@@ -19,7 +27,7 @@ pub struct Cmyka {
     pub m: f32,
     pub y: f32,
     pub k: f32,
-    pub a: f32,
+    pub alpha: f32,
 }
 
 pub struct Laba {
@@ -33,122 +41,322 @@ pub struct Graya {
     pub gray: f32,
     pub alpha: f32,
 }
-```
+~~~
 
-O nome `a_axis` evita confundir o eixo a* de Lab com alpha.
+`a_axis` evita confundir o eixo a* de Lab com alpha.
 
-## Decisão 2 — valor versus espaço/perfil
+8-bit/16-bit inteiros são formatos de armazenamento/output, não a representação canônica de edição.
 
-RGB não é um espaço completo por si só. O mesmo triplet representa cores diferentes em sRGB, Display P3 ou Adobe RGB. Portanto valor e perfil não devem ser confundidos.
+## Process color
 
-```rust
-pub enum ColorValue {
+Cores processuais carregam valor + referência de espaço.
+
+~~~rust
+pub enum ProcessColorValue {
     Rgb(Rgba),
     Cmyk(Cmyka),
     Lab(Laba),
     Gray(Graya),
-    Spot(SpotColorRef),
 }
 
-pub struct DocumentColorSpec {
-    pub model: ColorModel,
-    pub profile: ColorProfileRef,
-    pub precision: ChannelPrecision,
+pub struct ProcessColor {
+    pub value: ProcessColorValue,
+    pub space: ColorSpaceRef,
 }
-```
-
-Um documento pode ter perfil de trabalho; recursos colocados podem manter perfil de origem até a etapa definida de conversão.
-
-## Decisão 3 — encoded versus linear
-
-Uma **transfer function** é a curva matemática que relaciona o valor armazenado ao valor de luz representado.
-
-Em espaços como sRGB, os números armazenados são **encoded**: foram transformados por uma curva. Isso melhora distribuição de precisão e visualização, mas significa que `0.5` não representa necessariamente “metade da luz”.
-
-Em **linear RGB**, os valores são proporcionais à intensidade de luz representada.
-
-Cor para edição/UI costuma estar codificada; blending e vários filtros devem ocorrer em espaço linear quando a matemática exige relações de luz.
-
-Criar tipos distintos para impedir mistura acidental:
-
-```rust
-pub struct EncodedRgba(pub Rgba);
-pub struct LinearRgba(pub Rgba);
-```
-
-A conversão é função do Engine/Render, não método implícito do Core.
-
-## Decisão 4 — alpha
-
-No modelo de documento, armazenar **straight alpha**. Em buffers de composição, usar preferencialmente **premultiplied alpha**.
-
-Motivo: premultiplicação torna composição alpha mais eficiente e evita várias bordas incorretas.
-
-**Porter–Duff** é uma família clássica de operadores de composição que define como duas imagens com alpha são combinadas — por exemplo, source-over, destination-over, source-in e source-out.
-
-O caso mais comum no editor é **source-over**: desenhar a fonte por cima do fundo.
-
-Blend modes são definidos sobre relações de cor que não devem ser confundidas com os valores premultiplicados. A fronteira deve ser explícita. A matemática completa de composição fica em [Composição e efeitos](#/docs/03-render/compositing-effects.md).
-
-## Decisão 5 — range e HDR
-
-**Clamping** força um valor para dentro de um intervalo.
-
-~~~text
-clamp(-0.2, 0, 1) → 0
-clamp(1.4, 0, 1)  → 1
 ~~~
 
-Não fazer clamping automático em construtores de `f32`. Operações lineares/HDR podem temporariamente produzir valores fora de 0…1. Clamp só quando um formato ou output exigir.
+`ColorSpaceRef` pode referenciar:
 
-Fornecer:
-- `is_finite()`
-- validação de alpha
-- `clamp_for_encoding()`
-- conversões explicitamente nomeadas.
+- espaço built-in conhecido;
+- perfil ICC incorporado;
+- perfil ICC externo resolvido;
+- espaço definido pelo documento.
 
-## Decisão 6 — spot colors
+A representação concreta pode evoluir, mas a referência é explícita.
 
-Spot color é identidade semântica, não apenas CMYK.
+## ColorValue
 
-```rust
+~~~rust
+pub enum ColorValue {
+    Process(ProcessColor),
+    Spot(SpotColorRef),
+}
+~~~
+
+Spot não é tratado como “CMYK especial”; possui identidade própria.
+
+## DocumentColorSpec
+
+Documento define defaults/working spaces, não reinterpreta silenciosamente toda cor existente.
+
+~~~rust
+pub struct DocumentColorSpec {
+    pub rgb_working: ColorSpaceRef,
+    pub cmyk_working: Option<ColorSpaceRef>,
+    pub gray_working: Option<ColorSpaceRef>,
+    pub rendering_defaults: RenderingDefaults,
+}
+~~~
+
+Recursos colocados podem preservar perfil próprio.
+
+## Assign versus Convert
+
+**Assign profile** muda a interpretação do mesmo número.
+
+**Convert profile** recalcula números para preservar aparência tanto quanto possível.
+
+São Commands diferentes.
+
+~~~text
+Assign
+numbers same
+profile changes
+appearance may change
+
+Convert
+appearance target preserved
+numbers may change
+~~~
+
+Nunca fazer Convert implicitamente porque um painel foi aberto ou o working space mudou.
+
+## Encoded e linear
+
+Espaços como sRGB usam transfer function.
+
+**Encoded RGB** é valor após essa curva.
+
+**Linear RGB** é proporcional à intensidade luminosa representada.
+
+Criar distinção de tipos onde reduzir erro:
+
+~~~rust
+pub struct EncodedRgba(pub Rgba);
+pub struct LinearRgba(pub Rgba);
+~~~
+
+A conversão depende do espaço/perfil e pertence ao Engine/Render.
+
+## Alpha
+
+No Document, alpha é **straight**.
+
+~~~text
+red = 1
+alpha = 0.5
+~~~
+
+Em buffers de compositor, preferir **premultiplied alpha**.
+
+~~~text
+premultiplied red = 0.5
+alpha = 0.5
+~~~
+
+Não persistir cor premultiplicada como valor autoral comum.
+
+## Range
+
+Alpha autoral precisa ser finito e normalmente fica em 0…1.
+
+RGB linear intermediário pode ultrapassar 0…1 em HDR/effects.
+
+Não clamp automaticamente um valor apenas porque a UI tradicional espera 0…1.
+
+Clamping ocorre na fronteira que exige range específico.
+
+## Spot colors
+
+~~~rust
 pub struct SpotColor {
     pub id: SpotColorId,
     pub name: String,
-    pub alternate: ColorValue,
+    pub alternate: ProcessColor,
+}
+~~~
+
+A identidade da tinta é `SpotColorId`.
+
+Tint pertence ao uso da spot, não necessariamente à definição global:
+
+~~~rust
+pub struct SpotColorRef {
+    pub id: SpotColorId,
     pub tint: f32,
 }
-```
+~~~
 
-A tinta spot precisa sobreviver a PDF/export/prepress mesmo quando a tela usa uma cor alternativa para preview.
+Isso permite usar a mesma tinta em diferentes percentuais.
 
-## Decisão 7 — gradientes
+`alternate` serve para preview quando o dispositivo não reproduz a tinta real.
 
-Stops pertencem ao Core:
+## Swatches
 
-```rust
+Swatch é recurso documental reutilizável.
+
+~~~rust
+pub struct Swatch {
+    pub id: SwatchId,
+    pub name: String,
+    pub value: SwatchValue,
+}
+
+pub enum SwatchValue {
+    Color(ColorValue),
+    Gradient(Gradient),
+}
+~~~
+
+Se Swatch for **linked**, objetos referenciam SwatchId e mudanças propagam.
+
+Se a cor for copiada como valor local, deixa de depender do swatch.
+
+A escolha entre linked/local precisa ser explícita no Paint.
+
+## Gradients
+
+Stops são Document State.
+
+~~~rust
 pub struct GradientStop {
     pub offset: f32,
-    pub color: ColorValue,
+    pub color: ColorSource,
     pub midpoint: f32,
 }
-```
+~~~
 
-Interpolação pertence ao Engine/Render. A política deve dizer se interpola em linear RGB, perceptual ou outro espaço.
+`offset` é normalizado em 0…1. `midpoint` controla a posição perceptual da mistura entre stops adjacentes e precisa de range definido.
+
+### ColorSource
+
+~~~rust
+pub enum ColorSource {
+    Value(ColorValue),
+    Swatch(SwatchId),
+}
+~~~
+
+Assim Paint pode optar por cor local ou vinculada.
+
+## Interpolação
+
+Gradiente precisa persistir sua política de interpolação.
+
+Direção:
+
+~~~rust
+pub enum GradientInterpolation {
+    LinearRgb,
+    EncodedRgb,
+    Lab,
+    Oklab,
+}
+~~~
+
+`LinearRgb` é default técnico inicial por comportamento previsível para luz/composição.
+
+Adicionar modos perceptuais não exige mudar estrutura do gradient.
+
+Interpolation não é inferida pelo renderer.
+
+## Spread mode
+
+~~~rust
+pub enum GradientSpread {
+    Pad,
+    Repeat,
+    Reflect,
+}
+~~~
+
+**Pad** mantém cores extremas fora dos stops.
+
+**Repeat** repete o gradiente.
+
+**Reflect** repete alternando direção.
+
+## Geometry de gradient
+
+Gradiente declara espaço de coordenadas.
+
+~~~rust
+pub enum PaintSpace {
+    Object,
+    Document,
+}
+~~~
+
+Linear e radial persistem seus pontos/radii no espaço escolhido.
+
+Transformar objeto não deve “adivinhar” se gradient acompanha o objeto: PaintSpace torna isso explícito.
+
+## Conical gradient
+
+Conical gradient é compatível com o mesmo modelo de stops/spread/space e entra como capacidade planejada.
+
+Não precisa de novo sistema de cor.
+
+## Mesh gradient
+
+Mesh gradient avançado continua futuro.
+
+Não persistir `MeshGradient` incompleto apenas para reservar enum na v0.1.
+
+Quando especificado, deve ter modelo próprio e migration.
+
+## HDR
+
+Arquitetura permite RGB float extended range.
+
+HDR completo exige posteriormente definir:
+
+- working space;
+- transfer function;
+- luminance semantics;
+- metadata de output;
+- tone mapping.
+
+Não prometer HDR profissional apenas porque `f32` aceita valores > 1.
+
+## Finitude e validação
+
+Todos os canais persistentes são finitos.
+
+Ranges específicos são validados por modelo.
+
+Exemplos:
+
+~~~text
+alpha: 0..1
+CMYK process channels: 0..1
+GradientStop offset: 0..1
+Spot tint: 0..1
+~~~
+
+Lab usa ranges semânticos próprios; não normalizar eixos a* e b* arbitrariamente só para “caber” em 0…1.
+
+## Cor de UI
+
+Theme/UI colors não usam ColorValue persistente do Document.
+
+Elas pertencem ao domínio UI.
+
+## Soft proof
+
+Soft proof é View State.
+
+Ele transforma a apresentação através do Color Engine/Render e nunca altera ColorValue do documento.
 
 ## Invariantes
 
-- Canais devem ser finitos.
-- Alpha autoral normalmente 0…1.
-- Conversões de perfil nunca acontecem silenciosamente.
-- `assign profile` e `convert profile` são Commands diferentes.
-- Cor de UI/tema não usa os tipos persistentes do documento.
-- Soft proof nunca altera a cor do documento.
-
-## Estado atual e migração
-
-O `ColorRgba` atual já usa `f32` normalizado e deve permanecer como base simples enquanto `ColorValue` e `DocumentColorSpec` são introduzidos. `ColorSpace::Srgb/DisplayP3/LinearSrgb` é insuficiente para workflows ICC/CMYK e deve evoluir sem quebrar serialização por migração versionada.
-
-## Referências técnicas
-
-O ICC define PCS e quatro rendering intents; Affinity diferencia assign de convert e mantém soft proof como ajuste. O compositor deve seguir semântica Porter–Duff/blend em espaço adequado.
+1. Cor processual sempre referencia espaço/perfil.
+2. Cores autorais usam float, não u8 canônico.
+3. Straight alpha é persistente; premultiplied é representação de composição.
+4. Assign e Convert são operações distintas.
+5. Conversão ICC nunca acontece silenciosamente.
+6. Spot possui identidade independente do alternate preview.
+7. Gradient persiste interpolation/spread/space.
+8. Mesh gradient avançado não entra incompleto na v0.1.
+9. HDR é arquitetura preparada, não promessa de workflow completo.
+10. UI theme colors não contaminam o modelo documental.
