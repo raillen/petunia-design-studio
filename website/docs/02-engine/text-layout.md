@@ -72,18 +72,7 @@ Razões:
 - sem necessidade de carregar dicionário arbitrário durante o layout;
 - fica atrás de uma interface Petunia, portanto não contamina o modelo autoral.
 
-Contrato:
-
-~~~rust
-pub trait Hyphenator {
-    fn opportunities(
-        &self,
-        word: &str,
-        language: &LanguageTag,
-        out: &mut Vec<HyphenOpportunity>,
-    ) -> Result<()>;
-}
-~~~
+O backend implementa o contrato canônico `HyphenationProvider` definido na seção de Hyphenation abaixo.
 
 `LanguageTag` continua BCP 47 no Core. O adapter mapeia tags suportadas para o idioma do backend.
 
@@ -243,7 +232,7 @@ tação
 
 O Engine não deve aplicar regras de português a um parágrafo marcado como inglês.
 
-A v0.1 trata hyphenation como serviço opcional por idioma atrás de `HyphenationProvider`.
+A v0.1 trata hyphenation como serviço opcional por idioma atrás do contrato canônico `HyphenationProvider`, implementado inicialmente por `hypher`.
 
 ~~~rust
 pub trait HyphenationProvider {
