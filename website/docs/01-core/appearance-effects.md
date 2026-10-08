@@ -1,52 +1,64 @@
-# appearance + effects
+# Appearance + Effects
 
-**Appearance** descreve como uma geometria é pintada: fills, strokes, opacity e blend.
+**Appearance** descreve como uma geometria é pintada. **Effect** descreve uma operação reavaliável aplicada antes ou depois dessa pintura.
 
-**Effect** descreve uma operação reavaliável aplicada antes ou depois da pintura, como blur, shadow ou ajuste de cor.
+A ordem semântica do objeto é:
+
+```text
+Source Geometry
+↓
+Geometry Effects
+↓
+Appearance Items
+↓
+Post-Paint Effects / Adjustments
+↓
+Clip / Mask
+↓
+Node Opacity / Blend into Parent
+```
 
 ## Appearance
 
-Suportar múltiplos paints no futuro sem quebrar modelo:
+Appearance é uma lista ordenada para permitir interleaving de fills e strokes:
 
 ```rust
 pub struct Appearance {
-    pub fills: Vec<FillLayer>,
-    pub strokes: Vec<StrokeLayer>,
+    pub items: Vec<AppearanceItem>,
 }
 
-pub struct FillLayer {
-    pub paint: Paint,
+pub struct AppearanceItem {
+    pub id: AppearanceItemId,
+    pub enabled: bool,
     pub opacity: f32,
     pub blend_mode: BlendMode,
-    pub enabled: bool,
+    pub kind: AppearanceKind,
 }
 
-pub struct StrokeLayer {
-    pub paint: Paint,
-    pub style: StrokeStyle,
-    pub opacity: f32,
-    pub enabled: bool,
+pub enum AppearanceKind {
+    Fill(Fill),
+    Stroke(Stroke),
 }
 ```
+
+Separar fills e strokes em dois vetores impediria ordens como Fill → Stroke → Fill.
+
+`AppearanceItemId` é identidade persistente para reorder, undo e referência futura.
 
 ## Paint
 
 ```rust
 pub enum Paint {
-    Solid(ColorValue),
+    Solid(ColorSource),
     LinearGradient(LinearGradient),
     RadialGradient(RadialGradient),
-    MeshGradient(MeshGradientRef),
     Pattern(PatternRef),
 }
 ```
 
-Um gradiente precisa declarar em qual sistema de coordenadas vive:
+Gradients persistem stops, interpolation, spread e espaço geométrico. **Object space** acompanha o objeto; **document space** permanece referenciado ao documento.
 
-- **object space** — relativo ao próprio objeto;
-- **document space** — relativo ao documento.
-
-Um **stop** é um ponto do gradiente que define posição e cor. O renderer não pode “adivinhar” a unidade ou o espaço dos stops.
+Conical Gradient é extensão planejada do mesmo contrato. Mesh Gradient avançado fica fora da v0.1 até ter modelo próprio; não manter um enum incompleto apenas para reservar espaço.
 
 ## StrokeStyle
 
