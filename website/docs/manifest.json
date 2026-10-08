@@ -47,6 +47,10 @@
           "path": "00-architecture/ptnd-format.md"
         },
         {
+          "title": "Diagnósticos + observabilidade",
+          "path": "00-architecture/diagnostics-observability.md"
+        },
+        {
           "title": "Verificação e quality gates",
           "path": "00-architecture/verification.md"
         }
