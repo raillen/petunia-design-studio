@@ -305,7 +305,7 @@ Resource garbage collection é operação separada/segura porque History ou outr
 Traversal precisa ser determinístico.
 
 ~~~text
-root_children em ordem
+Page.root_children em ordem
 ↓
 depth-first conforme children
 ~~~
@@ -333,7 +333,7 @@ Não obrigar SceneGraph autoral a virar render graph.
 SceneGraph válido garante:
 
 - ObjectId único;
-- parent existente ou root;
+- ParentRef aponta para Page ou Object existente;
 - children existentes;
 - parent/child consistency;
 - nenhuma child duplicada no mesmo container;
@@ -346,7 +346,7 @@ SceneGraph válido garante:
 ## Invariantes
 
 1. Scene é modelo autoral, não draw list.
-2. Z-order vem de children/root_children ordenados.
+2. Z-order vem de Page.root_children e container children ordenados.
 3. Leaf items não armazenam children.
 4. Parent + children mudam atomicamente.
 5. Local transform é persistente; world transform é derivado.
