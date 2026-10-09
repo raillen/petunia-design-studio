@@ -1,5 +1,4 @@
 const MANIFEST_URL = "./docs/manifest.json";
-const PROGRESS_PATH = "00-roadmap/progress.md";
 
 const nav = document.querySelector("#docNav");
 const content = document.querySelector("#content");
@@ -18,6 +17,7 @@ let FuseCtor = null;
 let searchDocuments = [];
 let currentPath = null;
 let tocObserver = null;
+let routeRequest = 0;
 let keyboardResultIndex = -1;
 
 const domainIcons = {
@@ -324,21 +324,6 @@ function moveSearchSelection(delta) {
   items[keyboardResultIndex].scrollIntoView({ block: "nearest" });
 }
 
-function setActiveTopnav(path) {
-  document.querySelectorAll(".topnav a").forEach(function (link) {
-    const href = link.getAttribute("href") || "";
-    const isProgressLink = href === "#/progress";
-    const isActive = isProgressLink
-      ? (path === PROGRESS_PATH)
-      : (href === "#/docs/" + path);
-    if (isActive) {
-      link.setAttribute("aria-current", "page");
-    } else {
-      link.removeAttribute("aria-current");
-    }
-  });
-}
-
 function setActiveFile(path) {
   document.querySelectorAll(".file-overview").forEach(function (link) {
     const active = link.dataset.path === path;
@@ -505,7 +490,6 @@ async function openDoc(path, anchor) {
     enhanceRenderedMarkdown();
     buildPageToc();
     setActiveFile(path);
-    setActiveTopnav(path);
 
     document.title =
       (meta ? meta.file.title : "Documentação") + " — Petunia Design";
@@ -601,6 +585,15 @@ async function buildNavigation() {
     domainDetails.append(domainSummary, domainChildren);
     nav.append(domainDetails);
   }
+
+  const progressLink = document.createElement("a");
+  progressLink.className = "nav-home file-overview";
+  progressLink.href = "#/progress";
+  progressLink.dataset.path = "progress";
+  progressLink.innerHTML =
+    '<i class="ph ph-check-square" aria-hidden="true"></i>' +
+    "<span>Progresso</span>";
+  nav.append(progressLink);
 }
 
 async function preloadDocumentation() {
@@ -615,11 +608,40 @@ async function preloadDocumentation() {
 }
 
 function route() {
+  if (!manifest) return;
+  const request = ++routeRequest;
   const raw = location.hash || "#/docs/home.md";
-  const progressMatch = /^#\/progress(?:#(.+))?$/.exec(raw);
+  const progressMatch = /^#\/progress(?:\/([A-Z]\d{2}))?$/.exec(raw);
+
+  document.querySelector(".app-shell").classList.toggle("progress-mode", Boolean(progressMatch));
+  document.querySelectorAll(".topnav a").forEach(function (link) {
+    const active = progressMatch
+      ? link.hash === "#/progress"
+      : link.hash === raw.split("#").slice(0, 2).join("#");
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
 
   if (progressMatch) {
-    openDoc(PROGRESS_PATH, progressMatch[1]);
+    if (tocObserver) tocObserver.disconnect();
+    pageToc.innerHTML = "";
+    currentPath = "progress";
+    setActiveFile("progress");
+    document.title = "Progresso — Petunia Design";
+    content.innerHTML =
+      '<div class="loading-card" role="status">Carregando processos…</div>';
+    closeMobileNavigation();
+    PetuniaProgress.mount(content, manifest, function () {
+      return request === routeRequest;
+    }, progressMatch[1]).catch(function (error) {
+      if (request !== routeRequest) return;
+      content.innerHTML =
+        '<div class="error-card" role="alert">' +
+        "<strong>Não foi possível carregar os processos.</strong>" +
+        "<p>" + escapeHtml(error.message) + "</p>" +
+        '<a href="#/docs/00-roadmap/progress.md">Abrir o protocolo de acompanhamento</a>' +
+        "</div>";
+    });
     return;
   }
 

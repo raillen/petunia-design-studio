@@ -1,0 +1,645 @@
+{
+  "schemaVersion": 1,
+  "branch": "petunia-design-rust",
+  "baselineSha": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+  "updated": "2026-10-09",
+  "phases": [
+    {
+      "id": "contracts",
+      "title": "0 · Contratos de arquitetura",
+      "description": "Decisões, fronteiras e formatos registrados como contrato; a implementação é acompanhada nas etapas seguintes."
+    },
+    {
+      "id": "foundations",
+      "title": "1 · Núcleo (Core)",
+      "description": "Tipos autorais, geometria canônica e documento: math, units, ids, path, shape, scene, color e recursos."
+    },
+    {
+      "id": "engine",
+      "title": "2 · Engine",
+      "description": "Commands, geometry, spatial, brush, raster, texto, cor, I/O, persistência e plugins."
+    },
+    {
+      "id": "render",
+      "title": "3 · Render",
+      "description": "Contrato Engine → Render, software reference renderer, compositor e saída."
+    },
+    {
+      "id": "interface",
+      "title": "4 · Interface",
+      "description": "Sessão, input, ferramentas e workspace; GUI fora do fechamento até discussão conjunta."
+    },
+    {
+      "id": "quality",
+      "title": "5 · Gates, reuso e legado",
+      "description": "Verificação executável, benchmarks, fuzzing, reuso upstream e migração do legado Python/C++."
+    },
+    {
+      "id": "governance",
+      "title": "Contínuo · Documentação e processo",
+      "description": "Caderno vivo, protocolos de agentes e o próprio painel de acompanhamento."
+    }
+  ],
+  "evidence": {
+    "ev-a01-bounds": {
+      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "document": "00-architecture/boundaries.md",
+      "summary": "Fronteiras Core/Engine/Render/UI presentes no checkout (leitura em 2026-10-09); contrato SPECIFIED, sem código associado."
+    },
+    "ev-a01-ptnd": {
+      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "document": "00-architecture/ptnd-format.md",
+      "summary": "PTND e versionamento especificados no checkout (leitura em 2026-10-09); writer/loader ainda não codificados."
+    },
+    "ev-a01-adr": {
+      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "document": "00-architecture/adr/index.md",
+      "summary": "ADRs 0001–0011 publicados no checkout (leitura em 2026-10-09), incluindo ADR-0011 do Vector Edit híbrido."
+    },
+    "ev-c01": {
+      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "document": "01-core/math.md",
+      "summary": "math.rs, units.rs e id.rs presentes; cargo test -p petunia-core 14/14 em 2026-10-09."
+    },
+    "ev-c02": {
+      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "document": "01-core/path.md",
+      "summary": "path.rs, scene.rs e document.rs básicos presentes; shape.rs, guides e crop ainda ausentes."
+    },
+    "ev-c03": {
+      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "document": "01-core/color.md",
+      "summary": "color.rs com RGBA e poucos espaços; sem Spot, ICC, proofing ou appearance/effects."
+    },
+    "ev-e01": {
+      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "document": "02-engine/commands-history.md",
+      "summary": "command.rs com AddNode/TransformNode/History; cargo test -p petunia-engine 2/2 em 2026-10-09; sem DocumentOp/Transaction."
+    },
+    "ev-e02": {
+      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "document": "02-engine/spatial.md",
+      "summary": "snapping.rs básico presente; sem R-tree, hit-test completo ou ranking."
+    },
+    "ev-r01": {
+      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "document": "03-render/pipeline.md",
+      "summary": "backend.rs com RenderBackend e software.rs mínimos; cargo test -p petunia-render 1/1; sem crate render-model."
+    },
+    "ui-checkpoint": {
+      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "document": "04-ui/session-input.md",
+      "summary": "app.rs e input.rs com sessão mínima; cargo test -p petunia-ui 1/1; tools/workspace fora do fechamento."
+    },
+    "tracker-delivery": {
+      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "document": "00-roadmap/progress.md",
+      "summary": "Módulo website/progress portado com tabela, filtros, percentuais e protocolo; verify-progress e progress.test verdes."
+    }
+  },
+  "tasks": [
+    {
+      "id": "A01",
+      "phase": "contracts",
+      "title": "Contratos de arquitetura e PTND",
+      "description": "Fronteiras Core/Engine/Render/UI, modelo não destrutivo, PTND, versionamento e ADRs registrados como decisão fechada.",
+      "document": "00-architecture/boundaries.md",
+      "status": "DONE",
+      "updated": "2026-10-09",
+      "baseline": "Contratos presentes no checkout; DONE aqui significa decisão registrada, não código executando o contrato.",
+      "checkpoints": [
+        {
+          "title": "Fronteiras e invariantes Core/Engine/Render/UI registrados",
+          "completed": true,
+          "evidence": "ev-a01-bounds"
+        },
+        {
+          "title": "PTND, versionamento e não destrutibilidade especificados",
+          "completed": true,
+          "evidence": "ev-a01-ptnd"
+        },
+        {
+          "title": "ADRs 0001–0011 publicados, incluindo Vector Edit híbrido",
+          "completed": true,
+          "evidence": "ev-a01-adr"
+        }
+      ],
+      "documents": [
+        "00-architecture/boundaries.md",
+        "00-architecture/implementation-matrix.md",
+        "00-architecture/non-destructive.md",
+        "00-architecture/ptnd-format.md",
+        "00-architecture/versioning-compatibility.md",
+        "00-architecture/security-model.md",
+        "00-architecture/diagnostics-observability.md",
+        "00-architecture/verification.md",
+        "00-architecture/adr/index.md",
+        "00-philosophy/manifesto.md",
+        "00-philosophy/refactor-principles.md",
+        "00-philosophy/code-quality.md",
+        "00-philosophy/dependency-policy.md",
+        "00-philosophy/documentation-policy.md",
+        "00-roadmap/capabilities.md",
+        "00-roadmap/progress.md"
+      ]
+    },
+    {
+      "id": "C01",
+      "phase": "foundations",
+      "title": "Núcleo: math, units e ids",
+      "description": "Primitivas f64, unidades canônicas com conversões e IDs tipados com serialização.",
+      "document": "01-core/math.md",
+      "status": "IN PROGRESS",
+      "updated": "2026-10-09",
+      "baseline": "Confirmado no código. crates/petunia-core/src/math.rs, units.rs, id.rs. Falta tolerância contextual e canonicalização em math.rs.",
+      "checkpoints": [
+        {
+          "title": "math.rs com Point, Vec2, Rect e Transform2D",
+          "completed": true,
+          "evidence": "ev-c01"
+        },
+        {
+          "title": "units.rs com Unit, UnitValue e conversões por DPI",
+          "completed": true,
+          "evidence": "ev-c01"
+        },
+        {
+          "title": "id.rs com DocumentId e ObjectId serializáveis",
+          "completed": true,
+          "evidence": "ev-c01"
+        },
+        {
+          "title": "Tolerâncias contextuais e canonicalização de -0.0 em math.rs",
+          "completed": false,
+          "evidence": null
+        }
+      ],
+      "documents": [
+        "01-core/math.md",
+        "01-core/ids-serialization.md"
+      ]
+    },
+    {
+      "id": "C02",
+      "phase": "foundations",
+      "title": "Núcleo: path, shape, scene e document",
+      "description": "Paths cúbicos, ParametricShape separado, scene graph ordenado e Document com pages e registries.",
+      "document": "01-core/path.md",
+      "status": "IN PROGRESS",
+      "updated": "2026-10-09",
+      "baseline": "Confirmado no código. crates/petunia-core/src/path.rs, scene.rs, document.rs (básicos). shape.rs, guides e crop ausentes.",
+      "checkpoints": [
+        {
+          "title": "path.rs com nodes cúbicos e contours",
+          "completed": true,
+          "evidence": "ev-c02"
+        },
+        {
+          "title": "scene.rs com hierarquia Path/Group e SceneGraph",
+          "completed": true,
+          "evidence": "ev-c02"
+        },
+        {
+          "title": "document.rs com canvas, scene e setup básico",
+          "completed": true,
+          "evidence": "ev-c02"
+        },
+        {
+          "title": "shape.rs com ParametricShape separado de VectorPath",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Guides, grids e slices tipados com placement",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Crop não destrutivo com ClipBinding",
+          "completed": false,
+          "evidence": null
+        }
+      ],
+      "documents": [
+        "01-core/path.md",
+        "01-core/shape.md",
+        "01-core/scene.md",
+        "01-core/document.md",
+        "01-core/guides-grids-slices.md",
+        "01-core/crop-clipping.md"
+      ]
+    },
+    {
+      "id": "C03",
+      "phase": "foundations",
+      "title": "Núcleo: color e appearance",
+      "description": "Valor de cor com perfil explícito, Spot, swatches, gradients, appearance e effects.",
+      "document": "01-core/color.md",
+      "status": "IN PROGRESS",
+      "updated": "2026-10-09",
+      "baseline": "Confirmado no código. crates/petunia-core/src/color.rs com RGBA básico. Sem Spot, ICC ou appearance.",
+      "checkpoints": [
+        {
+          "title": "color.rs com RGBA e espaços básicos",
+          "completed": true,
+          "evidence": "ev-c03"
+        },
+        {
+          "title": "Cor com perfil/espaço explícito, Spot e swatches",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Appearance e effects empilháveis não destrutivos",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Color management com ICC encapsulado",
+          "completed": false,
+          "evidence": null
+        }
+      ],
+      "documents": [
+        "01-core/color.md",
+        "01-core/appearance-effects.md"
+      ]
+    },
+    {
+      "id": "C04",
+      "phase": "foundations",
+      "title": "Núcleo: styles, texto, raster e gerados",
+      "description": "Styles linkáveis, symbols acíclicos, texto/raster/resources e conteúdo vetorial gerado com proveniência.",
+      "document": "01-core/styles-symbols.md",
+      "status": "TODO",
+      "updated": "2026-10-09",
+      "baseline": "Ausente no checkout; nenhum módulo styles, symbols, text, raster, resources ou generated.",
+      "checkpoints": [
+        {
+          "title": "styles.rs e symbols.rs com overrides tipados e detach explícito",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "text.rs, raster.rs e resources.rs com registries",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "generated.rs com TraceObject, source e parâmetros autorais",
+          "completed": false,
+          "evidence": null
+        }
+      ],
+      "documents": [
+        "01-core/styles-symbols.md",
+        "01-core/text-raster-resources.md",
+        "01-core/generated-content.md",
+        "01-core/creative-features.md"
+      ]
+    },
+    {
+      "id": "E01",
+      "phase": "engine",
+      "title": "Engine: commands e history",
+      "description": "Command → DocumentOp → Transaction → HistoryEntry com undo/redo atômico.",
+      "document": "02-engine/commands-history.md",
+      "status": "IN PROGRESS",
+      "updated": "2026-10-09",
+      "baseline": "Confirmado no código. crates/petunia-engine/src/command.rs com undo/redo básico. Sem DocumentOp ou Transaction.",
+      "checkpoints": [
+        {
+          "title": "command.rs com comandos básicos e history",
+          "completed": true,
+          "evidence": "ev-e01"
+        },
+        {
+          "title": "DocumentOp e Transaction atômica",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "HistoryEntry com memory budget e spill",
+          "completed": false,
+          "evidence": null
+        }
+      ],
+      "documents": [
+        "02-engine/commands-history.md"
+      ]
+    },
+    {
+      "id": "G01",
+      "phase": "engine",
+      "title": "Engine: geometry booleana",
+      "description": "Bézier robusto, boolean, offset, simplify, smooth, cleanup, curve fit e Shape Builder com proveniência.",
+      "document": "02-engine/geometry.md",
+      "status": "TODO",
+      "updated": "2026-10-09",
+      "baseline": "Ausente no checkout; nenhum módulo geometry/, boolean ou offset.",
+      "checkpoints": [
+        {
+          "title": "Bézier, bounds e interseções com predicates robustos",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Boolean, offset, simplify e shape builder",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Executar e registrar os gates aplicáveis do documento, com regressões e limites de ambiente.",
+          "completed": false,
+          "evidence": null
+        }
+      ],
+      "documents": [
+        "02-engine/geometry.md"
+      ]
+    },
+    {
+      "id": "E02",
+      "phase": "engine",
+      "title": "Engine: spatial e snapping",
+      "description": "R-tree, hit-test, candidatos, ranking, hysteresis e snapping com grids.",
+      "document": "02-engine/spatial.md",
+      "status": "IN PROGRESS",
+      "updated": "2026-10-09",
+      "baseline": "Confirmado no código. crates/petunia-engine/src/snapping.rs básico. Sem índice espacial ou hit-test.",
+      "checkpoints": [
+        {
+          "title": "snapping.rs com snap básico de ponto",
+          "completed": true,
+          "evidence": "ev-e02"
+        },
+        {
+          "title": "Índice R-tree com hit-test e ranking",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Snapping com candidatos, hysteresis e grids",
+          "completed": false,
+          "evidence": null
+        }
+      ],
+      "documents": [
+        "02-engine/spatial.md"
+      ]
+    },
+    {
+      "id": "E03",
+      "phase": "engine",
+      "title": "Engine: brush, texto, I/O e plugins",
+      "description": "Brush/raster, text/layout, color, import/export, persistência, fragments, jobs e plugins WASM/MCP.",
+      "document": "02-engine/brush-raster.md",
+      "status": "TODO",
+      "updated": "2026-10-09",
+      "baseline": "Ausente no checkout; nenhum módulo brush, raster, text, import, export, persistence, jobs ou plugins.",
+      "checkpoints": [
+        {
+          "title": "Brush/raster com resampling, tiles COW e filtros",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Text/layout com Unicode, BiDi, shaping e fallback",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "I/O com PTND ZIP, recovery journal e fragments",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Scheduler, plugins WASM e adapter MCP",
+          "completed": false,
+          "evidence": null
+        }
+      ],
+      "documents": [
+        "02-engine/brush-raster.md",
+        "02-engine/text-layout.md",
+        "02-engine/color-management.md",
+        "02-engine/io-jobs-plugins.md",
+        "02-engine/persistence-recovery.md",
+        "02-engine/document-fragments.md",
+        "02-engine/image-analysis-vectorization.md",
+        "02-engine/vector-generators.md",
+        "02-engine/creative-operations.md"
+      ]
+    },
+    {
+      "id": "R01",
+      "phase": "render",
+      "title": "Render: model, software e compositor",
+      "description": "Crate render-model imutável, software tiled renderer, compositor, cache, overlays e output.",
+      "document": "03-render/render-model.md",
+      "status": "IN PROGRESS",
+      "updated": "2026-10-09",
+      "baseline": "Confirmado no código. crates/petunia-render/src/backend.rs e software.rs mínimos. Sem crate render-model.",
+      "checkpoints": [
+        {
+          "title": "backend.rs com contrato RenderBackend e software mínimo",
+          "completed": true,
+          "evidence": "ev-r01"
+        },
+        {
+          "title": "Crate render-model com RenderSnapshot imutável",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Tiled renderer, compositor e paint evaluation",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Cache, overlays, adjustments e output headless",
+          "completed": false,
+          "evidence": null
+        }
+      ],
+      "documents": [
+        "03-render/render-model.md",
+        "03-render/pipeline.md",
+        "03-render/compositing-effects.md",
+        "03-render/cache-overlay-output.md",
+        "03-render/paint-evaluation.md",
+        "03-render/adjustments.md"
+      ]
+    },
+    {
+      "id": "U01",
+      "phase": "interface",
+      "title": "Interface: sessão, ferramentas e workspace",
+      "description": "Sessão e input mínimos hoje; tools, Vector Edit, workspace e acessibilidade voltam em discussão conjunta.",
+      "document": "04-ui/session-input.md",
+      "status": "IN PROGRESS",
+      "updated": "2026-10-09",
+      "baseline": "Confirmado no código. crates/petunia-ui/src/app.rs e input.rs mínimos. GUI fora do fechamento por decisão.",
+      "checkpoints": [
+        {
+          "title": "Sessão mínima com input, tools e ações",
+          "completed": true,
+          "evidence": "ui-checkpoint"
+        },
+        {
+          "title": "Vector Edit híbrido com ADR-0011 (após discussão conjunta)",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Workspace, painéis e acessibilidade por padrão",
+          "completed": false,
+          "evidence": null
+        }
+      ],
+      "documents": [
+        "04-ui/session-input.md",
+        "04-ui/tools.md",
+        "04-ui/vector-edit-interaction.md",
+        "04-ui/selection-nodes-handles.md",
+        "04-ui/vector-edit-precision.md",
+        "04-ui/pen-path-creation.md",
+        "04-ui/creative-tools-overview.md",
+        "04-ui/smart-path.md",
+        "04-ui/smart-path-operations.md",
+        "04-ui/smart-region.md",
+        "04-ui/smart-region-interaction.md",
+        "04-ui/smart-distribution.md",
+        "04-ui/smart-distribution-interaction.md",
+        "04-ui/smart-color.md",
+        "04-ui/smart-color-interaction.md",
+        "04-ui/smart-measure.md",
+        "04-ui/smart-measure-interaction.md",
+        "04-ui/advanced-creative-tools.md",
+        "04-ui/advanced-creative-tools-interaction.md",
+        "04-ui/workspace.md",
+        "04-ui/accessibility.md"
+      ]
+    },
+    {
+      "id": "Q01",
+      "phase": "quality",
+      "title": "Gates: verificação, benchmarks e fuzzing",
+      "description": "Quality gates por módulo, benchmarks de geometria/render, fuzzing de PTND e CI executando tudo.",
+      "document": "00-architecture/verification.md",
+      "status": "TODO",
+      "updated": "2026-10-09",
+      "baseline": "Contrato de verificação escrito; nenhum benchmark, fuzz target ou gate de CI registrado como executado.",
+      "checkpoints": [
+        {
+          "title": "Quality gates por módulo executados e registrados",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Benchmarks de geometry, spatial e render com budgets",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Fuzzing de PTND, paths e serialização na CI",
+          "completed": false,
+          "evidence": null
+        }
+      ],
+      "documents": [
+        "00-architecture/verification.md",
+        "00-architecture/diagnostics-observability.md"
+      ]
+    },
+    {
+      "id": "F01",
+      "phase": "quality",
+      "title": "Reuso upstream e migração do legado",
+      "description": "Auditar VectorCraft/PhotoCraft/LightCraft e o legado Python/C++ para copiar com proveniência, adapters e testes.",
+      "document": "06-references/index.md",
+      "status": "TODO",
+      "updated": "2026-10-09",
+      "baseline": "Estudos e política presentes; nenhum módulo copiado ou adaptado até esta baseline.",
+      "checkpoints": [
+        {
+          "title": "Auditar candidatos de reuso com matriz de integração",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Adaptar com proveniência, notices e adapters de fronteira",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Validar com testes e gates antes de integrar",
+          "completed": false,
+          "evidence": null
+        }
+      ],
+      "documents": [
+        "06-references/index.md",
+        "06-references/vectorcraft.md",
+        "06-references/photocraft.md",
+        "06-references/lightcraft.md",
+        "06-references/integration-matrix.md",
+        "06-references/code-reuse-policy.md",
+        "06-references/agent-research-protocol.md",
+        "07-agents/legacy-migration.md"
+      ]
+    },
+    {
+      "id": "T01",
+      "phase": "governance",
+      "title": "Painel de acompanhamento da implementação",
+      "description": "Tabela única versionada, documentos vinculados, três estados, percentual por checkpoints e protocolo de atualização a cada entrega.",
+      "document": "00-roadmap/progress.md",
+      "status": "DONE",
+      "updated": "2026-10-09",
+      "baseline": "Novo módulo solicitado nesta entrega; dados conservadores a partir do checkout real.",
+      "checkpoints": [
+        {
+          "title": "Integrar tabela, filtros e links ao site zero-build.",
+          "completed": true,
+          "evidence": "tracker-delivery"
+        },
+        {
+          "title": "Registrar atualização obrigatória no protocolo.",
+          "completed": true,
+          "evidence": "tracker-delivery"
+        },
+        {
+          "title": "Validar dados, transições, rotas, interação e layout no navegador.",
+          "completed": true,
+          "evidence": "tracker-delivery"
+        }
+      ],
+      "documents": [
+        "00-roadmap/progress.md",
+        "07-agents/index.md",
+        "07-agents/authority-reading.md",
+        "07-agents/implementation-workflow.md",
+        "07-agents/prompts.md",
+        "07-agents/orchestration.md",
+        "07-agents/workforce-catalog.md",
+        "07-agents/workforce-agents.md",
+        "07-agents/workforce-recipes.md",
+        "07-agents/workforce-skills-navigation.md",
+        "07-agents/workforce-skills-accessibility-ux.md",
+        "07-agents/workforce-skills-visual-design.md",
+        "07-agents/workforce-skills-engineering-quality.md",
+        "07-agents/workforce-skills-graphics-rendering.md",
+        "07-agents/workforce-skills-security-integration.md",
+        "07-agents/workforce-skills-language-tooling.md",
+        "07-agents/workforce-skills-other-specialists.md",
+        "07-agents/workforce-skills-programming-languages.md",
+        "07-agents/workforce-skills-remaining.md",
+        "07-agents/accessibility.md",
+        "07-agents/handoff.md",
+        "home.md",
+        "about.md"
+      ]
+    }
+  ]
+}

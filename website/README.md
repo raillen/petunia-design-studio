@@ -30,6 +30,14 @@ website/
 ├── styles.css
 ├── app.js
 ├── README.md
+├── progress/
+│   ├── tasks.json
+│   ├── progress.js
+│   └── progress.css
+├── scripts/
+│   └── verify-progress.cjs
+├── tests/
+│   └── progress.test.cjs
 └── docs/
     ├── manifest.json
     ├── home.md
@@ -112,6 +120,19 @@ O conteúdo Markdown é considerado **conteúdo confiável do próprio repositó
 ## Entrada da documentação
 
 A rota padrão é `#/docs/home.md`. A home apresenta brevemente a arquitetura e aponta a ordem de leitura recomendada.
+
+## Progresso das etapas
+
+O módulo **Progresso** (`#/progress`) exibe `website/progress/tasks.json`: processos vinculados aos documentos, contadores TODO/IN PROGRESS/DONE, busca sem acentos, filtros por estado e etapa, barra `<progress>` nativa por processo IN PROGRESS, checkpoints expansíveis com evidências e permalinks `#/progress/<ID>`. Atualizar o JSON em cada implementação é obrigatório; veja `website/docs/00-roadmap/progress.md`. Percentuais são derivados dos checkpoints (`floor(100 × concluídos / total)`), sem storage privado no navegador.
+
+Gates do módulo:
+
+~~~bash
+node --check website/app.js
+node --check website/progress/progress.js
+node website/scripts/verify-progress.cjs
+node --test website/tests/progress.test.cjs
+~~~
 
 Web Awesome carrega apenas `styles/themes/default.css` + autoloader. O stylesheet agregado `webawesome.css` não é usado porque ele também habilita Native Styles e passaria a estilizar elementos nativos da navegação, como `details` e `summary`.
 

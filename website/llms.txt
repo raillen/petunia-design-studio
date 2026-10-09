@@ -30,6 +30,7 @@
 - [Fronteiras Core/Engine/Render/UI](docs/00-architecture/boundaries.md).
 - [Decisões aprovadas](docs/00-architecture/adr/index.md).
 - [Progresso das etapas](docs/00-roadmap/progress.md): contrato versus checkout, sem percentual inventado.
+- [Dados do progresso](progress/tasks.json): fonte versionada dos processos, checkpoints e evidências exibida em `#/progress`.
 - [Matriz de implementação real/planejada](docs/00-architecture/implementation-matrix.md).
 - [Verificação](docs/00-architecture/verification.md).
 - [Segurança](docs/00-architecture/security-model.md).
