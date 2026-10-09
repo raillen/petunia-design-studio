@@ -99,6 +99,18 @@ Recomendação para as próximas etapas, mantendo a ordem da matriz:
 
 Cada item exige, antes de qualquer commit: licença por arquivo, notice de copyright, testes de paridade com o equivalente atual e benchmark no mesmo fixture — conforme [política de reutilização](#/docs/06-references/code-reuse-policy.md) e as etapas da [matriz](#/docs/06-references/integration-matrix.md).
 
+## Registro de proveniência
+
+Nenhum código é importado no Petunia sem registro. Um único port foi executado até agora:
+
+| Arquivo Petunia | Origem | Licença | Alterações |
+|---|---|---|---|
+| `crates/petunia-engine/src/geometry/fit.rs` | VectorCraft `crates/pathops/src/fit.rs` @ `5f92f5eb7fd194826aab2ad0844e474f13990938` | MIT **ou** Apache-2.0 | reescrito sobre os tipos Petunia (`CubicBez`, `Point`, `Vec2`), sem Kurbo; adicionados `refit_contour`, `g1_continuous`, `sample_uniform`; `newton` e `eval_deriv2` corrigidos durante o port; testes estendidos com caso de paridade contra `simplify` |
+
+Atribuição no código: o cabeçalho de `fit.rs` credita Philip J. Schneider, *Graphics Gems* (1990), e a origem VectorCraft com o SHA. O workspace Petunia segue **MIT OU Apache-2.0**, compatível com a origem.
+
+Nenhum asset, peso de modelo, UI egui ou dependência transitiva foi incorporado.
+
 ## Invariantes desta auditoria
 
 1. Auditoria estática não altera código do Petunia.

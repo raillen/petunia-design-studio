@@ -17,6 +17,12 @@ pub struct CubicBez {
 }
 
 impl CubicBez {
+    /// Build a segment from its anchors and handles.
+    #[must_use]
+    pub const fn new(p0: Point, p1: Point, p2: Point, p3: Point) -> Self {
+        Self { p0, p1, p2, p3 }
+    }
+
     /// Evaluate at `t` in `0..1` with de Casteljau.
     #[must_use]
     pub fn evaluate(self, t: f64) -> Point {

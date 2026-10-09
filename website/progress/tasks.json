@@ -185,6 +185,11 @@
       "revision": "a0e42f43ced0a00dbf919f3c4dfa128a0cc11ed5",
       "document": "06-references/reuse-audit.md",
       "summary": "P0 executada em 2026-10-09: clone nos 3 SHAs fixados, licenças confirmadas na raiz, 31/32 caminhos da matriz medidos em linhas, um caminho corrigido (VC mcp), cobertura forbid(unsafe_code) e uso de unsafe contabilizados. Nenhum código importado."
+    },
+    "ev-f01-port": {
+      "revision": "9daa02a619c710cde23b76f10907ffb3ecbc6125",
+      "document": "06-references/reuse-audit.md",
+      "summary": "Port de VC pathops/fit.rs para geometry/fit.rs com atribuição (Schneider Graphics Gems 1990 + SHA VectorCraft), sem Kurbo no módulo. 8 testes (caso exato, split G1, degenerados, determinismo, refit, paridade com simplify) + bench refit 6-23 µs. cargo test --workspace 97 no engine, clippy -D warnings e fmt limpos."
     }
   },
   "tasks": [
@@ -648,7 +653,7 @@
       "title": "Reuso upstream e migração do legado",
       "description": "Auditar VectorCraft/PhotoCraft/LightCraft e o legado Python/C++ para copiar com proveniência, adapters e testes.",
       "document": "06-references/index.md",
-      "status": "IN PROGRESS",
+      "status": "DONE",
       "updated": "2026-10-09",
       "baseline": "P0 (auditoria) executada em a0e42f4: 3 repos clonados nos SHAs fixados, licenças e caminhos verificados, uso de unsafe mapeado. A maioria dos alvos de ALTA prioridade já possui equivalente próprio testado no checkout. Follow-up (P1): port único e pequeno, candidato VC pathops/fit.rs (232 linhas, sem unsafe), sujeito a licença por arquivo, notices, testes de paridade e benchmark.",
       "checkpoints": [
@@ -659,13 +664,13 @@
         },
         {
           "title": "Adaptar com proveniência, notices e adapters de fronteira",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-f01-port"
         },
         {
           "title": "Validar com testes e gates antes de integrar",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-f01-port"
         }
       ],
       "documents": [

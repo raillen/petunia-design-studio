@@ -166,12 +166,42 @@ fn bench_transform(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_refit(c: &mut Criterion) {
+    let mut group = c.benchmark_group("geometry/refit");
+    use petunia_core::{Contour, NodeKind, PathNode};
+    for samples in [64usize, 256] {
+        let points: Vec<Point> = (0..=samples)
+            .map(|index| {
+                let t = index as f64 / samples as f64;
+                Point::new(t * 200.0, (t * std::f64::consts::FRAC_PI_2).sin() * 80.0)
+            })
+            .collect();
+        let mut contour = Contour::new(false);
+        for point in &points {
+            contour.push_node(PathNode::new(*point, NodeKind::Cusp));
+        }
+        group.bench_with_input(
+            BenchmarkId::from_parameter(format!("samples={samples}")),
+            &contour,
+            |b, contour| {
+                b.iter(|| {
+                    petunia_engine::geometry::fit::refit_contour(contour, 0.25)
+                        .map(|nodes| nodes.len())
+                        .unwrap_or(0)
+                })
+            },
+        );
+    }
+    group.finish();
+}
+
 criterion_group!(
     geometry_benches,
     bench_bezier_flatten,
     bench_offset,
     bench_simplify,
     bench_boolean,
+    bench_refit,
     bench_transform
 );
 criterion_main!(geometry_benches);

@@ -8,6 +8,7 @@
 pub mod bezier;
 pub mod boolean;
 pub mod bounds;
+pub mod fit;
 pub mod intersections;
 pub mod offset;
 pub mod shape_builder;
@@ -16,6 +17,10 @@ pub mod simplify;
 pub use bezier::{flatten_contour, segment_bezier, CubicBez};
 pub use boolean::{boolean_paths, boolean_rings, ring_bounds, BooleanOp};
 pub use bounds::{point_in_polygon, Bounds};
+pub use fit::{
+    end_tangent, fit_cubics, g1_continuous, is_straight, refit_contour, sample_uniform,
+    start_tangent,
+};
 pub use intersections::{
     orient, polyline_intersections, segments_intersect, Orientation, SegmentIntersection,
 };
