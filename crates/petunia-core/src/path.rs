@@ -109,7 +109,10 @@ impl VectorPath {
         let mut contour = Contour::new(true);
         contour.push_node(PathNode::new(Point::new(x, y), NodeKind::Cusp));
         contour.push_node(PathNode::new(Point::new(x + width, y), NodeKind::Cusp));
-        contour.push_node(PathNode::new(Point::new(x + width, y + height), NodeKind::Cusp));
+        contour.push_node(PathNode::new(
+            Point::new(x + width, y + height),
+            NodeKind::Cusp,
+        ));
         contour.push_node(PathNode::new(Point::new(x, y + height), NodeKind::Cusp));
 
         let mut path = Self::new();

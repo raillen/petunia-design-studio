@@ -19,6 +19,9 @@ pub enum CoreError {
 
     #[error("Invariant violation: {0}")]
     InvariantViolation(String),
+
+    #[error("Unsupported color transform: {0}")]
+    UnsupportedTransform(String),
 }
 
 /// Convenience result type for core operations.

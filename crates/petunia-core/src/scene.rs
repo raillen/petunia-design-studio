@@ -1,10 +1,16 @@
 //! Scene graph tree, scene nodes, and appearance models.
 
 use crate::color::ColorRgba;
+use crate::crop::ClipBinding;
 use crate::error::{CoreError, Result};
+use crate::generated::{GeneratedVectorObject, TraceObject};
 use crate::id::ObjectId;
 use crate::math::Transform2D;
 use crate::path::VectorPath;
+use crate::raster::{ImageObject, PixelLayer};
+use crate::shape::ParametricShape;
+use crate::symbols::SymbolInstance;
+use crate::text::TextObject;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -21,11 +27,19 @@ pub struct Stroke {
     pub width: f64,
 }
 
-/// The specific content of a scene object.
+/// The specific content of a scene object. Leaf items carry their own
+/// authorial payload; containers below carry ordered children.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SceneItem {
     Path(VectorPath),
     Group(Vec<ObjectId>),
+    Shape(ParametricShape),
+    Text(TextObject),
+    Image(ImageObject),
+    PixelLayer(PixelLayer),
+    Trace(TraceObject),
+    GeneratedVector(GeneratedVectorObject),
+    SymbolInstance(SymbolInstance),
 }
 
 /// An individual object in the scene graph.
@@ -39,6 +53,7 @@ pub struct SceneNode {
     pub opacity: f32,
     pub fill: Option<Fill>,
     pub stroke: Option<Stroke>,
+    pub clip: Option<ClipBinding>,
     pub item: SceneItem,
 }
 
@@ -54,6 +69,7 @@ impl SceneNode {
             opacity: 1.0,
             fill: Some(Fill::Solid(ColorRgba::BLACK)),
             stroke: None,
+            clip: None,
             item: SceneItem::Path(path),
         }
     }

@@ -203,6 +203,61 @@ impl Angle {
     }
 }
 
+/// A context-specific comparison tolerance.
+///
+/// There is no universal `EPSILON`: coincidence, flattening, boolean,
+/// hit-test, snapping and inverse-transform comparisons each carry
+/// their own tolerance. A tolerance only decides whether two values
+/// count as coincident for one algorithm; it never mutates geometry.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Tolerance(pub f64);
+
+impl Tolerance {
+    /// Build a tolerance; it must be finite and non-negative.
+    pub fn new(value: f64) -> Result<Self> {
+        if !value.is_finite() || value < 0.0 {
+            return Err(CoreError::InvariantViolation(format!(
+                "invalid tolerance rejected: {value}"
+            )));
+        }
+        Ok(Self(value))
+    }
+
+    /// True when `|a - b| <= tolerance`.
+    #[must_use]
+    pub fn close_enough(self, a: f64, b: f64) -> bool {
+        (a - b).abs() <= self.0
+    }
+}
+
+/// Canonicalize a float for stable representation: `-0.0` becomes
+/// `0.0`. Non-finite values pass through unchanged; rejecting them
+/// stays the caller's boundary responsibility.
+#[must_use]
+pub fn canonicalize(value: f64) -> f64 {
+    if value == 0.0 {
+        0.0
+    } else {
+        value
+    }
+}
+
+/// Convert a screen-space tolerance (pixels) into document units for
+/// the current view scale, so handles stay clickable at any zoom:
+///
+/// ```text
+/// document_tolerance = screen_tolerance_px / view_scale
+/// ```
+///
+/// Returns `None` for a non-finite, zero or negative view scale.
+#[must_use]
+pub fn document_tolerance(screen_tolerance_px: f64, view_scale: f64) -> Option<f64> {
+    if !screen_tolerance_px.is_finite() || !view_scale.is_finite() || view_scale <= 0.0 {
+        return None;
+    }
+    Some(screen_tolerance_px / view_scale)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,5 +293,30 @@ mod tests {
         );
         assert!(Angle::new(f64::NAN).is_err());
         assert!(Angle::new(f64::INFINITY).is_err());
+    }
+
+    #[test]
+    fn test_tolerance_is_contextual_not_universal() {
+        let coincidence = Tolerance::new(1e-5).expect("valid");
+        // Spec example: algorithmic coincidence without mutating geometry.
+        assert!(coincidence.close_enough(10.0, 10.000005));
+        assert!(!coincidence.close_enough(10.0, 10.001));
+        assert!(Tolerance::new(-1.0).is_err());
+        assert!(Tolerance::new(f64::NAN).is_err());
+    }
+
+    #[test]
+    fn test_canonicalize_folds_negative_zero() {
+        assert_eq!(canonicalize(-0.0), 0.0);
+        assert!(canonicalize(-0.0).is_sign_positive());
+        assert_eq!(canonicalize(3.25), 3.25);
+    }
+
+    #[test]
+    fn test_document_tolerance_scales_with_zoom() {
+        assert_eq!(document_tolerance(4.0, 2.0), Some(2.0));
+        assert_eq!(document_tolerance(4.0, 0.0), None);
+        assert_eq!(document_tolerance(4.0, -1.0), None);
+        assert_eq!(document_tolerance(f64::NAN, 1.0), None);
     }
 }
