@@ -30,7 +30,7 @@ Fonte da ordem: [matriz de implementação](#/docs/00-architecture/implementatio
 
 | # | Etapa | Contrato | Estado no checkout | Evidência |
 |---|---|---|---|---|
-| 1 | Consolidar Core: math/units/ids/path/shape/color/appearance/scene/document/resources | `SPECIFIED` | `PARTIAL` — 7 módulos presentes (`color, document, id, math, path, scene, error`); faltam `units, shape, generated, paint, appearance, effects, text, raster, resources, styles, symbols, guides, serialization` | `crates/petunia-core/src/lib.rs` |
+| 1 | Consolidar Core: math/units/ids/path/shape/color/appearance/scene/document/resources | `SPECIFIED` | `PARTIAL` — 8 módulos presentes (`color, document, id, math, path, scene, units, error`); faltam `shape, generated, paint, appearance, effects, text, raster, resources, styles, symbols, guides, serialization` | `crates/petunia-core/src/lib.rs`, `units.rs` |
 | 2 | Transactions/History sobre o Core | `SPECIFIED` | `PARTIAL` — undo/redo básico (`AddNodeCommand`, `TransformNodeCommand`, `CommandHistory`); sem `DocumentOp`, `Transaction`, `HistoryEntry` completos | `crates/petunia-engine/src/command.rs` |
 | 3 | Geometry + Spatial e adapters | `SPECIFIED` | `PARTIAL` — snapping básico presente; sem Bézier/boolean/offset/simplify/R-tree/hit-test completos | `crates/petunia-engine/src/snapping.rs` |
 | 4 | `petunia-render-model` + RenderSnapshot (Engine → Render) | `SPECIFIED` | `PLANNED` — crate ausente no workspace; contrato definido na arquitetura | [Render Model](#/docs/03-render/render-model.md) |
@@ -48,7 +48,7 @@ Fonte da ordem: [matriz de implementação](#/docs/00-architecture/implementatio
 
 | Crate | Arquivos presentes (2026-10-09) | Alvo da matriz | Leitura |
 |---|---|---|---|
-| `petunia-core` | `color, document, error, id, lib, math, path, scene` | ~20 módulos (`units, shape, generated, paint, appearance, effects, text, raster, resources, styles, symbols, guides, serialization, error`…) | `PARTIAL` inicial |
+| `petunia-core` | `color, document, error, id, lib, math, path, scene, units` | ~20 módulos (`shape, generated, paint, appearance, effects, text, raster, resources, styles, symbols, guides, serialization, error`…) | `PARTIAL` inicial |
 | `petunia-engine` | `command, error, lib, snapping` | `command/, geometry/, spatial/, brush/, raster/, text/, layout/, color/, import/, export/, persistence/, fragments/, jobs/, plugins/` | `PARTIAL` inicial |
 | `petunia-render` | `backend, error, lib, software` | `backend, frame, graph, vector/, raster/, text/, compositor/, effects/, cache/, overlay/, output/, software` | referência mínima |
 | `petunia-ui` | `app, error, input, lib` | `app, session, input, actions, tools/, viewport/, panels/, workspace/, accessibility/` + borda Qt/QML | sessão mínima; GUI fora do fechamento |

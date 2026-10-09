@@ -17,6 +17,7 @@ pub mod id;
 pub mod math;
 pub mod path;
 pub mod scene;
+pub mod units;
 
 pub use color::{ColorRgba, ColorSpace};
 pub use document::{Document, DocumentSetup};
@@ -25,3 +26,4 @@ pub use id::{DocumentId, ObjectId};
 pub use math::{Point, Rect, Transform2D, Vec2};
 pub use path::{Contour, FillRule, NodeKind, PathNode, VectorPath};
 pub use scene::{Fill, SceneGraph, SceneItem, SceneNode, Stroke};
+pub use units::{Unit, UnitValue};
