@@ -25,6 +25,7 @@ Um ADR não substitui a documentação técnica detalhada. Ele explica **por que
 9. [ADR-0009 — Raster autoral tiled + copy-on-write](#/docs/00-architecture/adr/0009-raster-tiles.md)
 10. [ADR-0010 — Plugins WASM + Host API](#/docs/00-architecture/adr/0010-plugin-abi.md)
 11. [ADR-0011 — Select + Vector Edit híbridos contextuais](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md)
+12. [ADR-0012 — Contrato de interação: Tools, Workspace e Acessibilidade](#/docs/00-architecture/adr/0012-interaction-contract.md)
 
 ## Regra
 

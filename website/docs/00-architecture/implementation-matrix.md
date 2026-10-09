@@ -30,6 +30,8 @@ A documentação de arquitetura/Core/Engine/Render já define o alvo. A tabela a
 | Render | software mínimo | tiled software reference renderer + render graph + compositor |
 | UI | sessão mínima | **fora deste fechamento; volta para discussão conjunta** |
 
+> **Atualização 2026-10-09:** a discussão conjunta foi realizada e o contrato de interação está aprovado no [ADR-0012](#/docs/00-architecture/adr/0012-interaction-contract.md) (hit-test, context bar, targets, atalhos, tooltip, aparência, Smart Delete, campos numéricos, workspace, ponte Qt). A UI continua fora do fechamento **técnico** de Core/Engine/Render; o que mudou é que a camada de interação agora tem direção única. Implementação e QA de GUI seguem como trabalho futuro.
+
 ## Arquivos-alvo do Núcleo
 
 ```text
@@ -194,7 +196,9 @@ A especificação de arquitetura/motor é considerada **fechada o suficiente par
 
 **✅ Modelo híbrido aprovado:** Select para objetos e hierarquia; Vector Edit contextual para nodes/segmentos/handles, com operação Node padrão e Bend/Cut/Width explícitas.
 
-**⏸ Em discussão conjunta:** visual final, toolbar, atalhos secundários, UX de operações específicas e critérios finais de acessibilidade.
+**✅ Fechado em 2026-10-09 pelo [ADR-0012](#/docs/00-architecture/adr/0012-interaction-contract.md):** precedência de hit-test, context bar, targets e âncoras, atalhos primários + editor reatribuível, tooltip, aparência/temas, Smart Delete, campos numéricos, workspace e ponte Qt.
+
+**Ainda é trabalho futuro:** especificação de pixels e QML concreto, implementação do ContextStack/ToolControllers, QA de usabilidade. Contrato aprovado não é funcionalidade implementada.
 
 Detalhes: [Vector Edit — especificação](#/docs/04-ui/vector-edit-interaction.md) e [ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md). O código atual ainda não implementa ContextStack e ToolControllers completos.
 
@@ -231,7 +235,7 @@ Esses pontos **não foram esquecidos**. Permanecem abertos porque a filosofia do
 | Mesh Gradient avançado | precisa modelo próprio, não enum reservado |
 | Tables/editorial avançado | pós-v0.1-stable |
 | UI plugin extension | será discutida com GUI/UX |
-| Tools, Workspace, Acessibilidade e GUI/UX | discussão conjunta com o usuário |
+| Tools, Workspace, Acessibilidade e GUI/UX | ~~discussão conjunta com o usuário~~ → **contrato aprovado (ADR-0012, 2026-10-09)**; implementação e QA seguem futuras |
 
 Uma decisão “aberta por evidência” não autoriza implementações incompatíveis. Os contratos ao redor já estão definidos.
 

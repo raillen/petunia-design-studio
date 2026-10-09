@@ -1,6 +1,8 @@
 # Smart Path — editar curvas sem lutar com os handles
 
-**Estado (2026-10-08):** aprovados modelo híbrido e seleção A–F, bem como manipulação Cusp/Smooth/Symmetric A–D, extração/recolhimento de handles, Auto Smooth one-shot e snapping contextual. Pen e operações Smart Path receberam especificações detalhadas de UX por delegação. **Não declarar como implementado ou testado.** Acabamento visual final e precedência exata entre candidatos perfeitamente coincidentes permanecem refináveis em testes de usabilidade.
+**Estado (2026-10-08):** aprovados modelo híbrido e seleção A–F, bem como manipulação Cusp/Smooth/Symmetric A–D, extração/recolhimento de handles, Auto Smooth one-shot e snapping contextual. Pen e operações Smart Path receberam especificações detalhadas de UX por delegação. **Não declarar como implementado ou testado.**
+
+**Fechado em 2026-10-09 pelo [ADR-0012](#/docs/00-architecture/adr/0012-interaction-contract.md):** precedência de hit-test em coincidência exata (`Handle > Node > Segmento > Fill`, empate por z-order); Smart Delete como **duas ações explícitas** — *Preserve Shape* (padrão, com erro máximo exibido) e *Hard Delete* — sem tecla modificadora; tooltip com nome + atalho acessível também por foco de teclado. Acabamento visual de pixels e QML seguem como entregável separado.
 
 ## Referências
 

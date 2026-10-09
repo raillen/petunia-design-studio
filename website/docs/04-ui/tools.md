@@ -53,7 +53,7 @@ Dentro de Vector Edit, Node/Bend/Pen/Cut/Smooth/Width são operações disponív
 
 O contrato completo, incluindo multi-selection, Group Isolation, focus, pointer capture e feedback, está em [Vector Edit — interação híbrida](#/docs/04-ui/vector-edit-interaction.md); a decisão registrada está no [ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md).
 
-Os atalhos secundários e a apresentação visual final seguem para discussão conjunta.
+Os atalhos secundários e a apresentação visual final estão definidos em [ADR-0012](#/docs/00-architecture/adr/0012-interaction-contract.md) (conjunto primário de atalhos, editor reatribuível com detecção de conflito, tooltip por nome + atalho, tokens e temas). A especificação de pixels e o QML concreto seguem como entregável separado.
 
 ## Pen Tool
 

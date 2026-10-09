@@ -262,6 +262,6 @@ Ações como Smart Delete e Clean Vector precisam de configuração/feedback tex
 
 **Aprovado/documentado na etapa seguinte:** handles e suas constraints, criação/recolhimento/desvinculação, tangentes em zero-length, Auto Smooth one-shot, snapping e constraints durante drag, conversões com preview, manipulação numérica e feedback. Veja [Vector Edit — precisão](#/docs/04-ui/vector-edit-precision.md).
 
-**Pendente para fechamento posterior:** prioridade fina de hit-test em coincidência exata; aparência final da context bar, paleta, tamanho de anchors, ícones, atalhos secundários, scroll/drag-scrub e focus traversal pixel/tecla específicos.
+**Fechado pelo [ADR-0012](#/docs/00-architecture/adr/0012-interaction-contract.md):** precedência de hit-test (`Handle > Node > Segmento > Fill`, empate por z-order, ciclo reconfigurável); aparência da context bar (4 estados, layout estável, no máximo 3 ações dominantes); paleta e tamanho de âncoras (8×8 px lógicos de captura, 6 px visual, ambos ajustáveis); ícones e atalhos secundários (conjunto primário + editor reatribuível); drag-scrub (opcional, desligado por padrão); focus traversal (ordem visual, Escape devolve o canvas).
 
 [Vector Edit](#/docs/04-ui/vector-edit-interaction.md) · [Smart Path](#/docs/04-ui/smart-path.md) · [Acessibilidade](#/docs/04-ui/accessibility.md) · [ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md)

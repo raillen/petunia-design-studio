@@ -65,6 +65,10 @@
         {
           "title": "Architecture Decision Records",
           "path": "00-architecture/adr/index.md"
+        },
+        {
+          "title": "ADR-0012 — Contrato de interação",
+          "path": "00-architecture/adr/0012-interaction-contract.md"
         }
       ]
     },

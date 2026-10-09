@@ -190,6 +190,11 @@
       "revision": "9daa02a619c710cde23b76f10907ffb3ecbc6125",
       "document": "06-references/reuse-audit.md",
       "summary": "Port de VC pathops/fit.rs para geometry/fit.rs com atribuição (Schneider Graphics Gems 1990 + SHA VectorCraft), sem Kurbo no módulo. 8 testes (caso exato, split G1, degenerados, determinismo, refit, paridade com simplify) + bench refit 6-23 µs. cargo test --workspace 97 no engine, clippy -D warnings e fmt limpos."
+    },
+    "ev-u01-adr12": {
+      "revision": "463d6ef0f5274a5d75e5c6b06a2ab1c1a0a0b2c9",
+      "document": "00-architecture/adr/0012-interaction-contract.md",
+      "summary": "ADR-0012 Accepted em 2026-10-09: 10 decisões (D1-D10) fechando hit-test, context bar, targets/ancoras, atalhos + editor, tooltip, aparencia/temas, Smart Delete, campos numericos, workspace e ponte Qt. Paginas 04-ui e matriz atualizadas; nenhuma funcionalidade de GUI implementada."
     }
   },
   "tasks": [
@@ -574,7 +579,7 @@
       "document": "04-ui/session-input.md",
       "status": "IN PROGRESS",
       "updated": "2026-10-09",
-      "baseline": "Confirmado no código. crates/petunia-ui/src/app.rs e input.rs mínimos. GUI fora do fechamento por decisão.",
+      "baseline": "Contrato de interacao aprovado em ADR-0012 (2026-10-09): hit-test, context bar, targets, atalhos, tooltip, aparencia, Smart Delete, campos numericos, workspace e ponte Qt. Fase de decisao fechada; implementacao do ContextStack/ToolControllers e QA de GUI seguem como trabalho futuro.",
       "checkpoints": [
         {
           "title": "Sessão mínima com input, tools e ações",
@@ -583,8 +588,8 @@
         },
         {
           "title": "Vector Edit híbrido com ADR-0011 (após discussão conjunta)",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-u01-adr12"
         },
         {
           "title": "Workspace, painéis e acessibilidade por padrão",
@@ -613,7 +618,8 @@
         "04-ui/advanced-creative-tools.md",
         "04-ui/advanced-creative-tools-interaction.md",
         "04-ui/workspace.md",
-        "04-ui/accessibility.md"
+        "04-ui/accessibility.md",
+        "00-architecture/adr/0012-interaction-contract.md"
       ]
     },
     {
