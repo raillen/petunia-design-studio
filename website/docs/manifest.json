@@ -315,6 +315,96 @@
       ]
     },
     {
+      "id": "agent-directives",
+      "title": "Diretivas para Code Agents",
+      "files": [
+        {
+          "title": "Como agentes devem trabalhar",
+          "path": "07-agents/index.md"
+        },
+        {
+          "title": "Leitura, autoridade e estados",
+          "path": "07-agents/authority-reading.md"
+        },
+        {
+          "title": "Workflow e Definition of Done",
+          "path": "07-agents/implementation-workflow.md"
+        },
+        {
+          "title": "Biblioteca de prompts",
+          "path": "07-agents/prompts.md"
+        },
+        {
+          "title": "Orquestração e recipes",
+          "path": "07-agents/orchestration.md"
+        },
+        {
+          "title": "Catálogo completo Prumo",
+          "path": "07-agents/workforce-catalog.md"
+        },
+        {
+          "title": "39 agents — catálogo",
+          "path": "07-agents/workforce-agents.md"
+        },
+        {
+          "title": "20 recipes — catálogo",
+          "path": "07-agents/workforce-recipes.md"
+        },
+        {
+          "title": "Skills — documentação e colaboração",
+          "path": "07-agents/workforce-skills-navigation.md"
+        },
+        {
+          "title": "Skills — acessibilidade e UX",
+          "path": "07-agents/workforce-skills-accessibility-ux.md"
+        },
+        {
+          "title": "Skills — design e identidade",
+          "path": "07-agents/workforce-skills-visual-design.md"
+        },
+        {
+          "title": "Skills — engenharia e qualidade",
+          "path": "07-agents/workforce-skills-engineering-quality.md"
+        },
+        {
+          "title": "Skills — engine, render e gráficos",
+          "path": "07-agents/workforce-skills-graphics-rendering.md"
+        },
+        {
+          "title": "Skills — segurança e integrações",
+          "path": "07-agents/workforce-skills-security-integration.md"
+        },
+        {
+          "title": "Skills — compiladores e tooling",
+          "path": "07-agents/workforce-skills-language-tooling.md"
+        },
+        {
+          "title": "Skills — especialistas complementares",
+          "path": "07-agents/workforce-skills-other-specialists.md"
+        },
+        {
+          "title": "Skills — linguagens",
+          "path": "07-agents/workforce-skills-programming-languages.md"
+        },
+        {
+          "title": "Skills — especialidades restantes",
+          "path": "07-agents/workforce-skills-remaining.md"
+        },
+        {
+          "title": "Acessibilidade e neurodivergência",
+          "path": "07-agents/accessibility.md"
+        },
+        {
+          "title": "Handoff e ContextPack",
+          "path": "07-agents/handoff.md"
+        },
+        {
+          "title": "Reaproveitamento do legado Python/C++",
+          "path": "07-agents/legacy-migration.md"
+        }
+      ]
+    },
+    {
       "id": "references",
       "title": "Referências técnicas",
       "files": [
