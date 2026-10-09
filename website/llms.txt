@@ -42,6 +42,7 @@
 - [Referências VectorCraft / PhotoCraft / LightCraft](docs/06-references/index.md).
 - [Matriz de reaproveitamento](docs/06-references/integration-matrix.md).
 - [Permissão para copiar código licenciado](docs/06-references/code-reuse-policy.md).
+- [Auditoria de reuso](docs/06-references/reuse-audit.md): P0 executada nos SHAs fixados; 31/32 caminhos verificados, um corrigido, nenhum código importado.
 - [Legado Python/C++ — commit 13fe6b4](docs/07-agents/legacy-migration.md): fonte histórica de código, QML e testes, não a arquitetura atual.
 
 ## Navegação completa

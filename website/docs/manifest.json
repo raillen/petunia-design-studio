@@ -437,6 +437,10 @@
           "path": "06-references/code-reuse-policy.md"
         },
         {
+          "title": "Auditoria de reuso — execução e evidência",
+          "path": "06-references/reuse-audit.md"
+        },
+        {
           "title": "Diretrizes para agentes",
           "path": "06-references/agent-research-protocol.md"
         }

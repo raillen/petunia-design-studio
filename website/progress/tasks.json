@@ -180,6 +180,11 @@
       "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
       "document": "00-roadmap/progress.md",
       "summary": "Módulo website/progress portado com tabela, filtros, percentuais e protocolo; verify-progress e progress.test verdes."
+    },
+    "ev-f01-audit": {
+      "revision": "a0e42f43ced0a00dbf919f3c4dfa128a0cc11ed5",
+      "document": "06-references/reuse-audit.md",
+      "summary": "P0 executada em 2026-10-09: clone nos 3 SHAs fixados, licenças confirmadas na raiz, 31/32 caminhos da matriz medidos em linhas, um caminho corrigido (VC mcp), cobertura forbid(unsafe_code) e uso de unsafe contabilizados. Nenhum código importado."
     }
   },
   "tasks": [
@@ -643,14 +648,14 @@
       "title": "Reuso upstream e migração do legado",
       "description": "Auditar VectorCraft/PhotoCraft/LightCraft e o legado Python/C++ para copiar com proveniência, adapters e testes.",
       "document": "06-references/index.md",
-      "status": "TODO",
+      "status": "IN PROGRESS",
       "updated": "2026-10-09",
-      "baseline": "Estudos e política presentes; nenhum módulo copiado ou adaptado até esta baseline.",
+      "baseline": "P0 (auditoria) executada em a0e42f4: 3 repos clonados nos SHAs fixados, licenças e caminhos verificados, uso de unsafe mapeado. A maioria dos alvos de ALTA prioridade já possui equivalente próprio testado no checkout. Follow-up (P1): port único e pequeno, candidato VC pathops/fit.rs (232 linhas, sem unsafe), sujeito a licença por arquivo, notices, testes de paridade e benchmark.",
       "checkpoints": [
         {
           "title": "Auditar candidatos de reuso com matriz de integração",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-f01-audit"
         },
         {
           "title": "Adaptar com proveniência, notices e adapters de fronteira",
@@ -671,7 +676,8 @@
         "06-references/integration-matrix.md",
         "06-references/code-reuse-policy.md",
         "06-references/agent-research-protocol.md",
-        "07-agents/legacy-migration.md"
+        "07-agents/legacy-migration.md",
+        "06-references/reuse-audit.md"
       ]
     },
     {
