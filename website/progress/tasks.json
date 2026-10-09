@@ -62,9 +62,9 @@
       "summary": "math.rs, units.rs e id.rs presentes; cargo test -p petunia-core 14/14 em 2026-10-09."
     },
     "ev-c02": {
-      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "revision": "9daa02a619c710cde23b76f10907ffb3ecbc6125",
       "document": "01-core/path.md",
-      "summary": "path.rs, scene.rs e document.rs básicos presentes; shape.rs, guides e crop ainda ausentes."
+      "summary": "path.rs, scene.rs, document.rs e shape.rs presentes; cargo test -p petunia-core 22/22 em 2026-10-09; guides e crop ausentes."
     },
     "ev-c03": {
       "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
@@ -187,7 +187,7 @@
       "document": "01-core/path.md",
       "status": "IN PROGRESS",
       "updated": "2026-10-09",
-      "baseline": "Confirmado no código. crates/petunia-core/src/path.rs, scene.rs, document.rs (básicos). shape.rs, guides e crop ausentes.",
+      "baseline": "Confirmado no código. crates/petunia-core/src/path.rs, scene.rs, document.rs e shape.rs. guides e crop ausentes.",
       "checkpoints": [
         {
           "title": "path.rs com nodes cúbicos e contours",
@@ -206,8 +206,8 @@
         },
         {
           "title": "shape.rs com ParametricShape separado de VectorPath",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-c02"
         },
         {
           "title": "Guides, grids e slices tipados com placement",
