@@ -1,5 +1,6 @@
 //! 2D mathematical primitives: points, vectors, bounding boxes, and affine transforms.
 
+use crate::error::{CoreError, Result};
 use serde::{Deserialize, Serialize};
 
 /// A 2D point with f64 precision.
@@ -142,6 +143,66 @@ impl Default for Transform2D {
     }
 }
 
+/// A 2D extent (width/height) with its own semantics: unlike [`Vec2`],
+/// a size is never negative and has no direction.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Size2 {
+    pub width: f64,
+    pub height: f64,
+}
+
+impl Size2 {
+    /// Build a size, rejecting negative or non-finite components.
+    /// Zero is allowed: a degenerate but valid extent.
+    pub fn new(width: f64, height: f64) -> Result<Self> {
+        if !width.is_finite() || !height.is_finite() {
+            return Err(CoreError::InvariantViolation(format!(
+                "non-finite size rejected: {width}x{height}"
+            )));
+        }
+        if width < 0.0 || height < 0.0 {
+            return Err(CoreError::InvariantViolation(format!(
+                "negative size rejected: {width}x{height}"
+            )));
+        }
+        Ok(Self { width, height })
+    }
+
+    /// True when either extent is zero.
+    #[must_use]
+    pub fn is_empty(self) -> bool {
+        self.width == 0.0 || self.height == 0.0
+    }
+}
+
+/// An angle in radians. Finite values only; normalization for display
+/// or evaluation is the caller's responsibility.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Angle(pub f64);
+
+impl Angle {
+    /// Build an angle in radians, rejecting non-finite values.
+    pub fn new(radians: f64) -> Result<Self> {
+        if !radians.is_finite() {
+            return Err(CoreError::InvariantViolation(format!(
+                "non-finite angle rejected: {radians}"
+            )));
+        }
+        Ok(Self(radians + 0.0))
+    }
+
+    /// Build an angle from degrees.
+    pub fn from_degrees(degrees: f64) -> Result<Self> {
+        Self::new(degrees.to_radians())
+    }
+
+    /// The angle in radians.
+    #[must_use]
+    pub fn radians(self) -> f64 {
+        self.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +217,26 @@ mod tests {
         let rect = Rect::new(0.0, 0.0, 50.0, 50.0);
         assert!(rect.contains_point(Point::new(25.0, 25.0)));
         assert!(!rect.contains_point(Point::new(100.0, 100.0)));
+    }
+
+    #[test]
+    fn test_size_rejects_negative_and_non_finite() {
+        assert!(Size2::new(10.0, 20.0).is_ok());
+        assert!(Size2::new(0.0, 0.0).is_ok());
+        assert!(Size2::new(-1.0, 5.0).is_err());
+        assert!(Size2::new(5.0, f64::NAN).is_err());
+        assert!(Size2::new(f64::INFINITY, 5.0).is_err());
+        assert!(Size2::new(10.0, 0.0).expect("zero height").is_empty());
+        assert!(!Size2::new(10.0, 5.0).expect("valid").is_empty());
+    }
+
+    #[test]
+    fn test_angle_rejects_non_finite() {
+        assert_eq!(
+            Angle::from_degrees(180.0).expect("valid").radians(),
+            std::f64::consts::PI
+        );
+        assert!(Angle::new(f64::NAN).is_err());
+        assert!(Angle::new(f64::INFINITY).is_err());
     }
 }

@@ -178,9 +178,7 @@ mod tests {
         assert_eq!(Unit::Px.inches_per_unit(), None);
         assert!(!Unit::Px.is_physical());
         assert!(physical(10.0, Unit::Px).to_unit(Unit::Mm).is_none());
-        assert!(physical(10.0, Unit::Mm)
-            .to_unit(Unit::Px)
-            .is_none());
+        assert!(physical(10.0, Unit::Mm).to_unit(Unit::Px).is_none());
     }
 
     #[test]
