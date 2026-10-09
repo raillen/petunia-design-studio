@@ -84,4 +84,22 @@ A feature só é marcada `VERIFIED` se:
 
 Se uma etapa não ocorrer, declarar o **status mais baixo que o fato sustenta**; não "aprovado com testes a realizar" como equivalente de Done.
 
+## 8. Atualização de estado do tracker (obrigatória)
+
+`website/progress/tasks.json` é a fonte versionada exibida em `#/progress`; o protocolo completo está em [progresso das etapas](#/docs/00-roadmap/progress.md).
+
+1. Antes de implementar, localizar os IDs afetados e marcá-los `IN PROGRESS` ao iniciar; atualizar `updated` na tarefa e no arquivo.
+2. Ao entregar um slice, marcar somente os checkpoints comprovados, com entrada em `evidence` (revisão, resumo e documento com comandos/resultados reais). ADR aprovado não é prova.
+3. Em mudança de escopo, dividir/adicionar tarefa com ID novo e critérios verificáveis. Preservar IDs existentes; não alterar o denominador apenas para melhorar a porcentagem.
+4. Registrar no capítulo canônico os gates `not run / pass / fail / blocked`; gate manual necessário ainda aberto impede `DONE`.
+5. Atualizar status, checkpoints, evidência e datas **no mesmo conjunto de alterações da implementação**. Se nada puder ser concluído, atualizar baseline/impedimento/data mesmo com o percentual inalterado.
+6. Rodar os validadores, revisar o diff e incluir IDs/status no handoff:
+
+```bash
+node --check website/app.js
+node --check website/progress/progress.js
+node website/scripts/verify-progress.cjs
+node --test website/tests/progress.test.cjs
+```
+
 [Orquestração](#/docs/07-agents/orchestration.md) · [Quality gates detalhados](#/docs/00-architecture/verification.md) · [Handoff](#/docs/07-agents/handoff.md).

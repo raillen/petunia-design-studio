@@ -42,6 +42,12 @@ Toda alteração de código, proposta arquitetural ou refatoração no projeto *
 * **TDD & Testabilidade:** Todo comportamento novo é acompanhado por testes automatizados (unitários, integração e invariantes de geometria).
 * **Verificação Concreta:** Nenhuma tarefa é dada como concluída sem que o código compile e a suíte de testes seja executada com sucesso.
 
+### 1.7 Tracker Vivo de Implementação (`implementation-reality-verification`)
+* **Fonte única de estado:** `website/progress/tasks.json` é a fonte versionada de tarefas e estados, exibida em `#/progress`. Protocolo em `website/docs/00-roadmap/progress.md`.
+* **Atualização obrigatória:** ao iniciar uma implementação, marcar os IDs afetados como `IN PROGRESS`; a cada entrega, atualizar checkpoints, evidências e datas **no mesmo conjunto de alterações do código**.
+* **Três estados, percentual derivado:** somente `TODO` / `IN PROGRESS` / `DONE`; o percentual vem dos checkpoints concluídos. `DONE` exige todos os gates aplicáveis ao escopo delimitado da tarefa. Mencionar IDs e estados no handoff.
+* **Especificação não fecha tarefa:** contrato, ADR ou código existente sem evidência de execução nunca conclui um checkpoint.
+
 ---
 
 ## 2. Workforce — Papéis e Especialistas Disponíveis

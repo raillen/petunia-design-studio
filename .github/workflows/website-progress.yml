@@ -1,0 +1,30 @@
+name: Website Progress Integrity
+
+on:
+  push:
+    paths:
+      - 'website/**'
+      - '.github/workflows/website-progress.yml'
+  pull_request:
+    paths:
+      - 'website/**'
+      - '.github/workflows/website-progress.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-progress:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check SPA and tracker syntax
+        run: |
+          node --check website/app.js
+          node --check website/progress/progress.js
+      - name: Check processes, states and document coverage
+        run: node website/scripts/verify-progress.cjs
+      - name: Test progress calculations, states and filters
+        run: node --test website/tests/progress.test.cjs

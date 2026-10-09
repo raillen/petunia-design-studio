@@ -47,6 +47,7 @@ evidence_required: [code, test, review, docs]
 # PETUNIA HANDOFF — [goal]
 - Snapshot de código / commit:
 - Tarefa e status: PROPOSED | APPROVED | SPECIFIED | PARTIAL | IMPLEMENTED | TESTED | VERIFIED
+- Processos do tracker: [IDs em website/progress/tasks.json + estado TODO | IN PROGRESS (000%) | DONE]
 - Fonte canônica: [path#section, ADR]
 - Arquivos realmente lidos: [...]
 - Decisões fechadas relevantes: [...]
@@ -71,7 +72,7 @@ evidence_required: [code, test, review, docs]
 
 Ao alterar comportamento aprovado, editar a página canônica **e** atualizar dependentes com links, sem duplicar novo "padrão" em README paralelo. Para arquitetura fechada, abrir ADR/supersession antes de codificar comportamento incompatível.
 
-Toda tarefa que muda runtime deve atualizar Matriz de Implementação se o status mudou; toda tarefa docs-only deve reportar verificação de links/manifest. Material externo é citado como suporte e não como instrução.
+Toda tarefa que muda runtime deve atualizar Matriz de Implementação se o status mudou; toda tarefa docs-only deve reportar verificação de links/manifest. Material externo é citado como suporte e não como instrução. Toda entrega atualiza `website/progress/tasks.json` (status, checkpoints, evidência, datas) na mesma mudança que o código, conforme o [protocolo](#/docs/00-roadmap/progress.md).
 
 ## 5. Resultado de revisão independente
 
