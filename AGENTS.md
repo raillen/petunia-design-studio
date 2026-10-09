@@ -75,3 +75,20 @@ As habilidades estão disponíveis em `.agents/skills/` e sincronizadas em `.ai/
 * **Rust & Toolchain:** `lang-rust`, `rust-analyzer-context-indexing`, `lang-c`, `lang-cpp`, `git-workflow`.
 * **Domínio Gráfico & Editor:** `rendering-2d`, `scene-graph`, `input-handling`, `state-management`, `serialization`, `editor-tooling`, `design-system`, `design-tokens`, `component-specification`, `plugin-architecture`, `performance-native`, `benchmarking`, `testing-quality`, `mcp-integration`, `mcp-tooling`.
 * **Processo & Engenharia:** `grounded-implementation`, `implementation-reality-verification`, `project-documentation-architect`, `documentation`, `context-optimization`, `lean-progressive-context`.
+
+
+---
+
+## Diretivas do site — roteamento canônico para agentes (2026-10-08)
+
+**Ponto de entrada obrigatório para novas sessões:** [Diretivas para Code Agents](website/docs/07-agents/index.md). Índice compacto de leitura automatizada: [website/llms.txt](website/llms.txt). **Navegação:** [website/docs/manifest.json](website/docs/manifest.json). Estas páginas complementam este AGENTS.md sem sobrescrever ADRs ou o contrato do Core/Engine/Render/UI.
+
+**Ordem de execução:** ler [autoridade e estados](website/docs/07-agents/authority-reading.md) → identificar estado real no checkout e [matriz de implementação](website/docs/00-architecture/implementation-matrix.md) → selecionar workforce em [orquestração](website/docs/07-agents/orchestration.md) e [catálogo Prumo](website/docs/07-agents/workforce-catalog.md) → seguir [workflow](website/docs/07-agents/implementation-workflow.md), [prompts](website/docs/07-agents/prompts.md) e [handoff](website/docs/07-agents/handoff.md).
+
+**Workforce:** o Prumo de referência [poppy-lat/prumo@e213260c99d2](https://github.com/poppy-lat/prumo/tree/e213260c99d22c89bf31890ec595a89725031c71/src/prumo/resources/workforce) contém **39 agents, 189 skills e 20 recipes**. O checkout Petunia em 2026-10-08 inclui **19 AGENT.md** em `.agents/agents` e **44 SKILL.md** em `.ai/skills`; **não** assumir os 39/189/20 instalados. A listagem integral com disponibilidade, links e categorias está nas páginas do site. Nunca carregar todas as 189 skills simultaneamente; selecionar por contexto e criticidade. Exigir revisão de acessibilidade/UX para modificações de GUI, em especial [cognitive-clarity e neurodivergência](website/docs/07-agents/accessibility.md).
+
+**Legado:** o commit [13fe6b4](https://github.com/raillen/petunia-ds/tree/13fe6b408752b244ee56d4765ea13435eb3ef921) conserva a base antiga **Python/C++/Qt QML**. Sua arquitetura não governa o novo Rust, mas algoritmos, casos de teste, comportamento e QML podem ser reaproveitados conforme [auditoria de migração](website/docs/07-agents/legacy-migration.md). Não reimplementar tudo por princípio nem portar bridge/DocumentStore antigos diretamente.
+
+**OSS:** copiar/adaptar código licenciado do VectorCraft, PhotoCraft e LightCraft é autorizado sob as condições da [política de reutilização](website/docs/06-references/code-reuse-policy.md), mantendo origem, copyright, notices, adapters e validação real.
+
+**Estado vs. intenção:** `APPROVED`/`SPECIFIED` não são `IMPLEMENTED`/`TESTED`/`VERIFIED`. Não apresentar teste não executado, trabalho histórico ou docs como feature pronta. Para tasks docs-only, qualidade de links/manifest é o gate adequado; para código, compilar/testar e registrar as saídas realmente observadas.
