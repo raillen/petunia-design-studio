@@ -1,15 +1,15 @@
 # Referências técnicas — protocolo de pesquisa e integração para code agents
 
-**Status:** diretriz de leitura e verificação para estudos de VectorCraft, PhotoCraft e LightCraft. Não aprova novos dependencies ou merges de código. Esta página deve ser lida junto ao [catálogo de referências](#/docs/06-references/index.md), [matriz](#/docs/06-references/integration-matrix.md), [política de dependências](#/docs/00-philosophy/dependency-policy.md) e [quality gates](#/docs/00-architecture/verification.md).
+**Status:** diretriz de pesquisa e **reutilização autorizada de código open source** (cópia direta, adaptação, vendor, fork ou dependência) de VectorCraft, PhotoCraft e LightCraft. A autorização geral não equivale a uma cópia já realizada, nem dispensa revisão por arquivo de licença/testes. Esta página deve ser lida junto ao [catálogo de referências](#/docs/06-references/index.md), [matriz](#/docs/06-references/integration-matrix.md), [política de dependências](#/docs/00-philosophy/dependency-policy.md) e [quality gates](#/docs/00-architecture/verification.md).
 
 ## 1. Antes de trabalhar
 
 1. Identificar tarefa e domínio Petunia (Core/Engine/Render/UI/IO/Plugin).
 2. Ler documentação canônica correspondente à ferramenta, ADRs e matriz de implementação.
-3. Ler a página de estudo do projeto upstream e localizar paths de source. Conferir `README`, `Cargo.toml`, `AGENTS.md`, `NOTICE` e módulo/testes relevantes do commit fixado.
+3. Ler a página de estudo do projeto upstream e localizar paths de source. Conferir `README`, `Cargo.toml`, `AGENTS.md`, `LICENSE-*`, `NOTICE` e módulo/testes relevantes do commit fixado. **Se o código for adequado, considerar copiá-lo diretamente em vez de recriar desnecessariamente.**
 4. Ler **código real e testes**, não concluir funcionamento completo apenas do nome do arquivo ou claim do README; distinguir documentação atual de draft antigo.
 5. Registrar `commit SHA` e licença exata antes de copiar/derivar conteúdo; se main mudou, usar snapshot ou fazer re-auditoria explícita, sem trocar de versão silenciosamente.
-6. Comparar semântica de modelo Petunia e upstream, preparar adapter mínimo e test plan. Não começar por QML/Qt enquanto API do Engine estiver indefinida.
+6. Decidir entre **dependência, cópia literal, vendor/fork, port/adaptação ou reimplementação** pela [política aprovada](#/docs/06-references/code-reuse-policy.md). Comparar modelo Petunia com upstream, preparar adapter mínimo e testes. Não começar por QML/Qt enquanto a API do Engine estiver indefinida.
 7. Entregar menor integração possível, testes, bench/regressão, docs, ADR/dependency review quando necessário.
 
 ## 2. Seleção da fonte certa
@@ -43,7 +43,7 @@ Links:
 - **Não degradar Symmetric** ao enum Corner/Smooth upstream; `Line` não vira `Cubic` implicitamente por edição de handle que deveria ser inerte.
 - **Não alterar a ordem de blending** (linear/document-space vs display RGB) sem modelo e testes de compatibilidade explícitos.
 - **Não sobrescrever PTND** com formato `.pcraft`, JSON `.vectorcraft` ou journal de catálogo.
-- **Não copiar assets/brand** de terceiros como se licenças de código cobrissem logo, imagens, fontes e screenshots.
+- **Código-fonte aberto sob licença compatível PODE ser copiado literalmente ou adaptado**, inclusive testes e crates; **não copiar assets/brand** como se licenças de código cobrissem logo, imagens, fontes e screenshots. Registrar copyright/NOTICE e modificações.
 - **Não tratar `facebook/sam3` weights como MIT/Apache**. Separar import de algoritmo Apache-only, licença dos pesos e direito de distribuição.
 - **Não prometer paridade** com Illustrator, Photoshop ou Lightroom com base no README upstream, e não declarar experimento implementado se apenas foi documentado.
 
@@ -57,6 +57,7 @@ Usar exatamente um destes níveis em cada conclusão:
 - `UPSTREAM_CLAIM`: README/roadmap descreve feature/benchmark; ainda não aferido.
 - `INFERRED`: consequência técnica razoável, explicitamente delimitada.
 - `PETUNIA_PROPOSAL`: decisão recomendada, não implementada.
+- `SOURCE_REUSED`: código de terceiro efetivamente copiado, com origem, licença, copyright e alterações documentados, mas não implica testes passando.
 - `ADOPTED`: código integrado ao Petunia, testado, commit revisado e documentação alinhada.
 - `UNVERIFIED`: não há evidência suficiente; não preencher lacuna inventando comportamento.
 
@@ -69,6 +70,8 @@ Identify exact Petunia feature and scope
 → Read Petunia ADR + canonical feature specs
 → Read source repo pinned snapshot + tests + licenses
 → Compare data/coordinate/color/identity semantics
+→ Choose copy / vendor / fork / dependency / port / reimplementation by total cost
+→ Record provenance and exact license/NOTICE of reused files
 → Write minimal adapter design + rollback plan
 → Record alternatives and dependency decision
 → Implement in Petunia-owned crate (no Qt in Core/Engine)
@@ -89,7 +92,8 @@ Identify exact Petunia feature and scope
 - Behaviour confirmed:
 - Known limitations / upstream issue:
 - Licence + NOTICE + provenance:
-- Decision: inspiration / adapter / vendored code / dependency / reject
+- Decision: copy-source / adapt-source / adapter / vendor / fork / dependency / inspiration / reject
+- Reused files, original copyright notices, copied test corpus, source modifications, update ownership:
 - Architectural owner:
 - Typed contract + inverse/Undo:
 - Source data/coordinate/color/ID mismatches:
@@ -101,12 +105,14 @@ Identify exact Petunia feature and scope
 
 ## 6. Prompt operacional pronto para code agents
 
-> Analise a feature atual do Petunia Design Studio tomando a documentação canônica e ADRs como autoridade. Consulte a página de referências técnicas e o commit fixo do VectorCraft, PhotoCraft ou LightCraft indicado para a responsabilidade. Leia o módulo de produção, testes, Cargo.toml e licença/NOTICE antes de concluir qualquer aproveitamento. Registre diferenças de semântica (IDs, knots/anchors, FillRule, unidades, coordinate spaces, color/alpha, COW, persistence, Undo). Proponha o menor adapter em crate Petunia, sem introduzir egui/eframe, outro SceneGraph ou novo formato persistente. Compare bibliotecas já definidas antes de adicionar dependência. Faça a implementação com preview e commit pela mesma Engine, transaction atômica, cancel, stale-revision protection, erros tipados e performance budgets. Teste unit/property/fuzz/roundtrip/golden/benchmark conforme risco e garanta keyboard/screen reader/inputs alternativos. Cite os paths/SHAs realmente usados, registre licença/provenance e atualize a matriz de implementação sem confundir especificado com implementado.
+> Analise a feature atual do Petunia Design Studio tomando a documentação canônica e ADRs como autoridade. Consulte a página de referências técnicas e o commit fixo do VectorCraft, PhotoCraft ou LightCraft indicado para a responsabilidade. Leia o módulo de produção, testes, Cargo.toml e licença/NOTICE antes de concluir qualquer aproveitamento. Registre diferenças de semântica (IDs, knots/anchors, FillRule, unidades, coordinate spaces, color/alpha, COW, persistence, Undo). **A reutilização direta de código está autorizada**: avalie primeiro copiar funções/módulos, vendor ou usar crates existentes, quando licença e custo total justificarem, em vez de reescrever algoritmos sem necessidade. Registre licença, copyright, commit fixo, arquivos copiados, alterações e forma de atualizar. Proponha o menor adapter em crate Petunia, sem introduzir egui/eframe, outro SceneGraph ou novo formato persistente. Compare bibliotecas já definidas antes de adicionar dependência. Faça a implementação com preview e commit pela mesma Engine, transaction atômica, cancel, stale-revision protection, erros tipados e performance budgets. Teste unit/property/fuzz/roundtrip/golden/benchmark conforme risco e garanta keyboard/screen reader/inputs alternativos. Cite os paths/SHAs realmente usados, registre licença/provenance e atualize a matriz de implementação sem confundir especificado com implementado.
 
 ## 7. Checklist de segurança/licenciamento
 
 - [ ] A origem é código que pode ser utilizado na licença Petunia, revisando termos de artefatos/crates específicos?
-- [ ] Os notices relevantes estão preservados (inclusive modificação de código Apache-2.0 e terceiros)?
+- [ ] Os notices e headers relevantes estão preservados e as modificações documentadas (inclusive para código Apache-2.0 e terceiros)?
+- [ ] A estratégia foi escolhida entre cópia literal, vendor, fork, port, crate externa e reimplementação, com custo de manutenção documentado?
+- [ ] Registro de proveniência documenta todos os módulos/fixtures copiados, upstream commit e política de atualização?
 - [ ] Não há licenças/asssets com termos diferentes introduzidos inadvertidamente?
 - [ ] Input externo é validado (tamanho, profundidade, coordenadas finitas, memory/time, payload MCP)?
 - [ ] Backend/plugin/I/O é cancelável e não promove FS/network arbitrários?
@@ -129,4 +135,4 @@ Toda atualização upstream deve passar por `old_sha...new_sha` para os módulos
 
 **Prumo/agents:** usar agentes de investigação, arquitetura, implementação, qualidade, segurança, UX/acessibilidade e documentação já incorporados ao projeto; esta página é instrução específica adicional, não substitui suas skills.
 
-[Índice](#/docs/06-references/index.md) · [Matriz](#/docs/06-references/integration-matrix.md) · [Quality gates](#/docs/00-architecture/verification.md).
+[Índice](#/docs/06-references/index.md) · [Reutilização Direta](#/docs/06-references/code-reuse-policy.md) · [Matriz](#/docs/06-references/integration-matrix.md) · [Quality gates](#/docs/00-architecture/verification.md).
