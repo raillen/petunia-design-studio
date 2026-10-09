@@ -84,10 +84,9 @@ impl Command for TransformNodeCommand {
     }
 
     fn execute(&mut self, document: &mut Document) -> Result<()> {
-        let node = document
-            .scene
-            .get_node_mut(self.id)
-            .ok_or_else(|| EngineError::Core(petunia_core::CoreError::ObjectNotFound(self.id.to_string())))?;
+        let node = document.scene.get_node_mut(self.id).ok_or_else(|| {
+            EngineError::Core(petunia_core::CoreError::ObjectNotFound(self.id.to_string()))
+        })?;
         self.previous_transform = Some(node.transform);
         node.transform = self.new_transform;
         Ok(())
@@ -98,10 +97,9 @@ impl Command for TransformNodeCommand {
             .previous_transform
             .take()
             .ok_or_else(|| EngineError::Execution("No previous transform saved".into()))?;
-        let node = document
-            .scene
-            .get_node_mut(self.id)
-            .ok_or_else(|| EngineError::Core(petunia_core::CoreError::ObjectNotFound(self.id.to_string())))?;
+        let node = document.scene.get_node_mut(self.id).ok_or_else(|| {
+            EngineError::Core(petunia_core::CoreError::ObjectNotFound(self.id.to_string()))
+        })?;
         node.transform = prev;
         Ok(())
     }
@@ -124,7 +122,11 @@ impl CommandHistory {
     }
 
     /// Executes a command on the document and records it on the undo stack.
-    pub fn execute(&mut self, mut command: Box<dyn Command>, document: &mut Document) -> Result<()> {
+    pub fn execute(
+        &mut self,
+        mut command: Box<dyn Command>,
+        document: &mut Document,
+    ) -> Result<()> {
         command.execute(document)?;
         self.undo_stack.push(command);
         self.redo_stack.clear();

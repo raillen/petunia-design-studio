@@ -7,4 +7,19 @@ description = "Business logic, command transactions, undo/redo stack, and snappi
 
 [dependencies]
 petunia-core = { workspace = true }
+crc32fast = { workspace = true }
+flate2 = { workspace = true }
+fontdb = { workspace = true }
+image = { workspace = true }
+i_overlay = { workspace = true }
+rstar = { workspace = true }
+rustybuzz = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
+ttf-parser = { workspace = true }
+unicode-bidi = { workspace = true }
+unicode-linebreak = { workspace = true }
+unicode-script = { workspace = true }
+unicode-segmentation = { workspace = true }
+uuid = { workspace = true }

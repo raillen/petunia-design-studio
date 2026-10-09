@@ -118,6 +118,13 @@ impl SceneGraph {
             .ok_or_else(|| CoreError::ObjectNotFound(id.to_string()))
     }
 
+    /// Detaches an ID from the root order without removing its node.
+    /// Used when a node becomes a child of a group: it stays stored,
+    /// but only roots define z-order.
+    pub fn unlist_root(&mut self, id: ObjectId) {
+        self.root_order.retain(|&item_id| item_id != id);
+    }
+
     /// Returns the root ordering of objects.
     #[must_use]
     pub fn root_order(&self) -> &[ObjectId] {

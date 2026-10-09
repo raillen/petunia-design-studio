@@ -17,6 +17,9 @@ pub enum EngineError {
 
     #[error("Operation execution failed: {0}")]
     Execution(String),
+
+    #[error("History budget exceeded: {0}")]
+    BudgetExceeded(String),
 }
 
 /// Convenience result type for engine operations.
