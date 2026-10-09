@@ -1,6 +1,6 @@
 # Referências técnicas — ArtCraft e Petunia Design Studio
 
-**Natureza:** estudo de código-fonte de terceiros, não alteração de stack, dependência aprovada ou alegação de funcionalidade implementada. **Inspeção em 2026-10-08** por leitura de estrutura Git, manifests, READMEs, documentação, fontes centrais e testes referenciados. **Não foram compilados nem executados** os três projetos; métricas divulgadas nos seus próprios READMEs são alegações upstream não aferidas independentemente.
+**Natureza:** estudo de código-fonte de terceiros e **autorização explícita de reutilização direta de código aberto**, inclusive cópia, adaptação, vendor, fork e dependência quando for a melhor solução e a licença permitir. A documentação não significa implementação, testes ou nova dependência já incorporada. **Inspeção em 2026-10-08** por leitura de estrutura Git, manifests, READMEs, documentação, fontes centrais e testes referenciados. **Não foram compilados nem executados** os três projetos; métricas divulgadas nos seus próprios READMEs são alegações upstream não aferidas independentemente.
 
 ## Objetivo
 
@@ -20,11 +20,12 @@ Contagens referem-se a diretórios de primeiro nível em `crates/` da revisão i
 2. [PhotoCraft — auditoria de pintura, documentos, efeitos, composição e formatos](#/docs/06-references/photocraft.md).
 3. [LightCraft — auditoria de revelação, RAW, cache, máscara e automação](#/docs/06-references/lightcraft.md).
 4. [Matriz de reaproveitamento e plano de integração Petunia](#/docs/06-references/integration-matrix.md).
-5. [Protocolo para agentes: como pesquisar e integrar essas referências](#/docs/06-references/agent-research-protocol.md).
+5. [Política aprovada: copiar e adaptar código open source](#/docs/06-references/code-reuse-policy.md).
+6. [Protocolo para agentes: como pesquisar e integrar essas referências](#/docs/06-references/agent-research-protocol.md).
 
 ## Conclusão arquitetural
 
-**O que aproveitar:** algoritmos, casos degenerados, estrutura e teste de operações, organização de render/composição, cache COW, pipeline preview/export, segurança de import/export, serialização resiliente, registry de comandos com IDs, automação headless, sandbox de plugins.
+**O que aproveitar:** código de algoritmos, funções, módulos, crates ou forks completos **quando licenciados e adequados**, além de casos degenerados, testes, organização de render/composição, cache COW, pipeline preview/export, segurança de import/export, serialização resiliente, registry de comandos com IDs, automação headless e sandbox de plugins. Evitar reimplementação gratuita. Ver [política de reutilização direta](#/docs/06-references/code-reuse-policy.md).
 
 **O que NÃO importar como modelo persistente:** `vectorcraft_geom::Anchor` com `AnchorKind` apenas Corner/Smooth, índices de nó da PhotoCraft como identidade estável, `NodeKind`/layer tree de terceiro, formato JSON/ZIP externo no lugar de PTND, layout egui e convenções de atalho que conflitam com acessibilidade/Petunia.
 
@@ -56,7 +57,7 @@ Raízes dos três workspaces declaram **MIT OR Apache-2.0**. Isso **não autoriz
 
 **Confirmado em código:** workspace manifests, diretórios, structs e APIs citados com paths, cabeçalhos de arquivos de produção e contratos de Rust. **Descrito pelo upstream:** status de features e metas de paridade, promessas de desempenho e de suporte a formatos. **Inferido/recomendado para Petunia:** localização de adapter, vantagem, esforço, prioridades e testes necessários. **Não verificado nesta análise:** execução, perf benchmark reprodutível, qualidade de imagem sob corpus Petunia, licença de cada artefato transitive, aderência pixel-perfect e compatibilidade binária.
 
-A referência deve ser tratada como **laboratório de estudos**, não como uma dependência atual do Petunia. Qualquer transferência passa pela matriz de viabilidade, ADR se relevante e gates de qualidade.
+A referência é **fonte de pesquisa e também de implementações potencialmente copiáveis**, não uma dependência atual por si só. O mantenedor autorizou reuso literal/adaptado; cada transferência exige licença/proveniência, adapter quando necessário, matriz de viabilidade e quality gates. ADR somente quando mudar decisão estrutural.
 
 ## Ordem recomendada
 
