@@ -57,19 +57,34 @@
       "summary": "ADRs 0001–0011 publicados no checkout (leitura em 2026-10-09), incluindo ADR-0011 do Vector Edit híbrido."
     },
     "ev-c01": {
-      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "revision": "b16d4eb08ff60dd62ea28b3c5bd43c151110ec13",
       "document": "01-core/math.md",
-      "summary": "math.rs, units.rs e id.rs presentes; cargo test -p petunia-core 14/14 em 2026-10-09."
+      "summary": "math.rs, units.rs e id.rs presentes com tolerâncias contextuais, canonicalização e screen-space; cargo test -p petunia-core 72/72 em 2026-10-09."
     },
     "ev-c02": {
-      "revision": "9daa02a619c710cde23b76f10907ffb3ecbc6125",
+      "revision": "b16d4eb08ff60dd62ea28b3c5bd43c151110ec13",
       "document": "01-core/path.md",
-      "summary": "path.rs, scene.rs, document.rs e shape.rs presentes; cargo test -p petunia-core 22/22 em 2026-10-09; guides e crop ausentes."
+      "summary": "path.rs, scene.rs, document.rs e shape.rs presentes com SceneItem estendido; cargo test -p petunia-core 72/72 em 2026-10-09."
+    },
+    "ev-guides": {
+      "revision": "b16d4eb08ff60dd62ea28b3c5bd43c151110ec13",
+      "document": "01-core/guides-grids-slices.md",
+      "summary": "guides.rs com Guide, GridSpec afim/baseline/perspectiva validados e ExportSlice reproduzível; testes verdes."
+    },
+    "ev-crop": {
+      "revision": "b16d4eb08ff60dd62ea28b3c5bd43c151110ec13",
+      "document": "01-core/crop-clipping.md",
+      "summary": "crop.rs com ImageSourceRect normalizado e ClipBinding ligado ao SceneNode; testes verdes."
     },
     "ev-c03": {
-      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "revision": "b16d4eb08ff60dd62ea28b3c5bd43c151110ec13",
       "document": "01-core/color.md",
-      "summary": "color.rs com RGBA e poucos espaços; sem Spot, ICC, proofing ou appearance/effects."
+      "summary": "color.rs com canais f32, ProcessColor validada, Spot, swatches e fronteira ICC (sRGB exato + erro tipado; CMM de bytes ICC é do Engine)."
+    },
+    "ev-appearance": {
+      "revision": "b16d4eb08ff60dd62ea28b3c5bd43c151110ec13",
+      "document": "01-core/appearance-effects.md",
+      "summary": "appearance.rs e effects.rs com stacks ordenadas, params tipados com schema version e validações; testes verdes."
     },
     "ev-e01": {
       "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
@@ -85,6 +100,21 @@
       "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
       "document": "03-render/pipeline.md",
       "summary": "backend.rs com RenderBackend e software.rs mínimos; cargo test -p petunia-render 1/1; sem crate render-model."
+    },
+    "ev-styles": {
+      "revision": "b16d4eb08ff60dd62ea28b3c5bd43c151110ec13",
+      "document": "01-core/styles-symbols.md",
+      "summary": "styles.rs com três famílias, registry e symbols.rs com DAG acíclico validado; testes verdes."
+    },
+    "ev-textraster": {
+      "revision": "b16d4eb08ff60dd62ea28b3c5bd43c151110ec13",
+      "document": "01-core/text-raster-resources.md",
+      "summary": "text.rs, raster.rs e resources.rs com validações UTF-8, flow acíclico, tiles e registry; testes verdes."
+    },
+    "ev-generated": {
+      "revision": "b16d4eb08ff60dd62ea28b3c5bd43c151110ec13",
+      "document": "01-core/generated-content.md",
+      "summary": "generated.rs com TraceObject, ImageTraceSpec, QR e Barcode validados; testes verdes."
     },
     "ui-checkpoint": {
       "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
@@ -149,9 +179,9 @@
       "title": "Núcleo: math, units e ids",
       "description": "Primitivas f64, unidades canônicas com conversões e IDs tipados com serialização.",
       "document": "01-core/math.md",
-      "status": "IN PROGRESS",
+      "status": "DONE",
       "updated": "2026-10-09",
-      "baseline": "Confirmado no código. crates/petunia-core/src/math.rs, units.rs, id.rs. Falta tolerância contextual e canonicalização em math.rs.",
+      "baseline": "Implementado em b16d4eb: math.rs com primitivas, Size2, Angle, Tolerance contextual, canonicalização e document_tolerance; units.rs; id.rs com 12 IDs.",
       "checkpoints": [
         {
           "title": "math.rs com Point, Vec2, Rect e Transform2D",
@@ -170,8 +200,8 @@
         },
         {
           "title": "Tolerâncias contextuais e canonicalização de -0.0 em math.rs",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-c01"
         }
       ],
       "documents": [
@@ -185,9 +215,9 @@
       "title": "Núcleo: path, shape, scene e document",
       "description": "Paths cúbicos, ParametricShape separado, scene graph ordenado e Document com pages e registries.",
       "document": "01-core/path.md",
-      "status": "IN PROGRESS",
+      "status": "DONE",
       "updated": "2026-10-09",
-      "baseline": "Confirmado no código. crates/petunia-core/src/path.rs, scene.rs, document.rs e shape.rs. guides e crop ausentes.",
+      "baseline": "Implementado em b16d4eb: path, shape, scene com SceneItem estendido e clip, document, guides, crop. Follow-up futuro: modelo estrutural completo do node (ParentRef, Layer, Artboard).",
       "checkpoints": [
         {
           "title": "path.rs com nodes cúbicos e contours",
@@ -211,13 +241,13 @@
         },
         {
           "title": "Guides, grids e slices tipados com placement",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-guides"
         },
         {
           "title": "Crop não destrutivo com ClipBinding",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-crop"
         }
       ],
       "documents": [
@@ -235,9 +265,9 @@
       "title": "Núcleo: color e appearance",
       "description": "Valor de cor com perfil explícito, Spot, swatches, gradients, appearance e effects.",
       "document": "01-core/color.md",
-      "status": "IN PROGRESS",
+      "status": "DONE",
       "updated": "2026-10-09",
-      "baseline": "Confirmado no código. crates/petunia-core/src/color.rs com RGBA básico. Sem Spot, ICC ou appearance.",
+      "baseline": "Implementado em b16d4eb: canais f32 validados, ProcessColor com espaço, Spot, swatches, gradients, appearance/effects e fronteira ICC. Follow-up: CMM de bytes ICC no Engine, schemas de Adjustment, conical/mesh.",
       "checkpoints": [
         {
           "title": "color.rs com RGBA e espaços básicos",
@@ -246,18 +276,18 @@
         },
         {
           "title": "Cor com perfil/espaço explícito, Spot e swatches",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-c03"
         },
         {
           "title": "Appearance e effects empilháveis não destrutivos",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-appearance"
         },
         {
           "title": "Color management com ICC encapsulado",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-c03"
         }
       ],
       "documents": [
@@ -271,24 +301,24 @@
       "title": "Núcleo: styles, texto, raster e gerados",
       "description": "Styles linkáveis, symbols acíclicos, texto/raster/resources e conteúdo vetorial gerado com proveniência.",
       "document": "01-core/styles-symbols.md",
-      "status": "TODO",
+      "status": "DONE",
       "updated": "2026-10-09",
-      "baseline": "Ausente no checkout; nenhum módulo styles, symbols, text, raster, resources ou generated.",
+      "baseline": "Implementado em b16d4eb: styles, symbols, text, raster, resources e generated. Follow-up: migrar SceneNode.fill para AppearanceSource e ParentRef estrutural.",
       "checkpoints": [
         {
           "title": "styles.rs e symbols.rs com overrides tipados e detach explícito",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-styles"
         },
         {
           "title": "text.rs, raster.rs e resources.rs com registries",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-textraster"
         },
         {
           "title": "generated.rs com TraceObject, source e parâmetros autorais",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-generated"
         }
       ],
       "documents": [
