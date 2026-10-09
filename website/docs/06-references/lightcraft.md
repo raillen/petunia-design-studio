@@ -2,6 +2,8 @@
 
 **Snapshot:** [storytold/lightcraft@832b8ada](https://github.com/storytold/lightcraft/tree/832b8ada51af1e18ddc2eba87fbfe0485d150fc7), 2026-10-08. Inspeção estática de manifests, diretórios e fontes centrais. **Não foi executado, benchmarkado nem validado com câmeras/fotos reais.** Indicadores de paridade e timings do README/documentação são declarações do upstream.
 
+**É permitido copiar/portar diretamente algoritmos e infraestrutura compatíveis**, inclusive preview cache e pipeline, com proveniência. `crates/segment` tem licença Apache-2.0-only e os pesos SAM 3 seguem licença distinta — não incluí-los inadvertidamente. Veja [Reutilização Direta](#/docs/06-references/code-reuse-policy.md).
+
 ## 1. Arquitetura e foco
 
 Rust workspace edition 2024, v0.4.0, 20 crates, apps desktop/CLI/web, egui/eframe 0.36. Domínio é biblioteca fotográfica + revelação RAW **não destrutiva**, e não editor vetorial multicamadas. Crates:
