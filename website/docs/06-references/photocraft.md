@@ -2,6 +2,8 @@
 
 **Snapshot:** [storytold/photocraft@5ecc860a](https://github.com/storytold/photocraft/tree/5ecc860ac1abf8fa7e3f218c0474cdcce49fa6c7) em 2026-10-08. Auditado por código e documentação; **sem execução ou validação de fidelidade**. O README declara alpha, portanto o nome de uma ferramenta não implica qualidade pronta para produção.
 
+**É permitido copiar diretamente rotinas, módulos ou crates elegíveis**, inclusive storage de tiles COW, brushes e PSD, se for mais viável que reconstruí-los. Preservar os notices, adaptar o modelo de cor/IDs/IO e comprovar por testes Petunia. Veja [Reutilização Direta](#/docs/06-references/code-reuse-policy.md).
+
 ## 1. Arquitetura confirmada
 
 Workspace Rust 2024 versão 0.5.0, 23 crates e apps desktop/CLI/web. Usa `egui/eframe 0.36`, `rayon`, `serde`, `arc-swap`, `bytemuck`, `image`; GUI é cliente do Engine. [`crates/engine/src/lib.rs`](https://github.com/storytold/photocraft/blob/5ecc860ac1abf8fa7e3f218c0474cdcce49fa6c7/crates/engine/src/lib.rs) descreve `Session::execute` como entrypoint único de command ID + params JSON; UI, CLI, controle e MCP chegam pelo mesmo dispatcher.
