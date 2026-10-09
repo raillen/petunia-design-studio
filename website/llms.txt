@@ -1,0 +1,48 @@
+# Petunia Design Studio — documentação para agentes
+
+> Fonte canônica do Petunia Design Studio. A documentação define contratos desejados; o código e testes do checkout definem o estado realmente implementado. Idioma canônico pt-BR, GUI Qt/QML via CXX-Qt, engine/core Rust. Não carregue todas as páginas: use leitura progressiva.
+
+## Ponto de entrada e autoridade
+- [Diretivas para agentes](docs/07-agents/index.md): leitura inicial, invariantes e roteamento.
+- [Leitura/autoridade](docs/07-agents/authority-reading.md): hierarquia entre ADRs, docs e código; estado aprovado versus implementado.
+- [Workflow](docs/07-agents/implementation-workflow.md): slices, gates, evidências.
+- [Handoff](docs/07-agents/handoff.md): ContextPack e reporte.
+- [Prompts operacionais](docs/07-agents/prompts.md): bootstrap, implementação, UI, QA, reuso e legado.
+
+## Agentes, skills e recipes do Prumo
+- [Catálogo completo e disponibilidade](docs/07-agents/workforce-catalog.md): navegação aos 39 agents, 189 skills e 20 recipes, com contexto mínimo.
+- [Todos os agents](docs/07-agents/workforce-agents.md).
+- [Todas as recipes](docs/07-agents/workforce-recipes.md).
+- [Skills de documentação e colaboração](docs/07-agents/workforce-skills-navigation.md).
+- [Skills de acessibilidade e UX](docs/07-agents/workforce-skills-accessibility-ux.md).
+- [Skills de design](docs/07-agents/workforce-skills-visual-design.md).
+- [Skills de engenharia](docs/07-agents/workforce-skills-engineering-quality.md).
+- [Skills de Engine/Render](docs/07-agents/workforce-skills-graphics-rendering.md).
+- [Skills de segurança](docs/07-agents/workforce-skills-security-integration.md).
+- [Skills de tooling](docs/07-agents/workforce-skills-language-tooling.md).
+- [Skills de especialistas](docs/07-agents/workforce-skills-other-specialists.md).
+- [Skills de linguagens](docs/07-agents/workforce-skills-programming-languages.md).
+- [Skills restantes](docs/07-agents/workforce-skills-remaining.md).
+- [Orquestração](docs/07-agents/orchestration.md): ativação contextual e adequação de recipes.
+
+## Normas do produto
+- [Filosofia](docs/00-philosophy/manifesto.md).
+- [Fronteiras Core/Engine/Render/UI](docs/00-architecture/boundaries.md).
+- [Decisões aprovadas](docs/00-architecture/adr/index.md).
+- [Matriz de implementação real/planejada](docs/00-architecture/implementation-matrix.md).
+- [Verificação](docs/00-architecture/verification.md).
+- [Segurança](docs/00-architecture/security-model.md).
+- [PTND](docs/00-architecture/ptnd-format.md).
+- [Acessibilidade e neurodivergência — gates](docs/07-agents/accessibility.md).
+- [UX canônica](docs/04-ui/vector-edit-interaction.md): procurar também outras ferramentas da área no manifest.
+
+## Reuso e migração
+- [Referências VectorCraft / PhotoCraft / LightCraft](docs/06-references/index.md).
+- [Matriz de reaproveitamento](docs/06-references/integration-matrix.md).
+- [Permissão para copiar código licenciado](docs/06-references/code-reuse-policy.md).
+- [Legado Python/C++ — commit 13fe6b4](docs/07-agents/legacy-migration.md): fonte histórica de código, QML e testes, não a arquitetura atual.
+
+## Navegação completa
+- [Manifesto do site](docs/manifest.json): índice de arquivos, não prova de implementação.
+- [README do projeto](../README.md): build e workspace.
+- [AGENTS.md](../AGENTS.md): regras de trabalho, a serem resolvidas com ADRs do produto.
