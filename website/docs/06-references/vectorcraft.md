@@ -2,6 +2,8 @@
 
 **Snapshot analisado:** [storytold/vectorcraft@5f92f5eb](https://github.com/storytold/vectorcraft/tree/5f92f5eb7fd194826aab2ad0844e474f13990938), 2026-10-08. **Status da evidência:** arquivos Rust, manifest, documentação técnica, arquivo de testes e árvore inspecionados; execução/benchmark não realizados. Não confundir claims de README com comportamento validado no Petunia.
 
+**Código de algoritmos vetoriais pode ser copiado, portado ou colocado em vendor/fork** quando licença por arquivo, dependências transitivas e testes permitirem; não se exige reimplementação artificial. O comportamento persistente continua subordinado ao Core Petunia. Veja [Reutilização Direta](#/docs/06-references/code-reuse-policy.md).
+
 ## 1. Perfil
 
 - Workspace Rust 2024, versão 0.7.0, 21 crates em `crates/`, três apps (desktop, CLI, web), `egui 0.36`.
