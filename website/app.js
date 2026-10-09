@@ -1,4 +1,5 @@
 const MANIFEST_URL = "./docs/manifest.json";
+const PROGRESS_PATH = "00-roadmap/progress.md";
 
 const nav = document.querySelector("#docNav");
 const content = document.querySelector("#content");
@@ -323,6 +324,21 @@ function moveSearchSelection(delta) {
   items[keyboardResultIndex].scrollIntoView({ block: "nearest" });
 }
 
+function setActiveTopnav(path) {
+  document.querySelectorAll(".topnav a").forEach(function (link) {
+    const href = link.getAttribute("href") || "";
+    const isProgressLink = href === "#/progress";
+    const isActive = isProgressLink
+      ? (path === PROGRESS_PATH)
+      : (href === "#/docs/" + path);
+    if (isActive) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  });
+}
+
 function setActiveFile(path) {
   document.querySelectorAll(".file-overview").forEach(function (link) {
     const active = link.dataset.path === path;
@@ -489,6 +505,7 @@ async function openDoc(path, anchor) {
     enhanceRenderedMarkdown();
     buildPageToc();
     setActiveFile(path);
+    setActiveTopnav(path);
 
     document.title =
       (meta ? meta.file.title : "Documentação") + " — Petunia Design";
@@ -599,6 +616,13 @@ async function preloadDocumentation() {
 
 function route() {
   const raw = location.hash || "#/docs/home.md";
+  const progressMatch = /^#\/progress(?:#(.+))?$/.exec(raw);
+
+  if (progressMatch) {
+    openDoc(PROGRESS_PATH, progressMatch[1]);
+    return;
+  }
+
   const match = /^#\/docs\/([^#]+)(?:#(.+))?$/.exec(raw);
 
   if (!match) {

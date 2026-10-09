@@ -73,6 +73,10 @@
       "title": "Roadmap",
       "files": [
         {
+          "title": "Progresso das etapas",
+          "path": "00-roadmap/progress.md"
+        },
+        {
           "title": "Capacidades planejadas",
           "path": "00-roadmap/capabilities.md"
         }
