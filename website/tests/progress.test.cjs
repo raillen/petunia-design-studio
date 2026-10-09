@@ -26,16 +26,46 @@ test("TODO com trabalho concluído e DONE parcial são rejeitados", () => {
   }
 });
 test("IN PROGRESS aceita zero e DONE exige todos os checkpoints com prova", () => {
-  // Q01 é a tarefa TODO desta base (IDs acoplados aos dados locais).
-  const changed = clone(); const task = changed.tasks.find((item) => item.id === "Q01");
-  task.status = "IN PROGRESS"; assert.doesNotThrow(() => validate(changed, routes));
-  changed.evidence["geometry-fixture"] = { revision: "test fixture", document: task.document, summary: "Prova sintética para validar transições." };
-  task.checkpoints.forEach((point) => { point.completed = true; point.evidence = "geometry-fixture"; });
+  // Os estados mudam a cada wave; os testes escolhem os casos pelo
+  // conteúdo atual dos dados em vez de fixar IDs.
+  const partial = clone().tasks.find(
+    (item) => item.checkpoints.some((point) => !point.completed)
+  );
+  assert.ok(partial, "base precisa de ao menos uma tarefa com checkpoint aberto");
+
+  const changed = clone();
+  const task = changed.tasks.find((item) => item.id === partial.id);
+  task.status = "IN PROGRESS";
+  assert.doesNotThrow(() => validate(changed, routes));
+
+  // Todos os checkpoints concluídos com prova, ainda em IN PROGRESS:
+  // o estado é incompatível e precisa virar DONE.
+  changed.evidence["geometry-fixture"] = {
+    revision: "test fixture",
+    document: task.document,
+    summary: "Prova sintética para validar transições."
+  };
+  task.checkpoints.forEach((point) => {
+    point.completed = true;
+    point.evidence = "geometry-fixture";
+  });
   assert.throws(() => validate(changed, routes), /incompatível/);
-  task.status = "DONE"; assert.doesNotThrow(() => validate(changed, routes));
+
+  // DONE com todos os checkpoints e prova válida passa.
+  task.status = "DONE";
+  assert.doesNotThrow(() => validate(changed, routes));
+
+  // Prova inexistente ou fora do escopo do documento é rejeitada.
   task.checkpoints[0].evidence = "prova-inexistente";
   assert.throws(() => validate(changed, routes), /evidência/);
-  task.checkpoints[0].evidence = "ui-checkpoint";
+
+  // Uma prova existente, mas cujo documento não pertence à tarefa,
+  // também é rejeitada. O par é escolhido pelos dados, não fixado.
+  const fora = Object.entries(changed.evidence).find(
+    ([, proof]) => !task.documents.includes(proof.document)
+  );
+  assert.ok(fora, "base precisa de ao menos uma prova fora do escopo");
+  task.checkpoints[0].evidence = fora[0];
   assert.throws(() => validate(changed, routes), /Evidência fora/);
 });
 test("bloqueia duplicação, quarto estado, links ausentes e datas inconsistentes", () => {

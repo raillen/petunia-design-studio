@@ -116,6 +116,21 @@
       "document": "02-engine/io-jobs-plugins.md",
       "summary": "io.rs (sniff, PNG, SVG, capabilities), ptnd.rs (ZIP+CRC+atômico), journal, fragments, jobs, plugins e MCP; testes verdes."
     },
+    "ev-q01": {
+      "revision": "7f259f1227739487a9b7d652602309def02d66ee",
+      "document": "00-architecture/verification.md",
+      "summary": "fmt 0 diffs, 233 testes workspace, clippy -D warnings limpo, rust-ci.yml com ordem canônica de gates (jobs: gates, properties, benchmarks, website)."
+    },
+    "ev-q02": {
+      "revision": "7f259f1227739487a9b7d652602309def02d66ee",
+      "document": "00-architecture/verification.md",
+      "summary": "criterion em geometry/spatial/render: offset 511 verts 5,8 µs, simplify 4096 pts 32,9 µs, R-tree 10k 189 µs vs linear 3,21 ms, fill 512px 38,5 ms, Oklab 116 ns/amostra."
+    },
+    "ev-q03": {
+      "revision": "7f259f1227739487a9b7d652602309def02d66ee",
+      "document": "00-architecture/verification.md",
+      "summary": "tests/fuzz.rs com 5 suítes (PTND corrompido, sniff/imagem, desserialização, SVG hostil, compilação) sobre PRNG determinístico xorshift64* semeado por caso; job `properties` no CI."
+    },
     "ev-r01": {
       "revision": "a0e42f43ced0a00dbf919f3c4dfa128a0cc11ed5",
       "document": "03-render/render-model.md",
@@ -597,24 +612,24 @@
       "title": "Gates: verificação, benchmarks e fuzzing",
       "description": "Quality gates por módulo, benchmarks de geometria/render, fuzzing de PTND e CI executando tudo.",
       "document": "00-architecture/verification.md",
-      "status": "TODO",
+      "status": "DONE",
       "updated": "2026-10-09",
-      "baseline": "Contrato de verificação escrito; nenhum benchmark, fuzz target ou gate de CI registrado como executado.",
+      "baseline": "Implementado em 7f259f1: property suites (Core 12, Engine 11, Render 8), fuzz guards (5 suítes), benchmarks criterion (geometry/spatial/render) e rust-ci.yml. Follow-up: benchmark de interação (hit-test/snap) quando a UI existir, e fuzzing contínuo noturno.",
       "checkpoints": [
         {
           "title": "Quality gates por módulo executados e registrados",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-q01"
         },
         {
           "title": "Benchmarks de geometry, spatial e render com budgets",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-q02"
         },
         {
           "title": "Fuzzing de PTND, paths e serialização na CI",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-q03"
         }
       ],
       "documents": [
