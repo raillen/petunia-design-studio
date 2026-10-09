@@ -1,6 +1,6 @@
 # Matriz de aproveitamento — VectorCraft, PhotoCraft e LightCraft
 
-**Status:** recomendações de integração, **não plano de merge de código**, não novas dependências aprovadas e não funcionalidades implementadas. Referência estática fixada em 2026-10-08 nos SHAs dos estudos individuais. Priorização qualitativa: ALTA/MÉDIA/BAIXA = **valor potencial relativo**, não pontuação de maturidade upstream ou promessa de tempo.
+**Status:** recomendações de integração com **permissão expressa para copiar/adaptar código open source compatível**, incluindo rotinas, módulos, crates, vendor e forks. **Ainda não há port, merge ou nova dependência executada por este estudo.** Referência estática fixada em 2026-10-08 nos SHAs dos estudos individuais. Priorização qualitativa: ALTA/MÉDIA/BAIXA = **valor potencial relativo**, não pontuação de maturidade upstream ou promessa de tempo.
 
 ## 1. Premissa
 
@@ -8,11 +8,13 @@ Este estudo evita "portar os três aplicativos" ou criar um motor que dispute o 
 
 **Classes de decisão:**
 - **Estudar algoritmo:** seguir comportamento/estratégia, implementar API própria, sem copiar source.
-- **Adaptar código:** portar partes localizadas sob licença compatível, attribution e isolamento.
+- **Cópia literal de código licenciado:** incorporar funções, módulos ou rotinas preservando licence headers, notices, commit/arquivos de origem e testes; ajustar a interface apenas onde necessário.
+- **Adaptar código:** portar partes localizadas ou integrais sob licença compatível, atribuição, isolamento e registro claro de alterações.
+- **Vendor/fork de crate:** incorporar um conjunto maior de implementação quando manutenção, desempenho e portabilidade justificarem; manter diffs e upstream versionados.
 - **Avaliar dependência:** usar crate upstream por commit/version fixo, cargo audit e adapter, somente se benchmark justificar.
 - **Rejeitar arquitetura:** aprender com trade-off, mas não adotar tipo persistente, frontend, formato ou invariantes divergentes.
 
-Nenhuma linha abaixo implica decisão automática de copiar código. A política para approvals de dependências/ADR segue [Política de dependências](#/docs/00-philosophy/dependency-policy.md).
+**Autorização geral para reuso direto já concedida pelo mantenedor.** A escolha *de cada componente* continua dependendo de licença exata, integração, testes e manutenção; não confundir candidato com import realizado. Veja [Política de Reutilização Direta](#/docs/06-references/code-reuse-policy.md) e [Política de dependências](#/docs/00-philosophy/dependency-policy.md).
 
 ## 2. Mapeamento por capacidade e ownership
 
@@ -47,6 +49,15 @@ Nenhuma linha abaixo implica decisão automática de copiar código. A política
 | GUI / keyboard | todos `ui-egui/src` | Inspiração funcional | Qt/QML | MÉDIA | não portar widgets egui, usar design system Petunia |
 
 Abreviações: VC=VectorCraft, PC=PhotoCraft, LC=LightCraft. Cada path vem de árvore e/ou arquivos examinados; paths de submódulos não lidos integralmente são **pistas de estudo**, não garantia de funcionamento.
+
+### Atalhos de decisão para aproveitamento de código real
+
+- **Cópia/port prioritário (condicionado à auditoria por arquivo):** VC `pathops/{edit,fit}.rs` para Simplify/refit; PC `raster/src/lib.rs` para tiles COW; LC `preview/src/{disk,lru,pool}.rs` para previews e jobs. Podem oferecer alto reuso de algoritmos com adaptações confinadas.
+- **Avaliar vendor ou dependência maior antes de reimplementar:** VC `pathops/{boolean,planar}.rs` (`linesweeper` vs `i_overlay`); PC `psd/src/` para import/export; PC `paint/src/` para brushes. Exigir análise de dependências e APIs do conjunto.
+- **Port seletivo com atenção especial à matemática/modelo de cor:** LC `pipeline/src/` e PC `compose/src/`. Aproveitar procedimentos corretos sem substituir o modelo de color management do Petunia.
+- **Não usar como drop-in:** egui UI, terceiros com dados persistentes incompatíveis, assets de marca, pesos de IA de licença externa ou modelos de Node/Layer que descaracterizam PTND.
+
+Esses itens são oportunidades, **não commits de código Petunia nem promessa de compilar sem alterações**. A tabela completa de modos e critérios de cópia está em [Reutilização Direta](#/docs/06-references/code-reuse-policy.md).
 
 ## 3. Workspaces/Personas Petunia
 
@@ -134,11 +145,11 @@ Para cada candidato abrir um pequeno relatório técnico com:
 - `proposed target module`, `interface contract`, `alternatives`;
 - `color/coord/identity semantics`, `data provenance`, `compatibility break`;
 - `tests` (unit/property/fuzz/visual/bench), `known risks`;
-- `decision`: reject / inspiration / experiment / approved dependency / adopted;
+- `decision`: reject / inspiration / copied-source / adapted-source / vendored / fork / direct-dependency / experiment / tested / adopted;
 - commit/ADR/link de implementação Petunia quando existir.
 
 Não marcar `adopted` ou `implemented` antes de merge + testes. Se um source mudar, comparar upstream SHA antes de revisar conclusões.
 
 ## 8. Referências canônicas
 
-[VectorCraft](#/docs/06-references/vectorcraft.md) · [PhotoCraft](#/docs/06-references/photocraft.md) · [LightCraft](#/docs/06-references/lightcraft.md) · [Agent protocol](#/docs/06-references/agent-research-protocol.md) · [Arquitetura](#/docs/00-architecture/boundaries.md) · [Verificação](#/docs/00-architecture/verification.md).
+[VectorCraft](#/docs/06-references/vectorcraft.md) · [PhotoCraft](#/docs/06-references/photocraft.md) · [LightCraft](#/docs/06-references/lightcraft.md) · [Política de reutilização de código](#/docs/06-references/code-reuse-policy.md) · [Agent protocol](#/docs/06-references/agent-research-protocol.md) · [Arquitetura](#/docs/00-architecture/boundaries.md) · [Verificação](#/docs/00-architecture/verification.md).
