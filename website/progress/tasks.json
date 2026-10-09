@@ -117,9 +117,29 @@
       "summary": "io.rs (sniff, PNG, SVG, capabilities), ptnd.rs (ZIP+CRC+atômico), journal, fragments, jobs, plugins e MCP; testes verdes."
     },
     "ev-r01": {
-      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "revision": "a0e42f43ced0a00dbf919f3c4dfa128a0cc11ed5",
+      "document": "03-render/render-model.md",
+      "summary": "Crate petunia-render-model criada (snapshot, primitivas, paint, effects) e consumida pelo render; testes verdes."
+    },
+    "ev-r02": {
+      "revision": "a0e42f43ced0a00dbf919f3c4dfa128a0cc11ed5",
       "document": "03-render/pipeline.md",
-      "summary": "backend.rs com RenderBackend e software.rs mínimos; cargo test -p petunia-render 1/1; sem crate render-model."
+      "summary": "software.rs com tiles paralelos (rayon), compositor 15 blend modes, paint_eval com Oklab validado por palette, output PNG; golden test vermelho/preto."
+    },
+    "ev-comp": {
+      "revision": "a0e42f43ced0a00dbf919f3c4dfa128a0cc11ed5",
+      "document": "03-render/compositing-effects.md",
+      "summary": "compositor com source-over e blend contract único; adjustments com fórmulas exatas da spec; overlays e cache com clock eviction."
+    },
+    "ev-r03": {
+      "revision": "a0e42f43ced0a00dbf919f3c4dfa128a0cc11ed5",
+      "document": "03-render/cache-overlay-output.md",
+      "summary": "cache.rs (clock + surface pool), overlays.rs e output.rs (transfer sRGB, dither, PNG) com headless sem Qt."
+    },
+    "ev-compile": {
+      "revision": "a0e42f43ced0a00dbf919f3c4dfa128a0cc11ed5",
+      "document": "03-render/render-model.md",
+      "summary": "compile.rs no engine: Document→RenderSnapshot com flatten por qualidade, avisos de degradação, clips e headless_frame."
     },
     "ev-styles": {
       "revision": "b16d4eb08ff60dd62ea28b3c5bd43c151110ec13",
@@ -487,9 +507,9 @@
       "title": "Render: model, software e compositor",
       "description": "Crate render-model imutável, software tiled renderer, compositor, cache, overlays e output.",
       "document": "03-render/render-model.md",
-      "status": "IN PROGRESS",
+      "status": "DONE",
       "updated": "2026-10-09",
-      "baseline": "Confirmado no código. crates/petunia-render/src/backend.rs e software.rs mínimos. Sem crate render-model.",
+      "baseline": "Implementado em a0e42f4: crate petunia-render-model, compositor, tiles paralelos, adjustments, overlays, cache, output PNG e compiler Document→Snapshot. Follow-up: providers de texto/imagem/symbols, ajustes de cor ICC e masks.",
       "checkpoints": [
         {
           "title": "backend.rs com contrato RenderBackend e software mínimo",
@@ -498,18 +518,18 @@
         },
         {
           "title": "Crate render-model com RenderSnapshot imutável",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-r01"
         },
         {
           "title": "Tiled renderer, compositor e paint evaluation",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-r02"
         },
         {
           "title": "Cache, overlays, adjustments e output headless",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-r03"
         }
       ],
       "documents": [
