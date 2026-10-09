@@ -75,3 +75,10 @@ As features são especificadas em detalhe somente quando o domínio técnico que
 A seção [Referências Técnicas](#/docs/06-references/index.md) reúne uma auditoria de arquitetura, código e contratos de três editores open source em Rust: [VectorCraft](#/docs/06-references/vectorcraft.md), [PhotoCraft](#/docs/06-references/photocraft.md) e [LightCraft](#/docs/06-references/lightcraft.md). O estudo inclui [matriz de integração](#/docs/06-references/integration-matrix.md), a [política de cópia e reutilização direta de código open source](#/docs/06-references/code-reuse-policy.md) e [protocolo de leitura para agentes](#/docs/06-references/agent-research-protocol.md).
 
 As referências podem servir **tanto para estudo quanto para cópia literal/adaptação de código licenciado**, com proveniência, notices e testes. A documentação não equivale a dependências aprovadas nem a código portado. Os módulos upstream têm diferenças de modelo autoral, interface, licenças e gerenciamento de cor que exigem adapters e validação antes de qualquer integração.
+
+
+## Diretivas para Code Agents
+
+A [seção de Diretivas para Code Agents](#/docs/07-agents/index.md) é o ponto de entrada para LLMs e desenvolvedores que implementam o Petunia. Contém [ordem de leitura e hierarquia das fontes](#/docs/07-agents/authority-reading.md), [workflow verificável](#/docs/07-agents/implementation-workflow.md), [biblioteca de prompts](#/docs/07-agents/prompts.md), [orquestração de agentes](#/docs/07-agents/orchestration.md) e [inventário integral do Prumo: 39 agents, 189 skills, 20 recipes](#/docs/07-agents/workforce-catalog.md).
+
+Há também um guia específico de [acessibilidade e neurodivergência](#/docs/07-agents/accessibility.md), um [contrato de handoff](#/docs/07-agents/handoff.md) e uma [auditoria para decidir que código Python/C++/QML do projeto histórico podemos reaproveitar](#/docs/07-agents/legacy-migration.md). O [índice llms.txt](/llms.txt) permite leitura progressiva sem despejar toda a documentação no contexto.
