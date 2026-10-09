@@ -87,14 +87,34 @@
       "summary": "appearance.rs e effects.rs com stacks ordenadas, params tipados com schema version e validações; testes verdes."
     },
     "ev-e01": {
-      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "revision": "7d0cbb6898d3d12df76c2c80ddeba03fab1be88e",
       "document": "02-engine/commands-history.md",
-      "summary": "command.rs com AddNode/TransformNode/History; cargo test -p petunia-engine 2/2 em 2026-10-09; sem DocumentOp/Transaction."
+      "summary": "transaction.rs com DocumentOp, prepare/commit atômico e history.rs com revisions, undo/redo, budget e coalescing; 83 testes verdes no workspace."
     },
     "ev-e02": {
-      "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
+      "revision": "7d0cbb6898d3d12df76c2c80ddeba03fab1be88e",
       "document": "02-engine/spatial.md",
-      "summary": "snapping.rs básico presente; sem R-tree, hit-test completo ou ranking."
+      "summary": "snapping.rs básico mais spatial/ com R-tree via rstar, hit-test broad/narrow, ranking determinístico e measurement; testes verdes."
+    },
+    "ev-geometry": {
+      "revision": "7d0cbb6898d3d12df76c2c80ddeba03fab1be88e",
+      "document": "02-engine/geometry.md",
+      "summary": "geometry/ com Bézier, bounds, interseções, boolean via i_overlay, offset miter e RDP; testes de área e gates verdes."
+    },
+    "ev-brush": {
+      "revision": "7d0cbb6898d3d12df76c2c80ddeba03fab1be88e",
+      "document": "02-engine/brush-raster.md",
+      "summary": "brush.rs (One Euro, resampling, jitter), tiles.rs (COW) e filter.rs (trait + gaussian + ROI); testes verdes."
+    },
+    "ev-text": {
+      "revision": "7d0cbb6898d3d12df76c2c80ddeba03fab1be88e",
+      "document": "02-engine/text-layout.md",
+      "summary": "text/ com BiDi, graphemes, scripts, UAX14, shaping rustybuzz, fallback fontdb e line breaking; testes verdes."
+    },
+    "ev-io": {
+      "revision": "7d0cbb6898d3d12df76c2c80ddeba03fab1be88e",
+      "document": "02-engine/io-jobs-plugins.md",
+      "summary": "io.rs (sniff, PNG, SVG, capabilities), ptnd.rs (ZIP+CRC+atômico), journal, fragments, jobs, plugins e MCP; testes verdes."
     },
     "ev-r01": {
       "revision": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
@@ -334,9 +354,9 @@
       "title": "Engine: commands e history",
       "description": "Command → DocumentOp → Transaction → HistoryEntry com undo/redo atômico.",
       "document": "02-engine/commands-history.md",
-      "status": "IN PROGRESS",
+      "status": "DONE",
       "updated": "2026-10-09",
-      "baseline": "Confirmado no código. crates/petunia-engine/src/command.rs com undo/redo básico. Sem DocumentOp ou Transaction.",
+      "baseline": "Implementado em 7d0cbb6: DocumentOp, prepare/commit atômico com rollback, HistoryEntry com revisions, undo/redo, budget e coalescing. Follow-up: SetEffectParameter aguarda appearance storage.",
       "checkpoints": [
         {
           "title": "command.rs com comandos básicos e history",
@@ -345,13 +365,13 @@
         },
         {
           "title": "DocumentOp e Transaction atômica",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-e01"
         },
         {
           "title": "HistoryEntry com memory budget e spill",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-e01"
         }
       ],
       "documents": [
@@ -364,24 +384,24 @@
       "title": "Engine: geometry booleana",
       "description": "Bézier robusto, boolean, offset, simplify, smooth, cleanup, curve fit e Shape Builder com proveniência.",
       "document": "02-engine/geometry.md",
-      "status": "TODO",
+      "status": "DONE",
       "updated": "2026-10-09",
-      "baseline": "Ausente no checkout; nenhum módulo geometry/, boolean ou offset.",
+      "baseline": "Implementado em 7d0cbb6: Bézier, bounds, interseções, boolean via i_overlay, offset miter, simplify RDP e Shape Builder com proveniência. Follow-up: curve fitting e planar subdivision completa.",
       "checkpoints": [
         {
           "title": "Bézier, bounds e interseções com predicates robustos",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-geometry"
         },
         {
           "title": "Boolean, offset, simplify e shape builder",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-geometry"
         },
         {
           "title": "Executar e registrar os gates aplicáveis do documento, com regressões e limites de ambiente.",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-geometry"
         }
       ],
       "documents": [
@@ -394,9 +414,9 @@
       "title": "Engine: spatial e snapping",
       "description": "R-tree, hit-test, candidatos, ranking, hysteresis e snapping com grids.",
       "document": "02-engine/spatial.md",
-      "status": "IN PROGRESS",
+      "status": "DONE",
       "updated": "2026-10-09",
-      "baseline": "Confirmado no código. crates/petunia-engine/src/snapping.rs básico. Sem índice espacial ou hit-test.",
+      "baseline": "Implementado em 7d0cbb6: R-tree via rstar com trait, hit-test broad/narrow com fill-rule, ranking determinístico e measurement. Follow-up: narrow phases de texto/imagem/symbols e perspective snap.",
       "checkpoints": [
         {
           "title": "snapping.rs com snap básico de ponto",
@@ -405,13 +425,13 @@
         },
         {
           "title": "Índice R-tree com hit-test e ranking",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-e02"
         },
         {
           "title": "Snapping com candidatos, hysteresis e grids",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-e02"
         }
       ],
       "documents": [
@@ -424,29 +444,29 @@
       "title": "Engine: brush, texto, I/O e plugins",
       "description": "Brush/raster, text/layout, color, import/export, persistência, fragments, jobs e plugins WASM/MCP.",
       "document": "02-engine/brush-raster.md",
-      "status": "TODO",
+      "status": "DONE",
       "updated": "2026-10-09",
-      "baseline": "Ausente no checkout; nenhum módulo brush, raster, text, import, export, persistence, jobs ou plugins.",
+      "baseline": "Implementado em 7d0cbb6: brush, tiles COW, filtros ROI, texto, I/O, PTND, scheduler e plugins. Follow-up: runtime WASM, importers SVG/PDF, Zip64, hyphenation.",
       "checkpoints": [
         {
           "title": "Brush/raster com resampling, tiles COW e filtros",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-brush"
         },
         {
           "title": "Text/layout com Unicode, BiDi, shaping e fallback",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-text"
         },
         {
           "title": "I/O com PTND ZIP, recovery journal e fragments",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-io"
         },
         {
           "title": "Scheduler, plugins WASM e adapter MCP",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-io"
         }
       ],
       "documents": [

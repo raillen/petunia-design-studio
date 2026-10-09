@@ -26,7 +26,8 @@ test("TODO com trabalho concluído e DONE parcial são rejeitados", () => {
   }
 });
 test("IN PROGRESS aceita zero e DONE exige todos os checkpoints com prova", () => {
-  const changed = clone(); const task = changed.tasks.find((item) => item.id === "G01");
+  // Q01 é a tarefa TODO desta base (IDs acoplados aos dados locais).
+  const changed = clone(); const task = changed.tasks.find((item) => item.id === "Q01");
   task.status = "IN PROGRESS"; assert.doesNotThrow(() => validate(changed, routes));
   changed.evidence["geometry-fixture"] = { revision: "test fixture", document: task.document, summary: "Prova sintética para validar transições." };
   task.checkpoints.forEach((point) => { point.completed = true; point.evidence = "geometry-fixture"; });
