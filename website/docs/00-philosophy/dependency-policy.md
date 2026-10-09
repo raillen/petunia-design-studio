@@ -1,8 +1,20 @@
 # Política de dependências
 
-O Petunia não busca “zero dependências”. Busca **dependências mínimas, especializadas e justificadas**.
+O Petunia não busca “zero dependências”. Busca **dependências mínimas, especializadas e justificadas**. Também **não busca zero código de terceiros**: copiar ou adaptar algoritmos e módulos open source compatíveis é permitido e incentivado quando reduz retrabalho, risco e custo total de manutenção.
 
 Reimplementar um algoritmo complexo apenas para reduzir o número de crates pode aumentar tamanho, bugs e custo de manutenção.
+
+## Reutilização de código open source — decisão de 2026-10-08
+
+É permitido incorporar código licenciado de terceiros por **dependência direta, cópia de funções/módulos, vendor, fork ou port/adaptação**, incluindo fontes dos projetos [VectorCraft, PhotoCraft e LightCraft](#/docs/06-references/index.md). **Não exigir reimplementação apenas para o código parecer original ao Petunia.** Escolher a estratégia que mantenha a qualidade, segurança, autoria identificada, atualizações e integração mais simples.
+
+- **Copiar é permitido, não é sempre obrigatório:** comparar import direto versus manutenção de código vendored e API do adapter. Evitar duplicar uma biblioteca inteira quando um algoritmo pequeno resolve a demanda.
+- **Código copiado continua tendo proveniência externa:** registrar repo/commit/caminhos, licença precisa, copyright/NOTICE, alterações realizadas, dependências e procedimento de atualização. Não apagar headers nem chamar de clean-room original o código derivado.
+- **Licenças não são universais por repositório:** verificar arquivo/crate e todos os terceiros. Licença de código não abrange automaticamente fontes, fotos, logos, marcas, modelos e pesos. LightCraft `segment` tem licença Apache-2.0 only e os pesos SAM 3 têm licença externa própria.
+- **Arquitetura fechada continua sendo autoridade:** Core persistente PTND, IDs tipados, Engine, RenderModel/Render e Qt/QML não são alterados apenas para acomodar estrutura estrangeira. Adaptar data/coordinate/color/undo/preview, não importar SceneGraph ou GUI de outro produto.
+- **Teste e segurança são mandatórios:** compilar, verificar no ambiente Petunia, testar regressões, licenças/transitives e comportamento de falhas antes de marcar implementação concluída.
+
+Critérios, candidatos e registro de proveniência: [Política de Reutilização Direta](#/docs/06-references/code-reuse-policy.md). Esta permissão não dispensa decisão de dependência/ADR se a integração estrutural mudar a arquitetura.
 
 ## Critério de entrada
 
