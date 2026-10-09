@@ -1,36 +1,46 @@
-//! RenderBackend trait and rendering context abstraction.
+//! Vendor-agnostic rendering contract.
+//!
+//! Backends consume immutable [`RenderFrame`] snapshots: scene,
+//! view, target and options travel together, and every call reports
+//! statistics. Options stay backend-side so the snapshot contract
+//! never depends on renderer code.
 
 use crate::error::Result;
-use petunia_core::{ColorRgba, Rect, SceneGraph};
+use petunia_core::ColorRgba;
+use petunia_render_model::{RenderFrame, RenderQuality, RenderStats};
 
-/// Render options and quality settings.
-#[derive(Debug, Clone, Copy)]
+/// Backend render options: quality, DPR policy, antialiasing and the
+/// clear color. Geometry never changes with these knobs.
+#[derive(Debug, Clone)]
 pub struct RenderOptions {
-    pub scale_factor: f64,
+    pub quality: RenderQuality,
+    pub dpr: f64,
     pub antialias: bool,
-    pub background_color: ColorRgba,
+    pub background: ColorRgba,
 }
 
 impl Default for RenderOptions {
     fn default() -> Self {
         Self {
-            scale_factor: 1.0,
+            quality: RenderQuality::Authoring,
+            dpr: 1.0,
             antialias: true,
-            background_color: ColorRgba::WHITE,
+            background: ColorRgba::WHITE,
         }
     }
 }
 
-/// Abstract contract for any visual renderer (GPU, CPU, headless).
+/// Abstract contract for any visual renderer (software, GPU,
+/// headless). Implementations rasterize the frame and return RGBA8
+/// bytes plus statistics.
 pub trait RenderBackend: Send + Sync {
-    /// Returns the human-readable identifier of the backend (e.g. "Software-Reference", "Vello-GPU").
+    /// Human-readable backend identifier.
     fn name(&self) -> &str;
 
-    /// Renders an entire scene graph within the viewport bounds.
-    fn render_scene(
+    /// Render one frame into RGBA8 bytes plus statistics.
+    fn render(
         &mut self,
-        scene: &SceneGraph,
-        viewport: Rect,
+        frame: &RenderFrame,
         options: &RenderOptions,
-    ) -> Result<()>;
+    ) -> Result<(Vec<u8>, RenderStats)>;
 }

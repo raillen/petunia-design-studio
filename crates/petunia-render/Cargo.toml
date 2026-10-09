@@ -7,4 +7,11 @@ description = "Rendering backend abstractions, scene draw plans, and reference r
 
 [dependencies]
 petunia-core = { workspace = true }
+petunia-render-model = { workspace = true }
+image = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+palette = { workspace = true }

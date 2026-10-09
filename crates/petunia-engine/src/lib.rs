@@ -11,6 +11,7 @@
 
 pub mod brush;
 pub mod command;
+pub mod compile;
 pub mod error;
 pub mod filter;
 pub mod fragments;
@@ -29,6 +30,10 @@ pub mod tiles;
 pub mod transaction;
 
 pub use command::{AddNodeCommand, Command, CommandHistory, TransformNodeCommand};
+pub use compile::{
+    attach_clips, compile_document, flatten_tolerance, headless_frame, ClipResolver,
+    PathClipResolver,
+};
 pub use error::{EngineError, Result};
 pub use history::{History, HistoryDescription, HistoryEntry};
 pub use snapping::{snap_point, SnapConfig, SnapGuide, SnapOrientation, SnapResult};

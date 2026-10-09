@@ -10,6 +10,7 @@ pub mod boolean;
 pub mod bounds;
 pub mod intersections;
 pub mod offset;
+pub mod shape_builder;
 pub mod simplify;
 
 pub use bezier::{flatten_contour, segment_bezier, CubicBez};
@@ -19,4 +20,5 @@ pub use intersections::{
     orient, polyline_intersections, segments_intersect, Orientation, SegmentIntersection,
 };
 pub use offset::offset_ring;
+pub use shape_builder::{BuilderShape, BuiltRegion, ShapeBuilder};
 pub use simplify::{simplify_closed, simplify_open};

@@ -59,6 +59,13 @@ pub enum EffectParameter {
 /// mutation API: QML and tools never assemble these directly.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DocumentOp {
+    /// Insert at page roots. The page root list is the z-order of this
+    /// revision; group membership uses [`DocumentOp::InsertNode`].
+    InsertRoot {
+        index: usize,
+        node: Box<SceneNode>,
+    },
+    /// Insert under a group parent.
     InsertNode {
         parent: ObjectId,
         index: usize,
@@ -219,6 +226,9 @@ fn inverse_of(
     op: &DocumentOp,
 ) -> std::result::Result<Vec<DocumentOp>, TransactionError> {
     match op {
+        DocumentOp::InsertRoot { node, .. } => {
+            Ok(vec![DocumentOp::RemoveSubtree { root: node.id }])
+        }
         DocumentOp::InsertNode { node, .. } => {
             Ok(vec![DocumentOp::RemoveSubtree { root: node.id }])
         }
@@ -363,6 +373,9 @@ fn affected_object(op: &DocumentOp, affected: &mut Vec<ObjectId>) {
         }
     };
     match op {
+        DocumentOp::InsertRoot { node, .. } => {
+            push(node.id);
+        }
         DocumentOp::InsertNode { parent, node, .. } => {
             push(*parent);
             push(node.id);
@@ -383,6 +396,21 @@ fn validate_operation(
     op: &DocumentOp,
 ) -> std::result::Result<(), TransactionError> {
     match op {
+        DocumentOp::InsertRoot { index, node } => {
+            if *index > document.scene.root_order().len() {
+                return Err(TransactionError::InvariantViolation(format!(
+                    "root insert index {index} beyond {} roots",
+                    document.scene.root_order().len()
+                )));
+            }
+            if document.scene.get_node(node.id).is_some() {
+                return Err(TransactionError::InvariantViolation(format!(
+                    "node {} already exists",
+                    node.id
+                )));
+            }
+            Ok(())
+        }
         DocumentOp::InsertNode {
             parent,
             index,
@@ -461,6 +489,15 @@ fn apply_operation(
     op: DocumentOp,
 ) -> std::result::Result<(), CommitError> {
     match op {
+        DocumentOp::InsertRoot { index, node } => {
+            let id = node.id;
+            document.scene.insert_node(*node);
+            // `insert_node` appends to the root order; move to the
+            // requested index (clamped) so z-order stays authorial.
+            let last = document.scene.root_order().len().saturating_sub(1);
+            document.scene.place_root(id, index.min(last));
+            Ok(())
+        }
         DocumentOp::InsertNode {
             parent,
             index,
@@ -669,6 +706,51 @@ mod tests {
             apply_quiet(&mut document, back).expect("inverse applies");
         }
         assert!(document.scene.get_node(id).is_none());
+    }
+
+    #[test]
+    fn insert_at_roots_orders_z_and_undoes() {
+        let mut document = Document::new("roots");
+        let first = SceneNode::new_path("first", VectorPath::rect(0.0, 0.0, 5.0, 5.0));
+        let first_id = first.id;
+        let second = SceneNode::new_path("second", VectorPath::rect(5.0, 0.0, 5.0, 5.0));
+        let second_id = second.id;
+        // Append the second first, then insert the first at index 0.
+        let insert_second = prepare_transaction(
+            &document,
+            request(vec![DocumentOp::InsertRoot {
+                index: 0,
+                node: Box::new(second),
+            }]),
+            DocumentRevision::GENESIS,
+        )
+        .expect("valid");
+        commit_transaction(&mut document, insert_second).expect("commits");
+        let insert_first = prepare_transaction(
+            &document,
+            request(vec![DocumentOp::InsertRoot {
+                index: 0,
+                node: Box::new(first),
+            }]),
+            DocumentRevision(1),
+        )
+        .expect("valid");
+        commit_transaction(&mut document, insert_first).expect("commits");
+        assert_eq!(
+            document.scene.root_order(),
+            &[first_id, second_id],
+            "insert at index 0 must lead the z-order"
+        );
+        // Out-of-range root indices are rejected, not silently wrapped.
+        assert!(prepare_transaction(
+            &document,
+            request(vec![DocumentOp::InsertRoot {
+                index: 9,
+                node: Box::new(SceneNode::new_path("x", VectorPath::new())),
+            }]),
+            DocumentRevision(1),
+        )
+        .is_err());
     }
 
     #[test]

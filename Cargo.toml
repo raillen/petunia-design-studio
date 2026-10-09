@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/petunia-core",
     "crates/petunia-engine",
+    "crates/petunia-render-model",
     "crates/petunia-render",
     "crates/petunia-ui",
 ]
@@ -16,6 +17,7 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 petunia-core = { path = "crates/petunia-core" }
 petunia-engine = { path = "crates/petunia-engine" }
+petunia-render-model = { path = "crates/petunia-render-model" }
 petunia-render = { path = "crates/petunia-render" }
 petunia-ui = { path = "crates/petunia-ui" }
 

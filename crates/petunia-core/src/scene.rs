@@ -125,6 +125,18 @@ impl SceneGraph {
         self.root_order.retain(|&item_id| item_id != id);
     }
 
+    /// Move an ID already present in the root order to a new index,
+    /// clamped into range. Root order is z-order; storage never
+    /// decides it.
+    pub fn place_root(&mut self, id: ObjectId, index: usize) {
+        let Some(current) = self.root_order.iter().position(|item| *item == id) else {
+            return;
+        };
+        let removed = self.root_order.remove(current);
+        let at = index.min(self.root_order.len());
+        self.root_order.insert(at, removed);
+    }
+
     /// Returns the root ordering of objects.
     #[must_use]
     pub fn root_order(&self) -> &[ObjectId] {

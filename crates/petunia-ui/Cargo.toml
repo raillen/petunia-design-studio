@@ -9,4 +9,5 @@ description = "Desktop application shell, input mapping, and studio tools for Pe
 petunia-core = { workspace = true }
 petunia-engine = { workspace = true }
 petunia-render = { workspace = true }
+petunia-render-model = { workspace = true }
 thiserror = { workspace = true }
