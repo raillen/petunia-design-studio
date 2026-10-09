@@ -339,6 +339,10 @@
           "path": "06-references/integration-matrix.md"
         },
         {
+          "title": "Política de reutilização direta de código",
+          "path": "06-references/code-reuse-policy.md"
+        },
+        {
           "title": "Diretrizes para agentes",
           "path": "06-references/agent-research-protocol.md"
         }
