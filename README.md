@@ -66,3 +66,10 @@ python3 -m http.server 8080 -d website
 Abra `http://localhost:8080`.
 
 A documentação é a fonte canônica das decisões arquiteturais, filosofia, roadmap e matriz de implementação.
+
+
+## Code agents e workforce Prumo
+
+Antes de implementar, consultar [Diretivas para Code Agents](website/docs/07-agents/index.md), [website/llms.txt](website/llms.txt) e [workforce completa](website/docs/07-agents/workforce-catalog.md). O projeto usa um subconjunto local do Prumo, e as listas do site incluem também os agentes/skills/recipes complementares upstream, sem afirmar que foram instalados.
+
+O código Python/C++/QML anterior foi preservado no [commit 13fe6b4](https://github.com/raillen/petunia-ds/tree/13fe6b408752b244ee56d4765ea13435eb3ef921); [política de migração/reuso](website/docs/07-agents/legacy-migration.md). Preservar testes e componentes de valor quando compatíveis, sem mudar a arquitetura Rust atual.
