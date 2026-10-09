@@ -71,7 +71,10 @@ pub fn composite(src: Pixel, dst: Pixel, mode: BlendMode) -> Pixel {
     }
 }
 
-fn apply_blend(source: [f32; 3], backdrop: [f32; 3], mode: BlendMode) -> [f32; 3] {
+/// Blend two straight-alpha triplets under one shared contract.
+/// Exposed so property tests and future backends verify the same
+/// formulas the compositor uses.
+pub fn apply_blend(source: [f32; 3], backdrop: [f32; 3], mode: BlendMode) -> [f32; 3] {
     let mut out = [0.0; 3];
     for channel in 0..3 {
         out[channel] = blend_channel(

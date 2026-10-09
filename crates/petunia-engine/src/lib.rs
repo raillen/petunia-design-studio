@@ -38,7 +38,7 @@ pub use error::{EngineError, Result};
 pub use history::{History, HistoryDescription, HistoryEntry};
 pub use snapping::{snap_point, SnapConfig, SnapGuide, SnapOrientation, SnapResult};
 pub use transaction::{
-    commit_transaction, prepare_transaction, AppliedTransaction, CommandId, CommitError,
-    DocumentOp, DocumentRevision, EffectParameter, MergeKey, PreparedTransaction, TransactionError,
-    TransactionRequest,
+    apply_quiet, commit_transaction, prepare_transaction, AppliedTransaction, CommandId,
+    CommitError, DocumentOp, DocumentRevision, EffectParameter, MergeKey, PreparedTransaction,
+    TransactionError, TransactionRequest,
 };

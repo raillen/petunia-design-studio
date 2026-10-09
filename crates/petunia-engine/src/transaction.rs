@@ -630,8 +630,8 @@ pub fn commit_transaction(
 }
 
 /// Quietly apply one operation outside history (undo/redo reuse this
-/// path through [`History`]).
-pub(crate) fn apply_quiet(
+/// path through history, tests apply inverses directly).
+pub fn apply_quiet(
     document: &mut Document,
     op: DocumentOp,
 ) -> std::result::Result<(), EngineError> {

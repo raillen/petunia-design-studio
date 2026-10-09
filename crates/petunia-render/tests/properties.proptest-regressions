@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc c33b29e9be27f5d1ed90ad30cb2bd7a153c68702fd219dd72d4c755b9d33ef11 # shrinks to pixel = StraightPixel { r: 0.0, g: 0.0, b: 0.24182042, a: 0.0 }

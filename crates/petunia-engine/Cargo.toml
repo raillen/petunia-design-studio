@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Business logic, command transactions, undo/redo stack, and snapping engine for Petunia Design Studio"
 
+[dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }
+
 [dependencies]
 petunia-core = { workspace = true }
 petunia-render-model = { workspace = true }
@@ -24,3 +28,11 @@ unicode-linebreak = { workspace = true }
 unicode-script = { workspace = true }
 unicode-segmentation = { workspace = true }
 uuid = { workspace = true }
+
+[[bench]]
+name = "geometry"
+harness = false
+
+[[bench]]
+name = "spatial"
+harness = false

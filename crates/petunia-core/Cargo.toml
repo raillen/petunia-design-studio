@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Canonical domain models, vector geometry, scene graph, and serialization for Petunia Design Studio"
 
+[dev-dependencies]
+proptest = { workspace = true }
+serde_json = { workspace = true }
+
 [dependencies]
 thiserror = { workspace = true }
 serde = { workspace = true }

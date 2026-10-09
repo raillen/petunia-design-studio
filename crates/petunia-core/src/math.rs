@@ -135,6 +135,45 @@ impl Transform2D {
             y: self.b * p.x + self.d * p.y + self.ty,
         }
     }
+
+    /// Invert this transform. Singular or numerically unsafe matrices
+    /// return `None`: the Core refuses to hand out an inverse that
+    /// would silently corrupt geometry.
+    #[must_use]
+    pub fn inverse(&self) -> Option<Self> {
+        let det = self.a * self.d - self.b * self.c;
+        if !det.is_finite() || det == 0.0 {
+            return None;
+        }
+        // `a`, `b`, `c`, `d` below are the entries of the *inverse*
+        // 2×2 block; the translation follows from `-(A⁻¹ · t)`.
+        let a = self.d / det;
+        let d = self.a / det;
+        let b = -self.b / det;
+        let c = -self.c / det;
+        let candidate = Self {
+            a,
+            c,
+            b,
+            d,
+            tx: -(a * self.tx + c * self.ty),
+            ty: -(b * self.tx + d * self.ty),
+        };
+        if !candidate.is_numerically_safe() {
+            return None;
+        }
+        Some(candidate)
+    }
+
+    /// True when every coefficient is finite and scales stay in a
+    /// range that survives typical document coordinate arithmetic.
+    #[must_use]
+    pub fn is_numerically_safe(&self) -> bool {
+        const LIMIT: f64 = 1e12;
+        [self.a, self.b, self.c, self.d, self.tx, self.ty]
+            .iter()
+            .all(|coefficient| coefficient.is_finite() && coefficient.abs() <= LIMIT)
+    }
 }
 
 impl Default for Transform2D {
@@ -318,5 +357,45 @@ mod tests {
         assert_eq!(document_tolerance(4.0, 0.0), None);
         assert_eq!(document_tolerance(4.0, -1.0), None);
         assert_eq!(document_tolerance(f64::NAN, 1.0), None);
+    }
+
+    #[test]
+    fn inverse_round_trips_and_rejects_singular() {
+        let transform = Transform2D {
+            a: 2.0,
+            c: 1.5,
+            b: -0.5,
+            d: 3.0,
+            tx: 12.0,
+            ty: -7.0,
+        };
+        let inverse = transform.inverse().expect("invertible");
+        let point = Point::new(5.0, 9.0);
+        let restored = inverse.transform_point(transform.transform_point(point));
+        assert!((restored.x - point.x).abs() < 1e-9, "{restored:?}");
+        assert!((restored.y - point.y).abs() < 1e-9, "{restored:?}");
+        // Collinear columns: no inverse, no silent corruption.
+        let singular = Transform2D {
+            a: 2.0,
+            c: 2.0,
+            b: 3.0,
+            d: 3.0,
+            tx: 0.0,
+            ty: 0.0,
+        };
+        assert!(singular.inverse().is_none());
+        // Identity is its own inverse.
+        assert_eq!(Transform2D::IDENTITY.inverse(), Some(Transform2D::IDENTITY));
+    }
+
+    #[test]
+    fn numerical_safety_rejects_non_finite() {
+        assert!(Transform2D::IDENTITY.is_numerically_safe());
+        let unsafe_matrix = Transform2D {
+            a: f64::INFINITY,
+            ..Transform2D::IDENTITY
+        };
+        assert!(!unsafe_matrix.is_numerically_safe());
+        assert!(unsafe_matrix.inverse().is_none());
     }
 }

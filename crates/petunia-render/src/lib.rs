@@ -26,7 +26,7 @@ pub mod software;
 pub use adjustments::{apply_adjustment, StraightPixel};
 pub use backend::{RenderBackend, RenderOptions};
 pub use cache::{ClockCache, RebuildCost, SurfacePool};
-pub use compositor::{composite, Pixel};
+pub use compositor::{apply_blend, composite, Pixel};
 pub use error::{RenderError, Result};
 pub use graph::{RenderGraph, TILE_EDGE};
 pub use output::{encode_png_rgba8, frame_to_rgba8, linear_to_srgb_byte};

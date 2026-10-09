@@ -1,0 +1,96 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [main, petunia-design-rust]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  # Canônica ordem de gates: format → check → test → clippy →
+  # property tests → parser/security regression.
+  gates:
+    name: Format, tests and lints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Check workspace
+        run: cargo check --workspace --all-targets
+
+      - name: Unit and integration tests
+        run: cargo test --workspace
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # Property suites exercitam invariantes com entradas geradas.
+  properties:
+    name: Property and robustness suites
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: dtolnay/rust-action@stable
+      - name: Core properties
+        run: cargo test -p petunia-core --test properties
+      - name: Engine properties and fuzz guards
+        run: |
+          cargo test -p petunia-engine --test properties
+          cargo test -p petunia-engine --test fuzz
+      - name: Render properties
+        run: cargo test -p petunia-render --test properties
+
+  # Suíte pesada: cadência própria (noite/manual), não em todo commit.
+  benchmarks:
+    name: Benchmarks (manual)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: dtolnay/rust-action@stable
+      - name: Geometry benchmarks
+        run: cargo bench -p petunia-engine --bench geometry -- --quick
+      - name: Spatial benchmarks
+        run: cargo bench -p petunia-engine --bench spatial -- --quick
+      - name: Render benchmarks
+        run: cargo bench -p petunia-render --bench render -- --quick
+
+  # Website gates: SPA syntax, tracker consistency and data validation.
+  website:
+    name: Website and tracker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: SPA and tracker syntax
+        run: |
+          node --check website/app.js
+          node --check website/progress/progress.js
+      - name: Tracker validation
+        run: node website/scripts/verify-progress.cjs
+      - name: Tracker tests
+        run: node --test website/tests/progress.test.cjs
