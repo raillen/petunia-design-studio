@@ -134,6 +134,17 @@ entity_id!(
     /// Stable effect instance identity for reorder, history and cache.
     EffectId
 );
+entity_id!(
+    /// Stable contour identity inside a `VectorPath`.
+    ContourId
+);
+entity_id!(
+    /// Stable geometric node identity inside a contour.
+    ///
+    /// This UUID identifies the same anchor across moves, handle edits,
+    /// splits and undo. It is distinct from UI-local index coordinates.
+    NodeId
+);
 
 #[cfg(test)]
 mod tests {

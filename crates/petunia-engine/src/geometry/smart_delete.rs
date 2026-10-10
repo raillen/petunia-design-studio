@@ -6,7 +6,7 @@
 //! fitting. There is no silent simplification: when the fitted error
 //! exceeds the tolerance the caller must choose Hard Delete or Cancel.
 
-use petunia_core::{Contour, PathNode, Tolerance};
+use petunia_core::{Contour, ContourId, PathNode, Tolerance};
 
 /// Which of the two explicit actions the user picked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,6 +150,7 @@ pub fn delete_node(
                 };
             };
             let fitted = Contour {
+                id: ContourId::new_v4(),
                 nodes,
                 closed: contour.closed,
             };

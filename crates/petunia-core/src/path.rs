@@ -1,5 +1,6 @@
 //! Canonical vector path geometry, contours, and nodes.
 
+use crate::id::{ContourId, NodeId};
 use crate::math::Point;
 use serde::{Deserialize, Serialize};
 
@@ -14,9 +15,24 @@ pub enum NodeKind {
     Symmetric,
 }
 
+/// Canonical segment between a node and the next one.
+///
+/// `outgoing` belongs to the start node. In a closed contour, the last
+/// node connects implicitly to the first; no duplicated anchor marks
+/// closure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SegmentKind {
+    /// Straight segment; handles do not alter it.
+    Line,
+    /// Cubic Bézier segment derived from endpoint handles.
+    Cubic,
+}
+
 /// A single node in a vector path with optional cubic Bézier handles.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PathNode {
+    /// Stable identity of this anchor across moves, handle edits and undo.
+    pub id: NodeId,
     /// Anchor position of the point.
     pub point: Point,
     /// Incoming handle relative or absolute control point (leading into anchor).
@@ -25,31 +41,49 @@ pub struct PathNode {
     pub handle_out: Option<Point>,
     /// Node continuity mode.
     pub kind: NodeKind,
+    /// Segment from this node to the next one.
+    pub outgoing: SegmentKind,
 }
 
 impl PathNode {
     #[must_use]
-    pub const fn new(point: Point, kind: NodeKind) -> Self {
+    pub fn new(point: Point, kind: NodeKind) -> Self {
         Self {
+            id: NodeId::new_v4(),
             point,
             handle_in: None,
             handle_out: None,
             kind,
+            outgoing: SegmentKind::Cubic,
         }
     }
 
     #[must_use]
-    pub const fn with_handles(
+    pub fn line(point: Point, kind: NodeKind) -> Self {
+        Self {
+            id: NodeId::new_v4(),
+            point,
+            handle_in: None,
+            handle_out: None,
+            kind,
+            outgoing: SegmentKind::Line,
+        }
+    }
+
+    #[must_use]
+    pub fn with_handles(
         point: Point,
         handle_in: Option<Point>,
         handle_out: Option<Point>,
         kind: NodeKind,
     ) -> Self {
         Self {
+            id: NodeId::new_v4(),
             point,
             handle_in,
             handle_out,
             kind,
+            outgoing: SegmentKind::Cubic,
         }
     }
 }
@@ -57,14 +91,17 @@ impl PathNode {
 /// A connected sequence of path nodes (can be open or closed).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Contour {
+    /// Stable identity of this contour inside its path.
+    pub id: ContourId,
     pub nodes: Vec<PathNode>,
     pub closed: bool,
 }
 
 impl Contour {
     #[must_use]
-    pub const fn new(closed: bool) -> Self {
+    pub fn new(closed: bool) -> Self {
         Self {
+            id: ContourId::new_v4(),
             nodes: Vec::new(),
             closed,
         }
@@ -107,13 +144,13 @@ impl VectorPath {
     #[must_use]
     pub fn rect(x: f64, y: f64, width: f64, height: f64) -> Self {
         let mut contour = Contour::new(true);
-        contour.push_node(PathNode::new(Point::new(x, y), NodeKind::Cusp));
-        contour.push_node(PathNode::new(Point::new(x + width, y), NodeKind::Cusp));
-        contour.push_node(PathNode::new(
+        contour.push_node(PathNode::line(Point::new(x, y), NodeKind::Cusp));
+        contour.push_node(PathNode::line(Point::new(x + width, y), NodeKind::Cusp));
+        contour.push_node(PathNode::line(
             Point::new(x + width, y + height),
             NodeKind::Cusp,
         ));
-        contour.push_node(PathNode::new(Point::new(x, y + height), NodeKind::Cusp));
+        contour.push_node(PathNode::line(Point::new(x, y + height), NodeKind::Cusp));
 
         let mut path = Self::new();
         path.push_contour(contour);
@@ -131,5 +168,24 @@ mod tests {
         assert_eq!(path.contours.len(), 1);
         assert!(path.contours[0].closed);
         assert_eq!(path.contours[0].nodes.len(), 4);
+        assert!(path.contours[0]
+            .nodes
+            .iter()
+            .all(|node| node.outgoing == SegmentKind::Line));
+    }
+
+    #[test]
+    fn test_contour_and_node_ids_are_stable_through_serialization() {
+        let mut contour = Contour::new(true);
+        contour.push_node(PathNode::new(Point::new(0.0, 0.0), NodeKind::Cusp));
+        contour.push_node(PathNode::line(Point::new(10.0, 0.0), NodeKind::Cusp));
+        assert_ne!(contour.nodes[0].id, contour.nodes[1].id);
+
+        let json = serde_json::to_string(&contour).expect("serializable");
+        let back: Contour = serde_json::from_str(&json).expect("deserializable");
+        assert_eq!(back, contour);
+        assert_eq!(back.id, contour.id);
+        assert_eq!(back.nodes[0].id, contour.nodes[0].id);
+        assert_eq!(back.nodes[1].outgoing, SegmentKind::Line);
     }
 }

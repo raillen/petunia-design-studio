@@ -63,15 +63,15 @@ pub use guides::{
     PerspectiveGridSpec, ProjectiveGridTransform, SliceExportPreset, SliceSource,
 };
 pub use id::{
-    AppearanceItemId, DocumentId, EffectId, GridId, GuideId, ObjectId, PageId, ResourceId, SliceId,
-    SpotColorId, StyleId, SwatchId, SymbolId,
+    AppearanceItemId, ContourId, DocumentId, EffectId, GridId, GuideId, NodeId, ObjectId, PageId,
+    ResourceId, SliceId, SpotColorId, StyleId, SwatchId, SymbolId,
 };
 pub use math::{Angle, Point, Rect, Size2, Tolerance, Transform2D, Vec2};
 pub use paint::{
     ColorSource, Gradient, GradientGeometry, GradientInterpolation, GradientSpread, GradientStop,
     PaintSpace, Swatch, SwatchValue,
 };
-pub use path::{Contour, FillRule, NodeKind, PathNode, VectorPath};
+pub use path::{Contour, FillRule, NodeKind, PathNode, SegmentKind, VectorPath};
 pub use raster::{
     ImageObject, ImageSamplingPolicy, PixelFormat, PixelLayer, PixelSize, PixelSurfaceDescriptor,
     PixelSurfaceRef, TileCoord,

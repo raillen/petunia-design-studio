@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "branch": "petunia-design-rust",
   "baselineSha": "52775a9618a8b376a3f2dad70f048fe17bca47d4",
-  "updated": "2026-10-09",
+  "updated": "2026-10-10",
   "phases": [
     {
       "id": "contracts",
@@ -295,14 +295,14 @@
       "title": "Núcleo: path, shape, scene e document",
       "description": "Paths cúbicos, ParametricShape separado, scene graph ordenado e Document com pages e registries.",
       "document": "01-core/path.md",
-      "status": "DONE",
-      "updated": "2026-10-09",
-      "baseline": "Implementado em b16d4eb: path, shape, scene com SceneItem estendido e clip, document, guides, crop. Follow-up futuro: modelo estrutural completo do node (ParentRef, Layer, Artboard).",
+      "status": "IN PROGRESS",
+      "updated": "2026-10-10",
+      "baseline": "Reaberto em 2026-10-10 após auditoria do Core: path.rs precisa de ContourId/NodeId persistentes e SegmentKind antes de voltar a DONE. Implementação anterior: b16d4eb.",
       "checkpoints": [
         {
           "title": "path.rs com nodes cúbicos e contours",
-          "completed": true,
-          "evidence": "ev-c02"
+          "completed": false,
+          "evidence": null
         },
         {
           "title": "scene.rs com hierarquia Path/Group e SceneGraph",
