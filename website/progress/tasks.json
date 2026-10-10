@@ -265,6 +265,11 @@
       "revision": "072d6dd55e018235bcf45f1416e51d2359a1b869",
       "document": "04-ui/session-input.md",
       "summary": "Tools com commit em 2026-10-10: sessão possui controllers persistentes (gesto sobrevive Down-Up), node drag commita um ReplacePath, marquee seleciona por contenção, PenTool fecha path com um InsertRoot. Gates: workspace 383 passed/0 failed, clippy -D warnings limpo, fmt limpo."
+    },
+    "ev-u01-layers": {
+      "revision": "406b8e80f4283402eff990fe47050bcc3d10b85d",
+      "document": "04-ui/session-input.md",
+      "summary": "Painel Layers em 2026-10-10: árvore semântica com labels de leitor de tela, navegação por teclado, Enter seleciona, Space alterna visibilidade via SetVisibility com inverso. Gates: workspace 389 passed/0 failed, clippy -D warnings limpo, fmt limpo."
     }
   },
   "tasks": [
