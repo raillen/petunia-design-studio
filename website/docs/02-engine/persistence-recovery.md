@@ -409,3 +409,16 @@ Escopo: framing com checksum, replay por prefixo confirmado e sessões de recove
 | `node website/scripts/verify-progress.cjs` | pass |
 
 Riscos/limites: blobs de resource viajam inline no record (COW/content-addressed é futuro); histórico de Undo não é restaurado pelo recovery; detecção de modificação externa e locks seguem pendentes.
+
+## Verificação de conflitos, locks e undo no recovery (2026-10-10)
+
+Escopo: `FileFingerprint`, `ExternalConflictDetector` com `EngineError::Conflict`, `CooperativeFileLock` e restauração de histórico de Undo no `RecoveryReport`. Revisão `1520772a352e078e74baa247a3e22db42512eaf5` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 398 passed / 0 failed (Engine com testes de conflito, lock e undo em recovery) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: locks são cooperativos/advisory, não obrigatórios pelo filesystem host.
