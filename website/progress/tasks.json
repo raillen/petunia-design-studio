@@ -280,6 +280,11 @@
       "revision": "bba0837be32ba78bea13b905e867530d3412bfe1",
       "document": "03-render/paint-evaluation.md",
       "summary": "Avaliação e render de gradientes em 2026-10-10: compiler avalia Linear/RadialGradient com resolução de stops, PaintSpace e interpolação; SoftwareRenderer amostra via paint_eval; testes golden de rampas de cor linear e radial em pixels de dispositivo. Gates: workspace 394 passed/0 failed, clippy -D warnings limpo, fmt limpo."
+    },
+    "ev-e03-previews-cow": {
+      "revision": "eec048a1e374bf274a8eea6ad79aec65e679bb20",
+      "document": "00-architecture/ptnd-format.md",
+      "summary": "Previews, extensions e COW em blobs em 2026-10-10: save_package e load_package com previews/thumbnail.png e extensions/, BlobStore com deduplicação BLAKE3 ContentHash e compartilhamento Arc<Vec<u8>> (COW). Gates: workspace 396 passed/0 failed, clippy -D warnings limpo, fmt limpo."
     }
   },
   "tasks": [
@@ -611,7 +616,7 @@
       "document": "02-engine/brush-raster.md",
       "status": "DONE",
       "updated": "2026-10-10",
-      "baseline": "I/O com PTND ZIP, recovery journal e fragments em 7d0cbb6; container físico em 290be45; journal com replay por prefixo em a3e2079. Seguem futuros: runtime WASM, importers SVG/PDF, hyphenation.",
+      "baseline": "I/O com PTND ZIP, recovery journal e fragments em 7d0cbb6; container físico em 290be45; recovery em a3e2079; previews, extensions e COW BlobStore em eec048a.",
       "checkpoints": [
         {
           "title": "Brush/raster com resampling, tiles COW e filtros",
@@ -642,6 +647,11 @@
           "title": "Recovery: journal com framing/checksum e replay por prefixo confirmado",
           "completed": true,
           "evidence": "ev-e03-recovery"
+        },
+        {
+          "title": "Previews, extensions e COW em blobs no PTND",
+          "completed": true,
+          "evidence": "ev-e03-previews-cow"
         }
       ],
       "documents": [

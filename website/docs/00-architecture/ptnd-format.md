@@ -379,3 +379,16 @@ Escopo: layout real, manifest, `save_document`/`load_document`, Zip64, limites e
 | `node website/scripts/verify-progress.cjs` | pass |
 
 Riscos/limites: previews e extensions ainda não são escritos; política de compressão por tipo de conteúdo é futura; runtime WASM, importers SVG/PDF e hyphenation seguem pendentes.
+
+## Verificação de previews, extensions e COW em blobs (2026-10-10)
+
+Escopo: `save_package`/`load_package` com suporte a `previews/thumbnail.png`, `extensions/*` e `BlobStore` com deduplicação por `ContentHash` (BLAKE3) e `Arc<Vec<u8>>`. Revisão `eec048a1e374bf274a8eea6ad79aec65e679bb20` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 396 passed / 0 failed (Engine com testes de previews/extensions e BlobStore COW) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: política de compressão por tipo MIME segue como detalhe interno; plugins WASM reais são o próximo milestone.
