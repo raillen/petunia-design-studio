@@ -470,4 +470,4 @@ Escopo: `ParentRef`, root lists por página, operações estreitas, validação 
 | `cargo fmt --all -- --check` | pass |
 | `node website/scripts/verify-progress.cjs` | pass |
 
-Riscos/limites: `insert_node`/`remove_node` permanecem como shims de compatibilidade; `remove_node` histórico ainda pode deixar referências pendentes — código novo usa `remove_subtree`. Aggregate `Document` (páginas, registries, DTO) continua pendente.
+Riscos/limites: `insert_node`/`remove_node` permanecem como shims de compatibilidade; `remove_node` histórico ainda pode deixar referências pendentes — código novo usa `remove_subtree`. Aggregate `Document` entregue em 2026-10-10; seguem futuros Layer/Artboard como containers e storage dedicado de subtrees de Symbol.

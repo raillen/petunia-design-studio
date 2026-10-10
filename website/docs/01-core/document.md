@@ -406,4 +406,4 @@ Escopo: metadata, setup, páginas, spreads, registries, `Document::validate` e D
 | `cargo fmt --all -- --check` | pass |
 | `node website/scripts/verify-progress.cjs` | pass |
 
-Riscos/limites: container físico PTND (ZIP, manifest, migrations, atomic replace) pertence ao Engine e continua pendente; `Appearance` ainda não está ligada aos itens da cena; definições Spot não têm registry próprio; subtrees de definição de Symbol não têm storage dedicado. C02 fecha o modelo; esses pontos viram follow-up próprio.
+Riscos/limites: container físico PTND e fiação do `Appearance` entregues em 2026-10-10; seguem futuros definições Spot sem registry próprio e subtrees de definição de Symbol sem storage dedicado.

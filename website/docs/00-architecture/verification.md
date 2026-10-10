@@ -702,7 +702,7 @@ Escopo: fuzz guards determinísticos do DTO, UUID e ContentHash. Revisão `8a214
 | `cargo fmt --all -- --check` | pass |
 | `node website/scripts/verify-progress.cjs` | pass |
 
-Riscos/limites: detecção estrita de chaves duplicadas em mapas de identidade continua futura; ContentHash segue SHA-256 sem tag de algoritmo (BLAKE3 tagueado é follow-up).
+Riscos/limites: chaves duplicadas, UUID estrito e BLAKE3 tagueado entregues em 2026-10-10; seguem futuros benchmark de interação, fuzzing contínuo noturno e ContentHash com verificação de modificação externa.
 
 ## Verificação de chaves duplicadas (2026-10-10)
 
