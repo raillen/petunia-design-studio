@@ -88,86 +88,110 @@ pub fn delete_node(
     mode: SmartDeleteMode,
     tolerance: f64,
 ) -> SmartDeleteOutcome {
+    let preview = match preview_delete(contour, index, tolerance) {
+        Ok(preview) => preview,
+        Err(refusal) => return SmartDeleteOutcome::Refused(refusal),
+    };
+    match (mode, preview.within_tolerance) {
+        (SmartDeleteMode::HardDelete, _) => {
+            let mut joined = contour.clone();
+            joined.nodes.remove(index);
+            join_directly(&mut joined);
+            // The reported error always describes the returned nodes:
+            // the plain join has its own deviation, not the fit's.
+            let band = Tolerance::new(tolerance).unwrap_or(Tolerance(1e-6));
+            let before = super::bezier::flatten_contour(contour, band);
+            let max_error = max_deviation(&before, &joined);
+            SmartDeleteOutcome::Applied {
+                max_error,
+                nodes: joined.nodes,
+            }
+        }
+        (SmartDeleteMode::PreserveShape, true) => SmartDeleteOutcome::Applied {
+            max_error: preview.max_error,
+            nodes: preview.nodes,
+        },
+        (SmartDeleteMode::PreserveShape, false) => SmartDeleteOutcome::NeedsConfirmation {
+            max_error: preview.max_error,
+            tolerance,
+        },
+    }
+}
+
+/// Candidate result of deleting one node, computed without mutating
+/// anything. The caller decides whether the error is acceptable:
+/// `within_tolerance` mirrors the `delete_node` decision boundary
+/// exactly, so preview and commit can never disagree.
+#[must_use]
+pub fn preview_delete(
+    contour: &Contour,
+    index: usize,
+    tolerance: f64,
+) -> Result<SmartDeletePreview, SmartDeleteRefusal> {
     if index >= contour.nodes.len() {
-        return SmartDeleteOutcome::Refused(SmartDeleteRefusal::IndexOutOfRange);
+        return Err(SmartDeleteRefusal::IndexOutOfRange);
     }
     if contour
         .nodes
         .iter()
         .any(|node| !node.point.x.is_finite() || !node.point.y.is_finite())
     {
-        return SmartDeleteOutcome::Refused(SmartDeleteRefusal::NonFiniteGeometry);
+        return Err(SmartDeleteRefusal::NonFiniteGeometry);
     }
     if contour.nodes.len() <= minimum_nodes(contour) {
-        return SmartDeleteOutcome::Refused(SmartDeleteRefusal::TooFewNodes);
+        return Err(SmartDeleteRefusal::TooFewNodes);
     }
 
-    // Original geometry, for measuring what the fit would cost.
+    // Original geometry, for measuring what the deletion costs.
     let before = super::bezier::flatten_contour(
         contour,
         Tolerance::new(tolerance).unwrap_or(Tolerance(1e-6)),
     );
     if before.is_empty() {
-        return SmartDeleteOutcome::Refused(SmartDeleteRefusal::NonFiniteGeometry);
+        return Err(SmartDeleteRefusal::NonFiniteGeometry);
     }
 
     let mut trimmed = contour.clone();
     trimmed.nodes.remove(index);
     if trimmed.nodes.len() < minimum_nodes(&trimmed) {
-        return SmartDeleteOutcome::Refused(SmartDeleteRefusal::TooFewNodes);
+        return Err(SmartDeleteRefusal::TooFewNodes);
     }
 
-    match mode {
-        SmartDeleteMode::HardDelete => {
-            join_directly(&mut trimmed);
-            let max_error = max_deviation(&before, &trimmed);
-            SmartDeleteOutcome::Applied {
-                max_error,
-                nodes: trimmed.nodes,
-            }
+    // A closed contour must keep its minimum node count, so a fit
+    // that collapses it is not usable: fall back to the plain join
+    // and report its honest deviation.
+    let fitted = super::fit::refit_contour(&trimmed, tolerance.max(1e-9))
+        .filter(|nodes| nodes.len() >= minimum_nodes(&trimmed))
+        .map(|nodes| Contour {
+            id: ContourId::new_v4(),
+            nodes,
+            closed: contour.closed,
+        });
+    let candidate = match fitted {
+        Some(fitted) => fitted,
+        None => {
+            let mut joined = trimmed.clone();
+            join_directly(&mut joined);
+            joined
         }
-        SmartDeleteMode::PreserveShape => {
-            // A closed contour must keep its minimum node count, so a
-            // fit that collapses it is not usable.
-            let fitted = super::fit::refit_contour(&trimmed, tolerance.max(1e-9))
-                .filter(|nodes| nodes.len() >= minimum_nodes(&trimmed));
-            let Some(nodes) = fitted else {
-                // No fit is available: report the deviation of the plain
-                // join so the user still gets an honest number.
-                let mut joined = trimmed.clone();
-                join_directly(&mut joined);
-                let max_error = max_deviation(&before, &joined);
-                return if max_error <= tolerance {
-                    SmartDeleteOutcome::Applied {
-                        max_error,
-                        nodes: joined.nodes,
-                    }
-                } else {
-                    SmartDeleteOutcome::NeedsConfirmation {
-                        max_error,
-                        tolerance,
-                    }
-                };
-            };
-            let fitted = Contour {
-                id: ContourId::new_v4(),
-                nodes,
-                closed: contour.closed,
-            };
-            let max_error = max_deviation(&before, &fitted);
-            if max_error <= tolerance {
-                SmartDeleteOutcome::Applied {
-                    max_error,
-                    nodes: fitted.nodes,
-                }
-            } else {
-                SmartDeleteOutcome::NeedsConfirmation {
-                    max_error,
-                    tolerance,
-                }
-            }
-        }
-    }
+    };
+    let max_error = max_deviation(&before, &candidate);
+    Ok(SmartDeletePreview {
+        nodes: candidate.nodes,
+        max_error,
+        within_tolerance: max_error <= tolerance,
+    })
+}
+
+/// Candidate deletion result for preview rendering.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SmartDeletePreview {
+    /// Contour nodes the deletion would produce.
+    pub nodes: Vec<PathNode>,
+    /// Largest deviation between source and candidate geometry.
+    pub max_error: f64,
+    /// Whether the error fits the declared tolerance.
+    pub within_tolerance: bool,
 }
 
 /// Hard Delete: the neighbours are joined with no curve at all.
@@ -323,6 +347,28 @@ mod tests {
             panic!("expected a confirmation request");
         };
         assert!(max_error > tolerance, "{max_error} vs {tolerance}");
+    }
+
+    #[test]
+    fn preview_matches_the_commit_boundary() {
+        let contour = pill();
+        let preview = preview_delete(&contour, 1, 40.0).expect("previews");
+        assert!(preview.within_tolerance);
+        assert_eq!(
+            delete_node(&contour, 1, SmartDeleteMode::PreserveShape, 40.0),
+            SmartDeleteOutcome::Applied {
+                max_error: preview.max_error,
+                nodes: preview.nodes.clone(),
+            }
+        );
+        let tight = preview_delete(&contour, 1, 1.0).expect("previews");
+        assert!(!tight.within_tolerance);
+        assert!(matches!(
+            delete_node(&contour, 1, SmartDeleteMode::PreserveShape, 1.0),
+            SmartDeleteOutcome::NeedsConfirmation { .. }
+        ));
+        // Preview never mutates its input.
+        assert_eq!(contour.nodes.len(), 4);
     }
 
     #[test]

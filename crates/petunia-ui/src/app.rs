@@ -25,7 +25,9 @@ use petunia_core::{
     Document, FillRule, ObjectId, ParentRef, Point, SceneItem, SceneNode, Size2, VectorPath,
 };
 use petunia_engine::compile;
-use petunia_engine::geometry::{delete_node, SmartDeleteMode, SmartDeleteOutcome};
+use petunia_engine::geometry::{
+    delete_node, flatten_contour, preview_delete, SmartDeleteMode, SmartDeleteOutcome,
+};
 use petunia_engine::EngineError;
 use petunia_engine::History;
 use petunia_engine::{prepare_transaction, TransactionRequest};
@@ -33,6 +35,18 @@ use petunia_engine::{CommandId, DocumentOp, DocumentRevision, HistoryDescription
 use petunia_render::RenderOptions;
 use petunia_render::SoftwareRenderer;
 use petunia_render_model::RenderStats;
+
+/// Ghost preview of a Smart Delete: candidate curve points plus the
+/// honest error number the UI displays next to them.
+#[derive(Debug, Clone)]
+pub struct SmartDeleteGhost {
+    /// Document-space points of the candidate curve.
+    pub points: Vec<Point>,
+    /// Largest deviation between source and candidate geometry.
+    pub max_error: f64,
+    /// Whether the candidate fits the declared tolerance.
+    pub within_tolerance: bool,
+}
 
 /// Studio session. Owns the document, its history, and every piece
 /// of Session State (contexts, selection, view, workspace).
@@ -399,6 +413,43 @@ impl StudioSession {
         Ok(ToolResponse::Status(format!(
             "Smart Delete aplicado, erro máximo {worst:.3}"
         )))
+    }
+
+    /// Preview a Smart Delete without committing: ghost points of the
+    /// candidate curve plus its maximum deviation and whether it fits
+    /// the tolerance. What the preview shows is exactly what the
+    /// commit would produce.
+    pub fn smart_delete_preview(
+        &self,
+        node: NodeId,
+    ) -> std::result::Result<SmartDeleteGhost, EngineError> {
+        let scene_node = self
+            .document
+            .scene
+            .get_node(node.object)
+            .ok_or_else(|| EngineError::Execution(format!("object {} is gone", node.object)))?;
+        let path = scene_node.item_path().ok_or_else(|| {
+            EngineError::Execution(format!("object {} is not a path", node.object))
+        })?;
+        let contour = path
+            .contours
+            .get(node.contour as usize)
+            .ok_or_else(|| EngineError::Execution(format!("contour {} is gone", node.contour)))?;
+        let preview = preview_delete(contour, node.node as usize, 1.0).map_err(|refusal| {
+            EngineError::Execution(format!("smart delete refused: {refusal:?}"))
+        })?;
+        let band = petunia_core::Tolerance::new(0.25).unwrap_or(petunia_core::Tolerance(0.25));
+        let candidate = petunia_core::Contour {
+            id: petunia_core::ContourId::new_v4(),
+            nodes: preview.nodes.clone(),
+            closed: contour.closed,
+        };
+        let ghost = flatten_contour(&candidate, band);
+        Ok(SmartDeleteGhost {
+            points: ghost,
+            max_error: preview.max_error,
+            within_tolerance: preview.within_tolerance,
+        })
     }
 
     /// Move the selection by document units, independent of zoom
@@ -1207,6 +1258,33 @@ mod tests {
                 "{hits:?}"
             );
         }
+    }
+
+    #[test]
+    fn smart_delete_preview_warns_instead_of_simplifying() {
+        let mut session = session_with_rect();
+        let object = session.selection.single().expect("selected");
+        let target = NodeId {
+            object,
+            contour: 0,
+            node: 0,
+        };
+        // Deleting a rectangle corner is a real deformation: the
+        // preview shows the candidate curve and an error above the
+        // tolerance instead of a silent simplification.
+        let ghost = session.smart_delete_preview(target).expect("previews");
+        assert!(!ghost.points.is_empty(), "a visible ghost");
+        assert!(!ghost.within_tolerance, "error {}", ghost.max_error);
+        assert!(ghost.max_error > 1.0, "{}", ghost.max_error);
+        // The commit demands an explicit choice, with the same number.
+        session.selection.sub.select_node(target);
+        let outcome = session
+            .smart_delete(petunia_engine::geometry::SmartDeleteMode::PreserveShape)
+            .expect("answers");
+        let ToolResponse::Failed(message) = outcome else {
+            panic!("must refuse, got {outcome:?}");
+        };
+        assert!(message.contains("Hard Delete"), "{message}");
     }
 
     #[test]

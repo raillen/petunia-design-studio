@@ -28,4 +28,7 @@ pub use intersections::{
 pub use offset::offset_ring;
 pub use shape_builder::{BuilderShape, BuiltRegion, ShapeBuilder};
 pub use simplify::{simplify_closed, simplify_open};
-pub use smart_delete::{delete_node, SmartDeleteMode, SmartDeleteOutcome, SmartDeleteRefusal};
+pub use smart_delete::{
+    delete_node, preview_delete, SmartDeleteMode, SmartDeleteOutcome, SmartDeletePreview,
+    SmartDeleteRefusal,
+};
