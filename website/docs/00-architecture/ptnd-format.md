@@ -366,3 +366,16 @@ Recovery usa armazenamento próprio e está detalhado em [Autosave e Recovery](#
 12. Save usa temporary file + atomic replace.
 13. SchemaVersion é independente da versão da aplicação.
 14. Mudança física futura do container exige compatibilidade/migration explícita.
+
+## Verificação do container físico (2026-10-10)
+
+Escopo: layout real, manifest, `save_document`/`load_document`, Zip64, limites e replace atômico. Revisão `290be45d5d7d782fdb91cf12b9d147d1c54c76a4` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 336 passed / 0 failed (Engine com 11 testes de PTND) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: previews e extensions ainda não são escritos; política de compressão por tipo de conteúdo é futura; runtime WASM, importers SVG/PDF e hyphenation seguem pendentes.

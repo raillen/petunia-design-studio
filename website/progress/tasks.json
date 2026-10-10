@@ -220,6 +220,11 @@
       "revision": "5616ac6396d2d93bb7d58c359270bf8bade2b73d",
       "document": "01-core/document.md",
       "summary": "Aggregate Document em 2026-10-10: metadata com timestamps de save, setup com units/DPI/cor/página padrão, PageCollection com specs validadas, spreads, registries de resources/styles/symbols/swatches/guides/grids/slices (BTreeMap determinístico + ordem explícita de palette), Document::validate cobrindo páginas, referências cruzadas, texto, geometria finita e dangling refs, e DTO versionado com gate de schema e revalidação. Gates: workspace 330 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
+    },
+    "ev-e03-ptnd": {
+      "revision": "290be45d5d7d782fdb91cf12b9d147d1c54c76a4",
+      "document": "00-architecture/ptnd-format.md",
+      "summary": "Container PTND físico em 2026-10-10: manifest real com marker/schema/UUID/capabilities/entry-set, save_document/load_document com validação total e blobs por ResourceId, suporte Zip64 de leitura e escrita, inflação limitada, guard de ratio e budgets, recusa de traversal/dup/symlink, erros tipados Package/Manifest/Capability/Limit e save_atomic com sync. Gates: workspace 336 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
     }
   },
   "tasks": [
@@ -530,8 +535,8 @@
       "description": "Brush/raster, text/layout, color, import/export, persistência, fragments, jobs e plugins WASM/MCP.",
       "document": "02-engine/brush-raster.md",
       "status": "DONE",
-      "updated": "2026-10-09",
-      "baseline": "Implementado em 7d0cbb6: brush, tiles COW, filtros ROI, texto, I/O, PTND, scheduler e plugins. Follow-up: runtime WASM, importers SVG/PDF, Zip64, hyphenation.",
+      "updated": "2026-10-10",
+      "baseline": "I/O com PTND ZIP, recovery journal e fragments em 7d0cbb6; container físico completo (manifest real, save/load, Zip64, hardening) em 290be45. Seguem futuros: runtime WASM, importers SVG/PDF, hyphenation.",
       "checkpoints": [
         {
           "title": "Brush/raster com resampling, tiles COW e filtros",
@@ -552,6 +557,11 @@
           "title": "Scheduler, plugins WASM e adapter MCP",
           "completed": true,
           "evidence": "ev-io"
+        },
+        {
+          "title": "PTND físico: manifest real, save/load, Zip64 e hardening",
+          "completed": true,
+          "evidence": "ev-e03-ptnd"
         }
       ],
       "documents": [
@@ -563,7 +573,8 @@
         "02-engine/document-fragments.md",
         "02-engine/image-analysis-vectorization.md",
         "02-engine/vector-generators.md",
-        "02-engine/creative-operations.md"
+        "02-engine/creative-operations.md",
+        "00-architecture/ptnd-format.md"
       ]
     },
     {
