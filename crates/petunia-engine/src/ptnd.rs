@@ -28,6 +28,7 @@ use petunia_core::{Document, DocumentId, ResourceId};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::io::Read;
+use std::sync::Arc;
 
 /// Bounds for one package operation.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -92,6 +93,12 @@ pub const MANIFEST_ENTRY: &str = "manifest.json";
 
 /// Prefix for resource blob entries.
 pub const RESOURCES_PREFIX: &str = "resources/";
+
+/// Canonical entry path for the optional document preview thumbnail.
+pub const PREVIEWS_ENTRY: &str = "previews/thumbnail.png";
+
+/// Prefix for namespaced plugin/extension payload entries.
+pub const EXTENSIONS_PREFIX: &str = "extensions/";
 
 impl PtndManifest {
     /// Manifest for a package: canonical format marker, schema v1,
@@ -729,27 +736,40 @@ fn find_end_of_central_directory(bytes: &[u8]) -> Result<usize> {
     Err(package("end of central directory not found"))
 }
 
-/// Save one document as a PTND package: manifest, versioned document
-/// DTO and every embedded resource blob. Linked resources travel by
-/// reference only; unknown extra blobs are never smuggled in.
-pub fn save_document(
-    document: &Document,
-    blobs: &BTreeMap<ResourceId, Vec<u8>>,
-    limits: &PackageLimits,
-) -> Result<Vec<u8>> {
+/// Complete package content to be written: document, embedded resource
+/// blobs, optional preview thumbnail and namespaced extensions.
+pub struct PackagePayload<'a> {
+    pub document: &'a Document,
+    pub blobs: &'a BTreeMap<ResourceId, Vec<u8>>,
+    pub preview: Option<&'a [u8]>,
+    pub extensions: &'a BTreeMap<String, Vec<u8>>,
+}
+
+/// Fully decoded PTND package: document, embedded blobs, optional
+/// preview thumbnail and namespaced extension entries.
+#[derive(Debug, Clone)]
+pub struct LoadedPackage {
+    pub document: Document,
+    pub blobs: BTreeMap<ResourceId, Vec<u8>>,
+    pub preview: Option<Vec<u8>>,
+    pub extensions: BTreeMap<String, Vec<u8>>,
+}
+
+/// Save a full PTND package with previews and extensions.
+pub fn save_package(payload: &PackagePayload<'_>, limits: &PackageLimits) -> Result<Vec<u8>> {
     use petunia_core::ResourceSource;
-    document.validate()?;
-    let dto = petunia_core::DocumentDtoV1::from_document(document);
+    payload.document.validate()?;
+    let dto = petunia_core::DocumentDtoV1::from_document(payload.document);
     let document_bytes = serde_json::to_vec(&dto)
         .map_err(|error| EngineError::Manifest(format!("document encode failed: {error}")))?;
     let mut resource_entries: Vec<(String, Vec<u8>)> = Vec::new();
-    for (id, record) in document.resources.iter() {
+    for (id, record) in payload.document.resources.iter() {
         let ResourceSource::Embedded { entry } = &record.source else {
             continue;
         };
         let name = format!("{RESOURCES_PREFIX}{entry}");
         validate_entry_name(&name, limits)?;
-        let Some(bytes) = blobs.get(&id) else {
+        let Some(bytes) = payload.blobs.get(&id) else {
             return Err(EngineError::Manifest(format!(
                 "embedded resource {id} has no bytes to save"
             )));
@@ -757,10 +777,30 @@ pub fn save_document(
         resource_entries.push((name, bytes.clone()));
     }
     resource_entries.sort_by(|left, right| left.0.cmp(&right.0));
+
+    let mut extension_entries: Vec<(String, Vec<u8>)> = Vec::new();
+    for (name, bytes) in payload.extensions {
+        if !name.starts_with(EXTENSIONS_PREFIX) {
+            return Err(EngineError::Manifest(format!(
+                "extension entry must start with `{EXTENSIONS_PREFIX}`: {name:?}"
+            )));
+        }
+        validate_entry_name(name, limits)?;
+        extension_entries.push((name.clone(), bytes.clone()));
+    }
+    extension_entries.sort_by(|left, right| left.0.cmp(&right.0));
+
     let mut names = vec![MANIFEST_ENTRY.to_string(), DOCUMENT_ENTRY.to_string()];
     names.extend(resource_entries.iter().map(|(name, _)| name.clone()));
-    let manifest = PtndManifest::new(document.id, names);
+    if payload.preview.is_some() {
+        names.push(PREVIEWS_ENTRY.to_string());
+    }
+    names.extend(extension_entries.iter().map(|(name, _)| name.clone()));
+    names.sort();
+
+    let manifest = PtndManifest::new(payload.document.id, names);
     let manifest_bytes = manifest.to_json()?;
+
     let mut entries = vec![
         (
             MANIFEST_ENTRY.to_string(),
@@ -776,17 +816,41 @@ pub fn save_document(
     for (name, bytes) in resource_entries {
         entries.push((name, bytes, ZipMethod::Deflated));
     }
+    if let Some(preview_bytes) = payload.preview {
+        entries.push((
+            PREVIEWS_ENTRY.to_string(),
+            preview_bytes.to_vec(),
+            ZipMethod::Stored,
+        ));
+    }
+    for (name, bytes) in extension_entries {
+        entries.push((name, bytes, ZipMethod::Deflated));
+    }
     write_package(&entries, limits)
 }
 
-/// Load one document from a PTND package: container safety, manifest
-/// and schema checks, entry-set match, DTO validation and resource
-/// coverage. Returns the document plus its embedded blobs keyed by
-/// logical resource identity.
-pub fn load_document(
-    bytes: &[u8],
+/// Save one document as a PTND package: manifest, versioned document
+/// DTO and every embedded resource blob. Linked resources travel by
+/// reference only; unknown extra blobs are never smuggled in.
+pub fn save_document(
+    document: &Document,
+    blobs: &BTreeMap<ResourceId, Vec<u8>>,
     limits: &PackageLimits,
-) -> Result<(Document, BTreeMap<ResourceId, Vec<u8>>)> {
+) -> Result<Vec<u8>> {
+    save_package(
+        &PackagePayload {
+            document,
+            blobs,
+            preview: None,
+            extensions: &BTreeMap::new(),
+        },
+        limits,
+    )
+}
+
+/// Load a full PTND package: manifest, document, embedded blobs,
+/// optional preview and namespaced extensions.
+pub fn load_package(bytes: &[u8], limits: &PackageLimits) -> Result<LoadedPackage> {
     use petunia_core::ResourceSource;
     let entries = read_package(bytes, limits)?;
     let table: BTreeMap<&str, &[u8]> = entries
@@ -843,7 +907,112 @@ pub fn load_document(
         };
         blobs.insert(id, bytes.to_vec());
     }
-    Ok((document, blobs))
+    let preview = table.get(PREVIEWS_ENTRY).map(|bytes| bytes.to_vec());
+    let mut extensions = BTreeMap::new();
+    for (name, bytes) in &table {
+        if name.starts_with(EXTENSIONS_PREFIX) {
+            extensions.insert(name.to_string(), bytes.to_vec());
+        }
+    }
+    Ok(LoadedPackage {
+        document,
+        blobs,
+        preview,
+        extensions,
+    })
+}
+
+/// Load one document from a PTND package: container safety, manifest
+/// and schema checks, entry-set match, DTO validation and resource
+/// coverage. Returns the document plus its embedded blobs keyed by
+/// logical resource identity.
+pub fn load_document(
+    bytes: &[u8],
+    limits: &PackageLimits,
+) -> Result<(Document, BTreeMap<ResourceId, Vec<u8>>)> {
+    let pkg = load_package(bytes, limits)?;
+    Ok((pkg.document, pkg.blobs))
+}
+
+/// Content-addressed blob store with copy-on-write sharing.
+///
+/// Blobs with identical bytes share a single heap allocation via
+/// `Arc<Vec<u8>>`. Cloned stores share their data until modified.
+#[derive(Debug, Clone, Default)]
+pub struct BlobStore {
+    blobs: BTreeMap<ResourceId, Arc<Vec<u8>>>,
+    by_hash: BTreeMap<petunia_core::ContentHash, Arc<Vec<u8>>>,
+}
+
+impl BlobStore {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Insert or share bytes under a resource identity. If identical
+    /// bytes already exist under another identity, they share the
+    /// same backing allocation (COW deduplication).
+    pub fn insert(&mut self, id: ResourceId, bytes: Vec<u8>) -> Arc<Vec<u8>> {
+        let hash = petunia_core::ContentHash::new(&bytes);
+        let shared = self
+            .by_hash
+            .entry(hash)
+            .or_insert_with(|| Arc::new(bytes))
+            .clone();
+        self.blobs.insert(id, shared.clone());
+        shared
+    }
+
+    /// Insert an already shared allocation.
+    pub fn insert_shared(&mut self, id: ResourceId, shared: Arc<Vec<u8>>) {
+        let hash = petunia_core::ContentHash::new(&shared);
+        self.by_hash.entry(hash).or_insert_with(|| shared.clone());
+        self.blobs.insert(id, shared);
+    }
+
+    /// Get shared blob bytes by resource identity.
+    #[must_use]
+    pub fn get(&self, id: ResourceId) -> Option<&Arc<Vec<u8>>> {
+        self.blobs.get(&id)
+    }
+
+    /// Convert to owned byte maps for package persistence.
+    #[must_use]
+    pub fn to_map(&self) -> BTreeMap<ResourceId, Vec<u8>> {
+        self.blobs
+            .iter()
+            .map(|(id, arc)| (*id, (**arc).clone()))
+            .collect()
+    }
+
+    /// Build a store from an existing map, deduplicating identical blobs.
+    #[must_use]
+    pub fn from_map(map: &BTreeMap<ResourceId, Vec<u8>>) -> Self {
+        let mut store = Self::new();
+        for (id, bytes) in map {
+            store.insert(*id, bytes.clone());
+        }
+        store
+    }
+
+    /// Number of tracked resources.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.blobs.len()
+    }
+
+    /// Number of unique backing allocations.
+    #[must_use]
+    pub fn unique_allocations(&self) -> usize {
+        self.by_hash.len()
+    }
+
+    /// True when no blobs are tracked.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.blobs.is_empty()
+    }
 }
 
 /// Atomically replace `path` with `bytes`: complete synced file
@@ -991,6 +1160,64 @@ mod tests {
         assert_eq!(back.scene.len(), 1);
         assert_eq!(back_blobs.len(), 1);
         assert!(back.validate().is_ok());
+    }
+
+    #[test]
+    fn package_with_preview_and_extensions_round_trip() {
+        let (document, blobs) = document_with_resources();
+        let preview = vec![137, 80, 78, 71, 13, 10, 26, 10]; // PNG magic
+        let mut extensions = BTreeMap::new();
+        extensions.insert(
+            "extensions/com.example.effect/config.json".to_string(),
+            br#"{"speed":1}"#.to_vec(),
+        );
+
+        let payload = PackagePayload {
+            document: &document,
+            blobs: &blobs,
+            preview: Some(&preview),
+            extensions: &extensions,
+        };
+        let bytes = save_package(&payload, &PackageLimits::default()).expect("saves");
+        let loaded = load_package(&bytes, &PackageLimits::default()).expect("loads");
+        assert_eq!(loaded.document.id, document.id);
+        assert_eq!(loaded.blobs.len(), 1);
+        assert_eq!(loaded.preview, Some(preview));
+        assert_eq!(loaded.extensions.len(), 1);
+        assert_eq!(
+            loaded
+                .extensions
+                .get("extensions/com.example.effect/config.json"),
+            Some(&br#"{"speed":1}"#.to_vec())
+        );
+    }
+
+    #[test]
+    fn blob_store_cow_and_deduplication() {
+        let mut store = BlobStore::new();
+        let id1 = ResourceId::new_v4();
+        let id2 = ResourceId::new_v4();
+        let id3 = ResourceId::new_v4();
+
+        let data1 = vec![1, 2, 3, 4, 5];
+        let data2 = vec![1, 2, 3, 4, 5]; // Identical bytes
+        let data3 = vec![6, 7, 8];
+
+        let arc1 = store.insert(id1, data1);
+        let arc2 = store.insert(id2, data2);
+        let arc3 = store.insert(id3, data3);
+
+        assert_eq!(store.len(), 3);
+        assert_eq!(
+            store.unique_allocations(),
+            2,
+            "identical bytes share backing storage"
+        );
+        assert!(
+            Arc::ptr_eq(&arc1, &arc2),
+            "identical bytes share the exact same Arc pointer"
+        );
+        assert!(!Arc::ptr_eq(&arc1, &arc3));
     }
 
     #[test]

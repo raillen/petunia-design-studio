@@ -60,7 +60,7 @@ impl ResourceSource {
 /// future algorithm change cannot silently reinterpret old hashes.
 /// Parsing accepts either hex case but always canonicalizes; only the
 /// lowercase tagged form ever serializes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ContentHash {
     blake3: [u8; 32],
 }
