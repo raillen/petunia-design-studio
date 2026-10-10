@@ -305,6 +305,16 @@
       "revision": "d236eb01c9e5fd681213991a0703c2c4b8d8143e",
       "document": "02-engine/io-jobs-plugins.md",
       "summary": "Runtime WASM e sandbox em 2026-10-10: WasmPluginHost com verificação de magic de bytecode, medição de combustível (fuel), limites de memória linear, tabela de handles opacos com rejeição de stale handles, e Host API mediada por políticas deny-by-default. Gates: workspace 404 passed/0 failed, clippy -D warnings limpo, fmt limpo."
+    },
+    "ev-r01-conical-gpu-hdr": {
+      "revision": "98d50d3d4d046daf9148528312440bd67536d176",
+      "document": "03-render/pipeline.md",
+      "summary": "Conical gradient, HDR tone mapping e contrato GPU em 2026-10-10: sample_conical Y-down, operadores Reinhard/ACES em output, GpuRenderContract com MockGpuBackend e tesselação. Gates: workspace 407 passed/0 failed, clippy -D warnings limpo, fmt limpo."
+    },
+    "ev-u01-decision-c": {
+      "revision": "98d50d3d4d046daf9148528312440bd67536d176",
+      "document": "04-ui/selection-nodes-handles.md",
+      "summary": "Decisão C (bounds discretos para 2+ nodes) em 2026-10-10: overlay de bounding box gerado automaticamente para 2+ nodes selecionados em espaço de documento, com preferência desativável. Gates: workspace 407 passed/0 failed, clippy -D warnings limpo, fmt limpo."
     }
   },
   "tasks": [
@@ -741,6 +751,11 @@
           "title": "Configuração de tile size no renderer com equivalência exata de pixels",
           "completed": true,
           "evidence": "ev-r01-tile-size"
+        },
+        {
+          "title": "Contrato GPU, gradiente cônico e HDR tone mapping",
+          "completed": true,
+          "evidence": "ev-r01-conical-gpu-hdr"
         }
       ],
       "documents": [
@@ -776,6 +791,11 @@
           "title": "Workspace, painéis e acessibilidade por padrão",
           "completed": false,
           "evidence": null
+        },
+        {
+          "title": "Decisão C: bounds discretos para 2+ nodes com preferência desativável",
+          "completed": true,
+          "evidence": "ev-u01-decision-c"
         }
       ],
       "documents": [

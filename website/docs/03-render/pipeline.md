@@ -418,3 +418,16 @@ Escopo: `RenderOptions.tile_size` configurável no `RenderGraph` e `SoftwareRend
 | `node website/scripts/verify-progress.cjs` | pass |
 
 Riscos/limites: 64px permanece o default ideal para localidade de cache L1/L2 de CPU.
+
+## Verificação de contrato GPU, gradiente cônico e HDR (2026-10-10)
+
+Escopo: `GpuRenderContract` com `MockGpuBackend`, amostragem de gradiente cônico em coordenadas Y-down e operadores de tone mapping HDR Reinhard/ACES. Revisão `98d50d3d4d046daf9148528312440bd67536d176` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 407 passed / 0 failed (Render com contrato GPU, conical e HDR) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: driver físico GPU real (Vulkan/Metal/WGPU) continua opcional para milestones posteriores; referência de software continua como autoridade semântica.
