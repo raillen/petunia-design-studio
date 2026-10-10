@@ -260,6 +260,11 @@
       "revision": "7806e2c2d9d3b63ee1b05677b9ba94c7513f99a2",
       "document": "01-core/styles-symbols.md",
       "summary": "Fiação estrutural em 2026-10-10: SpotRegistry com validação e resolução via alternate, subtrees de Symbol com ownership e ciclos reais, effect stacks no node com validação e avisos de compilação. Gates: workspace 375 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
+    },
+    "ev-u01-tools-commit": {
+      "revision": "072d6dd55e018235bcf45f1416e51d2359a1b869",
+      "document": "04-ui/session-input.md",
+      "summary": "Tools com commit em 2026-10-10: sessão possui controllers persistentes (gesto sobrevive Down-Up), node drag commita um ReplacePath, marquee seleciona por contenção, PenTool fecha path com um InsertRoot. Gates: workspace 383 passed/0 failed, clippy -D warnings limpo, fmt limpo."
     }
   },
   "tasks": [
@@ -684,8 +689,8 @@
       "description": "Sessao, input, tools e Vector Edit hibrbridos ja existem headless em petunia-ui (ADR-0012); workspace tem estado de paineis e acessibilidade por padrao segue em discussao conjunta.",
       "document": "04-ui/session-input.md",
       "status": "IN PROGRESS",
-      "updated": "2026-10-09",
-      "baseline": "ADR-0012 implementado headless em duas fatias (ev-u01-headless e ev-u01-d7-d8-d9): sessao/tools/hit-test/atalhos/campos numericos/workspace, Smart Delete D7 com erro maximo exposto, modelo de foco D9 (ordem visual, trap de dialogo, Escape) e tooltips D5 lendo a tabela viva. Faltam paineis visuais e QA de GUI/acessibilidade.",
+      "updated": "2026-10-10",
+      "baseline": "Sessão/tools/foco/tooltips/Smart Delete/nudges headless entregues; node drag, marquee e pen com commit em 072d6dd. Segue IN PROGRESS: workspace visual, painéis e QA de GUI.",
       "checkpoints": [
         {
           "title": "Sessão mínima com input, tools e ações",
