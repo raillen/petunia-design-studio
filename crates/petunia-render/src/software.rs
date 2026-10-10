@@ -9,7 +9,7 @@
 use crate::adjustments::{apply_adjustment, StraightPixel};
 use crate::compositor::{composite, Pixel};
 use crate::error::{RenderError, Result};
-use crate::graph::{RenderGraph, TILE_EDGE};
+use crate::graph::RenderGraph;
 use crate::output::frame_to_rgba8;
 use crate::paint_eval::{sample_linear, sample_radial};
 use crate::rasterize::{fill_path, stroke_path, Target};
@@ -50,16 +50,17 @@ impl SoftwareRenderer {
         if target.width == 0 || target.height == 0 {
             return Err(RenderError::Draw("empty render target".to_string()));
         }
+        let tile_edge = options.tile_size.clamp(16, 512);
         let background = srgb_to_linear_pixel(options.background);
         let items = prepare_items(frame);
         let mut pixels = vec![background; (target.width as usize) * (target.height as usize)];
         let mut drawn = 0usize;
         for item in &items {
-            drawn += draw_item(&mut pixels, target.width, item, frame.view)?;
+            drawn += draw_item(&mut pixels, target.width, item, frame.view, tile_edge)?;
         }
         let stats = RenderStats {
             primitives_drawn: drawn,
-            tiles_processed: tile_count(frame),
+            tiles_processed: tile_count(frame, tile_edge),
             pixels_written: pixels.iter().filter(|pixel| **pixel != background).count() as u64,
         };
         Ok((frame_to_rgba8(&pixels, target.width, false), stats))
@@ -84,8 +85,13 @@ fn full_rect(target: RenderTarget) -> Rect {
     Rect::new(0.0, 0.0, target.width as f64, target.height as f64)
 }
 
-fn tile_count(frame: &RenderFrame) -> usize {
-    let graph = RenderGraph::compile(&frame.snapshot, frame.view, full_rect(frame.target));
+fn tile_count(frame: &RenderFrame, tile_size: u32) -> usize {
+    let graph = RenderGraph::compile_with_tile_size(
+        &frame.snapshot,
+        frame.view,
+        full_rect(frame.target),
+        tile_size,
+    );
     graph.tiles.len()
 }
 
@@ -267,10 +273,11 @@ fn draw_item(
     stride: u32,
     item: &FrameItem,
     view: ViewTransform,
+    tile_edge: u32,
 ) -> Result<usize> {
     match item {
         FrameItem::Draw(vector) => {
-            draw_vector_parallel(pixels, stride, vector, view);
+            draw_vector_parallel(pixels, stride, vector, view, tile_edge);
             Ok(1)
         }
         FrameItem::Isolated {
@@ -293,7 +300,7 @@ fn draw_item(
             let mut temp = vec![Pixel::CLEAR; pixels.len()];
             let mut drawn = 0usize;
             for child in children {
-                drawn += draw_item(&mut temp, stride, child, view)?;
+                drawn += draw_item(&mut temp, stride, child, view, tile_edge)?;
             }
             apply_effects(&mut temp, stride, effects)?;
             composite_temp(
@@ -326,10 +333,11 @@ fn draw_vector_parallel(
     stride: u32,
     vector: &PreparedVector,
     view: ViewTransform,
+    tile_edge: u32,
 ) {
     let height = pixels.len() as u32 / stride.max(1);
     let bounds = vector_bounds(vector);
-    let tiles = tiles_for_rect(bounds, stride, height);
+    let tiles = tiles_for_rect(bounds, stride, height, tile_edge);
     if tiles.is_empty() {
         return;
     }
@@ -355,8 +363,8 @@ fn draw_vector_parallel(
         .collect();
     for tile in &buffers {
         for (index, pixel) in tile.pixels.iter().enumerate() {
-            let x = tile.tx * TILE_EDGE + (index as u32 % tile.width);
-            let y = tile.ty * TILE_EDGE + (index as u32 / tile.width.max(1));
+            let x = tile.tx * tile_edge + (index as u32 % tile.width);
+            let y = tile.ty * tile_edge + (index as u32 / tile.width.max(1));
             if x < stride && (y as usize) < pixels.len() / stride as usize {
                 let slot = (y * stride + x) as usize;
                 if let Some(slot) = pixels.get_mut(slot) {
@@ -394,8 +402,13 @@ fn vector_bounds(vector: &PreparedVector) -> Rect {
 /// One tile range in device space: origin index plus exact extent.
 type TileRect = (u32, u32, u32, u32);
 
-fn tiles_for_rect(bounds: Rect, stride: u32, height: u32) -> Vec<(u32, u32, TileRect)> {
-    let edge = TILE_EDGE;
+fn tiles_for_rect(
+    bounds: Rect,
+    stride: u32,
+    height: u32,
+    tile_edge: u32,
+) -> Vec<(u32, u32, TileRect)> {
+    let edge = tile_edge;
     if stride == 0 || height == 0 {
         return Vec::new();
     }
@@ -1025,5 +1038,37 @@ mod tests {
             bytes[edge_idx + 2]
         );
         assert!(bytes[edge_idx] < 90, "edge red: {}", bytes[edge_idx]);
+    }
+
+    #[test]
+    fn measure_tile_size_variations_render_identically() {
+        let frame = frame_with_square();
+        let mut renderer = SoftwareRenderer::new(1 << 20, 1 << 20);
+
+        // Render at 32px, 64px, and 128px tile edges.
+        let mut results = Vec::new();
+        for &tile_size in &[32, 64, 128] {
+            let mut opts = options();
+            opts.tile_size = tile_size;
+            let (bytes, stats) = renderer.render(&frame, &opts).expect("renders");
+            results.push((tile_size, bytes, stats));
+        }
+
+        // All variations must produce identical device pixels.
+        let (_, baseline_bytes, _) = &results[1]; // 64px baseline
+        for (tile_size, bytes, stats) in &results {
+            assert_eq!(
+                bytes, baseline_bytes,
+                "pixel mismatch at tile_size {tile_size}"
+            );
+            assert_eq!(stats.primitives_drawn, 1);
+        }
+
+        // Smaller tiles produce more tile bins for fine-grained culling.
+        let (_, _, stats_32) = &results[0];
+        let (_, _, stats_64) = &results[1];
+        let (_, _, stats_128) = &results[2];
+        assert!(stats_32.tiles_processed >= stats_64.tiles_processed);
+        assert!(stats_64.tiles_processed >= stats_128.tiles_processed);
     }
 }

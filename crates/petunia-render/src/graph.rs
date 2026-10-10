@@ -32,11 +32,21 @@ pub struct RenderGraph {
 }
 
 impl RenderGraph {
-    /// Compile bins from snapshot bounds: cull outside the viewport,
-    /// bin the rest by tile range. Bounds are conservative, so
-    /// culling never drops visible pixels.
+    /// Compile bins from snapshot bounds using the default tile edge (64px).
     #[must_use]
     pub fn compile(snapshot: &RenderSnapshot, view: ViewTransform, viewport: Rect) -> Self {
+        Self::compile_with_tile_size(snapshot, view, viewport, TILE_EDGE)
+    }
+
+    /// Compile bins with an explicitly requested tile edge size.
+    #[must_use]
+    pub fn compile_with_tile_size(
+        snapshot: &RenderSnapshot,
+        view: ViewTransform,
+        viewport: Rect,
+        tile_size: u32,
+    ) -> Self {
+        let tile_size = tile_size.clamp(16, 512);
         let mut tiles: Vec<TileWork> = Vec::new();
         let mut culled = 0usize;
         for page in &snapshot.pages {
@@ -50,7 +60,7 @@ impl RenderGraph {
                     culled += 1;
                     continue;
                 }
-                for (tx, ty, rect) in tiles_for(device, viewport) {
+                for (tx, ty, rect) in tiles_for(device, viewport, tile_size) {
                     match tiles.iter_mut().find(|tile| tile.tx == tx && tile.ty == ty) {
                         Some(tile) => tile.primitives.push(index),
                         None => tiles.push(TileWork {
@@ -92,8 +102,8 @@ fn overlaps(a: Rect, b: Rect) -> bool {
     a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
 }
 
-fn tiles_for(device: Rect, viewport: Rect) -> Vec<(u32, u32, Rect)> {
-    let edge = TILE_EDGE as f64;
+fn tiles_for(device: Rect, viewport: Rect, tile_size: u32) -> Vec<(u32, u32, Rect)> {
+    let edge = tile_size as f64;
     let x0 = (device.x.max(viewport.x) / edge).floor().max(0.0) as u32;
     let y0 = (device.y.max(viewport.y) / edge).floor().max(0.0) as u32;
     let x1 = ((device.x + device.width).min(viewport.x + viewport.width) / edge).ceil() as u32;

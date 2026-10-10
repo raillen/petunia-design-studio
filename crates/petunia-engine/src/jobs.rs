@@ -184,20 +184,48 @@ impl Queues {
     }
 }
 
+/// Scheduler configuration and resource budgets.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SchedulerConfig {
+    pub worker_threads: usize,
+    pub max_queue_depth: usize,
+    pub interactive_budget_ms: u64,
+}
+
+impl Default for SchedulerConfig {
+    fn default() -> Self {
+        Self {
+            worker_threads: 4,
+            max_queue_depth: 10_000,
+            interactive_budget_ms: 16,
+        }
+    }
+}
+
 /// Small priority scheduler: interactive drains before background
 /// before batch. Work runs on pool threads; results and progress
 /// travel back through channels the caller owns.
 pub struct Scheduler {
     queues: Arc<(Mutex<Queues>, Condvar)>,
+    config: SchedulerConfig,
     counter: std::sync::atomic::AtomicU64,
     _workers: Vec<std::thread::JoinHandle<()>>,
 }
 
 impl Scheduler {
-    /// Spawn a pool with `threads` workers.
+    /// Spawn a pool with `threads` workers using default budgets.
     #[must_use]
     pub fn new(threads: usize) -> Self {
-        let threads = threads.max(1);
+        Self::with_config(SchedulerConfig {
+            worker_threads: threads.max(1),
+            ..Default::default()
+        })
+    }
+
+    /// Spawn a pool with an explicit configuration and resource budgets.
+    #[must_use]
+    pub fn with_config(config: SchedulerConfig) -> Self {
+        let threads = config.worker_threads.max(1);
         let queues = Arc::new((
             Mutex::new(Queues {
                 interactive: VecDeque::new(),
@@ -231,9 +259,16 @@ impl Scheduler {
         }
         Self {
             queues,
+            config,
             counter: std::sync::atomic::AtomicU64::new(1),
             _workers: workers,
         }
+    }
+
+    /// Active scheduler configuration.
+    #[must_use]
+    pub fn config(&self) -> &SchedulerConfig {
+        &self.config
     }
 
     /// Submit work with progress and cancellation support. Returns a
@@ -427,5 +462,69 @@ mod tests {
         assert_eq!(second_outcome.result, Err(JobError::Cancelled));
         // The payload itself never executed.
         assert!(!ran.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn interactive_jobs_preempt_batch_queue() {
+        // Single worker scheduler: tasks execute sequentially.
+        let scheduler = Scheduler::new(1);
+        let gate = Arc::new(AtomicBool::new(false));
+        let gate_worker = Arc::clone(&gate);
+
+        // Blocker job occupies the single worker.
+        let blocker = scheduler.submit(
+            JobClass::Interactive,
+            DocumentRevision::GENESIS,
+            (),
+            mpsc::channel().0,
+            move |(), _, _| {
+                while !gate_worker.load(Ordering::SeqCst) {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Ok(())
+            },
+        );
+
+        // Enqueue a Batch job while the worker is busy.
+        let batch_job = scheduler.submit(
+            JobClass::Batch,
+            DocumentRevision::GENESIS,
+            "batch",
+            mpsc::channel().0,
+            |payload, _, _| Ok(payload),
+        );
+
+        // Enqueue an Interactive job after the Batch job.
+        let interactive_job = scheduler.submit(
+            JobClass::Interactive,
+            DocumentRevision::GENESIS,
+            "interactive",
+            mpsc::channel().0,
+            |payload, _, _| Ok(payload),
+        );
+
+        // Release the blocker.
+        gate.store(true, Ordering::SeqCst);
+        blocker
+            .result(std::time::Duration::from_secs(5))
+            .expect("blocker done");
+
+        // The Interactive job MUST execute before the Batch job!
+        let start = std::time::Instant::now();
+        let inter_res = interactive_job
+            .result(std::time::Duration::from_secs(5))
+            .expect("interactive done");
+        let elapsed = start.elapsed();
+
+        assert_eq!(inter_res.result, Ok("interactive"));
+        assert!(
+            elapsed.as_millis() < 500,
+            "interactive completed with low latency: {elapsed:?}"
+        );
+
+        let batch_res = batch_job
+            .result(std::time::Duration::from_secs(5))
+            .expect("batch done");
+        assert_eq!(batch_res.result, Ok("batch"));
     }
 }

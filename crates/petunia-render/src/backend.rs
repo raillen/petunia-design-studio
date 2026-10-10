@@ -9,14 +9,17 @@ use crate::error::Result;
 use petunia_core::ColorRgba;
 use petunia_render_model::{RenderFrame, RenderQuality, RenderStats};
 
-/// Backend render options: quality, DPR policy, antialiasing and the
-/// clear color. Geometry never changes with these knobs.
+/// Backend render options: quality, DPR policy, antialiasing, the
+/// clear color and the tile edge size. Geometry never changes with
+/// these knobs.
 #[derive(Debug, Clone)]
 pub struct RenderOptions {
     pub quality: RenderQuality,
     pub dpr: f64,
     pub antialias: bool,
     pub background: ColorRgba,
+    /// Device pixel tile edge for binning and rasterization (default: 64).
+    pub tile_size: u32,
 }
 
 impl Default for RenderOptions {
@@ -26,6 +29,7 @@ impl Default for RenderOptions {
             dpr: 1.0,
             antialias: true,
             background: ColorRgba::WHITE,
+            tile_size: 64,
         }
     }
 }
