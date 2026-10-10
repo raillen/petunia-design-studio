@@ -358,3 +358,16 @@ Testar:
 8. Object/Document PaintSpace possuem semânticas diferentes.
 9. Vector pattern não duplica source para cada tile.
 10. Dithering é output detail, não Paint.
+
+## Verificação de gradientes lineares e radiais (2026-10-10)
+
+Escopo: avaliação de gradientes no compilador do Engine, amostragem no renderer de software e testes golden de pixels. Revisão `bba0837be32ba78bea13b905e867530d3412bfe1` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 394 passed / 0 failed (Render com testes golden de gradientes) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: patterns ainda exigem resolução de assets; mesh gradient segue fora do escopo v0.1.

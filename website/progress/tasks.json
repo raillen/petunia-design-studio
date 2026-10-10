@@ -275,6 +275,11 @@
       "revision": "a525866c2b3f2b04e0a27dc42f7a562dffb142",
       "document": "04-ui/session-input.md",
       "summary": "Preview do Smart Delete em 2026-10-10: preview_delete compartilhado entre ghost e commit, Hard Delete com erro próprio do join, sessão expõe ghost points + erro honesto. Gates: workspace 391 passed/0 failed, clippy -D warnings limpo, fmt limpo."
+    },
+    "ev-r01-gradients": {
+      "revision": "bba0837be32ba78bea13b905e867530d3412bfe1",
+      "document": "03-render/paint-evaluation.md",
+      "summary": "Avaliação e render de gradientes em 2026-10-10: compiler avalia Linear/RadialGradient com resolução de stops, PaintSpace e interpolação; SoftwareRenderer amostra via paint_eval; testes golden de rampas de cor linear e radial em pixels de dispositivo. Gates: workspace 394 passed/0 failed, clippy -D warnings limpo, fmt limpo."
     }
   },
   "tasks": [
@@ -659,8 +664,8 @@
       "description": "Crate render-model imutável, software tiled renderer, compositor, cache, overlays e output.",
       "document": "03-render/render-model.md",
       "status": "DONE",
-      "updated": "2026-10-09",
-      "baseline": "Implementado em a0e42f4: crate petunia-render-model, compositor, tiles paralelos, adjustments, overlays, cache, output PNG e compiler Document→Snapshot. Follow-up: providers de texto/imagem/symbols, ajustes de cor ICC e masks.",
+      "updated": "2026-10-10",
+      "baseline": "Render model, software tiled renderer e compositor em a0e42f4; avaliação e render de gradientes lineares e radiais com testes golden em bba0837.",
       "checkpoints": [
         {
           "title": "backend.rs com contrato RenderBackend e software mínimo",
@@ -681,6 +686,11 @@
           "title": "Cache, overlays, adjustments e output headless",
           "completed": true,
           "evidence": "ev-r03"
+        },
+        {
+          "title": "Avaliação e render de gradientes lineares e radiais com testes golden",
+          "completed": true,
+          "evidence": "ev-r01-gradients"
         }
       ],
       "documents": [
