@@ -200,6 +200,11 @@
       "revision": "56575ea3fb2ee393111755209e758c67d92bbe9d",
       "document": "04-ui/session-input.md",
       "summary": "Camada headless do ADR-0012 implementada em petunia-ui em 2026-10-09 (sem Qt/QML): ContextStack com escapes, ToolControllers declarativos (Select/Node) com hit-test D1, ShortcutTable, campos numericos e WorkspaceState. A sessao e a unica escritora: a tool devolve SelectionDelta/Commit e a sessao aplica. Gates executados: cargo test --workspace 278 passed / 0 failed (petunia-ui 35), cargo clippy --workspace --all-targets -- -D warnings limpo e cargo fmt --all -- --check limpo. Limite: nenhuma GUI real exercitada; workspace/acessibilidade seguem abertos."
+    },
+    "ev-u01-d7-d8-d9": {
+      "revision": "0ec440d1ce97e039af7617d840d80a0515e3c9a3",
+      "document": "04-ui/session-input.md",
+      "summary": "Segunda fatia headless em 2026-10-09: Smart Delete D7 em engine/geometry/smart_delete.rs (Preserve Shape com refit e erro maximo exposto, Hard Delete, recusas tipadas), modelo de foco em ui/focus.rs (ordem visual, entradas desabilitadas com motivo, ciclo de zonas, trap de dialogo com restauracao, Escape preferindo foco e so entao contexto), tooltips D5 lendo a ShortcutTable viva e nudges em unidades de documento. Suite petunia-ui 54 testes; workspace 305 passed / 0 failed, clippy -D warnings e fmt limpos."
     }
   },
   "tasks": [
@@ -584,7 +589,7 @@
       "document": "04-ui/session-input.md",
       "status": "IN PROGRESS",
       "updated": "2026-10-09",
-      "baseline": "Contrato de interacao aprovado em ADR-0012 (2026-10-09) e camada headless implementada com evidencia ev-u01-headless (2026-10-09): contexto, tools, atalhos, campos numericos e workspace como Session State. Faltam paineis visuais e QA de GUI/acessibilidade.",
+      "baseline": "ADR-0012 implementado headless em duas fatias (ev-u01-headless e ev-u01-d7-d8-d9): sessao/tools/hit-test/atalhos/campos numericos/workspace, Smart Delete D7 com erro maximo exposto, modelo de foco D9 (ordem visual, trap de dialogo, Escape) e tooltips D5 lendo a tabela viva. Faltam paineis visuais e QA de GUI/acessibilidade.",
       "checkpoints": [
         {
           "title": "Sessão mínima com input, tools e ações",

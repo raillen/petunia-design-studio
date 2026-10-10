@@ -306,6 +306,12 @@ impl SubSelection {
         self.nodes.is_empty() && self.segments.is_empty() && self.handles.is_empty()
     }
 
+    /// Selected nodes, in stable-ID order.
+    #[must_use]
+    pub fn nodes(&self) -> &[NodeId] {
+        &self.nodes
+    }
+
     /// Total selected targets across kinds.
     #[must_use]
     pub fn len(&self) -> usize {

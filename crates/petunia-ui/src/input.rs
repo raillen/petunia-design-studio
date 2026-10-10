@@ -1,5 +1,6 @@
 //! User input events, keyboard shortcuts, and active tool enumeration.
 
+use crate::tooltips::Tooltip;
 use petunia_core::Point;
 
 /// Active studio creative tool.
@@ -25,8 +26,18 @@ pub enum PointerEvent {
 /// Top-level user action intents.
 #[derive(Debug, Clone, PartialEq)]
 pub enum UserAction {
+    /// Switch the active tool.
     SelectTool(ToolKind),
+    /// Pointer event on the canvas.
     Pointer(PointerEvent),
+    /// Undo one transaction.
     Undo,
+    /// Redo one transaction.
     Redo,
+    /// Smart Delete on the current node sub-selection (ADR-0012 D7).
+    SmartDelete(petunia_engine::geometry::SmartDeleteMode),
+    /// Move the selection by document units, independent of zoom.
+    Nudge { dx: f64, dy: f64 },
+    /// Text of a hover or focus event, for the tooltip layer.
+    HoverTooltip(Tooltip),
 }

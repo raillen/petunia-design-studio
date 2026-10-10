@@ -91,6 +91,10 @@ pub enum ActionId {
     Confirm,
     Cancel,
     PanTool,
+    NudgeLeft,
+    NudgeRight,
+    NudgeUp,
+    NudgeDown,
 }
 
 impl ActionId {
@@ -113,6 +117,10 @@ impl ActionId {
             Self::Confirm => "edit.confirm",
             Self::Cancel => "edit.cancel",
             Self::PanTool => "view.pan",
+            Self::NudgeLeft => "nudge.left",
+            Self::NudgeRight => "nudge.right",
+            Self::NudgeUp => "nudge.up",
+            Self::NudgeDown => "nudge.down",
         }
     }
 }
@@ -137,6 +145,11 @@ pub fn default_bindings() -> Vec<(ActionId, KeyCombo)> {
         (Confirm, KeyCombo::key("enter")),
         (Cancel, KeyCombo::key("escape")),
         (PanTool, KeyCombo::key("space")),
+        // Nudges move by document units, independent of zoom (A-F F).
+        (NudgeLeft, KeyCombo::key("ArrowLeft")),
+        (NudgeRight, KeyCombo::key("ArrowRight")),
+        (NudgeUp, KeyCombo::key("ArrowUp")),
+        (NudgeDown, KeyCombo::key("ArrowDown")),
     ]
 }
 
@@ -217,6 +230,12 @@ impl ShortcutTable {
         self.bindings.get(&action)
     }
 
+    /// Remove the binding of one action, leaving it unbound. The
+    /// action still exists and still works from the palette.
+    pub fn clear_binding(&mut self, action: ActionId) -> bool {
+        self.bindings.remove(&action).is_some()
+    }
+
     /// Restore one action to its primary binding.
     pub fn reset_action(&mut self, action: ActionId) -> bool {
         if let Some((_, combo)) = default_bindings()
@@ -269,7 +288,7 @@ mod tests {
     #[test]
     fn defaults_cover_the_primary_set() {
         let table = ShortcutTable::defaults();
-        assert_eq!(table.len(), 15);
+        assert_eq!(table.len(), 19);
         assert_eq!(
             table
                 .combo_for(ActionId::Undo)

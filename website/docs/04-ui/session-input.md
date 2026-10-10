@@ -122,3 +122,21 @@ Gap: as tools devolvem resposta declarativa, mas nada aplicava `SelectionDelta`/
 Riscos/limites: verificacao headless apenas. Nenhuma GUI real, foco, leitor de tela ou contraste exercitado; overlays, snapping e arraste de node ainda emitem resposta sem geometria final. U01 permanece IN PROGRESS (2/3 checkpoints).
 
 Next checkpoint: paineis visuais e QA de acessibilidade por padrao (U01), que exigem GUI.
+
+## Verificacao Smart Delete, foco e tooltips (headless, 2026-10-09)
+
+Escopo: segunda fatia headless do ADR-0012, ainda sem Qt/QML. Revisao `0ec440d1ce97e039af7617d840d80a0515e3c9a3` sobre branch `petunia-design-rust`.
+
+Changed: `crates/petunia-engine/src/geometry/smart_delete.rs` (D7), `crates/petunia-ui/src/focus.rs` (D9 e Escape de D8), `crates/petunia-ui/src/tooltips.rs` (D5), acoes de nudge em `shortcuts.rs` e integracao em `app.rs`.
+
+Gap encontrado e corrigido durante a verificacao: a camada de foco consumia Escape mesmo com o foco ja no canvas, impedindo o desenrolar da pilha de contexto. Escape no canvas volta a pertencer a cadeia de contexto; Escape em barra ou painel devolve o foco ao canvas.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 305 passed / 0 failed (petunia-ui 54, engine com 8 de smart_delete) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass: 14 processos, 101 documentos, TODO 0 / IN PROGRESS 1 / DONE 13 |
+| `#![forbid(unsafe_code)]` nos 5 crates | pass: nenhum `unsafe` fora do forbid |
+
+Riscos/limites: verificacao headless apenas. Nenhuma GUI real exercitada; Smart Delete ainda nao tem preview visual do erro, e o arraste de node continua sem geometria final. U01 permanece IN PROGRESS (2/3 checkpoints).

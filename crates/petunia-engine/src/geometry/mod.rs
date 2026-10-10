@@ -13,6 +13,7 @@ pub mod intersections;
 pub mod offset;
 pub mod shape_builder;
 pub mod simplify;
+pub mod smart_delete;
 
 pub use bezier::{flatten_contour, segment_bezier, CubicBez};
 pub use boolean::{boolean_paths, boolean_rings, ring_bounds, BooleanOp};
@@ -27,3 +28,4 @@ pub use intersections::{
 pub use offset::offset_ring;
 pub use shape_builder::{BuilderShape, BuiltRegion, ShapeBuilder};
 pub use simplify::{simplify_closed, simplify_open};
+pub use smart_delete::{delete_node, SmartDeleteMode, SmartDeleteOutcome, SmartDeleteRefusal};

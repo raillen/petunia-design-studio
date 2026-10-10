@@ -14,10 +14,12 @@
 pub mod app;
 pub mod context;
 pub mod error;
+pub mod focus;
 pub mod input;
 pub mod numeric;
 pub mod shortcuts;
 pub mod tools;
+pub mod tooltips;
 pub mod workspace;
 
 pub use app::StudioSession;
@@ -26,11 +28,16 @@ pub use context::{
     NodeId, SegmentId, SelectionState, SubSelection, VectorOperation,
 };
 pub use error::{Result, UiError};
+pub use focus::{DisabledReason, FocusEntry, FocusManager, FocusOutcome, FocusZone};
 pub use input::{PointerEvent, ToolKind, UserAction};
 pub use numeric::{InputMethod, NumericField, SizeFields};
 pub use shortcuts::{ActionId, BindError, KeyCombo, ShortcutTable};
 pub use tools::{
     HitTarget, NodeTool, OverlayPrimitive, PointerSample, SelectTool, ToolController, ToolResponse,
     ToolServices, ToolSession, ViewTransform,
+};
+pub use tooltips::{
+    action_name, hover_reveals_after, palette_label_for, reveals_on_focus, tooltip_for,
+    HOVER_DELAY_MS,
 };
 pub use workspace::{DockSide, PanelState, ViewState, WorkspaceState};

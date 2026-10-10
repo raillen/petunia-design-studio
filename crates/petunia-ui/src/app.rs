@@ -9,16 +9,20 @@ use crate::context::{
     VectorOperation,
 };
 use crate::error::Result;
+use crate::focus::{FocusEntry, FocusManager, FocusOutcome};
 use crate::input::{PointerEvent, ToolKind, UserAction};
 use crate::numeric::NumericField;
+use crate::shortcuts::ActionId;
 use crate::shortcuts::ShortcutTable;
 use crate::tools::{
     distance, HitTarget, ItemKind, NodeTool, PointerSample, SelectTool, SelectionDelta,
     ToolController, ToolResponse, ToolServices, ToolSession, ViewTransform,
 };
+use crate::tooltips::tooltip_for;
 use crate::workspace::{ViewState, WorkspaceState};
 use petunia_core::{Document, FillRule, ObjectId, Point, SceneItem, SceneNode, Size2, VectorPath};
 use petunia_engine::compile;
+use petunia_engine::geometry::{delete_node, SmartDeleteMode, SmartDeleteOutcome};
 use petunia_engine::EngineError;
 use petunia_engine::History;
 use petunia_engine::{prepare_transaction, TransactionRequest};
@@ -40,6 +44,7 @@ pub struct StudioSession {
     shortcuts: ShortcutTable,
     x_field: NumericField,
     y_field: NumericField,
+    focus: FocusManager,
     captured: bool,
 }
 
@@ -58,6 +63,7 @@ impl StudioSession {
             shortcuts: ShortcutTable::defaults(),
             x_field: NumericField::new(0.0, 1.0),
             y_field: NumericField::new(0.0, 1.0),
+            focus: FocusManager::new(),
             captured: false,
         }
     }
@@ -128,6 +134,43 @@ impl StudioSession {
     /// Mutable X coordinate field.
     pub fn x_field_mut(&mut self) -> &mut NumericField {
         &mut self.x_field
+    }
+
+    /// Keyboard focus manager for the whole window.
+    #[must_use]
+    pub fn focus(&self) -> &FocusManager {
+        &self.focus
+    }
+
+    /// Mutable focus manager, for the GUI to feed layout changes.
+    pub fn focus_mut(&mut self) -> &mut FocusManager {
+        &mut self.focus
+    }
+
+    /// Replace the window focusable set, following the layout.
+    pub fn set_focus_entries(&mut self, entries: Vec<FocusEntry>) {
+        self.focus.set_entries(entries);
+    }
+
+    /// Tooltip of an action, reading the live shortcut table.
+    #[must_use]
+    pub fn tooltip(&self, action: ActionId) -> Option<String> {
+        tooltip_for(action, &self.shortcuts).map(|tooltip| tooltip.display())
+    }
+
+    /// Escape routed through the focus model first (D9): a dialog
+    /// closes, another region returns to the canvas, and only then
+    /// the context stack unwinds.
+    pub fn on_escape_focus(&mut self) -> (FocusOutcome, EscapeOutcome) {
+        let focus = self.focus.on_escape();
+        let context = if matches!(focus, FocusOutcome::Unhandled) {
+            self.on_escape()
+        } else {
+            // The focus layer consumed the press; the context stack
+            // stays exactly where it was.
+            EscapeOutcome::AtRoot
+        };
+        (focus, context)
     }
 
     /// Mutable Y coordinate field.
@@ -227,8 +270,101 @@ impl StudioSession {
                 self.history.redo(&mut self.document)?;
                 Ok(ToolResponse::Idle)
             }
+            UserAction::SmartDelete(mode) => self.smart_delete(mode),
+            UserAction::Nudge { dx, dy } => self.nudge(dx, dy),
+            // Hover never mutates: a tooltip is Session State at most.
+            UserAction::HoverTooltip(_) => Ok(ToolResponse::Idle),
             UserAction::Pointer(pointer) => self.handle_pointer(pointer),
         }
+    }
+
+    /// Smart Delete (ADR-0012 D7) on the selected nodes.
+    ///
+    /// Each selected node is deleted in one transaction per gesture,
+    /// and a fit above the tolerance reports `NeedsConfirmation`
+    /// instead of committing a worse curve.
+    pub fn smart_delete(&mut self, mode: SmartDeleteMode) -> Result<ToolResponse> {
+        let nodes = self.selection.sub.nodes().to_vec();
+        if nodes.is_empty() {
+            return Ok(ToolResponse::Failed(
+                "Smart Delete precisa de nodes selecionados".to_string(),
+            ));
+        }
+        let mut operations = Vec::new();
+        let mut deviations = Vec::new();
+        // Later deletions must not shift the indexes of earlier ones,
+        // so the highest index goes first.
+        let mut ordered = nodes;
+        ordered.sort_by(|left, right| {
+            left.object
+                .cmp(&right.object)
+                .then(left.contour.cmp(&right.contour))
+                .then(left.node.cmp(&right.node).reverse())
+        });
+        for node in &ordered {
+            let Some(scene_node) = self.document.scene.get_node(node.object) else {
+                continue;
+            };
+            let Some(path) = scene_node.item_path() else {
+                continue;
+            };
+            let Some(contour) = path.contours.get(node.contour as usize) else {
+                continue;
+            };
+            let outcome = delete_node(contour, node.node as usize, mode, 1.0);
+            match outcome {
+                SmartDeleteOutcome::Applied { nodes, max_error } => {
+                    deviations.push(max_error);
+                    let mut path = path.clone();
+                    path.contours[node.contour as usize].nodes = nodes;
+                    operations.push(DocumentOp::ReplacePath {
+                        object: node.object,
+                        path,
+                    });
+                }
+                SmartDeleteOutcome::NeedsConfirmation {
+                    max_error,
+                    tolerance,
+                } => {
+                    return Ok(ToolResponse::Failed(format!(
+                        "erro máximo {max_error:.3} excede a tolerância {tolerance:.3}: escolha Hard Delete ou cancele"
+                    )));
+                }
+                SmartDeleteOutcome::Refused(reason) => {
+                    return Ok(ToolResponse::Failed(refusal_message(reason)));
+                }
+            }
+        }
+        if operations.is_empty() {
+            return Ok(ToolResponse::Failed(
+                "nenhum node elegível para deleção".to_string(),
+            ));
+        }
+        self.commit_request(TransactionRequest {
+            command_id: CommandId::new_v4(),
+            operations,
+            merge_key: None,
+        })?;
+        let worst = deviations
+            .iter()
+            .fold(0.0_f64, |worst, error| worst.max(*error));
+        Ok(ToolResponse::Status(format!(
+            "Smart Delete aplicado, erro máximo {worst:.3}"
+        )))
+    }
+
+    /// Move the selection by document units, independent of zoom
+    /// (decision F of A-F, ADR-0012 D3).
+    pub fn nudge(&mut self, dx: f64, dy: f64) -> Result<ToolResponse> {
+        if self.selection.is_empty() {
+            return Ok(ToolResponse::Failed(
+                "nada selecionado para mover".to_string(),
+            ));
+        }
+        self.move_selection(dx, dy)?;
+        Ok(ToolResponse::Status(format!(
+            "seleção movida para ({dx:.0}, {dy:.0}) em unidades do documento"
+        )))
     }
 
     /// Run one pointer event through the active tool.
@@ -545,6 +681,18 @@ impl ToolSession for StudioSession {
 /// A contour/node coordinate inside a path.
 type ContourNode = (u32, u32);
 
+/// Human message for a Smart Delete refusal.
+fn refusal_message(reason: petunia_engine::geometry::SmartDeleteRefusal) -> String {
+    use petunia_engine::geometry::SmartDeleteRefusal;
+    match reason {
+        SmartDeleteRefusal::IndexOutOfRange => "node fora do contorno".to_string(),
+        SmartDeleteRefusal::TooFewNodes => {
+            "o contorno ficaria com poucos nodes para manter a forma".to_string()
+        }
+        SmartDeleteRefusal::NonFiniteGeometry => "geometria inválida no contorno".to_string(),
+    }
+}
+
 /// Node and handle candidates for one path at a local point.
 fn node_hit(
     path: &VectorPath,
@@ -768,6 +916,110 @@ mod tests {
                 "{hits:?}"
             );
         }
+    }
+
+    #[test]
+    fn smart_delete_needs_a_node_selection() {
+        let mut session = session_with_rect();
+        let response = session
+            .smart_delete(petunia_engine::geometry::SmartDeleteMode::HardDelete)
+            .expect("dispatch");
+        assert!(matches!(response, ToolResponse::Failed(_)), "{response:?}");
+    }
+
+    #[test]
+    fn smart_delete_commits_one_transaction() {
+        let mut session = session_with_rect();
+        let object = session.selection.single().expect("selected");
+        // Enter Vector Edit and select the first node by stable id.
+        session.on_enter();
+        assert!(session.contexts().in_vector());
+        let node = NodeId {
+            object,
+            contour: 0,
+            node: 0,
+        };
+        session.selection.sub.select_node(node);
+        assert_eq!(session.selection.sub.len(), 1);
+        let revision = session.revision();
+        let outcome = session
+            .smart_delete(petunia_engine::geometry::SmartDeleteMode::HardDelete)
+            .expect("delete");
+        assert_eq!(session.revision().0, revision.0 + 1, "{outcome:?}");
+        // The path now has one node fewer.
+        let path = session
+            .document()
+            .scene
+            .get_node(object)
+            .and_then(|node| node.item_path())
+            .expect("path");
+        assert_eq!(path.contours[0].nodes.len(), 3);
+    }
+
+    #[test]
+    fn nudge_moves_by_document_units_independent_of_zoom() {
+        let mut session = session_with_rect();
+        let object = session.selection.single().expect("selected");
+        session.view_mut().scale = 4.0;
+        session
+            .dispatch_action(UserAction::Nudge { dx: 1.0, dy: 0.0 })
+            .expect("nudge");
+        let node = session.document().scene.get_node(object).expect("node");
+        assert_eq!(
+            node.transform.tx, 1.0,
+            "one document unit, not one screen unit"
+        );
+        // Without a selection the nudge fails loudly instead of doing
+        // nothing silently.
+        session.selection.clear();
+        let response = session
+            .dispatch_action(UserAction::Nudge { dx: 1.0, dy: 0.0 })
+            .expect("nudge");
+        assert!(matches!(response, ToolResponse::Failed(_)), "{response:?}");
+    }
+
+    #[test]
+    fn escape_prefers_the_focus_layer_then_the_context_stack() {
+        let mut session = session_with_rect();
+        session.set_focus_entries(vec![
+            FocusEntry::new("bar.op", crate::focus::FocusZone::ContextBar, 100, 0),
+            FocusEntry::new("canvas", crate::focus::FocusZone::Canvas, 400, 200),
+        ]);
+        session.focus_mut().focus("bar.op");
+        let (focus, _context) = session.on_escape_focus();
+        assert_eq!(
+            focus,
+            crate::focus::FocusOutcome::ReturnedToCanvas {
+                entry: "canvas".to_string()
+            }
+        );
+        // Focus is now on the canvas, so the layer stops consuming
+        // Escape and the context chain unwinds instead.
+        session.on_enter();
+        assert!(session.contexts().in_vector());
+        let (focus, context) = session.on_escape_focus();
+        assert_eq!(focus, crate::focus::FocusOutcome::Unhandled);
+        assert!(!session.contexts().in_vector(), "{context:?}");
+    }
+
+    #[test]
+    fn tooltip_follows_the_live_shortcut_table() {
+        let mut session = session_with_rect();
+        assert_eq!(
+            session.tooltip(ActionId::Undo).as_deref(),
+            Some("Desfazer (Ctrl+z)")
+        );
+        assert!(session
+            .shortcuts_mut()
+            .rebind(
+                ActionId::Undo,
+                crate::shortcuts::KeyCombo::key("y").with_ctrl()
+            )
+            .is_ok());
+        assert_eq!(
+            session.tooltip(ActionId::Undo).as_deref(),
+            Some("Desfazer (Ctrl+y)")
+        );
     }
 
     #[test]
