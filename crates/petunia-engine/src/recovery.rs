@@ -74,6 +74,9 @@ pub struct RecoveryReport {
     pub checkpoint_revision: DocumentRevision,
     pub applied: u64,
     pub latest_revision: DocumentRevision,
+    /// History entries reconstructed from replayed transactions so
+    /// the session can restore its undo stack.
+    pub history: Vec<crate::history::HistoryEntry>,
     /// Why replay stopped; `CleanEnd` means the journal ran dry.
     pub stop: ReplayStop,
 }
@@ -269,6 +272,7 @@ impl RecoverySession {
         // anything at or below it in the journal is already inside.
         let mut current = DocumentRevision(metadata.base_revision);
         let mut applied = 0u64;
+        let mut history = Vec::new();
         let mut stop = replay.stop.clone();
         for record in &replay.records {
             if record.revision.0 <= current.0 {
@@ -312,17 +316,28 @@ impl RecoverySession {
                     break;
                 }
             };
-            if let Err(error) = commit_transaction(&mut document, prepared) {
-                stop = ReplayStop::ApplyFailed {
-                    at_seq: record.seq,
-                    reason: format!("apply failed: {error}"),
-                };
-                break;
-            }
+            let applied_tx = match commit_transaction(&mut document, prepared) {
+                Ok(applied) => applied,
+                Err(error) => {
+                    stop = ReplayStop::ApplyFailed {
+                        at_seq: record.seq,
+                        reason: format!("apply failed: {error}"),
+                    };
+                    break;
+                }
+            };
+            let next_rev = DocumentRevision(current.0 + 1);
+            history.push(crate::history::HistoryEntry {
+                transaction: applied_tx,
+                before_revision: current,
+                after_revision: next_rev,
+                merge_key: None,
+                description: crate::history::HistoryDescription::EditObjects,
+            });
             for (id, bytes) in record_blobs {
                 blobs.insert(*id, bytes.clone());
             }
-            current = DocumentRevision(current.0 + 1);
+            current = next_rev;
             applied += 1;
         }
         if metadata.clean_shutdown && applied == 0 && stop == ReplayStop::CleanEnd {
@@ -334,6 +349,7 @@ impl RecoverySession {
             checkpoint_revision: DocumentRevision(metadata.base_revision),
             applied,
             latest_revision: current,
+            history,
             stop,
         }))
     }
@@ -482,6 +498,22 @@ mod tests {
         assert_eq!(report.latest_revision, DocumentRevision(2));
         assert_eq!(report.document.scene.len(), 2);
         assert_eq!(report.stop, ReplayStop::CleanEnd);
+
+        // Reconstructed history restores the session's undo capability.
+        let mut history = crate::history::History::new(1 << 20, 1 << 20);
+        history.restore_entries(report.history);
+        assert_eq!(history.len(), 2);
+        assert!(history.can_undo());
+        let mut recovered_doc = report.document;
+        history
+            .undo(&mut recovered_doc)
+            .expect("undoes 2nd transaction");
+        assert_eq!(recovered_doc.scene.len(), 1);
+        history
+            .undo(&mut recovered_doc)
+            .expect("undoes 1st transaction");
+        assert_eq!(recovered_doc.scene.len(), 0);
+
         teardown(&session);
     }
 

@@ -1053,6 +1053,178 @@ pub(crate) fn atomic_write(path: &std::path::Path, bytes: &[u8], tag: &str) -> R
     Ok(())
 }
 
+use std::time::SystemTime;
+
+/// Snapshot of a file's state on disk to detect concurrent external edits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileFingerprint {
+    pub content_hash: petunia_core::ContentHash,
+    pub size_bytes: u64,
+    pub modified: SystemTime,
+}
+
+impl FileFingerprint {
+    /// Capture the fingerprint of a file on disk.
+    pub fn capture(path: &std::path::Path) -> Result<Self> {
+        let metadata = std::fs::metadata(path)
+            .map_err(|error| EngineError::Execution(format!("failed to stat {path:?}: {error}")))?;
+        let bytes = std::fs::read(path)
+            .map_err(|error| EngineError::Execution(format!("failed to read {path:?}: {error}")))?;
+        let content_hash = petunia_core::ContentHash::new(&bytes);
+        Ok(Self {
+            content_hash,
+            size_bytes: metadata.len(),
+            modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+        })
+    }
+}
+
+/// Status of an external modification check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConflictStatus {
+    /// File matches the baseline exactly.
+    Clean,
+    /// File was modified on disk by another process.
+    ModifiedExternally {
+        current_hash: petunia_core::ContentHash,
+        disk_modified: SystemTime,
+    },
+    /// File was deleted on disk.
+    Deleted,
+}
+
+/// Conflict detector comparing the current file state to the captured baseline.
+#[derive(Debug, Clone)]
+pub struct ExternalConflictDetector {
+    baseline: FileFingerprint,
+}
+
+impl ExternalConflictDetector {
+    /// Create a detector from a captured baseline.
+    #[must_use]
+    pub fn new(baseline: FileFingerprint) -> Self {
+        Self { baseline }
+    }
+
+    /// Check the file against the baseline.
+    #[must_use]
+    pub fn check(&self, path: &std::path::Path) -> ConflictStatus {
+        if !path.exists() {
+            return ConflictStatus::Deleted;
+        }
+        match FileFingerprint::capture(path) {
+            Ok(current) => {
+                if current.content_hash == self.baseline.content_hash {
+                    ConflictStatus::Clean
+                } else {
+                    ConflictStatus::ModifiedExternally {
+                        current_hash: current.content_hash,
+                        disk_modified: current.modified,
+                    }
+                }
+            }
+            Err(_) => ConflictStatus::Deleted,
+        }
+    }
+
+    /// Assert no conflict exists, returning a typed `EngineError::Conflict` on mismatch.
+    pub fn assert_safe_to_save(&self, path: &std::path::Path) -> Result<()> {
+        match self.check(path) {
+            ConflictStatus::Clean => Ok(()),
+            ConflictStatus::ModifiedExternally { current_hash, .. } => {
+                Err(EngineError::Conflict(format!(
+                    "file {path:?} changed externally (current hash: {})",
+                    current_hash.to_tagged()
+                )))
+            }
+            ConflictStatus::Deleted => Err(EngineError::Conflict(format!(
+                "file {path:?} was deleted on disk"
+            ))),
+        }
+    }
+}
+
+/// Advisory cooperative file lock to detect concurrent studio instances.
+///
+/// Creates `<path>.lock` containing process metadata. If the lock is held
+/// by an active process, acquisition fails with an error. Stale locks from
+/// deceased processes are cleanly overridden.
+#[derive(Debug)]
+pub struct CooperativeFileLock {
+    lock_path: std::path::PathBuf,
+    active: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+struct LockPayload {
+    pid: u32,
+    created_unix_ms: u64,
+}
+
+impl CooperativeFileLock {
+    /// Try to acquire an advisory lock for `target_file`.
+    pub fn acquire(target_file: &std::path::Path) -> Result<Self> {
+        let lock_path = target_file.with_extension(format!(
+            "{}.lock",
+            target_file
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("ptnd")
+        ));
+        if lock_path.exists() {
+            if let Ok(bytes) = std::fs::read(&lock_path) {
+                if let Ok(payload) = serde_json::from_slice::<LockPayload>(&bytes) {
+                    if is_process_alive(payload.pid) {
+                        return Err(EngineError::Conflict(format!(
+                            "file {target_file:?} is locked by active process PID {}",
+                            payload.pid
+                        )));
+                    }
+                }
+            }
+        }
+        let payload = LockPayload {
+            pid: std::process::id(),
+            created_unix_ms: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0),
+        };
+        let bytes = serde_json::to_vec(&payload)
+            .map_err(|e| EngineError::Execution(format!("failed to serialize lock: {e}")))?;
+        std::fs::write(&lock_path, bytes)
+            .map_err(|e| EngineError::Execution(format!("failed to write lock file: {e}")))?;
+        Ok(Self {
+            lock_path,
+            active: true,
+        })
+    }
+
+    /// Manually release the lock.
+    pub fn release(&mut self) {
+        if self.active {
+            let _ = std::fs::remove_file(&self.lock_path);
+            self.active = false;
+        }
+    }
+}
+
+impl Drop for CooperativeFileLock {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+#[cfg(unix)]
+fn is_process_alive(pid: u32) -> bool {
+    std::path::Path::new(&format!("/proc/{pid}")).exists()
+}
+
+#[cfg(not(unix))]
+fn is_process_alive(_pid: u32) -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1136,6 +1308,62 @@ mod tests {
             ..PackageLimits::default()
         };
         assert!(write_package(&sample_entries(), &tight).is_err());
+    }
+
+    #[test]
+    fn conflict_detector_identifies_external_modifications() {
+        let dir = std::env::temp_dir().join(format!("petunia-conflict-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("doc.ptnd");
+        let initial_bytes = b"initial content";
+        std::fs::write(&path, initial_bytes).expect("writes");
+
+        let baseline = FileFingerprint::capture(&path).expect("captures");
+        let detector = ExternalConflictDetector::new(baseline);
+        assert_eq!(detector.check(&path), ConflictStatus::Clean);
+        assert!(detector.assert_safe_to_save(&path).is_ok());
+
+        // External process modifies the file on disk:
+        std::fs::write(&path, b"external edit").expect("writes");
+        assert!(matches!(
+            detector.check(&path),
+            ConflictStatus::ModifiedExternally { .. }
+        ));
+        assert!(matches!(
+            detector.assert_safe_to_save(&path),
+            Err(EngineError::Conflict(_))
+        ));
+
+        // External process deletes the file:
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(detector.check(&path), ConflictStatus::Deleted);
+        assert!(matches!(
+            detector.assert_safe_to_save(&path),
+            Err(EngineError::Conflict(_))
+        ));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cooperative_lock_prevents_concurrent_acquisition() {
+        let dir = std::env::temp_dir().join(format!("petunia-lock-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("doc.ptnd");
+
+        let lock1 = CooperativeFileLock::acquire(&path).expect("acquires lock");
+        // Second instance attempts to acquire while active:
+        assert!(matches!(
+            CooperativeFileLock::acquire(&path),
+            Err(EngineError::Conflict(_))
+        ));
+
+        // Dropping or releasing lock1 frees it:
+        drop(lock1);
+        let lock2 = CooperativeFileLock::acquire(&path).expect("acquires after drop");
+        drop(lock2);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

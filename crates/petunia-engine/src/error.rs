@@ -40,6 +40,10 @@ pub enum EngineError {
     /// Recovery journal framing, replay or store failure.
     #[error("Recovery error: {0}")]
     Recovery(String),
+
+    /// Persistence conflict: external modification on disk.
+    #[error("Persistence conflict on {0}: file changed on disk")]
+    Conflict(String),
 }
 
 /// Convenience result type for engine operations.

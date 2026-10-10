@@ -129,6 +129,16 @@ impl History {
         self.position < self.entries.len()
     }
 
+    /// Restore history entries during crash recovery so the user can
+    /// undo replayed transactions.
+    pub fn restore_entries(&mut self, entries: Vec<HistoryEntry>) {
+        if let Some(last) = entries.last() {
+            self.current_revision = last.after_revision;
+        }
+        self.entries.extend(entries);
+        self.position = self.entries.len();
+    }
+
     /// Commit a prepared transaction: check the revision, apply
     /// atomically, append (or coalesce) the entry, enforce the
     /// budget and advance the revision.
