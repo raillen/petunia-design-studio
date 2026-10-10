@@ -20,6 +20,22 @@ pub enum EngineError {
 
     #[error("History budget exceeded: {0}")]
     BudgetExceeded(String),
+
+    /// Malformed container structure, checksum or layout.
+    #[error("PTND package error: {0}")]
+    Package(String),
+
+    /// Manifest shape, schema, identity or entry-set mismatch.
+    #[error("PTND manifest error: {0}")]
+    Manifest(String),
+
+    /// Required capability the build does not implement.
+    #[error("PTND capability error: {0}")]
+    Capability(String),
+
+    /// Size, count, ratio or depth budget exceeded.
+    #[error("PTND limit exceeded: {0}")]
+    Limit(String),
 }
 
 /// Convenience result type for engine operations.

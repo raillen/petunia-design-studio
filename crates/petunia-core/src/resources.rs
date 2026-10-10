@@ -130,6 +130,11 @@ impl ResourceRegistry {
         self.records.get(&id)
     }
 
+    /// Iterate records in deterministic order; traversal only.
+    pub fn iter(&self) -> impl Iterator<Item = (ResourceId, &ResourceRecord)> {
+        self.records.iter().map(|(id, record)| (*id, record))
+    }
+
     /// Number of tracked records.
     #[must_use]
     pub fn len(&self) -> usize {
