@@ -215,6 +215,11 @@
       "revision": "f09257729b235258e59121906cf4bc6e11e749f4",
       "document": "01-core/scene.md",
       "summary": "Modelo estrutural da Scene em 2026-10-10: ParentRef Page/Object em SceneNode, root lists por página com default page, operações estreitas verificadas (insert_root/insert_child/remove_subtree/reparent/reorder), validate() de ownership, finitude, bindings vivos e aciclicidade, queries determinísticas e world transform derivado. Commit lane do Engine roteado para as narrow ops. Gates: workspace 320 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
+    },
+    "ev-c02-document": {
+      "revision": "5616ac6396d2d93bb7d58c359270bf8bade2b73d",
+      "document": "01-core/document.md",
+      "summary": "Aggregate Document em 2026-10-10: metadata com timestamps de save, setup com units/DPI/cor/página padrão, PageCollection com specs validadas, spreads, registries de resources/styles/symbols/swatches/guides/grids/slices (BTreeMap determinístico + ordem explícita de palette), Document::validate cobrindo páginas, referências cruzadas, texto, geometria finita e dangling refs, e DTO versionado com gate de schema e revalidação. Gates: workspace 330 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
     }
   },
   "tasks": [
@@ -305,9 +310,9 @@
       "title": "Núcleo: path, shape, scene e document",
       "description": "Paths cúbicos, ParametricShape separado, scene graph ordenado e Document com pages e registries.",
       "document": "01-core/path.md",
-      "status": "IN PROGRESS",
+      "status": "DONE",
       "updated": "2026-10-10",
-      "baseline": "Scene estrutural entregue em f092577 (ParentRef, páginas, narrow ops, validação e ciclos). Segue IN PROGRESS pelo aggregate Document: páginas, registries, validação e DTO.",
+      "baseline": "Núcleo path/shape/scene/document completo em 5616ac6: IDs persistentes, ParentRef, páginas, registries, validação e DTO versionado.",
       "checkpoints": [
         {
           "title": "path.rs com ContourId/NodeId persistentes e SegmentKind",
@@ -346,8 +351,8 @@
         },
         {
           "title": "Document aggregate: páginas, registries, validação e DTO",
-          "completed": false,
-          "evidence": null
+          "completed": true,
+          "evidence": "ev-c02-document"
         }
       ],
       "documents": [

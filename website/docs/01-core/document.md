@@ -395,3 +395,15 @@ Elas podem:
 18. `modified` muda no save bem-sucedido, não durante estado transitório.
 19. Registry lookup e ordem autoral são estruturas semanticamente distintas.
 20. Package/Collect é I/O, não responsabilidade de Document.
+## Verificação do aggregate (2026-10-10)
+
+Escopo: metadata, setup, páginas, spreads, registries, `Document::validate` e DTO versionado. Revisão `5616ac6396d2d93bb7d58c359270bf8bade2b73d` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 330 passed / 0 failed (Core com 99 unit + 12 property) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: container físico PTND (ZIP, manifest, migrations, atomic replace) pertence ao Engine e continua pendente; `Appearance` ainda não está ligada aos itens da cena; definições Spot não têm registry próprio; subtrees de definição de Symbol não têm storage dedicado. C02 fecha o modelo; esses pontos viram follow-up próprio.
