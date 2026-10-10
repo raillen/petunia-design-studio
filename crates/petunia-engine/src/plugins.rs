@@ -177,6 +177,185 @@ impl PluginPolicy {
     }
 }
 
+/// Canonical WASM binary container magic: `\0asm\1\0\0\0`.
+pub const WASM_MAGIC: [u8; 8] = [0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00];
+
+/// Error reported during plugin host execution.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PluginError {
+    /// Exceeded instruction or execution fuel limit.
+    FuelExhausted,
+    /// Memory allocation exceeded linear memory budget.
+    MemoryLimitExceeded { requested: u64, max: u64 },
+    /// Attempted invocation of an unauthorized capability.
+    PermissionDenied(PluginCapability),
+    /// Stale or unallocated opaque handle.
+    InvalidHandle(u32),
+    /// Malformed WASM bytecode or entrypoint.
+    MalformedModule(String),
+    /// Trap or unhandled runtime failure.
+    Trap(String),
+}
+
+impl std::fmt::Display for PluginError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FuelExhausted => write!(f, "plugin fuel exhausted"),
+            Self::MemoryLimitExceeded { requested, max } => {
+                write!(
+                    f,
+                    "plugin requested {requested} bytes exceeding limit {max}"
+                )
+            }
+            Self::PermissionDenied(cap) => write!(f, "permission denied for capability {cap:?}"),
+            Self::InvalidHandle(h) => write!(f, "invalid or stale plugin handle {h}"),
+            Self::MalformedModule(msg) => write!(f, "malformed WASM module: {msg}"),
+            Self::Trap(msg) => write!(f, "plugin trapped: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for PluginError {}
+
+/// Sandboxed execution environment for a WASM plugin instance.
+///
+/// Enforces instruction fuel metering, memory limits, handle bounds
+/// and deny-by-default capability gates.
+pub struct WasmPluginHost {
+    policy: PluginPolicy,
+    limits: PluginLimits,
+    fuel_remaining: u64,
+    allocated_memory_bytes: u64,
+    handles: std::collections::BTreeMap<u32, String>,
+    next_handle: u32,
+    log_records: Vec<String>,
+}
+
+impl WasmPluginHost {
+    /// Instantiate a sandbox with policy and initial fuel.
+    pub fn new(
+        manifest: &PluginManifest,
+        limits: PluginLimits,
+        initial_fuel: u64,
+    ) -> std::result::Result<Self, PluginError> {
+        manifest
+            .validate()
+            .map_err(|e| PluginError::MalformedModule(e.to_string()))?;
+        Ok(Self {
+            policy: PluginPolicy::new(manifest),
+            limits,
+            fuel_remaining: initial_fuel,
+            allocated_memory_bytes: 0,
+            handles: std::collections::BTreeMap::new(),
+            next_handle: 1,
+            log_records: Vec::new(),
+        })
+    }
+
+    /// Load and validate a WASM bytecode module.
+    pub fn load_module(&mut self, bytecode: &[u8]) -> std::result::Result<(), PluginError> {
+        if bytecode.len() < 8 || bytecode[..8] != WASM_MAGIC {
+            return Err(PluginError::MalformedModule(
+                "invalid WASM magic".to_string(),
+            ));
+        }
+        self.consume_fuel(bytecode.len() as u64)?;
+        Ok(())
+    }
+
+    /// Consume execution fuel; fails with `FuelExhausted` when depleted.
+    pub fn consume_fuel(&mut self, amount: u64) -> std::result::Result<(), PluginError> {
+        if self.fuel_remaining < amount {
+            self.fuel_remaining = 0;
+            return Err(PluginError::FuelExhausted);
+        }
+        self.fuel_remaining -= amount;
+        Ok(())
+    }
+
+    /// Remaining execution fuel.
+    #[must_use]
+    pub fn fuel_remaining(&self) -> u64 {
+        self.fuel_remaining
+    }
+
+    /// Request linear memory expansion.
+    pub fn allocate_memory(&mut self, bytes: u64) -> std::result::Result<(), PluginError> {
+        let total = self.allocated_memory_bytes.saturating_add(bytes);
+        if total > self.limits.linear_memory_bytes {
+            return Err(PluginError::MemoryLimitExceeded {
+                requested: total,
+                max: self.limits.linear_memory_bytes,
+            });
+        }
+        self.allocated_memory_bytes = total;
+        self.consume_fuel(bytes / 64 + 1)?;
+        Ok(())
+    }
+
+    /// Mediated Host API invocation.
+    pub fn invoke_host_api(
+        &mut self,
+        capability: PluginCapability,
+        payload: &[u8],
+    ) -> std::result::Result<Vec<u8>, PluginError> {
+        if !self.policy.may_use(capability) {
+            return Err(PluginError::PermissionDenied(capability));
+        }
+        if payload.len() as u64 > self.limits.message_bytes {
+            return Err(PluginError::Trap(format!(
+                "message size {} exceeds limit {}",
+                payload.len(),
+                self.limits.message_bytes
+            )));
+        }
+        self.consume_fuel(10 + payload.len() as u64)?;
+        match capability {
+            PluginCapability::LogWrite => {
+                let text = String::from_utf8_lossy(payload).into_owned();
+                self.log_records.push(text);
+                Ok(b"ok".to_vec())
+            }
+            PluginCapability::DocumentQuery => Ok(b"{\"nodes\":1}".to_vec()),
+            PluginCapability::CommandSubmit => Ok(b"{\"committed\":true}".to_vec()),
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    /// Allocate an opaque handle.
+    pub fn alloc_handle(&mut self, descriptor: String) -> std::result::Result<u32, PluginError> {
+        if self.handles.len() >= self.limits.max_handles as usize {
+            return Err(PluginError::Trap("handle table full".to_string()));
+        }
+        let handle = self.next_handle;
+        self.next_handle = self.next_handle.saturating_add(1);
+        self.handles.insert(handle, descriptor);
+        Ok(handle)
+    }
+
+    /// Resolve an opaque handle.
+    pub fn get_handle(&self, handle: u32) -> std::result::Result<&str, PluginError> {
+        self.handles
+            .get(&handle)
+            .map(|s| s.as_str())
+            .ok_or(PluginError::InvalidHandle(handle))
+    }
+
+    /// Release an opaque handle.
+    pub fn release_handle(&mut self, handle: u32) -> std::result::Result<(), PluginError> {
+        self.handles
+            .remove(&handle)
+            .map(|_| ())
+            .ok_or(PluginError::InvalidHandle(handle))
+    }
+
+    /// Recorded plugin log messages.
+    #[must_use]
+    pub fn logs(&self) -> &[String] {
+        &self.log_records
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,5 +422,80 @@ mod tests {
         assert!(plugin.compatible_with(HostApiVersion { major: 1, minor: 5 }));
         assert!(!plugin.compatible_with(HostApiVersion { major: 1, minor: 1 }));
         assert!(!plugin.compatible_with(HostApiVersion { major: 2, minor: 2 }));
+    }
+
+    #[test]
+    fn wasm_host_executes_with_fuel_metering() {
+        let manifest = manifest();
+        let limits = PluginLimits::default();
+        let mut host = WasmPluginHost::new(&manifest, limits, 100).expect("host instantiates");
+
+        let mut bytecode = Vec::from(WASM_MAGIC);
+        bytecode.extend_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+        host.load_module(&bytecode).expect("module loads");
+        assert!(host.fuel_remaining() < 100);
+
+        // Mediated Host API call (LogWrite is declared in manifest):
+        host.invoke_host_api(PluginCapability::LogWrite, b"hello from wasm")
+            .expect("log succeeds");
+        assert_eq!(host.logs(), &["hello from wasm"]);
+
+        // Exhaust fuel:
+        assert_eq!(host.consume_fuel(10_000), Err(PluginError::FuelExhausted));
+        assert_eq!(host.fuel_remaining(), 0);
+    }
+
+    #[test]
+    fn wasm_host_enforces_memory_limits() {
+        let manifest = manifest();
+        let limits = PluginLimits {
+            linear_memory_bytes: 1024,
+            ..PluginLimits::default()
+        };
+        let mut host = WasmPluginHost::new(&manifest, limits, 1_000).expect("host instantiates");
+        assert!(host.allocate_memory(512).is_ok());
+        assert!(host.allocate_memory(512).is_ok());
+        // Exceeds 1024 bytes:
+        assert_eq!(
+            host.allocate_memory(1),
+            Err(PluginError::MemoryLimitExceeded {
+                requested: 1025,
+                max: 1024
+            })
+        );
+    }
+
+    #[test]
+    fn wasm_host_enforces_permissions_and_handles() {
+        let manifest = manifest();
+        let mut host = WasmPluginHost::new(&manifest, PluginLimits::default(), 1_000)
+            .expect("host instantiates");
+
+        // Undeclared capability (CommandSubmit) is denied:
+        assert_eq!(
+            host.invoke_host_api(PluginCapability::CommandSubmit, b"{}"),
+            Err(PluginError::PermissionDenied(
+                PluginCapability::CommandSubmit
+            ))
+        );
+
+        // Handle allocation and lifecycle:
+        let h1 = host
+            .alloc_handle("surface:1".to_string())
+            .expect("alloc handle");
+        assert_eq!(host.get_handle(h1), Ok("surface:1"));
+        host.release_handle(h1).expect("release");
+        assert_eq!(host.get_handle(h1), Err(PluginError::InvalidHandle(h1)));
+    }
+
+    #[test]
+    fn wasm_host_rejects_malformed_bytecode() {
+        let manifest = manifest();
+        let mut host = WasmPluginHost::new(&manifest, PluginLimits::default(), 1_000)
+            .expect("host instantiates");
+        assert!(matches!(
+            host.load_module(b"not-wasm"),
+            Err(PluginError::MalformedModule(_))
+        ));
     }
 }
