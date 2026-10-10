@@ -99,6 +99,12 @@ pub enum DocumentOp {
         child: ObjectId,
         index: usize,
     },
+    /// Set node visibility. Visibility is Document State: it changes
+    /// output, export and print, so it commits like any mutation.
+    SetVisibility {
+        object: ObjectId,
+        visible: bool,
+    },
 }
 
 /// What a command handler asks the commit lane to apply.
@@ -273,6 +279,16 @@ fn inverse_of(
                 transform: node.transform,
             }])
         }
+        DocumentOp::SetVisibility { object, .. } => {
+            let node = document
+                .scene
+                .get_node(*object)
+                .ok_or_else(|| missing(*object))?;
+            Ok(vec![DocumentOp::SetVisibility {
+                object: *object,
+                visible: node.visible,
+            }])
+        }
         DocumentOp::MoveObjects { object, .. } => {
             let node = document
                 .scene
@@ -407,6 +423,7 @@ fn affected_object(op: &DocumentOp, affected: &mut Vec<ObjectId>) {
             push(*parent);
             push(*child);
         }
+        DocumentOp::SetVisibility { object, .. } => push(*object),
     }
 }
 
@@ -466,6 +483,13 @@ fn validate_operation(
             collect_subtree(document, *root).map(|_| ())
         }
         DocumentOp::SetTransform { object, .. } => {
+            document
+                .scene
+                .get_node(*object)
+                .ok_or_else(|| missing(*object))?;
+            Ok(())
+        }
+        DocumentOp::SetVisibility { object, .. } => {
             document
                 .scene
                 .get_node(*object)
@@ -563,6 +587,13 @@ fn apply_operation(
                 CommitError::ApplyFailed(format!("object {object} vanished at commit"))
             })?;
             node.transform = transform;
+            Ok(())
+        }
+        DocumentOp::SetVisibility { object, visible } => {
+            let node = document.scene.get_node_mut(object).ok_or_else(|| {
+                CommitError::ApplyFailed(format!("object {object} vanished at commit"))
+            })?;
+            node.visible = visible;
             Ok(())
         }
         DocumentOp::MoveObjects { object, dx, dy } => {
@@ -777,6 +808,61 @@ mod tests {
                 )),
             }]),
             DocumentRevision(1),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn visibility_toggle_commits_and_undoes() {
+        let (mut document, _) = group_fixture();
+        let node = SceneNode::new_path(
+            "box",
+            VectorPath::rect(0.0, 0.0, 10.0, 10.0),
+            petunia_core::ParentRef::Page(document.scene.default_page()),
+        );
+        let id = node.id;
+        let inserted = prepare_transaction(
+            &document,
+            request(vec![DocumentOp::InsertRoot {
+                index: 0,
+                node: Box::new(node),
+            }]),
+            DocumentRevision::GENESIS,
+        )
+        .expect("valid");
+        commit_transaction(&mut document, inserted).expect("commits");
+        let revision = DocumentRevision(1);
+        let prepared = prepare_transaction(
+            &document,
+            request(vec![DocumentOp::SetVisibility {
+                object: id,
+                visible: false,
+            }]),
+            revision,
+        )
+        .expect("valid");
+        commit_transaction(&mut document, prepared).expect("commits");
+        assert!(!document.scene.get_node(id).expect("node").visible);
+        // Undo restores the captured flag, not a default.
+        let back = prepare_transaction(
+            &document,
+            request(vec![DocumentOp::SetVisibility {
+                object: id,
+                visible: true,
+            }]),
+            DocumentRevision(2),
+        )
+        .expect("valid");
+        commit_transaction(&mut document, back).expect("commits");
+        assert!(document.scene.get_node(id).expect("node").visible);
+        // Missing objects fail validation, not the commit.
+        assert!(prepare_transaction(
+            &document,
+            request(vec![DocumentOp::SetVisibility {
+                object: ObjectId::new_v4(),
+                visible: false,
+            }]),
+            DocumentRevision(3),
         )
         .is_err());
     }

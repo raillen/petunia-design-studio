@@ -16,6 +16,7 @@ pub mod context;
 pub mod error;
 pub mod focus;
 pub mod input;
+pub mod layers;
 pub mod numeric;
 pub mod shortcuts;
 pub mod tools;
@@ -30,6 +31,7 @@ pub use context::{
 pub use error::{Result, UiError};
 pub use focus::{DisabledReason, FocusEntry, FocusManager, FocusOutcome, FocusZone};
 pub use input::{PointerEvent, ToolKind, UserAction};
+pub use layers::{LayerKey, LayerKind, LayerRow, LayersPanel};
 pub use numeric::{InputMethod, NumericField, SizeFields};
 pub use shortcuts::{ActionId, BindError, KeyCombo, ShortcutTable};
 pub use tools::{

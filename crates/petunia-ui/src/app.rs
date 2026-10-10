@@ -11,6 +11,7 @@ use crate::context::{
 use crate::error::Result;
 use crate::focus::{FocusEntry, FocusManager, FocusOutcome};
 use crate::input::{PointerEvent, ToolKind, UserAction};
+use crate::layers::{LayerKey, LayerKind, LayerRow, LayersPanel};
 use crate::numeric::NumericField;
 use crate::shortcuts::ActionId;
 use crate::shortcuts::ShortcutTable;
@@ -48,6 +49,9 @@ pub struct StudioSession {
     y_field: NumericField,
     focus: FocusManager,
     tools: SessionTools,
+    layers: LayersPanel,
+    layers_revision: DocumentRevision,
+    layers_selection: Vec<ObjectId>,
     captured: bool,
 }
 
@@ -78,6 +82,9 @@ impl StudioSession {
             y_field: NumericField::new(0.0, 1.0),
             focus: FocusManager::new(),
             tools: SessionTools::default(),
+            layers: LayersPanel::new(),
+            layers_revision: DocumentRevision(0),
+            layers_selection: Vec::new(),
             captured: false,
         }
     }
@@ -296,17 +303,23 @@ impl StudioSession {
             }
             UserAction::Undo => {
                 self.history.undo(&mut self.document)?;
+                self.sync_layers();
                 Ok(ToolResponse::Idle)
             }
             UserAction::Redo => {
                 self.history.redo(&mut self.document)?;
+                self.sync_layers();
                 Ok(ToolResponse::Idle)
             }
             UserAction::SmartDelete(mode) => self.smart_delete(mode),
             UserAction::Nudge { dx, dy } => self.nudge(dx, dy),
             // Hover never mutates: a tooltip is Session State at most.
             UserAction::HoverTooltip(_) => Ok(ToolResponse::Idle),
-            UserAction::Pointer(pointer) => self.handle_pointer(pointer),
+            UserAction::Pointer(pointer) => {
+                let response = self.handle_pointer(pointer)?;
+                self.sync_layers();
+                Ok(response)
+            }
         }
     }
 
@@ -372,11 +385,14 @@ impl StudioSession {
                 "nenhum node elegível para deleção".to_string(),
             ));
         }
-        self.commit_request(TransactionRequest {
-            command_id: CommandId::new_v4(),
-            operations,
-            merge_key: None,
-        })?;
+        self.commit_request(
+            TransactionRequest {
+                command_id: CommandId::new_v4(),
+                operations,
+                merge_key: None,
+            },
+            HistoryDescription::DeleteObjects,
+        )?;
         let worst = deviations
             .iter()
             .fold(0.0_f64, |worst, error| worst.max(*error));
@@ -446,11 +462,14 @@ impl StudioSession {
         match &response {
             ToolResponse::Selection(delta) => self.apply_selection(delta.clone()),
             ToolResponse::Commit(operations) => {
-                self.commit_request(TransactionRequest {
-                    command_id: CommandId::new_v4(),
-                    operations: operations.clone(),
-                    merge_key: None,
-                })?;
+                self.commit_request(
+                    TransactionRequest {
+                        command_id: CommandId::new_v4(),
+                        operations: operations.clone(),
+                        merge_key: None,
+                    },
+                    HistoryDescription::EditObjects,
+                )?;
             }
             _ => {}
         }
@@ -617,6 +636,151 @@ impl StudioSession {
         }
     }
 
+    /// Layers panel, mirroring the scene hierarchy.
+    #[must_use]
+    pub fn layers(&self) -> &LayersPanel {
+        &self.layers
+    }
+
+    /// Rebuild the panel when the document moved on. Focus, collapse
+    /// and selection survive by identity.
+    pub fn sync_layers(&mut self) {
+        let revision = self.revision();
+        let selected = self.selection.objects().to_vec();
+        if revision == self.layers_revision && selected == self.layers_selection {
+            return;
+        }
+        let rows = self.build_layer_rows();
+        self.layers.rebuild(rows, &selected, revision.0);
+        self.layers_revision = revision;
+        self.layers_selection = selected;
+    }
+
+    /// Keyboard intent on the layers panel. Arrows move focus, Enter
+    /// selects the focused row, Space toggles its visibility through
+    /// one transaction.
+    pub fn layer_key(&mut self, key: LayerKey) -> Result<ToolResponse> {
+        self.sync_layers();
+        match key {
+            LayerKey::Enter => {
+                let Some(id) = self.layers.focused_id() else {
+                    return Ok(ToolResponse::Idle);
+                };
+                self.selection.set_objects(vec![id]);
+                self.sync_layers();
+                Ok(ToolResponse::Selection(SelectionDelta::ReplaceObjects(
+                    vec![id],
+                )))
+            }
+            LayerKey::Space => self.toggle_focused_visibility(),
+            _ => {
+                self.layers.key(key);
+                Ok(ToolResponse::Idle)
+            }
+        }
+    }
+
+    /// Toggle visibility of the focused object row in one transaction.
+    fn toggle_focused_visibility(&mut self) -> Result<ToolResponse> {
+        let Some(id) = self.layers.focused_id() else {
+            return Ok(ToolResponse::Idle);
+        };
+        let Some(node) = self.document.scene.get_node(id) else {
+            return Ok(ToolResponse::Failed("row points nowhere".to_string()));
+        };
+        let visible = !node.visible;
+        self.commit_request(
+            TransactionRequest {
+                command_id: CommandId::new_v4(),
+                operations: vec![DocumentOp::SetVisibility {
+                    object: id,
+                    visible,
+                }],
+                merge_key: None,
+            },
+            HistoryDescription::SetVisibility,
+        )?;
+        self.sync_layers();
+        Ok(ToolResponse::Status(if visible {
+            "visível".to_string()
+        } else {
+            "oculto".to_string()
+        }))
+    }
+
+    /// Rows in panel order: pages, then depth-first roots.
+    fn build_layer_rows(&self) -> Vec<LayerRow> {
+        let mut rows = Vec::new();
+        for page_id in self.document.scene.page_ids() {
+            let Some(page) = self.document.pages.get(page_id) else {
+                continue;
+            };
+            let roots = self.document.scene.page_roots(page_id).unwrap_or(&[]);
+            rows.push(LayerRow {
+                id: None,
+                page: page_id,
+                name: page.name.clone(),
+                kind: LayerKind::Page,
+                depth: 0,
+                visible: true,
+                locked: false,
+                child_count: roots.len(),
+                position: 1,
+                siblings: 1,
+                selected: false,
+            });
+            let count = roots.len();
+            for (index, id) in roots.iter().copied().enumerate() {
+                self.push_layer_rows(id, page_id, 1, index + 1, count, &mut rows);
+            }
+        }
+        rows
+    }
+
+    fn push_layer_rows(
+        &self,
+        id: ObjectId,
+        page: petunia_core::PageId,
+        depth: usize,
+        position: usize,
+        siblings: usize,
+        rows: &mut Vec<LayerRow>,
+    ) {
+        let Some(node) = self.document.scene.get_node(id) else {
+            return;
+        };
+        let (kind, child_count) = match &node.item {
+            SceneItem::Group(children) => (LayerKind::Group, children.len()),
+            SceneItem::Path(_) => (LayerKind::Path, 0),
+            SceneItem::Shape(_) => (LayerKind::Shape, 0),
+            SceneItem::Text(_) => (LayerKind::Text, 0),
+            SceneItem::Image(_) => (LayerKind::Image, 0),
+            SceneItem::PixelLayer(_) => (LayerKind::Pixel, 0),
+            SceneItem::Trace(_) => (LayerKind::Trace, 0),
+            SceneItem::GeneratedVector(_) => (LayerKind::Generated, 0),
+            SceneItem::SymbolInstance(_) => (LayerKind::Symbol, 0),
+        };
+        rows.push(LayerRow {
+            id: Some(id),
+            page,
+            name: node.name.clone(),
+            kind,
+            depth,
+            visible: node.visible,
+            locked: node.locked,
+            child_count,
+            position,
+            siblings,
+            selected: false,
+        });
+        if let SceneItem::Group(children) = &node.item {
+            let count = children.len();
+            for (index, child) in children.iter().copied().enumerate() {
+                self.push_layer_rows(child, page, depth + 1, index + 1, count, rows);
+            }
+        }
+    }
+
     /// Label for the context bar, mirroring D2.
     #[must_use]
     pub fn context_label(&self) -> String {
@@ -648,7 +812,7 @@ impl StudioSession {
             }],
             merge_key: None,
         };
-        self.commit_request(request)
+        self.commit_request(request, HistoryDescription::InsertObjects)
     }
 
     /// Adjust the selection through one engine transaction.
@@ -671,11 +835,14 @@ impl StudioSession {
         if operations.is_empty() {
             return Ok(false);
         }
-        self.commit_request(TransactionRequest {
-            command_id: CommandId::new_v4(),
-            operations,
-            merge_key: None,
-        })?;
+        self.commit_request(
+            TransactionRequest {
+                command_id: CommandId::new_v4(),
+                operations,
+                merge_key: None,
+            },
+            HistoryDescription::MoveObjects,
+        )?;
         Ok(true)
     }
 
@@ -683,6 +850,7 @@ impl StudioSession {
     pub fn commit_request(
         &mut self,
         request: TransactionRequest,
+        description: HistoryDescription,
     ) -> std::result::Result<(), EngineError> {
         if request.operations.is_empty() {
             return Ok(());
@@ -692,12 +860,10 @@ impl StudioSession {
         // The session returns `EngineError`, so the new revision is
         // redundant to the caller; the caller can read `revision()`.
         self.history
-            .commit(
-                &mut self.document,
-                prepared,
-                HistoryDescription::MoveObjects,
-            )
-            .map(|_| ())
+            .commit(&mut self.document, prepared, description)
+            .map(|_| ())?;
+        self.sync_layers();
+        Ok(())
     }
 }
 
@@ -1125,6 +1291,53 @@ mod tests {
         let (focus, context) = session.on_escape_focus();
         assert_eq!(focus, crate::focus::FocusOutcome::Unhandled);
         assert!(!session.contexts().in_vector(), "{context:?}");
+    }
+
+    #[test]
+    fn layers_panel_mirrors_selects_and_toggles() {
+        let mut session = session_with_rect();
+        let object = session.selection.single().expect("selected");
+        session.sync_layers();
+        // Page row plus the path row, focus starts on the page.
+        assert_eq!(session.layers().rows().len(), 2);
+        assert_eq!(
+            session.layers().focused().map(|row| row.name.clone()),
+            Some("Page 1".to_string())
+        );
+        // Down to the path, Enter selects it through the panel.
+        session.layer_key(LayerKey::Down).expect("down");
+        session.layer_key(LayerKey::Enter).expect("enter");
+        assert_eq!(session.selection.single(), Some(object));
+        assert!(
+            session
+                .layers()
+                .rows()
+                .iter()
+                .find(|row| row.id == Some(object))
+                .expect("row")
+                .selected
+        );
+        // Space hides it in exactly one transaction; undo restores.
+        let revision = session.revision();
+        session.layer_key(LayerKey::Space).expect("toggle");
+        assert_eq!(session.revision().0, revision.0 + 1);
+        assert!(
+            !session
+                .document()
+                .scene
+                .get_node(object)
+                .expect("node")
+                .visible
+        );
+        session.dispatch_action(UserAction::Undo).expect("undo");
+        assert!(
+            session
+                .document()
+                .scene
+                .get_node(object)
+                .expect("node")
+                .visible
+        );
     }
 
     #[test]
