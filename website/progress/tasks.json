@@ -205,6 +205,11 @@
       "revision": "0ec440d1ce97e039af7617d840d80a0515e3c9a3",
       "document": "04-ui/session-input.md",
       "summary": "Segunda fatia headless em 2026-10-09: Smart Delete D7 em engine/geometry/smart_delete.rs (Preserve Shape com refit e erro maximo exposto, Hard Delete, recusas tipadas), modelo de foco em ui/focus.rs (ordem visual, entradas desabilitadas com motivo, ciclo de zonas, trap de dialogo com restauracao, Escape preferindo foco e so entao contexto), tooltips D5 lendo a ShortcutTable viva e nudges em unidades de documento. Suite petunia-ui 54 testes; workspace 305 passed / 0 failed, clippy -D warnings e fmt limpos."
+    },
+    "ev-c02-path-ids": {
+      "revision": "cf5c4891a38112ed6a4c8281765a675edfabe440",
+      "document": "01-core/path.md",
+      "summary": "Modelo persistente de path em 2026-10-10: ContourId/NodeId UUID, SegmentKind Line/Cubic, retângulo com segmentos Line explícitos, IDs preservados em serialização e HardDelete, novos IDs só em geometria refitada sem correspondência. Gates: workspace 306 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
     }
   },
   "tasks": [
@@ -297,12 +302,12 @@
       "document": "01-core/path.md",
       "status": "IN PROGRESS",
       "updated": "2026-10-10",
-      "baseline": "Reaberto em 2026-10-10 após auditoria do Core: path.rs precisa de ContourId/NodeId persistentes e SegmentKind antes de voltar a DONE. Implementação anterior: b16d4eb.",
+      "baseline": "Path persistente entregue em cf5c489 (IDs/SegmentKind). Segue IN PROGRESS pelo modelo estrutural Scene/Document: ParentRef, páginas, registries, validação e DTO.",
       "checkpoints": [
         {
-          "title": "path.rs com nodes cúbicos e contours",
-          "completed": false,
-          "evidence": null
+          "title": "path.rs com ContourId/NodeId persistentes e SegmentKind",
+          "completed": true,
+          "evidence": "ev-c02-path-ids"
         },
         {
           "title": "scene.rs com hierarquia Path/Group e SceneGraph",
@@ -328,6 +333,11 @@
           "title": "Crop não destrutivo com ClipBinding",
           "completed": true,
           "evidence": "ev-crop"
+        },
+        {
+          "title": "Modelo estrutural Scene/Document (ParentRef, páginas, registries, validação, DTO)",
+          "completed": false,
+          "evidence": null
         }
       ],
       "documents": [
