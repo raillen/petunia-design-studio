@@ -15,7 +15,7 @@ use crate::numeric::NumericField;
 use crate::shortcuts::ActionId;
 use crate::shortcuts::ShortcutTable;
 use crate::tools::{
-    distance, HitTarget, ItemKind, NodeTool, PointerSample, SelectTool, SelectionDelta,
+    distance, HitTarget, ItemKind, NodeTool, PenTool, PointerSample, SelectTool, SelectionDelta,
     ToolController, ToolResponse, ToolServices, ToolSession, ViewTransform,
 };
 use crate::tooltips::tooltip_for;
@@ -47,7 +47,18 @@ pub struct StudioSession {
     x_field: NumericField,
     y_field: NumericField,
     focus: FocusManager,
+    tools: SessionTools,
     captured: bool,
+}
+
+/// One controller of each kind, owned by the session. Pointer events
+/// clone the active one out, run it, and store it back, so gesture
+/// state survives from Down to Up with no aliased borrows.
+#[derive(Debug, Clone, Default)]
+struct SessionTools {
+    select: SelectTool,
+    node: NodeTool,
+    pen: PenTool,
 }
 
 impl StudioSession {
@@ -66,6 +77,7 @@ impl StudioSession {
             x_field: NumericField::new(0.0, 1.0),
             y_field: NumericField::new(0.0, 1.0),
             focus: FocusManager::new(),
+            tools: SessionTools::default(),
             captured: false,
         }
     }
@@ -194,16 +206,34 @@ impl StudioSession {
     }
 
     /// Select a tool; switching never mutates the document.
+    /// A switch also drops any in-flight gesture state.
     pub fn select_tool(&mut self, tool: ToolKind) {
         self.active_tool = tool;
+        self.tools = SessionTools::default();
     }
 
     /// Press Escape, following the approved ordering.
     pub fn on_escape(&mut self) -> EscapeOutcome {
         if self.captured {
             match self.active_tool {
-                ToolKind::NodeEdit => NodeTool::new().cancel(self),
-                _ => SelectTool::new().cancel(self),
+                ToolKind::NodeEdit => {
+                    let mut tool = self.tools.node.clone();
+                    let outcome = tool.cancel(self);
+                    self.tools.node = tool;
+                    let _ = outcome;
+                }
+                ToolKind::Pen => {
+                    let mut tool = self.tools.pen.clone();
+                    let outcome = tool.cancel(self);
+                    self.tools.pen = tool;
+                    let _ = outcome;
+                }
+                _ => {
+                    let mut tool = self.tools.select.clone();
+                    let outcome = tool.cancel(self);
+                    self.tools.select = tool;
+                    let _ = outcome;
+                }
             };
             self.captured = false;
             return EscapeOutcome::ReturnedToNode;
@@ -376,16 +406,37 @@ impl StudioSession {
             PointerEvent::Move { position, .. } => (PointerSample::new(position), false),
             PointerEvent::Up { position } => (PointerSample::new(position), true),
         };
-        let response = match pointer {
-            PointerEvent::Down { .. } => SelectTool::new().begin(self, &sample),
-            PointerEvent::Move { .. } => match self.active_tool {
-                ToolKind::NodeEdit => NodeTool::new().update(self, &sample),
-                _ => SelectTool::new().update(self, &sample),
-            },
-            PointerEvent::Up { .. } => match self.active_tool {
-                ToolKind::NodeEdit => NodeTool::new().end(self, &sample),
-                _ => SelectTool::new().end(self, &sample),
-            },
+        let response = match self.active_tool {
+            ToolKind::NodeEdit => {
+                let mut tool = self.tools.node.clone();
+                let response = match pointer {
+                    PointerEvent::Down { .. } => tool.begin(self, &sample),
+                    PointerEvent::Move { .. } => tool.update(self, &sample),
+                    PointerEvent::Up { .. } => tool.end(self, &sample),
+                };
+                self.tools.node = tool;
+                response
+            }
+            ToolKind::Pen => {
+                let mut tool = self.tools.pen.clone();
+                let response = match pointer {
+                    PointerEvent::Down { .. } => tool.begin(self, &sample),
+                    PointerEvent::Move { .. } => tool.update(self, &sample),
+                    PointerEvent::Up { .. } => tool.end(self, &sample),
+                };
+                self.tools.pen = tool;
+                response
+            }
+            _ => {
+                let mut tool = self.tools.select.clone();
+                let response = match pointer {
+                    PointerEvent::Down { .. } => tool.begin(self, &sample),
+                    PointerEvent::Move { .. } => tool.update(self, &sample),
+                    PointerEvent::Up { .. } => tool.end(self, &sample),
+                };
+                self.tools.select = tool;
+                response
+            }
         };
         if is_end {
             self.captured = false;
@@ -513,6 +564,40 @@ impl StudioSession {
         (local.x.is_finite() && local.y.is_finite()).then_some(local)
     }
 
+    /// Geometric bounds of one object from its path anchors, unioned
+    /// through groups. `None` for items without computable bounds.
+    fn object_bounds(&self, id: ObjectId) -> Option<petunia_core::Rect> {
+        let node = self.document.scene.get_node(id)?;
+        match &node.item {
+            SceneItem::Path(object) => {
+                let mut bounds: Option<petunia_core::Rect> = None;
+                for contour in &object.path.contours {
+                    for anchor in contour.nodes.iter().map(|node| node.point) {
+                        let slot = petunia_core::Rect::new(anchor.x, anchor.y, 0.0, 0.0);
+                        bounds = Some(match bounds {
+                            Some(existing) => existing.union(slot),
+                            None => slot,
+                        });
+                    }
+                }
+                bounds
+            }
+            SceneItem::Group(children) => {
+                let mut bounds: Option<petunia_core::Rect> = None;
+                for child in children {
+                    if let Some(child_bounds) = self.object_bounds(*child) {
+                        bounds = Some(match bounds {
+                            Some(existing) => existing.union(child_bounds),
+                            None => child_bounds,
+                        });
+                    }
+                }
+                bounds
+            }
+            _ => None,
+        }
+    }
+
     fn item_kind(&self, id: ObjectId) -> ItemKind {
         match self.document.scene.get_node(id).map(|node| &node.item) {
             Some(SceneItem::Path(_)) => ItemKind::Path,
@@ -626,6 +711,23 @@ impl ToolServices for StudioSession {
         // store in Core, so the point passes through uncorrected.
         (view_point, None)
     }
+
+    fn marquee_select(&self, min: Point, max: Point) -> Vec<ObjectId> {
+        let mut selected = Vec::new();
+        for id in self.document.scene.root_order() {
+            let Some(bounds) = self.object_bounds(*id) else {
+                continue;
+            };
+            let lower = bounds.min();
+            let upper = bounds.max();
+            let inside =
+                lower.x >= min.x && lower.y >= min.y && upper.x <= max.x && upper.y <= max.y;
+            if inside {
+                selected.push(*id);
+            }
+        }
+        selected
+    }
 }
 
 impl ToolSession for StudioSession {
@@ -663,6 +765,25 @@ impl ToolSession for StudioSession {
 
     fn clear_sub_selection(&mut self) {
         self.selection.sub.clear();
+    }
+
+    fn selected_nodes(&self) -> Vec<NodeId> {
+        self.selection.sub.nodes().to_vec()
+    }
+
+    fn path_snapshot(&self, object: ObjectId) -> Option<VectorPath> {
+        self.document
+            .scene
+            .get_node(object)
+            .and_then(|node| node.item_path().cloned())
+    }
+
+    fn default_page(&self) -> petunia_core::PageId {
+        self.document.scene.default_page()
+    }
+
+    fn root_count(&self) -> usize {
+        self.document.scene.len()
     }
 
     fn is_editable(&self, id: ObjectId) -> bool {
@@ -1024,6 +1145,99 @@ mod tests {
             session.tooltip(ActionId::Undo).as_deref(),
             Some("Desfazer (Ctrl+y)")
         );
+    }
+
+    #[test]
+    fn node_drag_moves_nodes_in_one_transaction() {
+        let mut session = session_with_rect();
+        let object = session.selection.single().expect("selected");
+        session.select_tool(ToolKind::NodeEdit);
+        // Grab the first anchor at doc (0, 0): view equals doc here.
+        session
+            .dispatch_action(UserAction::Pointer(PointerEvent::Down {
+                position: Point::new(0.0, 0.0),
+                pressure: 1.0,
+            }))
+            .expect("grab");
+        session
+            .dispatch_action(UserAction::Pointer(PointerEvent::Move {
+                position: Point::new(10.0, 20.0),
+                pressure: 1.0,
+            }))
+            .expect("drag");
+        let revision = session.revision();
+        session
+            .dispatch_action(UserAction::Pointer(PointerEvent::Up {
+                position: Point::new(10.0, 20.0),
+            }))
+            .expect("drop");
+        assert_eq!(session.revision().0, revision.0 + 1);
+        let path = session
+            .document()
+            .scene
+            .get_node(object)
+            .and_then(|node| node.item_path())
+            .expect("path");
+        assert_eq!(path.contours[0].nodes[0].point, Point::new(10.0, 20.0));
+        session.dispatch_action(UserAction::Undo).expect("undo");
+        let restored = session
+            .document()
+            .scene
+            .get_node(object)
+            .and_then(|node| node.item_path())
+            .expect("path");
+        assert_eq!(restored.contours[0].nodes[0].point, Point::new(0.0, 0.0));
+    }
+
+    #[test]
+    fn marquee_selects_the_box_by_containment() {
+        let mut session = session_with_rect();
+        session.selection.clear();
+        assert!(session.selection.is_empty());
+        // Drag a marquee around the 100x100 box at the origin.
+        session
+            .dispatch_action(UserAction::Pointer(PointerEvent::Down {
+                position: Point::new(-10.0, -10.0),
+                pressure: 1.0,
+            }))
+            .expect("down");
+        session
+            .dispatch_action(UserAction::Pointer(PointerEvent::Move {
+                position: Point::new(110.0, 110.0),
+                pressure: 1.0,
+            }))
+            .expect("drag");
+        session
+            .dispatch_action(UserAction::Pointer(PointerEvent::Up {
+                position: Point::new(110.0, 110.0),
+            }))
+            .expect("up");
+        assert_eq!(session.selection.objects().len(), 1);
+    }
+
+    #[test]
+    fn pen_creates_a_closed_path_in_one_transaction() {
+        let mut session = StudioSession::new("pen");
+        session.select_tool(ToolKind::Pen);
+        let revision = session.revision();
+        for position in [
+            Point::new(0.0, 0.0),
+            Point::new(60.0, 0.0),
+            Point::new(60.0, 40.0),
+            // Back on the first anchor closes the path.
+            Point::new(0.0, 0.0),
+        ] {
+            session
+                .dispatch_action(UserAction::Pointer(PointerEvent::Down {
+                    position,
+                    pressure: 1.0,
+                }))
+                .expect("place");
+        }
+        assert_eq!(session.revision().0, revision.0 + 1);
+        assert_eq!(session.document().scene.len(), 1);
+        session.dispatch_action(UserAction::Undo).expect("undo");
+        assert_eq!(session.document().scene.len(), 0);
     }
 
     #[test]

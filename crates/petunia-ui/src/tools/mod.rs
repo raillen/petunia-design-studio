@@ -6,7 +6,7 @@
 //! Commit share the same engine math, so a gesture cannot "jump" on
 //! pointer up.
 
-use petunia_core::{ObjectId, Point};
+use petunia_core::{NodeKind, ObjectId, PageId, PathNode, Point, VectorPath};
 use petunia_engine::DocumentOp;
 use serde::{Deserialize, Serialize};
 
@@ -100,6 +100,7 @@ pub enum OverlayPrimitive {
         at: Point,
     },
     Ghost {
+        /// Document-space polyline preview (rubber band, node drag).
         points: Vec<Point>,
     },
 }
@@ -177,6 +178,10 @@ pub trait ToolServices {
     /// Snap a document point; returns the corrected point and the
     /// candidate kind it snapped to.
     fn snap(&self, point: Point) -> (Point, Option<String>);
+
+    /// Root objects whose geometric bounds sit fully inside the
+    /// document-space rect, in z-order. Decision A: containment.
+    fn marquee_select(&self, min: Point, max: Point) -> Vec<ObjectId>;
 }
 
 /// Narrow session surface a controller drives.
@@ -204,6 +209,15 @@ pub trait ToolSession {
     fn clear_sub_selection(&mut self);
     /// Whether the object may be edited (visible, unlocked, in scope).
     fn is_editable(&self, id: ObjectId) -> bool;
+    /// Sub-selected nodes by stable id, in selection order.
+    fn selected_nodes(&self) -> Vec<NodeId>;
+    /// A cloned path for building node-move operations. Read-only:
+    /// the tool never writes through it.
+    fn path_snapshot(&self, object: ObjectId) -> Option<VectorPath>;
+    /// Page new root objects declare.
+    fn default_page(&self) -> PageId;
+    /// Root object count, for append indices.
+    fn root_count(&self) -> usize;
     /// Capture the pointer, holding the base revision.
     fn capture(&mut self);
     /// Release the capture.
@@ -247,12 +261,17 @@ pub fn marquee(origin: Point, current: Point) -> OverlayPrimitive {
 }
 
 /// Select tool: object picking, marquee replace/add, drag preview.
+#[derive(Debug, Clone)]
 pub struct SelectTool {
     down_at: Option<Point>,
     dragging: bool,
     additive: bool,
 }
 
+/// Controllers stay small and cloneable: the session owns one of
+/// each and clones it out per event, so gesture state (press origin,
+/// drag flag, pen anchors) survives from Down to Up without shared
+/// mutable borrows.
 impl SelectTool {
     /// Fresh Select tool.
     #[must_use]
@@ -322,11 +341,21 @@ impl ToolController for SelectTool {
     }
 
     fn end(&mut self, ctx: &mut dyn ToolSession, sample: &PointerSample) -> ToolResponse {
+        let origin = self.down_at;
         self.down_at = None;
         if self.dragging {
             self.dragging = false;
             ctx.release();
-            return ToolResponse::Overlay(vec![marquee_from_end(sample)]);
+            // Marquee selects by containment; the click case cleared
+            // or replaced the selection back in `begin`.
+            if let Some(origin) = origin {
+                let from = ctx.view().view_to_doc(origin);
+                let to = ctx.view().view_to_doc(sample.position);
+                let min = Point::new(from.x.min(to.x), from.y.min(to.y));
+                let max = Point::new(from.x.max(to.x), from.y.max(to.y));
+                let objects = ctx.services().marquee_select(min, max);
+                return ToolResponse::Selection(SelectionDelta::ReplaceObjects(objects));
+            }
         }
         ToolResponse::Idle
     }
@@ -340,19 +369,14 @@ impl ToolController for SelectTool {
     }
 }
 
-fn marquee_from_end(_sample: &PointerSample) -> OverlayPrimitive {
-    OverlayPrimitive::Rect {
-        x: 0.0,
-        y: 0.0,
-        width: 0.0,
-        height: 0.0,
-    }
-}
-
 /// Node tool: sub-select nodes and handles; a segment drag never bends.
+/// Dragging moves the sub-selected nodes and commits exactly one
+/// transaction on release.
+#[derive(Debug, Clone)]
 pub struct NodeTool {
     down_at: Option<Point>,
     dragging: bool,
+    grabbed: Option<NodeId>,
 }
 
 impl NodeTool {
@@ -362,6 +386,7 @@ impl NodeTool {
         Self {
             down_at: None,
             dragging: false,
+            grabbed: None,
         }
     }
 }
@@ -404,6 +429,7 @@ impl ToolController for NodeTool {
                     contour: *contour,
                     node: *node,
                 };
+                self.grabbed = Some(id);
                 if sample.shift {
                     ToolResponse::Selection(SelectionDelta::ToggleNode(id))
                 } else {
@@ -435,15 +461,174 @@ impl ToolController for NodeTool {
         ToolResponse::Idle
     }
 
-    fn end(&mut self, _ctx: &mut dyn ToolSession, _sample: &PointerSample) -> ToolResponse {
+    fn end(&mut self, ctx: &mut dyn ToolSession, sample: &PointerSample) -> ToolResponse {
+        let origin = self.down_at;
+        let grabbed = self.grabbed;
         self.down_at = None;
         self.dragging = false;
-        ToolResponse::Idle
+        self.grabbed = None;
+        let (Some(origin), Some(grabbed)) = (origin, grabbed) else {
+            return ToolResponse::Idle;
+        };
+        if !is_drag(origin, sample.position) {
+            return ToolResponse::Idle;
+        }
+        ctx.release();
+        // Move the sub-selection of the grabbed contour; a bare grab
+        // without sub-selection moves the grabbed node itself.
+        let view = ctx.view();
+        let from = view.view_to_doc(origin);
+        let to = view.view_to_doc(sample.position);
+        let (dx, dy) = (to.x - from.x, to.y - from.y);
+        if dx == 0.0 && dy == 0.0 {
+            return ToolResponse::Idle;
+        }
+        let mut targets: Vec<u32> = ctx
+            .selected_nodes()
+            .into_iter()
+            .filter(|node| node.object == grabbed.object && node.contour == grabbed.contour)
+            .map(|node| node.node)
+            .collect();
+        if targets.is_empty() {
+            targets.push(grabbed.node);
+        }
+        targets.sort_unstable();
+        targets.dedup();
+        let Some(mut path) = ctx.path_snapshot(grabbed.object) else {
+            return ToolResponse::Failed(format!("object {} has no path", grabbed.object));
+        };
+        let Some(contour) = path.contours.get_mut(grabbed.contour as usize) else {
+            return ToolResponse::Failed("contour is gone".to_string());
+        };
+        for index in targets {
+            let Some(node) = contour.nodes.get_mut(index as usize) else {
+                continue;
+            };
+            node.point = Point::new(node.point.x + dx, node.point.y + dy);
+            if let Some(handle) = node.handle_in.as_mut() {
+                *handle = Point::new(handle.x + dx, handle.y + dy);
+            }
+            if let Some(handle) = node.handle_out.as_mut() {
+                *handle = Point::new(handle.x + dx, handle.y + dy);
+            }
+        }
+        ToolResponse::Commit(vec![petunia_engine::DocumentOp::ReplacePath {
+            object: grabbed.object,
+            path,
+        }])
     }
 
     fn cancel(&mut self, ctx: &mut dyn ToolSession) -> ToolResponse {
         self.down_at = None;
         self.dragging = false;
+        self.grabbed = None;
+        ctx.release();
+        ToolResponse::Idle
+    }
+}
+
+/// Pen tool: click anchors into a polyline, click the first anchor to
+/// close, Escape to cancel. Clicks only stage Session State; closing
+/// commits exactly one transaction.
+#[derive(Debug, Clone)]
+pub struct PenTool {
+    points: Vec<Point>,
+}
+
+impl PenTool {
+    /// Fresh Pen tool.
+    #[must_use]
+    pub fn new() -> Self {
+        Self { points: Vec::new() }
+    }
+
+    /// Anchors staged so far, in document space.
+    #[must_use]
+    pub fn points(&self) -> &[Point] {
+        &self.points
+    }
+
+    fn close_tolerance(view: ViewTransform) -> f64 {
+        8.0 / view.scale.max(1e-9)
+    }
+
+    fn commit_path(&mut self, ctx: &mut dyn ToolSession, closed: bool) -> ToolResponse {
+        use petunia_core::{Appearance, SceneItem, SceneNode, Transform2D};
+        let mut contour = petunia_core::Contour::new(closed);
+        for point in &self.points {
+            contour.push_node(PathNode::line(*point, NodeKind::Cusp));
+        }
+        self.points.clear();
+        ctx.release();
+        ToolResponse::Commit(vec![petunia_engine::DocumentOp::InsertRoot {
+            index: ctx.root_count(),
+            node: Box::new(SceneNode {
+                id: petunia_core::ObjectId::new_v4(),
+                name: "Path".to_string(),
+                parent: petunia_core::ParentRef::Page(ctx.default_page()),
+                visible: true,
+                locked: false,
+                transform: Transform2D::IDENTITY,
+                opacity: 1.0,
+                geometry_effects: Default::default(),
+                post_effects: Default::default(),
+                clip: None,
+                mask: None,
+                item: SceneItem::Path(petunia_core::PathObject {
+                    path: {
+                        let mut path = VectorPath::new();
+                        path.push_contour(contour);
+                        path
+                    },
+                    appearance: Appearance::solid_black(),
+                }),
+            }),
+        }])
+    }
+}
+
+impl Default for PenTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ToolController for PenTool {
+    fn begin(&mut self, ctx: &mut dyn ToolSession, sample: &PointerSample) -> ToolResponse {
+        let view = ctx.view();
+        let (snapped, _) = ctx.services().snap(view.view_to_doc(sample.position));
+        if self.points.len() >= 3
+            && distance(snapped, self.points[0]) <= Self::close_tolerance(view)
+        {
+            return self.commit_path(ctx, true);
+        }
+        if let Some(last) = self.points.last() {
+            if distance(snapped, *last) <= 1e-9 {
+                return ToolResponse::Idle;
+            }
+        }
+        self.points.push(snapped);
+        ctx.capture();
+        ToolResponse::Status(format!("path with {} anchors", self.points.len()))
+    }
+
+    fn update(&mut self, ctx: &mut dyn ToolSession, sample: &PointerSample) -> ToolResponse {
+        if self.points.is_empty() {
+            return ToolResponse::Idle;
+        }
+        let view = ctx.view();
+        let (snapped, _) = ctx.services().snap(view.view_to_doc(sample.position));
+        let mut preview = self.points.clone();
+        preview.push(snapped);
+        ToolResponse::Overlay(vec![OverlayPrimitive::Ghost { points: preview }])
+    }
+
+    fn end(&mut self, _ctx: &mut dyn ToolSession, _sample: &PointerSample) -> ToolResponse {
+        ToolResponse::Idle
+    }
+
+    fn cancel(&mut self, ctx: &mut dyn ToolSession) -> ToolResponse {
+        self.points.clear();
         ctx.release();
         ToolResponse::Idle
     }
@@ -455,6 +640,7 @@ mod tests {
 
     struct StubServices {
         hits: Vec<HitTarget>,
+        marquee: Vec<ObjectId>,
     }
 
     impl ToolServices for StubServices {
@@ -465,6 +651,10 @@ mod tests {
         fn snap(&self, point: Point) -> (Point, Option<String>) {
             (point, None)
         }
+
+        fn marquee_select(&self, _min: Point, _max: Point) -> Vec<ObjectId> {
+            self.marquee.clone()
+        }
     }
 
     struct StubSession {
@@ -472,9 +662,13 @@ mod tests {
         view: ViewTransform,
         objects: Vec<ObjectId>,
         selected_node: Option<NodeId>,
+        sub_nodes: Vec<NodeId>,
         toggled: Vec<NodeId>,
         captured: bool,
         editable: ObjectId,
+        paths: Vec<(ObjectId, VectorPath)>,
+        page: PageId,
+        roots: usize,
     }
 
     impl ToolSession for StubSession {
@@ -520,6 +714,25 @@ mod tests {
             id == self.editable
         }
 
+        fn selected_nodes(&self) -> Vec<NodeId> {
+            self.sub_nodes.clone()
+        }
+
+        fn path_snapshot(&self, object: ObjectId) -> Option<VectorPath> {
+            self.paths
+                .iter()
+                .find(|(id, _)| *id == object)
+                .map(|(_, path)| path.clone())
+        }
+
+        fn default_page(&self) -> PageId {
+            self.page
+        }
+
+        fn root_count(&self) -> usize {
+            self.roots
+        }
+
         fn capture(&mut self) {
             self.captured = true;
         }
@@ -535,7 +748,10 @@ mod tests {
 
     fn session(hits: Vec<HitTarget>, object: ObjectId) -> StubSession {
         StubSession {
-            services: StubServices { hits },
+            services: StubServices {
+                hits,
+                marquee: Vec::new(),
+            },
             view: ViewTransform {
                 scale: 2.0,
                 offset_x: 10.0,
@@ -543,9 +759,13 @@ mod tests {
             },
             objects: Vec::new(),
             selected_node: None,
+            sub_nodes: Vec::new(),
             toggled: Vec::new(),
             captured: false,
             editable: object,
+            paths: Vec::new(),
+            page: PageId::new_v4(),
+            roots: 0,
         }
     }
 
@@ -641,6 +861,127 @@ mod tests {
         // Dragging over the segment still never produces a Commit.
         let dragged = tool.update(&mut ctx, &PointerSample::new(Point::new(30.0, 30.0)));
         assert!(!matches!(dragged, ToolResponse::Commit(_)));
+    }
+
+    #[test]
+    fn node_drag_commits_one_moved_path() {
+        use petunia_core::{Contour, NodeKind, PathNode};
+        let object = ObjectId::new_v4();
+        let mut contour = Contour::new(false);
+        contour.push_node(PathNode::new(Point::new(10.0, 10.0), NodeKind::Cusp));
+        contour.push_node(PathNode::new(Point::new(30.0, 10.0), NodeKind::Cusp));
+        let mut path = VectorPath::new();
+        path.push_contour(contour);
+        let mut ctx = session(
+            vec![HitTarget::Node {
+                object,
+                contour: 0,
+                node: 1,
+            }],
+            object,
+        );
+        ctx.paths.push((object, path));
+        ctx.sub_nodes.push(NodeId {
+            object,
+            contour: 0,
+            node: 1,
+        });
+        let mut tool = NodeTool::new();
+        // View scale is 2 with offset (10, 20): doc = (view - off) / 2.
+        // Node 1 sits at doc (30, 10) -> view (70, 40).
+        tool.begin(&mut ctx, &PointerSample::new(Point::new(70.0, 40.0)));
+        tool.update(&mut ctx, &PointerSample::new(Point::new(90.0, 60.0)));
+        let end = tool.end(&mut ctx, &PointerSample::new(Point::new(90.0, 60.0)));
+        // Drag delta is doc (10, 10): the node travels with handles.
+        let petunia_engine::DocumentOp::ReplacePath {
+            object: moved,
+            path,
+        } = single_commit(end)
+        else {
+            panic!("expected one ReplacePath commit");
+        };
+        assert_eq!(moved, object);
+        assert_eq!(path.contours[0].nodes[1].point, Point::new(40.0, 20.0));
+        assert_eq!(path.contours[0].nodes[0].point, Point::new(10.0, 10.0));
+    }
+
+    #[test]
+    fn node_click_without_drag_commits_nothing() {
+        let object = ObjectId::new_v4();
+        let mut ctx = session(
+            vec![HitTarget::Node {
+                object,
+                contour: 0,
+                node: 0,
+            }],
+            object,
+        );
+        let mut tool = NodeTool::new();
+        tool.begin(&mut ctx, &PointerSample::new(Point::new(0.0, 0.0)));
+        let end = tool.end(&mut ctx, &PointerSample::new(Point::new(1.0, 1.0)));
+        assert_eq!(end, ToolResponse::Idle);
+    }
+
+    #[test]
+    fn marquee_end_selects_containment() {
+        let first = ObjectId::new_v4();
+        let second = ObjectId::new_v4();
+        let mut ctx = session(vec![], first);
+        ctx.services.marquee = vec![first, second];
+        let mut tool = SelectTool::new();
+        tool.begin(&mut ctx, &PointerSample::new(Point::new(0.0, 0.0)));
+        tool.update(&mut ctx, &PointerSample::new(Point::new(40.0, 50.0)));
+        let end = tool.end(&mut ctx, &PointerSample::new(Point::new(40.0, 50.0)));
+        assert_eq!(
+            end,
+            ToolResponse::Selection(SelectionDelta::ReplaceObjects(vec![first, second]))
+        );
+    }
+
+    #[test]
+    fn pen_closes_on_first_anchor_with_one_commit() {
+        let object = ObjectId::new_v4();
+        let mut ctx = session(vec![], object);
+        let mut tool = PenTool::new();
+        // View scale 2, offset (10, 20): doc points are distinct.
+        for view in [
+            Point::new(10.0, 20.0),
+            Point::new(110.0, 20.0),
+            Point::new(110.0, 120.0),
+        ] {
+            tool.begin(&mut ctx, &PointerSample::new(view));
+            tool.end(&mut ctx, &PointerSample::new(view));
+        }
+        assert_eq!(tool.points().len(), 3);
+        // Click back on the first anchor closes the path.
+        let closed = tool.begin(&mut ctx, &PointerSample::new(Point::new(10.0, 20.0)));
+        let petunia_engine::DocumentOp::InsertRoot { index, node } = single_commit(closed) else {
+            panic!("expected one InsertRoot commit");
+        };
+        assert_eq!(index, 0);
+        assert_eq!(node.item_path().expect("path").contours[0].nodes.len(), 3);
+        assert!(node.item_path().expect("path").contours[0].closed);
+        assert!(tool.points().is_empty(), "points clear after commit");
+    }
+
+    #[test]
+    fn pen_escape_cancels_without_commit() {
+        let object = ObjectId::new_v4();
+        let mut ctx = session(vec![], object);
+        let mut tool = PenTool::new();
+        tool.begin(&mut ctx, &PointerSample::new(Point::new(0.0, 0.0)));
+        tool.begin(&mut ctx, &PointerSample::new(Point::new(30.0, 30.0)));
+        let cancelled = tool.cancel(&mut ctx);
+        assert_eq!(cancelled, ToolResponse::Idle);
+        assert!(tool.points().is_empty());
+    }
+
+    fn single_commit(response: ToolResponse) -> petunia_engine::DocumentOp {
+        let ToolResponse::Commit(mut operations) = response else {
+            panic!("expected a commit, got {response:?}");
+        };
+        assert_eq!(operations.len(), 1);
+        operations.pop().expect("one operation")
     }
 
     #[test]
