@@ -473,3 +473,16 @@ Não criar HistoryEntry por consumer derivado.
 12. Detach Symbol preserva o ObjectId da instance/root e cria IDs novos para descendants materializados.
 13. Deletar SymbolDefinition com instances exige política explícita.
 14. Styles/Symbols participam normalmente de dependency closure, resource GC, copy/paste e History.
+
+## Verificação da fiação estrutural (2026-10-10)
+
+Escopo: `SpotRegistry`, subtrees de definição com ciclos reais e effect stacks no node. Revisão `7806e2c2d9d3b63ee1b05677b9ba94c7513f99a2` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 375 passed / 0 failed |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: avaliadores por kind de efeito e render de gradients/patterns seguem futuros, com avisos explícitos até lá.

@@ -255,6 +255,11 @@
       "revision": "4612b66304b18a1d2e44399b56d5a006fd11fc",
       "document": "01-core/math.md",
       "summary": "Dívidas numéricas em 2026-10-10: Rect canônico com API completa, -0.0 dobrado em todos os construtores, TransformError com try_inverse por tolerância, decompose/recompose determinístico com round-trip, RandomSeed persistente. Gates: workspace 371 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
+    },
+    "ev-c04-structural": {
+      "revision": "7806e2c2d9d3b63ee1b05677b9ba94c7513f99a2",
+      "document": "01-core/styles-symbols.md",
+      "summary": "Fiação estrutural em 2026-10-10: SpotRegistry com validação e resolução via alternate, subtrees de Symbol com ownership e ciclos reais, effect stacks no node com validação e avisos de compilação. Gates: workspace 375 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
     }
   },
   "tasks": [
@@ -457,8 +462,8 @@
       "description": "Styles linkáveis, symbols acíclicos, texto/raster/resources e conteúdo vetorial gerado com proveniência.",
       "document": "01-core/styles-symbols.md",
       "status": "DONE",
-      "updated": "2026-10-09",
-      "baseline": "Implementado em b16d4eb: styles, symbols, text, raster, resources e generated. Follow-up: migrar SceneNode.fill para AppearanceSource e ParentRef estrutural.",
+      "updated": "2026-10-10",
+      "baseline": "Styles/texto/raster/gerados em revisões anteriores; fiação estrutural (spots, subtrees, effect stacks) em 7806e2c. Seguem futuros: avaliadores por kind de efeito e render de gradients/patterns.",
       "checkpoints": [
         {
           "title": "styles.rs e symbols.rs com overrides tipados e detach explícito",
@@ -474,6 +479,11 @@
           "title": "generated.rs com TraceObject, source e parâmetros autorais",
           "completed": true,
           "evidence": "ev-generated"
+        },
+        {
+          "title": "Fiação estrutural: spots, subtrees de Symbol e effect stacks",
+          "completed": true,
+          "evidence": "ev-c04-structural"
         }
       ],
       "documents": [
