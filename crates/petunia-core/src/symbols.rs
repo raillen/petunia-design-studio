@@ -9,7 +9,7 @@ use crate::error::{CoreError, Result};
 use crate::id::{ObjectId, ResourceId, SymbolId};
 use crate::paint::ColorSource;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 /// One reusable authorial structure. Internal object IDs stay global
 /// to the document; evaluation derives instance subtrees.
@@ -69,16 +69,16 @@ pub struct SymbolInstance {
 }
 
 /// Registry of definitions by identity.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SymbolRegistry {
-    definitions: HashMap<SymbolId, SymbolDefinition>,
+    definitions: BTreeMap<SymbolId, SymbolDefinition>,
 }
 
 impl SymbolRegistry {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            definitions: HashMap::new(),
+            definitions: BTreeMap::new(),
         }
     }
 
@@ -111,7 +111,7 @@ impl SymbolRegistry {
 /// before any transaction commits it.
 #[must_use]
 pub fn has_symbol_cycle(edges: &[(SymbolId, Vec<SymbolId>)]) -> bool {
-    let graph: HashMap<SymbolId, &[SymbolId]> = edges
+    let graph: BTreeMap<SymbolId, &[SymbolId]> = edges
         .iter()
         .map(|(id, nested)| (*id, nested.as_slice()))
         .collect();

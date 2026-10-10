@@ -17,6 +17,25 @@ pub struct Appearance {
     pub items: Vec<AppearanceItem>,
 }
 
+impl Appearance {
+    /// Re-check item invariants on any instance, including
+    /// deserialized ones: opacity ranges and stroke payloads.
+    pub fn validate(&self) -> Result<()> {
+        for item in &self.items {
+            if !item.opacity.is_finite() || !(0.0..=1.0).contains(&item.opacity) {
+                return Err(CoreError::InvariantViolation(format!(
+                    "appearance opacity out of 0..=1: {}",
+                    item.opacity
+                )));
+            }
+            if let AppearanceKind::Stroke(style) = &item.kind {
+                style.validate()?;
+            }
+        }
+        Ok(())
+    }
+}
+
 /// One paint entry with its own identity, opacity and blend.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppearanceItem {
@@ -162,25 +181,13 @@ impl DashPattern {
     /// the sequence deterministically, and the offset normalizes
     /// modularly over the pattern total.
     pub fn new(lengths: Vec<f64>, offset: f64) -> Result<Self> {
-        for length in &lengths {
-            if !length.is_finite() || *length < 0.0 {
-                return Err(CoreError::InvariantViolation(format!(
-                    "invalid dash length rejected: {length}"
-                )));
-            }
-        }
-        let total: f64 = lengths.iter().sum();
-        if !lengths.is_empty() && total <= 0.0 {
-            return Err(CoreError::InvariantViolation(
-                "dash pattern with zero total rejected".to_string(),
-            ));
-        }
         if !offset.is_finite() {
             return Err(CoreError::InvariantViolation(format!(
                 "non-finite dash offset rejected: {offset}"
             )));
         }
         let mut normalized = lengths;
+        Self::normalize_input(&mut normalized)?;
         if normalized.len() % 2 == 1 {
             let doubled = normalized.clone();
             normalized.extend(doubled);
@@ -197,6 +204,59 @@ impl DashPattern {
             lengths: normalized,
             offset,
         })
+    }
+
+    fn normalize_input(lengths: &mut [f64]) -> Result<()> {
+        for length in lengths.iter() {
+            if !length.is_finite() || *length < 0.0 {
+                return Err(CoreError::InvariantViolation(format!(
+                    "invalid dash length rejected: {length}"
+                )));
+            }
+        }
+        let total: f64 = lengths.iter().sum();
+        if !lengths.is_empty() && total <= 0.0 {
+            return Err(CoreError::InvariantViolation(
+                "dash pattern with zero total rejected".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Re-check the canonical persisted form: inputs valid, an even
+    /// (normalized) count or an empty list, and an offset inside the
+    /// repeating period.
+    pub fn validate(&self) -> Result<()> {
+        let mut lengths = self.lengths.clone();
+        Self::normalize_input(&mut lengths)?;
+        if self.lengths.len() % 2 == 1 {
+            return Err(CoreError::InvariantViolation(
+                "dash pattern must persist normalized (even-count) lengths".to_string(),
+            ));
+        }
+        if !self.offset.is_finite() {
+            return Err(CoreError::InvariantViolation(format!(
+                "non-finite dash offset rejected: {}",
+                self.offset
+            )));
+        }
+        if self.lengths.is_empty() {
+            if self.offset != 0.0 {
+                return Err(CoreError::InvariantViolation(format!(
+                    "continuous dash must persist offset 0, got {}",
+                    self.offset
+                )));
+            }
+            return Ok(());
+        }
+        let period: f64 = self.lengths.iter().sum();
+        if !(0.0..period).contains(&self.offset) {
+            return Err(CoreError::InvariantViolation(format!(
+                "dash offset outside its period: {}",
+                self.offset
+            )));
+        }
+        Ok(())
     }
 
     /// True for a continuous stroke.
@@ -226,17 +286,7 @@ impl VariableWidthProfile {
     /// with finite non-negative scales; duplicate positions merge by
     /// keeping the last scale.
     pub fn new(mut points: Vec<WidthPoint>) -> Result<Self> {
-        for point in &points {
-            if !point.position.is_finite()
-                || !(0.0..=1.0).contains(&point.position)
-                || !point.scale.is_finite()
-                || point.scale < 0.0
-            {
-                return Err(CoreError::InvariantViolation(format!(
-                    "invalid width point rejected: {point:?}"
-                )));
-            }
-        }
+        Self::check_points(&points)?;
         points.sort_by(|a, b| {
             a.position
                 .partial_cmp(&b.position)
@@ -256,6 +306,41 @@ impl VariableWidthProfile {
             ));
         }
         Ok(Self { points })
+    }
+
+    fn check_points(points: &[WidthPoint]) -> Result<()> {
+        for point in points {
+            if !point.position.is_finite()
+                || !(0.0..=1.0).contains(&point.position)
+                || !point.scale.is_finite()
+                || point.scale < 0.0
+            {
+                return Err(CoreError::InvariantViolation(format!(
+                    "invalid width point rejected: {point:?}"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// Re-check the canonical persisted form: valid ranges, sorted
+    /// positions with no duplicates, and at least one point.
+    pub fn validate(&self) -> Result<()> {
+        Self::check_points(&self.points)?;
+        if self.points.is_empty() {
+            return Err(CoreError::InvariantViolation(
+                "width profile needs at least one point".to_string(),
+            ));
+        }
+        for pair in self.points.windows(2) {
+            if pair[0].position >= pair[1].position {
+                return Err(CoreError::InvariantViolation(format!(
+                    "width profile positions must be sorted and unique: {:?}",
+                    self.points
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Linear interpolation between points, per the initial policy.
@@ -319,6 +404,28 @@ impl StrokeStyle {
             start_marker: None,
             end_marker: None,
         })
+    }
+
+    /// Re-check the construction invariants on any instance,
+    /// including deserialized ones.
+    pub fn validate(&self) -> Result<()> {
+        if !self.width.is_finite() || self.width < 0.0 {
+            return Err(CoreError::InvariantViolation(format!(
+                "invalid stroke width rejected: {}",
+                self.width
+            )));
+        }
+        if !self.miter_limit.is_finite() {
+            return Err(CoreError::InvariantViolation(format!(
+                "non-finite miter limit rejected: {}",
+                self.miter_limit
+            )));
+        }
+        self.dash.validate()?;
+        if let Some(profile) = &self.variable_width {
+            profile.validate()?;
+        }
+        Ok(())
     }
 }
 

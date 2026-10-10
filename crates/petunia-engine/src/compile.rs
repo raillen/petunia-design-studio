@@ -47,15 +47,13 @@ pub fn compile_document(
     for id in document.scene.root_order() {
         compiler.compile_node(document, *id, &mut primitives);
     }
+    let canvas = document.default_page_size();
     let snapshot = RenderSnapshot {
         revision: SnapshotRevision(revision.0),
         pages: vec![petunia_render_model::RenderPage {
             page: PageId::new_v4(),
-            size: Size2::new(
-                document.setup.width.max(1.0),
-                document.setup.height.max(1.0),
-            )
-            .unwrap_or(Size2::new(8.0, 8.0).expect("constant size")),
+            size: Size2::new(canvas.width.max(1.0), canvas.height.max(1.0))
+                .unwrap_or(Size2::new(8.0, 8.0).expect("constant size")),
             primitives,
         }],
         resources: RenderResourceTable::new(),

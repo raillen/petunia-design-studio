@@ -72,8 +72,14 @@ proptest! {
         height in 1.0f64..5_000.0,
     ) {
         let mut document = Document::new("prop");
-        document.setup.width = width;
-        document.setup.height = height;
+        let page = document.scene.default_page();
+        let spec = petunia_core::PageSpec::new(
+            petunia_core::Size2::new(width, height).expect("positive size"),
+            petunia_core::Insets::ZERO,
+            petunia_core::Insets::ZERO,
+        )
+        .expect("valid spec");
+        document.pages.get_mut(page).expect("page").spec = spec;
         let page = document.scene.default_page();
         document
             .scene
@@ -84,8 +90,9 @@ proptest! {
             ));
         let json = document.to_json().expect("serializes");
         let back = Document::from_json(&json).expect("deserializes");
-        prop_assert_eq!(back.setup.width, width);
-        prop_assert_eq!(back.setup.height, height);
+        let size = back.default_page_size();
+        prop_assert_eq!(size.width, width);
+        prop_assert_eq!(size.height, height);
         prop_assert_eq!(back.scene.len(), document.scene.len());
     }
 

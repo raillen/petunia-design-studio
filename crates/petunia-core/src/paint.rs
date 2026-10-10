@@ -36,6 +36,62 @@ pub enum SwatchValue {
     Gradient(Gradient),
 }
 
+/// Swatch lookup by identity plus the explicit palette order. Map
+/// iteration never defines presentation order.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SwatchRegistry {
+    entries: std::collections::BTreeMap<SwatchId, Swatch>,
+    order: Vec<SwatchId>,
+}
+
+impl SwatchRegistry {
+    /// Empty registry.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Insert or replace a swatch; new identities append to the palette
+    /// order exactly once.
+    pub fn insert(&mut self, swatch: Swatch) {
+        if !self.entries.contains_key(&swatch.id) {
+            self.order.push(swatch.id);
+        }
+        self.entries.insert(swatch.id, swatch);
+    }
+
+    /// Look up a swatch by identity.
+    #[must_use]
+    pub fn get(&self, id: SwatchId) -> Option<&Swatch> {
+        self.entries.get(&id)
+    }
+
+    /// Palette order: explicit, authorial, and independent of storage.
+    #[must_use]
+    pub fn order(&self) -> &[SwatchId] {
+        &self.order
+    }
+
+    /// Iterate entries in deterministic order. Iteration order is a
+    /// traversal convenience for validation; it never defines palette
+    /// order.
+    pub fn iter(&self) -> impl Iterator<Item = (SwatchId, &Swatch)> {
+        self.entries.iter().map(|(id, swatch)| (*id, swatch))
+    }
+
+    /// Number of tracked swatches.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// True when no swatch is tracked.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
 /// One gradient stop. Offset is normalized in `0..1`; midpoint pins
 /// the perceptual middle between adjacent stops and is defined in
 /// `0..1` as well.
@@ -49,18 +105,26 @@ pub struct GradientStop {
 impl GradientStop {
     /// Offsets and midpoints must be finite values in `0..1`.
     pub fn new(offset: f32, color: ColorSource, midpoint: f32) -> Result<Self> {
-        for (label, value) in [("offset", offset), ("midpoint", midpoint)] {
+        let candidate = Self {
+            offset,
+            color,
+            midpoint,
+        };
+        candidate.validate()?;
+        Ok(candidate)
+    }
+
+    /// Re-check the construction invariants on any instance,
+    /// including deserialized ones.
+    pub fn validate(&self) -> Result<()> {
+        for (label, value) in [("offset", self.offset), ("midpoint", self.midpoint)] {
             if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                 return Err(CoreError::InvariantViolation(format!(
                     "gradient {label} out of 0..=1: {value}"
                 )));
             }
         }
-        Ok(Self {
-            offset,
-            color,
-            midpoint,
-        })
+        Ok(())
     }
 }
 
@@ -132,18 +196,52 @@ impl Gradient {
         space: PaintSpace,
         geometry: GradientGeometry,
     ) -> Result<Self> {
-        if stops.is_empty() {
-            return Err(CoreError::InvariantViolation(
-                "gradient needs at least one stop".to_string(),
-            ));
-        }
-        Ok(Self {
+        let candidate = Self {
             stops,
             interpolation,
             spread,
             space,
             geometry,
-        })
+        };
+        candidate.validate()?;
+        Ok(candidate)
+    }
+
+    /// Re-check the construction invariants on any instance,
+    /// including deserialized ones.
+    pub fn validate(&self) -> Result<()> {
+        if self.stops.is_empty() {
+            return Err(CoreError::InvariantViolation(
+                "gradient needs at least one stop".to_string(),
+            ));
+        }
+        for stop in &self.stops {
+            stop.validate()?;
+        }
+        match &self.geometry {
+            GradientGeometry::Linear { start, end } => {
+                for point in [start, end] {
+                    if !point.x.is_finite() || !point.y.is_finite() {
+                        return Err(CoreError::InvariantViolation(format!(
+                            "non-finite linear gradient point rejected: {point:?}"
+                        )));
+                    }
+                }
+            }
+            GradientGeometry::Radial { center, radius } => {
+                if !center.x.is_finite() || !center.y.is_finite() {
+                    return Err(CoreError::InvariantViolation(format!(
+                        "non-finite radial gradient center rejected: {center:?}"
+                    )));
+                }
+                if !radius.is_finite() || *radius < 0.0 {
+                    return Err(CoreError::InvariantViolation(format!(
+                        "invalid radial gradient radius rejected: {radius}"
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 }
 

@@ -15,6 +15,7 @@ pub mod color;
 pub mod color_management;
 pub mod crop;
 pub mod document;
+pub mod dto;
 pub mod effects;
 pub mod error;
 pub mod generated;
@@ -45,7 +46,11 @@ pub use color::{
 };
 pub use color_management::ColorTransform;
 pub use crop::{BindingSourceUse, ClipBinding, ImageSourceRect, NormalizedPoint};
-pub use document::{Document, DocumentSetup};
+pub use document::{
+    Document, DocumentMetadata, DocumentSetup, Page, PageCollection, PageSpec, Spread,
+    SpreadPagePlacement,
+};
+pub use dto::{DocumentDtoV1, SchemaVersion};
 pub use effects::{
     BlurParams, BooleanOperation, CornerParams, EffectInstance, GeometryEffect,
     GeometryEffectInstance, GeometryEffectStack, GlowParams, LiveBooleanParams, OffsetParams,
@@ -59,17 +64,18 @@ pub use generated::{
 };
 pub use guides::{
     AffineGridKind, AffineGridSpec, BaselineGridSpec, ExportColorOptions, ExportFormat,
-    ExportSlice, GridDefinition, GridScope, GridSpec, Guide, GuideAxis, GuideScope,
-    PerspectiveGridSpec, ProjectiveGridTransform, SliceExportPreset, SliceSource,
+    ExportSlice, GridDefinition, GridRegistry, GridScope, GridSpec, Guide, GuideAxis,
+    GuideRegistry, GuideScope, PerspectiveGridSpec, ProjectiveGridTransform, SliceExportPreset,
+    SliceRegistry, SliceSource,
 };
 pub use id::{
     AppearanceItemId, ContourId, DocumentId, EffectId, GridId, GuideId, NodeId, ObjectId, PageId,
-    ResourceId, SliceId, SpotColorId, StyleId, SwatchId, SymbolId,
+    ResourceId, SliceId, SpotColorId, SpreadId, StyleId, SwatchId, SymbolId,
 };
-pub use math::{Angle, Point, Rect, Size2, Tolerance, Transform2D, Vec2};
+pub use math::{Angle, Insets, Point, Rect, Size2, Tolerance, Transform2D, Vec2};
 pub use paint::{
     ColorSource, Gradient, GradientGeometry, GradientInterpolation, GradientSpread, GradientStop,
-    PaintSpace, Swatch, SwatchValue,
+    PaintSpace, Swatch, SwatchRegistry, SwatchValue,
 };
 pub use path::{Contour, FillRule, NodeKind, PathNode, SegmentKind, VectorPath};
 pub use raster::{

@@ -97,25 +97,32 @@ impl FontRef {
         resource: Option<crate::id::ResourceId>,
         axes: Vec<FontAxis>,
     ) -> Result<Self> {
-        let family = family.into();
-        if family.trim().is_empty() {
+        let candidate = Self {
+            family: family.into(),
+            style_name,
+            resource,
+            axes,
+        };
+        candidate.validate()?;
+        Ok(candidate)
+    }
+
+    /// Re-check the construction invariants on any instance,
+    /// including deserialized ones.
+    pub fn validate(&self) -> Result<()> {
+        if self.family.trim().is_empty() {
             return Err(CoreError::InvariantViolation(
                 "font family must be named".to_string(),
             ));
         }
-        for axis in &axes {
+        for axis in &self.axes {
             if axis.tag.trim().is_empty() || !axis.value.is_finite() {
                 return Err(CoreError::InvariantViolation(format!(
                     "invalid font axis rejected: {axis:?}"
                 )));
             }
         }
-        Ok(Self {
-            family,
-            style_name,
-            resource,
-            axes,
-        })
+        Ok(())
     }
 }
 
@@ -228,19 +235,7 @@ impl TextObject {
         container: TextContainer,
         flow: TextFlow,
     ) -> Result<Self> {
-        let mut cursor = 0u32;
-        for run in &runs {
-            TextRange::new(run.range.start, run.range.end, &text)?;
-            if run.range.start < cursor {
-                return Err(CoreError::InvariantViolation(
-                    "text runs must be ordered and non-overlapping".to_string(),
-                ));
-            }
-            cursor = run.range.end;
-        }
-        for paragraph in &paragraphs {
-            TextRange::new(paragraph.range.start, paragraph.range.end, &text)?;
-        }
+        Self::validate(&text, &runs, &paragraphs)?;
         Ok(Self {
             text,
             runs,
@@ -248,6 +243,25 @@ impl TextObject {
             container,
             flow,
         })
+    }
+
+    /// Re-check the construction invariants on any instance,
+    /// including deserialized ones.
+    pub fn validate(text: &str, runs: &[TextRun], paragraphs: &[ParagraphRun]) -> Result<()> {
+        let mut cursor = 0u32;
+        for run in runs {
+            TextRange::new(run.range.start, run.range.end, text)?;
+            if run.range.start < cursor {
+                return Err(CoreError::InvariantViolation(
+                    "text runs must be ordered and non-overlapping".to_string(),
+                ));
+            }
+            cursor = run.range.end;
+        }
+        for paragraph in paragraphs {
+            TextRange::new(paragraph.range.start, paragraph.range.end, text)?;
+        }
+        Ok(())
     }
 
     /// Position where point text starts; frames and paths resolve

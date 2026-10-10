@@ -95,6 +95,10 @@ entity_id!(
     PageId
 );
 entity_id!(
+    /// Spread identity for editorial page arrangements.
+    SpreadId
+);
+entity_id!(
     /// Persistent guide identity.
     GuideId
 );

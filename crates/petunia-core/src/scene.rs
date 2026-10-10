@@ -144,7 +144,7 @@ impl SceneNode {
 /// Storage is a map by [`ObjectId`]; z-order always comes from the
 /// ordered page root lists and container children, never from storage
 /// iteration. `BTreeMap` keeps even the serialized form deterministic.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SceneGraph {
     nodes: BTreeMap<ObjectId, SceneNode>,
     pages: BTreeMap<PageId, Vec<ObjectId>>,
@@ -183,6 +183,20 @@ impl SceneGraph {
     #[must_use]
     pub fn page_roots(&self, page: PageId) -> Option<&[ObjectId]> {
         self.pages.get(&page).map(Vec::as_slice)
+    }
+
+    /// Every page identity in deterministic order.
+    #[must_use]
+    pub fn page_ids(&self) -> Vec<PageId> {
+        self.pages.keys().copied().collect()
+    }
+
+    /// Every page root list, for whole-graph traversals such as
+    /// document validation. Order across pages is page-id order and
+    /// carries no z meaning.
+    #[must_use]
+    pub fn root_lists(&self) -> Vec<&[ObjectId]> {
+        self.pages.values().map(Vec::as_slice).collect()
     }
 
     /// Insert a root node whose parent is `page`. The declared parent
@@ -272,9 +286,7 @@ impl SceneGraph {
         if !self.nodes.contains_key(&id) {
             return Err(CoreError::ObjectNotFound(id.to_string()));
         }
-        let removed: Vec<ObjectId> = std::iter::once(id)
-            .chain(self.descendants(id))
-            .collect();
+        let removed: Vec<ObjectId> = std::iter::once(id).chain(self.descendants(id)).collect();
         let gone: HashSet<ObjectId> = removed.iter().copied().collect();
         for node in self.nodes.values() {
             if gone.contains(&node.id) {

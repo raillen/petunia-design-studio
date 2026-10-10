@@ -229,6 +229,45 @@ impl Size2 {
     }
 }
 
+/// Per-side expansion or margin. The unit comes from context; never
+/// mix screen pixels and document units implicitly.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Insets {
+    pub left: f64,
+    pub top: f64,
+    pub right: f64,
+    pub bottom: f64,
+}
+
+impl Insets {
+    /// All sides zero.
+    pub const ZERO: Self = Self {
+        left: 0.0,
+        top: 0.0,
+        right: 0.0,
+        bottom: 0.0,
+    };
+
+    /// Build insets, rejecting non-finite components. Negative sides
+    /// stay representable here; owners with non-negative semantics
+    /// (page margins, bleed) reject them at their own boundary.
+    pub fn new(left: f64, top: f64, right: f64, bottom: f64) -> Result<Self> {
+        for side in [left, top, right, bottom] {
+            if !side.is_finite() {
+                return Err(CoreError::InvariantViolation(format!(
+                    "non-finite inset rejected: {side}"
+                )));
+            }
+        }
+        Ok(Self {
+            left,
+            top,
+            right,
+            bottom,
+        })
+    }
+}
+
 /// An angle in radians. Finite values only; normalization for display
 /// or evaluation is the caller's responsibility.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -364,6 +403,12 @@ mod tests {
         assert_eq!(canonicalize(-0.0), 0.0);
         assert!(canonicalize(-0.0).is_sign_positive());
         assert_eq!(canonicalize(3.25), 3.25);
+    }
+
+    #[test]
+    fn test_insets_reject_non_finite() {
+        assert_eq!(Insets::ZERO, Insets::new(0.0, 0.0, 0.0, 0.0).expect("zero"));
+        assert!(Insets::new(1.0, f64::NAN, 0.0, 0.0).is_err());
     }
 
     #[test]

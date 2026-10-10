@@ -374,6 +374,135 @@ pub struct ExportColorOptions {
     pub target: ColorSpaceRef,
 }
 
+/// Lookup of persistent guides by identity.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GuideRegistry {
+    entries: std::collections::BTreeMap<GuideId, Guide>,
+}
+
+impl GuideRegistry {
+    /// Empty registry.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Insert or replace a guide.
+    pub fn insert(&mut self, guide: Guide) {
+        self.entries.insert(guide.id, guide);
+    }
+
+    /// Look up a guide by identity.
+    #[must_use]
+    pub fn get(&self, id: GuideId) -> Option<&Guide> {
+        self.entries.get(&id)
+    }
+
+    /// Iterate entries in deterministic order; traversal only, never
+    /// presentation order.
+    pub fn iter(&self) -> impl Iterator<Item = (GuideId, &Guide)> {
+        self.entries.iter().map(|(id, guide)| (*id, guide))
+    }
+
+    /// Number of tracked guides.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// True when no guide is tracked.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+/// Lookup of persistent grid definitions by identity.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GridRegistry {
+    entries: std::collections::BTreeMap<GridId, GridDefinition>,
+}
+
+impl GridRegistry {
+    /// Empty registry.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Insert or replace a grid definition.
+    pub fn insert(&mut self, definition: GridDefinition) {
+        self.entries.insert(definition.id, definition);
+    }
+
+    /// Look up a grid definition by identity.
+    #[must_use]
+    pub fn get(&self, id: GridId) -> Option<&GridDefinition> {
+        self.entries.get(&id)
+    }
+
+    /// Iterate entries in deterministic order; traversal only, never
+    /// presentation order.
+    pub fn iter(&self) -> impl Iterator<Item = (GridId, &GridDefinition)> {
+        self.entries.iter().map(|(id, grid)| (*id, grid))
+    }
+
+    /// Number of tracked grid definitions.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// True when no grid definition is tracked.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+/// Lookup of reusable export slices by identity.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SliceRegistry {
+    entries: std::collections::BTreeMap<SliceId, ExportSlice>,
+}
+
+impl SliceRegistry {
+    /// Empty registry.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Insert or replace an export slice.
+    pub fn insert(&mut self, slice: ExportSlice) {
+        self.entries.insert(slice.id, slice);
+    }
+
+    /// Look up an export slice by identity.
+    #[must_use]
+    pub fn get(&self, id: SliceId) -> Option<&ExportSlice> {
+        self.entries.get(&id)
+    }
+
+    /// Iterate entries in deterministic order; traversal only, never
+    /// presentation order.
+    pub fn iter(&self) -> impl Iterator<Item = (SliceId, &ExportSlice)> {
+        self.entries.iter().map(|(id, slice)| (*id, slice))
+    }
+
+    /// Number of tracked export slices.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// True when no export slice is tracked.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

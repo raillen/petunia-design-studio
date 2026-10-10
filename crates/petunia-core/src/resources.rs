@@ -7,7 +7,7 @@
 use crate::error::{CoreError, Result};
 use crate::id::ResourceId;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// What a resource holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,16 +106,16 @@ pub struct ResourceRecord {
 
 /// Registry by identity. Deleting a scene node never purges here;
 /// collection checks scene, style, symbol and history references.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ResourceRegistry {
-    records: HashMap<ResourceId, ResourceRecord>,
+    records: BTreeMap<ResourceId, ResourceRecord>,
 }
 
 impl ResourceRegistry {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            records: HashMap::new(),
+            records: BTreeMap::new(),
         }
     }
 

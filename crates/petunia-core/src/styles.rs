@@ -12,7 +12,7 @@ use crate::id::{GridId, StyleId};
 use crate::paint::ColorSource;
 use crate::text::FontRef;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// The three semantic style families. Each uses `StyleId`, but the
 /// expected kind stays explicit wherever a style is referenced.
@@ -62,34 +62,45 @@ impl CharacterStyle {
         baseline_shift: f64,
         language: impl Into<String>,
     ) -> Result<Self> {
-        if !size.is_finite() || size <= 0.0 {
+        let candidate = Self {
+            font,
+            size,
+            color,
+            tracking,
+            baseline_shift,
+            language: language.into(),
+            slant: FontSlant::Normal,
+            features: Vec::new(),
+        };
+        candidate.validate()?;
+        Ok(candidate)
+    }
+
+    /// Re-check the construction invariants on any instance,
+    /// including deserialized ones.
+    pub fn validate(&self) -> Result<()> {
+        if !self.size.is_finite() || self.size <= 0.0 {
             return Err(CoreError::InvariantViolation(format!(
-                "invalid type size rejected: {size}"
+                "invalid type size rejected: {}",
+                self.size
             )));
         }
-        for (label, value) in [("tracking", tracking), ("baseline shift", baseline_shift)] {
+        for (label, value) in [
+            ("tracking", self.tracking),
+            ("baseline shift", self.baseline_shift),
+        ] {
             if !value.is_finite() {
                 return Err(CoreError::InvariantViolation(format!(
                     "non-finite {label} rejected: {value}"
                 )));
             }
         }
-        let language = language.into();
-        if language.trim().is_empty() {
+        if self.language.trim().is_empty() {
             return Err(CoreError::InvariantViolation(
                 "character style needs a language".to_string(),
             ));
         }
-        Ok(Self {
-            font,
-            size,
-            color,
-            tracking,
-            baseline_shift,
-            language,
-            slant: FontSlant::Normal,
-            features: Vec::new(),
-        })
+        self.font.validate()
     }
 }
 
@@ -127,19 +138,7 @@ impl ParagraphStyle {
         space_before: f64,
         space_after: f64,
     ) -> Result<Self> {
-        if !line_height.is_finite() || line_height <= 0.0 {
-            return Err(CoreError::InvariantViolation(format!(
-                "invalid line height rejected: {line_height}"
-            )));
-        }
-        for (label, value) in [("space before", space_before), ("space after", space_after)] {
-            if !value.is_finite() || value < 0.0 {
-                return Err(CoreError::InvariantViolation(format!(
-                    "invalid {label} rejected: {value}"
-                )));
-            }
-        }
-        Ok(Self {
+        let candidate = Self {
             alignment,
             line_height,
             space_before,
@@ -149,7 +148,39 @@ impl ParagraphStyle {
             right_indent: 0.0,
             hyphenation: false,
             baseline_grid: None,
-        })
+        };
+        candidate.validate()?;
+        Ok(candidate)
+    }
+
+    /// Re-check the construction invariants on any instance,
+    /// including deserialized ones.
+    pub fn validate(&self) -> Result<()> {
+        if !self.line_height.is_finite() || self.line_height <= 0.0 {
+            return Err(CoreError::InvariantViolation(format!(
+                "invalid line height rejected: {}",
+                self.line_height
+            )));
+        }
+        for (label, value) in [
+            ("space before", self.space_before),
+            ("space after", self.space_after),
+            ("first-line indent", self.first_line_indent),
+            ("left indent", self.left_indent),
+            ("right indent", self.right_indent),
+        ] {
+            if !value.is_finite() {
+                return Err(CoreError::InvariantViolation(format!(
+                    "non-finite {label} rejected: {value}"
+                )));
+            }
+            if (label == "space before" || label == "space after") && value < 0.0 {
+                return Err(CoreError::InvariantViolation(format!(
+                    "invalid {label} rejected: {value}"
+                )));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -176,16 +207,16 @@ impl StyleDefinition {
 
 /// Lookup by `StyleId`. Presentation order, when needed, lives in a
 /// separate ordered collection: map iteration never defines it.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct StyleRegistry {
-    styles: HashMap<StyleId, StyleDefinition>,
+    styles: BTreeMap<StyleId, StyleDefinition>,
 }
 
 impl StyleRegistry {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            styles: HashMap::new(),
+            styles: BTreeMap::new(),
         }
     }
 
@@ -198,6 +229,13 @@ impl StyleRegistry {
     #[must_use]
     pub fn get(&self, id: StyleId) -> Option<&StyleDefinition> {
         self.styles.get(&id)
+    }
+
+    /// Iterate definitions in deterministic order. Iteration order is
+    /// a traversal convenience for validation and tooling; it never
+    /// defines presentation or authorial order.
+    pub fn iter(&self) -> impl Iterator<Item = (StyleId, &StyleDefinition)> {
+        self.styles.iter().map(|(id, definition)| (*id, definition))
     }
 
     /// Number of tracked definitions.
