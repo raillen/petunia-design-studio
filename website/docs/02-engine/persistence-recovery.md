@@ -422,3 +422,11 @@ Escopo: `FileFingerprint`, `ExternalConflictDetector` com `EngineError::Conflict
 | `node website/scripts/verify-progress.cjs` | pass |
 
 Riscos/limites: locks são cooperativos/advisory, não obrigatórios pelo filesystem host.
+
+## Save/open da sessão em 2026-10-10
+
+`SaveSnapshot` captura documento, revisão, blobs COW, preview e extensions. Save valida e codifica antes de adquirir o lock; publica por arquivo temporário exclusivo, sync e rename no mesmo diretório. O lock usa o mecanismo do sistema operacional; o sidecar permanece para evitar races de inode. A fingerprint permite recusar modificação externa, e falhas preservam o arquivo anterior.
+
+SaveCompletion reconhece a revisão capturada. Um edit feito durante o save mantém o documento dirty. Open é limitado por tamanho e prepara uma nova sessão antes de substituir a sessão ativa. Evidência: `io_persistence_regressions.rs` (4 testes) e `session_boundary.rs` (4 testes).
+
+O journal/replay existente não equivale a autosave integrado à sessão. Timer/lifecycle de autosave, descoberta e apresentação de recovery, GC dos recursos retidos pelo histórico e guards de sessão/recurso para resultados assíncronos continuam pendentes. Gates em [Verification](#/docs/00-architecture/verification.md).

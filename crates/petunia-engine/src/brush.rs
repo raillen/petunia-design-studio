@@ -312,3 +312,311 @@ mod tests {
         assert!(dabs.iter().all(|dab| dab.diameter == 10.0));
     }
 }
+
+/// Round brush parameters in linear working RGB. Flow deposits each dab;
+/// opacity limits the complete stroke's coverage against the original surface.
+#[derive(Debug, Clone, Copy)]
+pub struct RoundBrush {
+    pub color: [f32; 4],
+    pub hardness: f32,
+    pub flow: f32,
+    pub opacity: f32,
+    pub blend: petunia_core::BlendMode,
+}
+
+/// An isolated, cancellable COW stroke. The source remains unchanged until
+/// the resulting tile transaction is explicitly applied or PNG edit committed.
+#[derive(Debug, Clone)]
+pub struct RasterStroke {
+    before: crate::tiles::TileStore,
+    preview: crate::tiles::TileStore,
+    coverage: std::collections::HashMap<(u32, u32), f32>,
+    width: u32,
+    height: u32,
+    brush: RoundBrush,
+}
+
+impl RasterStroke {
+    pub fn begin(
+        source: &crate::tiles::TileStore,
+        width: u32,
+        height: u32,
+        brush: RoundBrush,
+    ) -> crate::Result<Self> {
+        if width == 0
+            || height == 0
+            || u64::from(width) * u64::from(height) > 64 << 20
+            || source.tile_size() == 0
+        {
+            return Err(crate::EngineError::Execution(
+                "raster dimensions exceed allocation guard".into(),
+            ));
+        }
+        if !brush
+            .color
+            .iter()
+            .chain([&brush.hardness, &brush.flow, &brush.opacity])
+            .all(|v| v.is_finite() && (0.0..=1.0).contains(v))
+        {
+            return Err(crate::EngineError::Execution(
+                "invalid round brush parameters".into(),
+            ));
+        }
+        let mut preview = source.clone();
+        preview.clear_dirty();
+        Ok(Self {
+            before: source.clone(),
+            preview,
+            coverage: std::collections::HashMap::new(),
+            width,
+            height,
+            brush,
+        })
+    }
+    #[must_use]
+    pub fn preview(&self) -> &crate::tiles::TileStore {
+        &self.preview
+    }
+
+    /// Deposit one dab, multiplying its coverage by the session selection.
+    /// All allocations and edits happen on a temporary version; failure leaves
+    /// both the source and this preview unchanged.
+    pub fn dab(
+        &mut self,
+        dab: DabSpec,
+        selection: Option<&crate::filter::Surface>,
+    ) -> crate::Result<()> {
+        if !dab.position.x.is_finite()
+            || !dab.position.y.is_finite()
+            || !dab.diameter.is_finite()
+            || dab.diameter <= 0.0
+            || !dab.opacity.is_finite()
+            || !(0.0..=1.0).contains(&dab.opacity)
+        {
+            return Err(crate::EngineError::Execution("invalid dab".into()));
+        }
+        if selection.is_some_and(|mask| {
+            mask.width != self.width
+                || mask.height != self.height
+                || mask.pixels.len() != self.width as usize * self.height as usize * 4
+        }) {
+            return Err(crate::EngineError::Execution(
+                "selection dimensions mismatch".into(),
+            ));
+        }
+        let radius = dab.diameter / 2.0;
+        let left = (dab.position.x - radius)
+            .floor()
+            .max(0.0)
+            .min(f64::from(self.width)) as u32;
+        let top = (dab.position.y - radius)
+            .floor()
+            .max(0.0)
+            .min(f64::from(self.height)) as u32;
+        let right = (dab.position.x + radius)
+            .ceil()
+            .max(0.0)
+            .min(f64::from(self.width)) as u32;
+        let bottom = (dab.position.y + radius)
+            .ceil()
+            .max(0.0)
+            .min(f64::from(self.height)) as u32;
+        if u64::from(right - left) * u64::from(bottom - top) > 16 << 20 {
+            return Err(crate::EngineError::Execution(
+                "dab temporary ROI exceeds guard".into(),
+            ));
+        }
+        let mut preview = self.preview.clone();
+        let mut coverage = self.coverage.clone();
+        for y in top..bottom {
+            for x in left..right {
+                let distance = (f64::from(x) + 0.5 - dab.position.x)
+                    .hypot(f64::from(y) + 0.5 - dab.position.y)
+                    / radius;
+                if distance >= 1.0 {
+                    continue;
+                }
+                let hardness = f64::from(self.brush.hardness);
+                let falloff = if distance <= hardness || hardness == 1.0 {
+                    1.0
+                } else {
+                    (1.0 - distance) / (1.0 - hardness)
+                } as f32;
+                let mask = selection.map_or(1.0, |mask| {
+                    mask.sample(
+                        i64::from(x),
+                        i64::from(y),
+                        3,
+                        crate::filter::EdgeMode::Transparent,
+                    )
+                    .clamp(0.0, 1.0)
+                });
+                let deposit = (falloff * mask * self.brush.flow * dab.opacity).clamp(0.0, 1.0);
+                if deposit == 0.0 {
+                    continue;
+                }
+                let amount = coverage.entry((x, y)).or_default();
+                *amount = 1.0 - (1.0 - *amount) * (1.0 - deposit);
+                let alpha = *amount * self.brush.opacity * self.brush.color[3];
+                let size = preview.tile_size();
+                let coord = petunia_core::TileCoord {
+                    x: x / size,
+                    y: y / size,
+                };
+                let tile_width = size.min(self.width - coord.x * size);
+                let tile_height = size.min(self.height - coord.y * size);
+                let offset = ((y % size) * tile_width + x % size) as usize * 4;
+                let mut backdrop = [0.0; 4];
+                if let Some(tile) = self.before.get(coord) {
+                    if tile.format != petunia_core::PixelFormat::Rgba8Unorm
+                        || tile.width != tile_width
+                        || tile.height != tile_height
+                        || offset + 4 > tile.bytes.len()
+                    {
+                        return Err(crate::EngineError::Execution(
+                            "brush requires consistent RGBA8 surface tiles".into(),
+                        ));
+                    }
+                    for (channel, component) in backdrop.iter_mut().enumerate().take(3) {
+                        *component = decode_srgb(f32::from(tile.bytes[offset + channel]) / 255.0);
+                    }
+                    backdrop[3] = f32::from(tile.bytes[offset + 3]) / 255.0;
+                }
+                let rgb = petunia_render_model::apply_blend(
+                    [
+                        self.brush.color[0],
+                        self.brush.color[1],
+                        self.brush.color[2],
+                    ],
+                    [backdrop[0], backdrop[1], backdrop[2]],
+                    self.brush.blend,
+                );
+                let output_alpha = alpha + backdrop[3] * (1.0 - alpha);
+                let bytes = preview.write_tile(
+                    coord,
+                    tile_width,
+                    tile_height,
+                    petunia_core::PixelFormat::Rgba8Unorm,
+                )?;
+                for channel in 0..3 {
+                    let premul = alpha * (1.0 - backdrop[3]) * self.brush.color[channel]
+                        + alpha * backdrop[3] * rgb[channel]
+                        + (1.0 - alpha) * backdrop[3] * backdrop[channel];
+                    let linear = if output_alpha > 0.0 {
+                        premul / output_alpha
+                    } else {
+                        0.0
+                    };
+                    bytes[offset + channel] =
+                        (encode_srgb(linear).clamp(0.0, 1.0) * 255.0).round() as u8;
+                }
+                bytes[offset + 3] = (output_alpha * 255.0).round() as u8;
+            }
+        }
+        self.preview = preview;
+        self.coverage = coverage;
+        Ok(())
+    }
+    #[must_use]
+    pub fn finish(self) -> crate::tiles::TileTransaction {
+        crate::tiles::TileTransaction::new(self.before, self.preview)
+    }
+
+    /// Create one authorial resource-reference transaction. Bytes go to the
+    /// caller's BlobStore before the commit; failed/undone refs keep immutable
+    /// bytes for history/recovery. No pixel data enters a scene node.
+    pub fn materialize(&self, object: petunia_core::ObjectId) -> crate::Result<RasterEdit> {
+        use image::ImageEncoder;
+        let count = (self.width as usize)
+            .checked_mul(self.height as usize)
+            .and_then(|value| value.checked_mul(4))
+            .filter(|bytes| *bytes <= 256 << 20)
+            .ok_or_else(|| {
+                crate::EngineError::Execution("PNG materialization allocation guard".into())
+            })?;
+        let mut pixels = vec![0u8; count];
+        let size = self.preview.tile_size();
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let coord = petunia_core::TileCoord {
+                    x: x / size,
+                    y: y / size,
+                };
+                if let Some(tile) = self.preview.get(coord) {
+                    if tile.format != petunia_core::PixelFormat::Rgba8Unorm {
+                        return Err(crate::EngineError::Execution(
+                            "PNG requires RGBA8 tiles".into(),
+                        ));
+                    }
+                    let source = ((y % size) * tile.width + x % size) as usize * 4;
+                    let destination = (y * self.width + x) as usize * 4;
+                    let bytes = tile.bytes.get(source..source + 4).ok_or_else(|| {
+                        crate::EngineError::Execution("truncated raster tile".into())
+                    })?;
+                    pixels[destination..destination + 4].copy_from_slice(bytes);
+                }
+            }
+        }
+        let mut png = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut png)
+            .write_image(
+                &pixels,
+                self.width,
+                self.height,
+                image::ExtendedColorType::Rgba8,
+            )
+            .map_err(|error| crate::EngineError::Execution(format!("PNG encode: {error}")))?;
+        let resource = petunia_core::ResourceId::new_v4();
+        let record = petunia_core::ResourceRecord {
+            id: resource,
+            kind: petunia_core::ResourceKind::Image,
+            source: petunia_core::ResourceSource::Embedded {
+                entry: format!("{resource}.png"),
+            },
+            content_hash: Some(petunia_core::ContentHash::new(&png)),
+            metadata: petunia_core::ResourceMetadata {
+                byte_size: Some(png.len() as u64),
+                font_policy: None,
+            },
+        };
+        let request = crate::TransactionRequest {
+            command_id: crate::CommandId::new_v4(),
+            operations: vec![
+                crate::DocumentOp::Registry(crate::transaction::RegistryOp::Resource {
+                    id: resource,
+                    value: Some(Box::new(record)),
+                }),
+                crate::DocumentOp::SetPixelSurface {
+                    object,
+                    surface: petunia_core::PixelSurfaceRef { resource },
+                },
+            ],
+            merge_key: None,
+        };
+        Ok(RasterEdit {
+            png,
+            resource,
+            request,
+        })
+    }
+}
+#[derive(Debug)]
+pub struct RasterEdit {
+    pub png: Vec<u8>,
+    pub resource: petunia_core::ResourceId,
+    pub request: crate::TransactionRequest,
+}
+fn decode_srgb(value: f32) -> f32 {
+    if value <= 0.04045 {
+        value / 12.92
+    } else {
+        ((value + 0.055) / 1.055).powf(2.4)
+    }
+}
+fn encode_srgb(value: f32) -> f32 {
+    if value <= 0.0031308 {
+        value * 12.92
+    } else {
+        1.055 * value.powf(1.0 / 2.4) - 0.055
+    }
+}

@@ -93,9 +93,30 @@ fn primitive_bounds(primitive: &RenderPrimitive) -> Option<Rect> {
 }
 
 fn transform_rect(bounds: Rect, view: ViewTransform) -> Rect {
-    let (x0, y0) = view.apply(bounds.x, bounds.y);
-    let (x1, y1) = view.apply(bounds.x + bounds.width, bounds.y + bounds.height);
-    Rect::new(x0.min(x1), y0.min(y1), (x1 - x0).abs(), (y1 - y0).abs())
+    let points = [
+        (bounds.x, bounds.y),
+        (bounds.x + bounds.width, bounds.y),
+        (bounds.x + bounds.width, bounds.y + bounds.height),
+        (bounds.x, bounds.y + bounds.height),
+    ]
+    .map(|(x, y)| view.apply(x, y));
+    let min_x = points
+        .iter()
+        .map(|point| point.0)
+        .fold(f64::INFINITY, f64::min);
+    let min_y = points
+        .iter()
+        .map(|point| point.1)
+        .fold(f64::INFINITY, f64::min);
+    let max_x = points
+        .iter()
+        .map(|point| point.0)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let max_y = points
+        .iter()
+        .map(|point| point.1)
+        .fold(f64::NEG_INFINITY, f64::max);
+    Rect::new(min_x, min_y, max_x - min_x, max_y - min_y)
 }
 
 fn overlaps(a: Rect, b: Rect) -> bool {
@@ -144,7 +165,7 @@ mod tests {
             pages: vec![RenderPage {
                 page: PageId::new_v4(),
                 size: Size2::new(100.0, 100.0).expect("valid"),
-                primitives: vec![RenderPrimitive::Vector(VectorPrimitive {
+                primitives: vec![RenderPrimitive::Vector(Box::new(VectorPrimitive {
                     source: petunia_core::ObjectId::new_v4(),
                     geometry: path,
                     appearance: RenderAppearance {
@@ -154,7 +175,7 @@ mod tests {
                     },
                     transform: petunia_core::Transform2D::IDENTITY,
                     bounds: Rect::new(0.0, 0.0, 10.0, 10.0),
-                })],
+                }))],
             }],
             resources: petunia_render_model::RenderResourceTable::new(),
         }
@@ -164,6 +185,7 @@ mod tests {
     fn bins_cover_primitive_tiles_only() {
         let snapshot = snapshot_with_square();
         let view = ViewTransform {
+            rotation: 0.0,
             scale: 1.0,
             offset_x: 0.0,
             offset_y: 0.0,
@@ -178,6 +200,7 @@ mod tests {
     fn offscreen_primitives_cull_cleanly() {
         let snapshot = snapshot_with_square();
         let view = ViewTransform {
+            rotation: 0.0,
             scale: 1.0,
             offset_x: 0.0,
             offset_y: 0.0,

@@ -76,6 +76,7 @@ fn bench_stroke(c: &mut Criterion) {
 fn bench_gradients(c: &mut Criterion) {
     let mut group = c.benchmark_group("render/paint-eval");
     let gradient = RenderGradient {
+        transform: petunia_core::Transform2D::IDENTITY,
         stops: vec![
             RenderGradientStop {
                 offset: 0.0,
@@ -102,6 +103,7 @@ fn bench_gradients(c: &mut Criterion) {
         start_angle: 0.0,
     };
     let oklab = RenderGradient {
+        transform: petunia_core::Transform2D::IDENTITY,
         interpolation: GradientInterpolation::Oklab,
         ..gradient.clone()
     };

@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "spacing": {
+    "grid": 4,
+    "small": 8,
+    "medium": 12,
+    "large": 16
+  },
+  "component": {
+    "target": {
+      "compact": 32,
+      "comfortable": 40
+    },
+    "icon": 20,
+    "font": 14,
+    "focusRing": 2
+  },
+  "color": {
+    "surround": {
+      "highContrast": "#000000",
+      "light": "#E9EDF1",
+      "dark": "#161A1F"
+    },
+    "panel": {
+      "highContrast": "#000000",
+      "light": "#F7F8FA",
+      "dark": "#20262D"
+    },
+    "raised": {
+      "highContrast": "#000000",
+      "light": "#FFFFFF",
+      "dark": "#2A3038"
+    },
+    "foreground": {
+      "light": "#18212B",
+      "dark": "#F3F5F7",
+      "highContrast": "#F3F5F7"
+    },
+    "secondary": {
+      "highContrast": "#FFFFFF",
+      "light": "#57606A",
+      "dark": "#B2BBC5"
+    },
+    "subtle": {
+      "highContrast": "#FFFFFF",
+      "light": "#CCD3DA",
+      "dark": "#414B57"
+    },
+    "controlBorder": {
+      "highContrast": "#FFFFFF",
+      "light": "#6B7580",
+      "dark": "#83909E"
+    },
+    "accent": {
+      "highContrast": "#FFFF00",
+      "light": "#005EA8",
+      "dark": "#66D9EF"
+    },
+    "selected": {
+      "highContrast": "#000000",
+      "light": "#DFEDFA",
+      "dark": "#153D49"
+    },
+    "selectedText": {
+      "highContrast": "#FFFFFF",
+      "light": "#06447A",
+      "dark": "#D8F7FC"
+    },
+    "error": {
+      "light": "#B42318",
+      "dark": "#FFB4AB",
+      "highContrast": "#FFB4AB"
+    }
+  }
+}

@@ -8,6 +8,7 @@ description = "Desktop application shell, input mapping, and studio tools for Pe
 [dependencies]
 petunia-core = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 petunia-engine = { workspace = true }
 petunia-render = { workspace = true }
 petunia-render-model = { workspace = true }

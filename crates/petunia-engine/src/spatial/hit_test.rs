@@ -1,32 +1,25 @@
-//! Broad-plus-narrow hit testing.
-//!
-//! The R-tree answers "what is nearby" and exact geometry answers
-//! "what was hit". Paint order comes from scene traversal, never
-//! from index order. Per-type narrow phases that need derived data
-//! (text layout, decoded alpha, expanded symbols) conservatively
-//! fall back to bounds until their engines land.
+//! Page-scoped broad phase and geometry-aware hit testing.
+//! Selection excludes hidden and locked ancestors. Index entries carry
+//! conservative world bounds; narrow phase runs in screen coordinates.
 
-use crate::geometry::bezier::flatten_contour;
-use crate::geometry::bounds::{point_in_polygon, Bounds};
+use crate::geometry::bounds::Bounds;
 use crate::spatial::index::{SpatialEntry, SpatialIndex};
-use petunia_core::{Document, ObjectId, PageId, Point, Rect, SceneItem, Tolerance, VectorPath};
+use petunia_core::{
+    Appearance, AppearanceKind, Document, FillRule, ObjectId, PageId, Point, Rect, SceneItem,
+    Tolerance, Transform2D, VectorPath,
+};
+use petunia_render_model::RenderPath;
 
-/// What the narrow phase is allowed to cost.
+/// Requested selection geometry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HitTestMode {
-    /// Conservative bounds only.
     Bounds,
-    /// Exact fill over flattened paths.
     Fill,
-    /// Stroke centerline distance over flattened paths.
     Stroke,
-    /// Fill first, then stroke.
     Any,
 }
 
-/// Screen-space hit request. `tolerance_px` arrives already converted
-/// to document units upstream (see the screen-space rule); the view
-/// transform itself stays session state.
+/// Pointer and scope in document coordinates; tolerance is always pixels.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HitTestRequest {
     pub page: PageId,
@@ -35,21 +28,38 @@ pub struct HitTestRequest {
     pub mode: HitTestMode,
 }
 
-/// One hit, topmost first in result lists.
+/// One selectable object, reported in front-to-back paint order.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Hit {
     pub object: ObjectId,
     pub distance_px: f64,
 }
 
-/// Depth-first paint order over roots and group children. Object IDs
-/// order z; the index never decides it. Nodes reachable twice (root
-/// order plus group membership) appear once.
+/// Whole-document traversal for index construction. Cross-page order
+/// has no visual meaning; scoped queries use [`paint_order_on_page`].
 #[must_use]
 pub fn paint_order(document: &Document) -> Vec<ObjectId> {
+    document
+        .scene
+        .page_ids()
+        .into_iter()
+        .flat_map(|page| paint_order_on_page(document, page))
+        .collect()
+}
+
+/// Depth-first paint order starts at the requested page's root list.
+#[must_use]
+pub fn paint_order_on_page(document: &Document, page: PageId) -> Vec<ObjectId> {
     let mut order = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    let mut stack: Vec<ObjectId> = document.scene.root_order().iter().copied().rev().collect();
+    let mut stack: Vec<_> = document
+        .scene
+        .page_roots(page)
+        .unwrap_or_default()
+        .iter()
+        .copied()
+        .rev()
+        .collect();
     while let Some(id) = stack.pop() {
         if !seen.insert(id) {
             continue;
@@ -58,206 +68,261 @@ pub fn paint_order(document: &Document) -> Vec<ObjectId> {
             continue;
         };
         order.push(id);
-        if let SceneItem::Group(children) = &node.item {
+        if let Some(children) = node.item.children() {
             stack.extend(children.iter().copied().rev());
         }
     }
     order
 }
 
-/// Hit-test the document: broad phase through `index`, narrow phase
-/// per item, results topmost first. Groups descend into children;
-/// text, images, traces, generated content and symbol instances use
-/// conservative bounds until their derived layouts exist.
+fn selectable(document: &Document, id: ObjectId) -> bool {
+    std::iter::once(id)
+        .chain(document.scene.ancestors(id))
+        .all(|ancestor| {
+            document
+                .scene
+                .get_node(ancestor)
+                .is_some_and(|node| node.visible && !node.locked)
+        })
+}
+
+/// Identity-view convenience entry point: one document unit is one pixel.
+#[must_use]
 pub fn hit_test(
     document: &Document,
     index: &dyn SpatialIndex,
     request: HitTestRequest,
 ) -> Vec<Hit> {
-    let _ = request.page;
-    let tolerance = Tolerance::new(request.tolerance_px)
-        .unwrap_or(Tolerance::new(4.0).expect("constant tolerance"));
+    hit_test_with_view(document, index, request, Transform2D::IDENTITY)
+}
+
+/// Hit-test under an affine document-to-screen view. The inverse maps
+/// the screen radius to conservative document extents, while exact
+/// distances are computed in screen space even for nonuniform scale.
+#[must_use]
+pub fn hit_test_with_view(
+    document: &Document,
+    index: &dyn SpatialIndex,
+    request: HitTestRequest,
+    view: Transform2D,
+) -> Vec<Hit> {
+    if !request.tolerance_px.is_finite()
+        || request.tolerance_px < 0.0
+        || !request.point_document.x.is_finite()
+        || !request.point_document.y.is_finite()
+        || !view.is_numerically_safe()
+    {
+        return Vec::new();
+    }
+    let Some(inverse) = view.inverse() else {
+        return Vec::new();
+    };
+    let rx = request.tolerance_px * inverse.a.hypot(inverse.c);
+    let ry = request.tolerance_px * inverse.b.hypot(inverse.d);
     let probe = Rect::new(
-        request.point_document.x - request.tolerance_px,
-        request.point_document.y - request.tolerance_px,
-        request.tolerance_px * 2.0,
-        request.tolerance_px * 2.0,
+        request.point_document.x - rx,
+        request.point_document.y - ry,
+        2.0 * rx,
+        2.0 * ry,
     );
     let mut candidates = Vec::new();
     index.query_aabb(probe, &mut candidates);
-    let order = paint_order(document);
-    let rank_of = |id: ObjectId| {
-        order
-            .iter()
-            .position(|item| *item == id)
-            .unwrap_or(usize::MAX)
-    };
-    let mut hits: Vec<(usize, Hit)> = candidates
+    let candidates: std::collections::HashSet<_> = candidates.into_iter().collect();
+    paint_order_on_page(document, request.page)
         .into_iter()
+        .rev()
+        .filter(|id| candidates.contains(id) && selectable(document, *id))
         .filter_map(|id| {
-            let node = document.scene.get_node(id)?;
-            narrow_hit(document, node.item.clone(), id, request, tolerance).map(|distance| {
-                (
-                    rank_of(id),
-                    Hit {
-                        object: id,
-                        distance_px: distance,
-                    },
-                )
+            narrow_hit(document, id, request, view).map(|distance_px| Hit {
+                object: id,
+                distance_px,
             })
         })
-        .collect();
-    // Topmost first: later paint order wins; ties break by distance.
-    hits.sort_by(|a, b| {
-        b.0.cmp(&a.0).then_with(|| {
-            a.1.distance_px
-                .partial_cmp(&b.1.distance_px)
-                .unwrap_or(std::cmp::Ordering::Equal)
+        .collect()
+}
+
+fn local_tolerance(transform: Transform2D) -> Option<Tolerance> {
+    // Frobenius norm bounds the largest singular value, so flattening
+    // error after transformation is at most 0.1 screen pixel.
+    let scale =
+        (transform.a.powi(2) + transform.b.powi(2) + transform.c.powi(2) + transform.d.powi(2))
+            .sqrt();
+    Tolerance::new((0.1 / scale.max(1e-12)).clamp(1e-12, 0.1)).ok()
+}
+
+fn geometry(
+    document: &Document,
+    id: ObjectId,
+    tolerance: Tolerance,
+) -> Option<(VectorPath, &Appearance)> {
+    let node = document.scene.get_node(id)?;
+    match &node.item {
+        SceneItem::Path(object) => Some((object.path.clone(), &object.appearance)),
+        SceneItem::Shape(object) => Some((
+            crate::compile::evaluate_shape(object.shape, tolerance),
+            &object.appearance,
+        )),
+        _ => None,
+    }
+}
+
+fn flattened(path: &VectorPath, tolerance: Tolerance) -> RenderPath {
+    let mut result = RenderPath::new();
+    result.fill_rule = path.fill_rule;
+    for contour in &path.contours {
+        result.push_contour(
+            crate::geometry::bezier::try_flatten_contour(contour, tolerance, 1 << 18)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|point| (point.x, point.y))
+                .collect(),
+            contour.closed,
+        );
+    }
+    result
+}
+
+fn transformed(path: &RenderPath, transform: Transform2D) -> Vec<Vec<Point>> {
+    path.contours
+        .iter()
+        .map(|ring| {
+            ring.iter()
+                .map(|&(x, y)| transform.transform_point(Point::new(x, y)))
+                .collect()
         })
-    });
-    hits.into_iter().map(|(_, hit)| hit).collect()
+        .collect()
 }
 
 fn narrow_hit(
     document: &Document,
-    item: SceneItem,
     id: ObjectId,
     request: HitTestRequest,
-    tolerance: Tolerance,
+    view: Transform2D,
 ) -> Option<f64> {
-    match item {
-        SceneItem::Path(object) => hit_path(&object.path, request, tolerance, document, id),
-        SceneItem::Group(_) => None,
-        _ => hit_bounds(document, id, request),
+    if request.mode == HitTestMode::Bounds {
+        return item_bounds(document, id)?
+            .contains(request.point_document)
+            .then_some(0.0);
     }
-}
-
-fn hit_bounds(document: &Document, id: ObjectId, request: HitTestRequest) -> Option<f64> {
-    let bounds = item_bounds(document, id)?;
-    if bounds.contains(request.point_document) {
-        Some(0.0)
-    } else {
-        None
-    }
-}
-
-/// Conservative bounds per item. Leaves without computable bounds
-/// (text layout, decoded images, expanded symbols, generated art)
-/// stay out of the index until their engines provide real extents.
-fn item_bounds(document: &Document, id: ObjectId) -> Option<Bounds> {
-    let node = document.scene.get_node(id)?;
-    match &node.item {
-        SceneItem::Path(object) => path_bounds(&object.path),
-        SceneItem::Group(_)
-        | SceneItem::Shape(_)
-        | SceneItem::Text(_)
-        | SceneItem::Image(_)
-        | SceneItem::PixelLayer(_)
-        | SceneItem::Trace(_)
-        | SceneItem::GeneratedVector(_)
-        | SceneItem::SymbolInstance(_) => None,
-    }
-}
-
-fn path_bounds(path: &VectorPath) -> Option<Bounds> {
-    let mut bounds: Option<Bounds> = None;
-    for contour in &path.contours {
-        for node in &contour.nodes {
-            let point = Bounds::point(node.point);
-            bounds = Some(match bounds {
-                Some(existing) => existing.union(&point),
-                None => point,
-            });
-        }
-    }
-    bounds
-}
-
-fn hit_path(
-    path: &VectorPath,
-    request: HitTestRequest,
-    tolerance: Tolerance,
-    document: &Document,
-    id: ObjectId,
-) -> Option<f64> {
-    match request.mode {
-        HitTestMode::Bounds => hit_bounds(document, id, request),
-        HitTestMode::Fill => hit_fill(path, request),
-        HitTestMode::Stroke => hit_stroke(document, id, path, request, tolerance),
-        HitTestMode::Any => {
-            hit_fill(path, request).or_else(|| hit_stroke(document, id, path, request, tolerance))
-        }
-    }
-}
-
-fn hit_fill(path: &VectorPath, request: HitTestRequest) -> Option<f64> {
-    for contour in &path.contours {
-        if !contour.closed || contour.nodes.len() < 3 {
-            continue;
-        }
-        let ring: Vec<Point> = contour.nodes.iter().map(|node| node.point).collect();
-        if point_in_polygon(request.point_document, &ring, path.fill_rule) {
+    let transform = view.concat(document.scene.world_transform(id)?);
+    let tolerance = local_tolerance(transform)?;
+    let (path, appearance) = geometry(document, id, tolerance)?;
+    let point = view.transform_point(request.point_document);
+    if matches!(request.mode, HitTestMode::Fill | HitTestMode::Any)
+        && appearance.items.iter().any(|item| {
+            item.enabled && item.opacity > 0.0 && matches!(item.kind, AppearanceKind::Fill(_))
+        })
+    {
+        let fill = flattened(&path, tolerance);
+        let rings = transformed(&fill, transform);
+        if in_fill(point, &rings, fill.fill_rule) {
             return Some(0.0);
         }
+    }
+    if matches!(request.mode, HitTestMode::Stroke | HitTestMode::Any) {
+        let mut best: Option<f64> = None;
+        for item in appearance
+            .items
+            .iter()
+            .filter(|item| item.enabled && item.opacity > 0.0)
+        {
+            let AppearanceKind::Stroke(style) = &item.kind else {
+                continue;
+            };
+            let stroke = crate::compile::evaluate_stroke(&path, style, tolerance);
+            let rings = transformed(&stroke, transform);
+            let distance = if in_fill(point, &rings, stroke.fill_rule) {
+                0.0
+            } else {
+                boundary_distance(point, &rings)
+            };
+            if distance <= request.tolerance_px && best.is_none_or(|current| distance < current) {
+                best = Some(distance);
+            }
+        }
+        return best;
     }
     None
 }
 
-fn hit_stroke(
-    document: &Document,
-    id: ObjectId,
-    path: &VectorPath,
-    request: HitTestRequest,
-    tolerance: Tolerance,
-) -> Option<f64> {
-    let node = document.scene.get_node(id)?;
-    // Widest enabled stroke, falling back to the legacy 1px probe
-    // when the appearance carries no stroke.
-    let mut half_width = 0.5f64;
-    if let Some(object) = node.item_path_object() {
-        for item in object.appearance.items.iter().filter(|item| item.enabled) {
-            if let petunia_core::AppearanceKind::Stroke(style) = &item.kind {
-                half_width = half_width.max(style.width.max(0.0) / 2.0);
+fn in_fill(point: Point, rings: &[Vec<Point>], rule: FillRule) -> bool {
+    let mut winding = 0i64;
+    for ring in rings.iter().filter(|ring| ring.len() >= 3) {
+        for (a, b) in ring
+            .iter()
+            .zip(ring.iter().cycle().skip(1))
+            .take(ring.len())
+        {
+            if point_segment_distance(point, *a, *b) <= 1e-10 {
+                return true;
+            }
+            let cross = (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
+            if a.y <= point.y && b.y > point.y && cross > 0.0 {
+                winding += 1;
+            } else if a.y > point.y && b.y <= point.y && cross < 0.0 {
+                winding -= 1;
             }
         }
     }
-    let limit = half_width + request.tolerance_px;
-    let mut best: Option<f64> = None;
-    for contour in &path.contours {
-        let flat = flatten_contour(contour, tolerance);
-        if flat.is_empty() {
-            continue;
-        }
-        let segments: Vec<(Point, Point)> = if contour.closed && flat.len() > 1 {
-            flat.iter()
-                .enumerate()
-                .map(|(index, point)| (*point, flat[(index + 1) % flat.len()]))
-                .collect()
-        } else {
-            flat.windows(2).map(|pair| (pair[0], pair[1])).collect()
-        };
-        for (a, b) in segments {
-            let distance = point_segment_distance(request.point_document, a, b);
-            if distance <= limit && best.is_none_or(|current| distance < current) {
-                best = Some(distance);
-            }
-        }
+    match rule {
+        FillRule::NonZero => winding != 0,
+        FillRule::EvenOdd => winding % 2 != 0,
     }
-    best
+}
+
+fn boundary_distance(point: Point, rings: &[Vec<Point>]) -> f64 {
+    rings
+        .iter()
+        .flat_map(|ring| {
+            ring.iter()
+                .zip(ring.iter().cycle().skip(1))
+                .take(ring.len())
+        })
+        .map(|(a, b)| point_segment_distance(point, *a, *b))
+        .fold(f64::INFINITY, f64::min)
 }
 
 fn point_segment_distance(point: Point, a: Point, b: Point) -> f64 {
-    let length_squared = (b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y);
+    let length_squared = (b.x - a.x).powi(2) + (b.y - a.y).powi(2);
     if length_squared == 0.0 {
-        return (point.x - a.x).hypot(point.y - a.y);
+        return point.distance_to(a);
     }
-    let t = ((point.x - a.x) * (b.x - a.x) + (point.y - a.y) * (b.y - a.y)) / length_squared;
-    let t = t.clamp(0.0, 1.0);
-    let near = Point::new(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y));
-    (point.x - near.x).hypot(point.y - near.y)
+    let t = (((point.x - a.x) * (b.x - a.x) + (point.y - a.y) * (b.y - a.y)) / length_squared)
+        .clamp(0.0, 1.0);
+    point.distance_to(Point::new(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y)))
 }
 
-/// Rebuild one object's index entry from its current bounds.
+fn item_bounds(document: &Document, id: ObjectId) -> Option<Bounds> {
+    let transform = document.scene.world_transform(id)?;
+    let tolerance = local_tolerance(transform)?;
+    let (path, appearance) = geometry(document, id, tolerance)?;
+    // Include handles in the convex hull: curve broad phase never loses
+    // a bulge between anchors, regardless of flattening precision.
+    let mut points: Vec<_> = path
+        .contours
+        .iter()
+        .flat_map(|contour| contour.nodes.iter())
+        .flat_map(|node| {
+            std::iter::once(node.point)
+                .chain(node.handle_in)
+                .chain(node.handle_out)
+        })
+        .map(|point| transform.transform_point(point))
+        .collect();
+    for item in appearance
+        .items
+        .iter()
+        .filter(|item| item.enabled && item.opacity > 0.0)
+    {
+        if let AppearanceKind::Stroke(style) = &item.kind {
+            let outline = crate::compile::evaluate_stroke(&path, style, tolerance);
+            points.extend(transformed(&outline, transform).into_iter().flatten());
+        }
+    }
+    Bounds::of_points(&points).map(|bounds| bounds.padded(0.1))
+}
+
+/// Conservative world bounds; metadata filtering stays in the query.
 #[must_use]
 pub fn entry_for(document: &Document, id: ObjectId) -> Option<SpatialEntry> {
     let bounds = item_bounds(document, id)?;
@@ -270,6 +335,225 @@ pub fn entry_for(document: &Document, id: ObjectId) -> Option<SpatialEntry> {
             bounds.max.y - bounds.min.y,
         ),
     })
+}
+
+/// Index bounds supplied by evaluated snapshot primitives. This covers
+/// resource-dependent images and text without inventing authorial extents.
+#[must_use]
+pub fn entries_for_snapshot(snapshot: &petunia_render_model::RenderSnapshot) -> Vec<SpatialEntry> {
+    let mut bounds = std::collections::BTreeMap::<ObjectId, Rect>::new();
+    for page in &snapshot.pages {
+        snapshot_leaves(&page.primitives, &mut Vec::new(), &mut |primitive, _| {
+            let (source, rect) = primitive_bounds(primitive);
+            bounds
+                .entry(source)
+                .and_modify(|old| *old = old.union(rect))
+                .or_insert(rect);
+        });
+    }
+    bounds
+        .into_iter()
+        .map(|(object, bounds)| SpatialEntry { object, bounds })
+        .collect()
+}
+
+/// Resource-dependent hit testing consumes the same evaluated snapshot
+/// used by rendering. Hidden/locked/page rules still come from Document.
+/// Image selection uses the transformed source rectangle; alpha-aware
+/// pixel selection and post-effect coverage are separate future policies.
+#[must_use]
+pub fn hit_test_with_snapshot(
+    document: &Document,
+    snapshot: &petunia_render_model::RenderSnapshot,
+    index: &dyn SpatialIndex,
+    request: HitTestRequest,
+    view: Transform2D,
+) -> Vec<Hit> {
+    let Some(page) = snapshot.pages.iter().find(|page| page.page == request.page) else {
+        return Vec::new();
+    };
+    if !request.tolerance_px.is_finite()
+        || request.tolerance_px < 0.0
+        || !request.point_document.x.is_finite()
+        || !request.point_document.y.is_finite()
+        || !view.is_numerically_safe()
+    {
+        return Vec::new();
+    }
+    let Some(inverse) = view.inverse() else {
+        return Vec::new();
+    };
+    let rx = request.tolerance_px * inverse.a.hypot(inverse.c);
+    let ry = request.tolerance_px * inverse.b.hypot(inverse.d);
+    let mut ids = Vec::new();
+    index.query_aabb(
+        Rect::new(
+            request.point_document.x - rx,
+            request.point_document.y - ry,
+            rx * 2.0,
+            ry * 2.0,
+        ),
+        &mut ids,
+    );
+    let candidates: std::collections::HashSet<_> = ids.into_iter().collect();
+    let mut found = std::collections::HashMap::<ObjectId, f64>::new();
+    snapshot_leaves(
+        &page.primitives,
+        &mut Vec::new(),
+        &mut |primitive, clips| {
+            let (id, bounds) = primitive_bounds(primitive);
+            if !candidates.contains(&id)
+                || !selectable(document, id)
+                || clips
+                    .iter()
+                    .any(|clip| !inside_clip(request.point_document, clip))
+            {
+                return;
+            }
+            let distance =
+                if request.mode == HitTestMode::Bounds {
+                    bounds.contains_point(request.point_document).then_some(0.0)
+                } else if document.scene.get_node(id).is_some_and(|node| {
+                    matches!(node.item, SceneItem::Path(_) | SceneItem::Shape(_))
+                }) {
+                    narrow_hit(document, id, request, view)
+                } else {
+                    snapshot_narrow_hit(primitive, snapshot, request, view)
+                };
+            if let Some(distance) = distance {
+                found
+                    .entry(id)
+                    .and_modify(|old| *old = old.min(distance))
+                    .or_insert(distance);
+            }
+        },
+    );
+    paint_order_on_page(document, request.page)
+        .into_iter()
+        .rev()
+        .filter_map(|object| {
+            found.get(&object).map(|&distance_px| Hit {
+                object,
+                distance_px,
+            })
+        })
+        .collect()
+}
+
+fn primitive_bounds(primitive: &petunia_render_model::RenderPrimitive) -> (ObjectId, Rect) {
+    use petunia_render_model::RenderPrimitive;
+    match primitive {
+        RenderPrimitive::Vector(value) => (value.source, value.bounds),
+        RenderPrimitive::Image(value) => (value.source, value.bounds),
+        RenderPrimitive::Text(value) => (value.source, value.bounds),
+        RenderPrimitive::Raster(value) => (value.source, value.bounds),
+        RenderPrimitive::Group(value) => (value.source, value.bounds),
+    }
+}
+
+fn snapshot_leaves<'a>(
+    primitives: &'a [petunia_render_model::RenderPrimitive],
+    clips: &mut Vec<&'a petunia_render_model::RenderClip>,
+    visit: &mut impl FnMut(
+        &'a petunia_render_model::RenderPrimitive,
+        &[&'a petunia_render_model::RenderClip],
+    ),
+) {
+    for primitive in primitives {
+        if let petunia_render_model::RenderPrimitive::Group(group) = primitive {
+            if group.opacity <= 0.0 {
+                continue;
+            }
+            if let Some(clip) = &group.clip {
+                clips.push(clip);
+            }
+            snapshot_leaves(&group.children, clips, visit);
+            if group.clip.is_some() {
+                clips.pop();
+            }
+        } else {
+            visit(primitive, clips);
+        }
+    }
+}
+
+fn inside_clip(point: Point, clip: &petunia_render_model::RenderClip) -> bool {
+    use petunia_render_model::RenderClip;
+    match clip {
+        RenderClip::Rect(rect) => rect.contains_point(point),
+        RenderClip::Polygon(ring) => in_fill(
+            point,
+            &[ring.iter().map(|&(x, y)| Point::new(x, y)).collect()],
+            FillRule::NonZero,
+        ),
+        RenderClip::Path(path) => in_fill(
+            point,
+            &transformed(path, Transform2D::IDENTITY),
+            path.fill_rule,
+        ),
+    }
+}
+
+fn snapshot_narrow_hit(
+    primitive: &petunia_render_model::RenderPrimitive,
+    snapshot: &petunia_render_model::RenderSnapshot,
+    request: HitTestRequest,
+    view: Transform2D,
+) -> Option<f64> {
+    use petunia_render_model::RenderPrimitive;
+    if request.mode == HitTestMode::Stroke {
+        return None;
+    }
+    let point = view.transform_point(request.point_document);
+    match primitive {
+        RenderPrimitive::Vector(vector) => {
+            if vector.appearance.opacity <= 0.0 {
+                return None;
+            }
+            in_fill(
+                point,
+                &transformed(&vector.geometry, view.concat(vector.transform)),
+                vector.geometry.fill_rule,
+            )
+            .then_some(0.0)
+        }
+        RenderPrimitive::Image(image) => {
+            if image.opacity <= 0.0 {
+                return None;
+            }
+            let resolved = snapshot.resources.images.get(&image.resource)?;
+            let (min_x, min_y, max_x, max_y) = image.source_rect.map_or(
+                (0.0, 0.0, resolved.width as f64, resolved.height as f64),
+                |crop| {
+                    (
+                        resolved.width as f64 * crop.min.x,
+                        resolved.height as f64 * crop.min.y,
+                        resolved.width as f64 * crop.max.x,
+                        resolved.height as f64 * crop.max.y,
+                    )
+                },
+            );
+            let transform = view.concat(image.transform);
+            let ring = [
+                Point::new(min_x, min_y),
+                Point::new(max_x, min_y),
+                Point::new(max_x, max_y),
+                Point::new(min_x, max_y),
+            ]
+            .into_iter()
+            .map(|point| transform.transform_point(point))
+            .collect();
+            in_fill(point, &[ring], FillRule::NonZero).then_some(0.0)
+        }
+        RenderPrimitive::Text(text) => text
+            .bounds
+            .contains_point(request.point_document)
+            .then_some(0.0),
+        RenderPrimitive::Raster(raster) => (raster.opacity > 0.0
+            && raster.bounds.contains_point(request.point_document))
+        .then_some(0.0),
+        RenderPrimitive::Group(_) => None,
+    }
 }
 
 #[cfg(test)]
@@ -289,11 +573,40 @@ mod tests {
         group.item = SceneItem::Group(Vec::new());
         let parent = group.id;
         document.scene.insert_node(group);
-        let node = SceneNode::new_path(
+        let mut node = SceneNode::new_path(
             "box",
             VectorPath::rect(0.0, 0.0, 10.0, 10.0),
             petunia_core::ParentRef::Page(page),
         );
+        if let SceneItem::Path(object) = &mut node.item {
+            object.appearance.items.push(petunia_core::AppearanceItem {
+                id: petunia_core::AppearanceItemId::new_v4(),
+                enabled: true,
+                opacity: 1.0,
+                blend_mode: petunia_core::BlendMode::Normal,
+                kind: AppearanceKind::Stroke(
+                    petunia_core::StrokeStyle::new(
+                        1.0,
+                        petunia_core::StrokeCap::Butt,
+                        petunia_core::StrokeJoin::Miter,
+                        petunia_core::ColorSource::Value(petunia_core::ColorValue::Process(
+                            petunia_core::ProcessColor {
+                                value: petunia_core::ProcessColorValue::Rgb(petunia_core::Rgba {
+                                    r: 0.0,
+                                    g: 0.0,
+                                    b: 0.0,
+                                    alpha: 1.0,
+                                }),
+                                space: petunia_core::ColorSpaceRef::Builtin(
+                                    petunia_core::BuiltinColorSpace::Srgb,
+                                ),
+                            },
+                        )),
+                    )
+                    .expect("stroke"),
+                ),
+            });
+        }
         let id = node.id;
         document.scene.insert_node(node);
         if let Some(parent_node) = document.scene.get_node_mut(parent) {
@@ -314,9 +627,9 @@ mod tests {
         index
     }
 
-    fn request_at(x: f64, y: f64, mode: HitTestMode) -> HitTestRequest {
+    fn request_at(page: PageId, x: f64, y: f64, mode: HitTestMode) -> HitTestRequest {
         HitTestRequest {
-            page: PageId::new_v4(),
+            page,
             point_document: Point::new(x, y),
             tolerance_px: 2.0,
             mode,
@@ -327,10 +640,18 @@ mod tests {
     fn fill_hit_finds_path_topmost_first() {
         let (document, _, id) = document_with_square();
         let index = indexed(&document);
-        let hits = hit_test(&document, &index, request_at(5.0, 5.0, HitTestMode::Fill));
+        let hits = hit_test(
+            &document,
+            &index,
+            request_at(document.scene.default_page(), 5.0, 5.0, HitTestMode::Fill),
+        );
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].object, id);
-        let miss = hit_test(&document, &index, request_at(50.0, 50.0, HitTestMode::Fill));
+        let miss = hit_test(
+            &document,
+            &index,
+            request_at(document.scene.default_page(), 50.0, 50.0, HitTestMode::Fill),
+        );
         assert!(miss.is_empty());
     }
 
@@ -342,7 +663,12 @@ mod tests {
         let hits = hit_test(
             &document,
             &index,
-            request_at(11.0, 5.0, HitTestMode::Stroke),
+            request_at(
+                document.scene.default_page(),
+                11.0,
+                5.0,
+                HitTestMode::Stroke,
+            ),
         );
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].object, id);

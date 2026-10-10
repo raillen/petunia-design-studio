@@ -8,8 +8,9 @@
 
 use crate::error::EngineError;
 use petunia_core::{
-    BlendMode, Document, EffectId, ObjectId, ParentRef, SceneItem, SceneNode, Transform2D,
-    VectorPath,
+    Appearance, BlendMode, Document, EffectId, GridDefinition, GridId, ObjectId, ParentRef,
+    ResourceId, ResourceRecord, SceneItem, SceneNode, SpotColor, SpotColorId, StyleDefinition,
+    StyleId, Swatch, SwatchId, SymbolDefinition, SymbolId, Transform2D, VectorPath,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -56,10 +57,46 @@ pub enum EffectParameter {
     BlendMode(BlendMode),
 }
 
+/// Authorial registry changes participate in the same atomic transaction as
+/// pasted nodes. `None` removes an entity; inverse operations capture its record.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RegistryOp {
+    Grid {
+        id: GridId,
+        value: Option<Box<GridDefinition>>,
+    },
+    Resource {
+        id: ResourceId,
+        value: Option<Box<ResourceRecord>>,
+    },
+    Style {
+        id: StyleId,
+        value: Option<Box<StyleDefinition>>,
+    },
+    Symbol {
+        id: SymbolId,
+        value: Option<Box<SymbolDefinition>>,
+    },
+    Swatch {
+        id: SwatchId,
+        value: Option<Box<Swatch>>,
+    },
+    Spot {
+        id: SpotColorId,
+        value: Option<Box<SpotColor>>,
+    },
+}
+
 /// A small, explicitly represented structural mutation. Internal
 /// mutation API: QML and tools never assemble these directly.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DocumentOp {
+    Registry(RegistryOp),
+    /// Swap an editable raster surface without copying its image bytes.
+    SetPixelSurface {
+        object: ObjectId,
+        surface: petunia_core::PixelSurfaceRef,
+    },
     /// Insert at page roots. The page root list is the z-order of this
     /// revision; group membership uses [`DocumentOp::InsertNode`].
     InsertRoot {
@@ -71,6 +108,10 @@ pub enum DocumentOp {
         parent: ObjectId,
         index: usize,
         node: Box<SceneNode>,
+    },
+    /// Remove a selection and its internal binding dependencies atomically.
+    RemoveObjects {
+        roots: Vec<ObjectId>,
     },
     RemoveSubtree {
         root: ObjectId,
@@ -104,6 +145,16 @@ pub enum DocumentOp {
     SetVisibility {
         object: ObjectId,
         visible: bool,
+    },
+    /// Change the authorial lock flag. Unlocking remains available on locked nodes.
+    SetLocked {
+        object: ObjectId,
+        locked: bool,
+    },
+    /// Replace a path or shape's authorial paint stack atomically.
+    SetAppearance {
+        object: ObjectId,
+        appearance: Appearance,
     },
 }
 
@@ -208,7 +259,7 @@ fn group_children(
 
 /// One subtree node paired with its current `(parent, index)`.
 /// The root itself carries `None` and is placed by the caller.
-type PlacedNode = (SceneNode, Option<(ObjectId, usize)>);
+type PlacedNode = (SceneNode, Option<(ParentRef, usize)>);
 
 /// Collect a subtree in parent-before-children order, pairing each
 /// node with its current `(parent, index)`.
@@ -226,7 +277,7 @@ fn collect_subtree(
             .clone();
         if let SceneItem::Group(children) = &node.item {
             for (index, child) in children.iter().enumerate().rev() {
-                stack.push((*child, Some((id, index))));
+                stack.push((*child, Some((ParentRef::Object(id), index))));
             }
         }
         ordered.push((node, placement));
@@ -240,11 +291,77 @@ fn inverse_of(
     op: &DocumentOp,
 ) -> std::result::Result<Vec<DocumentOp>, TransactionError> {
     match op {
+        DocumentOp::SetPixelSurface { object, .. } => {
+            let node = document
+                .scene
+                .get_node(*object)
+                .ok_or_else(|| missing(*object))?;
+            let SceneItem::PixelLayer(layer) = node.item else {
+                return Err(TransactionError::InvariantViolation(
+                    "surface target is not a pixel layer".into(),
+                ));
+            };
+            Ok(vec![DocumentOp::SetPixelSurface {
+                object: *object,
+                surface: layer.surface,
+            }])
+        }
+        DocumentOp::Registry(change) => Ok(vec![DocumentOp::Registry(match change {
+            RegistryOp::Grid { id, .. } => RegistryOp::Grid {
+                id: *id,
+                value: document.grids.get(*id).copied().map(Box::new),
+            },
+            RegistryOp::Resource { id, .. } => RegistryOp::Resource {
+                id: *id,
+                value: document.resources.get(*id).cloned().map(Box::new),
+            },
+            RegistryOp::Style { id, .. } => RegistryOp::Style {
+                id: *id,
+                value: document.styles.get(*id).cloned().map(Box::new),
+            },
+            RegistryOp::Symbol { id, .. } => RegistryOp::Symbol {
+                id: *id,
+                value: document.symbols.get(*id).cloned().map(Box::new),
+            },
+            RegistryOp::Swatch { id, .. } => RegistryOp::Swatch {
+                id: *id,
+                value: document.swatches.get(*id).cloned().map(Box::new),
+            },
+            RegistryOp::Spot { id, .. } => RegistryOp::Spot {
+                id: *id,
+                value: document.spots.get(*id).cloned().map(Box::new),
+            },
+        })]),
         DocumentOp::InsertRoot { node, .. } => {
             Ok(vec![DocumentOp::RemoveSubtree { root: node.id }])
         }
         DocumentOp::InsertNode { node, .. } => {
             Ok(vec![DocumentOp::RemoveSubtree { root: node.id }])
+        }
+        DocumentOp::RemoveObjects { roots } => {
+            let selected: std::collections::HashSet<_> = roots.iter().copied().collect();
+            let mut roots: Vec<_> = roots
+                .iter()
+                .copied()
+                .filter(|root| {
+                    !document
+                        .scene
+                        .ancestors(*root)
+                        .iter()
+                        .any(|ancestor| selected.contains(ancestor))
+                })
+                .collect();
+            roots.sort_by_key(|root| {
+                find_parent(document, *root)
+                    .map(|(_, index)| index)
+                    .unwrap_or(usize::MAX)
+            });
+            roots.dedup();
+            let mut inverse = Vec::new();
+            for root in roots {
+                inverse.extend(inverse_of(document, &DocumentOp::RemoveSubtree { root })?);
+            }
+            Ok(inverse)
         }
         DocumentOp::RemoveSubtree { root } => {
             let outer = find_parent(document, *root).ok_or_else(|| {
@@ -261,10 +378,17 @@ fn inverse_of(
                     children.clear();
                 }
                 let (parent, index) = placement.unwrap_or(outer);
-                inverse.push(DocumentOp::InsertNode {
-                    parent,
-                    index,
-                    node: Box::new(node),
+                node.parent = parent;
+                inverse.push(match parent {
+                    ParentRef::Page(_) => DocumentOp::InsertRoot {
+                        index,
+                        node: Box::new(node),
+                    },
+                    ParentRef::Object(parent) => DocumentOp::InsertNode {
+                        parent,
+                        index,
+                        node: Box::new(node),
+                    },
                 });
             }
             Ok(inverse)
@@ -287,6 +411,31 @@ fn inverse_of(
             Ok(vec![DocumentOp::SetVisibility {
                 object: *object,
                 visible: node.visible,
+            }])
+        }
+        DocumentOp::SetLocked { object, .. } => {
+            let node = document
+                .scene
+                .get_node(*object)
+                .ok_or_else(|| missing(*object))?;
+            Ok(vec![DocumentOp::SetLocked {
+                object: *object,
+                locked: node.locked,
+            }])
+        }
+        DocumentOp::SetAppearance { object, .. } => {
+            let node = document
+                .scene
+                .get_node(*object)
+                .ok_or_else(|| missing(*object))?;
+            let appearance = node.item_appearance().ok_or_else(|| {
+                TransactionError::InvariantViolation(format!(
+                    "object {object} has no editable appearance"
+                ))
+            })?;
+            Ok(vec![DocumentOp::SetAppearance {
+                object: *object,
+                appearance: appearance.clone(),
             }])
         }
         DocumentOp::MoveObjects { object, .. } => {
@@ -314,10 +463,17 @@ fn inverse_of(
                 ))),
             }
         }
-        DocumentOp::SetEffectParameter { effect, .. } => {
-            Err(TransactionError::UnsupportedOperation(format!(
-                "effect {effect} has no appearance storage in this revision"
-            )))
+        DocumentOp::SetEffectParameter { effect, parameter } => {
+            let state = effect_state(document, *effect)?;
+            let parameter = match parameter {
+                EffectParameter::Enabled(_) => EffectParameter::Enabled(state.enabled),
+                EffectParameter::Opacity(_) => EffectParameter::Opacity(state.opacity),
+                EffectParameter::BlendMode(_) => EffectParameter::BlendMode(state.blend_mode),
+            };
+            Ok(vec![DocumentOp::SetEffectParameter {
+                effect: *effect,
+                parameter,
+            }])
         }
         DocumentOp::ReorderChild { parent, child, .. } => {
             let children = group_children(document, *parent)?;
@@ -335,25 +491,98 @@ fn inverse_of(
     }
 }
 
-fn find_parent(document: &Document, child: ObjectId) -> Option<(ObjectId, usize)> {
-    // Walk every reachable group; root-level groups seed the search.
-    let mut stack: Vec<ObjectId> = document.scene.root_order().to_vec();
+fn find_parent(document: &Document, child: ObjectId) -> Option<(ParentRef, usize)> {
+    let parent = document.scene.parent_of(child)?;
+    let children = match parent {
+        ParentRef::Page(page) => document.scene.page_roots(page)?,
+        ParentRef::Object(host) => document.scene.children_of(host)?,
+    };
+    children
+        .iter()
+        .position(|id| *id == child)
+        .map(|index| (parent, index))
+}
+
+struct EffectState {
+    owner: ObjectId,
+    enabled: bool,
+    opacity: f32,
+    blend_mode: BlendMode,
+}
+fn effect_state(
+    document: &Document,
+    effect: EffectId,
+) -> std::result::Result<EffectState, TransactionError> {
+    let mut found = None;
+    let mut stack: Vec<_> = document
+        .scene
+        .root_lists()
+        .into_iter()
+        .flatten()
+        .copied()
+        .collect();
     let mut seen = std::collections::HashSet::new();
-    while let Some(id) = stack.pop() {
-        if !seen.insert(id) {
+    while let Some(owner) = stack.pop() {
+        if !seen.insert(owner) {
             continue;
         }
-        let node = document.scene.get_node(id)?;
-        if let SceneItem::Group(children) = &node.item {
-            for (index, member) in children.iter().enumerate() {
-                if *member == child {
-                    return Some((id, index));
-                }
-                stack.push(*member);
+        let node = document
+            .scene
+            .get_node(owner)
+            .ok_or_else(|| missing(owner))?;
+        if let Some(children) = node.item.children() {
+            stack.extend(children.iter().copied());
+        }
+        for (id, enabled, opacity, blend_mode) in node
+            .geometry_effects
+            .items
+            .iter()
+            .map(|instance| {
+                (
+                    instance.id,
+                    instance.enabled,
+                    instance.opacity,
+                    instance.blend_mode,
+                )
+            })
+            .chain(node.post_effects.items.iter().map(|instance| {
+                (
+                    instance.id,
+                    instance.enabled,
+                    instance.opacity,
+                    instance.blend_mode,
+                )
+            }))
+        {
+            if id != effect {
+                continue;
             }
+            if found.is_some() {
+                return Err(TransactionError::InvariantViolation(
+                    "effect identity is ambiguous".into(),
+                ));
+            }
+            found = Some(EffectState {
+                owner,
+                enabled,
+                opacity,
+                blend_mode,
+            });
         }
     }
-    None
+    found.ok_or_else(|| {
+        TransactionError::UnsupportedOperation(format!("effect {effect} is not in the scene"))
+    })
+}
+fn set_effect_parameter<T>(
+    instance: &mut petunia_core::EffectInstance<T>,
+    parameter: EffectParameter,
+) {
+    match parameter {
+        EffectParameter::Enabled(value) => instance.enabled = value,
+        EffectParameter::Opacity(value) => instance.opacity = value,
+        EffectParameter::BlendMode(value) => instance.blend_mode = value,
+    }
 }
 
 /// Validate a request and derive inverses. Preparation dry-runs on
@@ -375,6 +604,12 @@ pub fn prepare_transaction(
     let mut affected = Vec::new();
     for op in &request.operations {
         validate_operation(&shadow, op)?;
+        if let DocumentOp::SetEffectParameter { effect, .. } = op {
+            let owner = effect_state(&shadow, *effect)?.owner;
+            if !affected.contains(&owner) {
+                affected.push(owner);
+            }
+        }
         let undo = inverse_of(&shadow, op)?;
         apply_operation(&mut shadow, op.clone()).map_err(|error| {
             TransactionError::InvariantViolation(format!("shadow apply failed: {error}"))
@@ -385,6 +620,9 @@ pub fn prepare_transaction(
         affected_object(op, &mut affected);
         undo_groups.push(undo);
     }
+    shadow
+        .validate()
+        .map_err(|error| TransactionError::InvariantViolation(error.to_string()))?;
     // Undo runs the per-operation inverses in reverse operation order.
     let mut inverse = Vec::new();
     for group in undo_groups.into_iter().rev() {
@@ -393,11 +631,34 @@ pub fn prepare_transaction(
     Ok(PreparedTransaction {
         expected_revision,
         forward: request.operations,
-        inverse,
+        inverse: combine_removals(inverse),
         affected_objects: affected,
         command_id: request.command_id,
         merge_key: request.merge_key,
     })
+}
+
+// Adjacent inverse insert removals form one selection: its owned clip/mask
+// sources may not be removed independently while their pasted target is live.
+fn combine_removals(operations: Vec<DocumentOp>) -> Vec<DocumentOp> {
+    let mut combined = Vec::new();
+    let mut roots = Vec::new();
+    for operation in operations {
+        if let DocumentOp::RemoveSubtree { root } = operation {
+            roots.push(root);
+        } else {
+            if !roots.is_empty() {
+                combined.push(DocumentOp::RemoveObjects {
+                    roots: std::mem::take(&mut roots),
+                });
+            }
+            combined.push(operation);
+        }
+    }
+    if !roots.is_empty() {
+        combined.push(DocumentOp::RemoveObjects { roots });
+    }
+    combined
 }
 
 fn affected_object(op: &DocumentOp, affected: &mut Vec<ObjectId>) {
@@ -407,12 +668,19 @@ fn affected_object(op: &DocumentOp, affected: &mut Vec<ObjectId>) {
         }
     };
     match op {
+        DocumentOp::SetPixelSurface { object, .. } => push(*object),
+        DocumentOp::Registry(_) => {}
         DocumentOp::InsertRoot { node, .. } => {
             push(node.id);
         }
         DocumentOp::InsertNode { parent, node, .. } => {
             push(*parent);
             push(node.id);
+        }
+        DocumentOp::RemoveObjects { roots } => {
+            for root in roots {
+                push(*root);
+            }
         }
         DocumentOp::RemoveSubtree { root } => push(*root),
         DocumentOp::SetTransform { object, .. } => push(*object),
@@ -424,6 +692,8 @@ fn affected_object(op: &DocumentOp, affected: &mut Vec<ObjectId>) {
             push(*child);
         }
         DocumentOp::SetVisibility { object, .. } => push(*object),
+        DocumentOp::SetLocked { object, .. } => push(*object),
+        DocumentOp::SetAppearance { object, .. } => push(*object),
     }
 }
 
@@ -432,25 +702,65 @@ fn validate_operation(
     op: &DocumentOp,
 ) -> std::result::Result<(), TransactionError> {
     match op {
+        DocumentOp::SetPixelSurface { object, .. } => {
+            let node = document
+                .scene
+                .get_node(*object)
+                .ok_or_else(|| missing(*object))?;
+            if matches!(node.item, SceneItem::PixelLayer(_)) {
+                Ok(())
+            } else {
+                Err(TransactionError::InvariantViolation(
+                    "surface target is not a pixel layer".into(),
+                ))
+            }
+        }
+        DocumentOp::Registry(change) => {
+            let matches = match change {
+                RegistryOp::Grid { id, value } => {
+                    value.as_ref().is_none_or(|record| record.id == *id)
+                }
+                RegistryOp::Resource { id, value } => {
+                    value.as_ref().is_none_or(|record| record.id == *id)
+                }
+                RegistryOp::Symbol { id, value } => {
+                    value.as_ref().is_none_or(|record| record.id == *id)
+                }
+                RegistryOp::Swatch { id, value } => {
+                    value.as_ref().is_none_or(|record| record.id == *id)
+                }
+                RegistryOp::Spot { id, value } => {
+                    value.as_ref().is_none_or(|record| record.id == *id)
+                }
+                RegistryOp::Style { .. } => true,
+            };
+            if matches {
+                Ok(())
+            } else {
+                Err(TransactionError::InvariantViolation(
+                    "registry key differs from record identity".into(),
+                ))
+            }
+        }
         DocumentOp::InsertRoot { index, node } => {
-            if *index > document.scene.root_order().len() {
-                return Err(TransactionError::InvariantViolation(format!(
-                    "root insert index {index} beyond {} roots",
-                    document.scene.root_order().len()
-                )));
+            let ParentRef::Page(page) = node.parent else {
+                return Err(TransactionError::InvariantViolation(
+                    "root must declare a page parent".into(),
+                ));
+            };
+            let roots = document
+                .scene
+                .page_roots(page)
+                .ok_or_else(|| TransactionError::InvariantViolation("root page missing".into()))?;
+            if *index > roots.len() {
+                return Err(TransactionError::InvariantViolation(
+                    "root insertion index out of range".into(),
+                ));
             }
             if document.scene.get_node(node.id).is_some() {
                 return Err(TransactionError::InvariantViolation(format!(
                     "node {} already exists",
                     node.id
-                )));
-            }
-            // Roots land on the default page; the node must declare it.
-            if node.parent != ParentRef::Page(document.scene.default_page()) {
-                return Err(TransactionError::InvariantViolation(format!(
-                    "root node {} declares {parent:?}, not the default page",
-                    node.id,
-                    parent = node.parent,
                 )));
             }
             Ok(())
@@ -475,6 +785,17 @@ fn validate_operation(
             }
             Ok(())
         }
+        DocumentOp::RemoveObjects { roots } => {
+            if roots.is_empty() {
+                return Err(TransactionError::InvariantViolation(
+                    "remove requires roots".into(),
+                ));
+            }
+            for root in roots {
+                collect_subtree(document, *root)?;
+            }
+            Ok(())
+        }
         DocumentOp::RemoveSubtree { root } => {
             document
                 .scene
@@ -489,12 +810,52 @@ fn validate_operation(
                 .ok_or_else(|| missing(*object))?;
             Ok(())
         }
-        DocumentOp::SetVisibility { object, .. } => {
+        DocumentOp::SetVisibility { object, .. } | DocumentOp::SetLocked { object, .. } => {
             document
                 .scene
                 .get_node(*object)
                 .ok_or_else(|| missing(*object))?;
             Ok(())
+        }
+        DocumentOp::SetAppearance { object, appearance } => {
+            let node = document
+                .scene
+                .get_node(*object)
+                .ok_or_else(|| missing(*object))?;
+            if node.item_appearance().is_none() {
+                return Err(TransactionError::InvariantViolation(format!(
+                    "object {object} has no editable appearance"
+                )));
+            }
+            // Group locks protect their descendants as well. An earlier
+            // SetLocked in this request can explicitly unlock before painting.
+            let mut current = node;
+            let mut remaining = document.scene.len();
+            loop {
+                remaining = remaining.checked_sub(1).ok_or_else(|| {
+                    TransactionError::InvariantViolation(format!(
+                        "cyclic ancestry on object {object}"
+                    ))
+                })?;
+                if current.locked {
+                    return Err(TransactionError::InvariantViolation(format!(
+                        "object {object} is protected by locked object {}",
+                        current.id
+                    )));
+                }
+                match current.parent {
+                    ParentRef::Page(_) => break,
+                    ParentRef::Object(parent) => {
+                        current = document
+                            .scene
+                            .get_node(parent)
+                            .ok_or_else(|| missing(parent))?;
+                    }
+                }
+            }
+            appearance
+                .validate()
+                .map_err(|error| TransactionError::InvariantViolation(error.to_string()))
         }
         DocumentOp::MoveObjects { object, .. } => {
             document
@@ -515,10 +876,16 @@ fn validate_operation(
                 ))),
             }
         }
-        DocumentOp::SetEffectParameter { effect, .. } => {
-            Err(TransactionError::UnsupportedOperation(format!(
-                "effect {effect} has no appearance storage in this revision"
-            )))
+        DocumentOp::SetEffectParameter { effect, parameter } => {
+            effect_state(document, *effect)?;
+            if let EffectParameter::Opacity(opacity) = parameter {
+                if !opacity.is_finite() || !(0.0..=1.0).contains(opacity) {
+                    return Err(TransactionError::InvariantViolation(
+                        "effect opacity out of range".into(),
+                    ));
+                }
+            }
+            Ok(())
         }
         DocumentOp::ReorderChild {
             parent,
@@ -547,9 +914,72 @@ fn apply_operation(
     op: DocumentOp,
 ) -> std::result::Result<(), CommitError> {
     match op {
+        DocumentOp::SetPixelSurface { object, surface } => {
+            let node = document
+                .scene
+                .get_node_mut(object)
+                .ok_or_else(|| CommitError::ApplyFailed("surface target missing".into()))?;
+            let SceneItem::PixelLayer(layer) = &mut node.item else {
+                return Err(CommitError::ApplyFailed(
+                    "surface target is not a pixel layer".into(),
+                ));
+            };
+            layer.surface = surface;
+            Ok(())
+        }
+        DocumentOp::Registry(change) => {
+            match change {
+                RegistryOp::Grid { id, value } => {
+                    if let Some(value) = value {
+                        document.grids.insert(*value);
+                    } else {
+                        document.grids.remove(id);
+                    }
+                }
+
+                RegistryOp::Resource { id, value } => {
+                    if let Some(value) = value {
+                        document.resources.insert(*value);
+                    } else {
+                        document.resources.remove(id);
+                    }
+                }
+                RegistryOp::Style { id, value } => {
+                    if let Some(value) = value {
+                        document.styles.insert(id, *value);
+                    } else {
+                        document.styles.remove(id);
+                    }
+                }
+                RegistryOp::Symbol { id, value } => {
+                    if let Some(value) = value {
+                        document.symbols.insert(*value);
+                    } else {
+                        document.symbols.remove(id);
+                    }
+                }
+                RegistryOp::Swatch { id, value } => {
+                    if let Some(value) = value {
+                        document.swatches.insert(*value);
+                    } else {
+                        document.swatches.remove(id);
+                    }
+                }
+                RegistryOp::Spot { id, value } => {
+                    if let Some(value) = value {
+                        document.spots.insert(*value);
+                    } else {
+                        document.spots.remove(id);
+                    }
+                }
+            }
+            Ok(())
+        }
         DocumentOp::InsertRoot { index, node } => {
             let id = node.id;
-            let page = document.scene.default_page();
+            let ParentRef::Page(page) = node.parent else {
+                return Err(CommitError::ApplyFailed("root requires page parent".into()));
+            };
             document
                 .scene
                 .insert_root(page, *node)
@@ -573,6 +1003,11 @@ fn apply_operation(
                 .map_err(|error| CommitError::ApplyFailed(error.to_string()))?;
             Ok(())
         }
+        DocumentOp::RemoveObjects { roots } => document
+            .scene
+            .remove_subtrees(&roots)
+            .map(|_| ())
+            .map_err(|error| CommitError::ApplyFailed(error.to_string())),
         DocumentOp::RemoveSubtree { root } => {
             // The narrow removal detaches both sides atomically and
             // refuses to orphan live clip/mask sources.
@@ -594,6 +1029,28 @@ fn apply_operation(
                 CommitError::ApplyFailed(format!("object {object} vanished at commit"))
             })?;
             node.visible = visible;
+            Ok(())
+        }
+        DocumentOp::SetLocked { object, locked } => {
+            let node = document.scene.get_node_mut(object).ok_or_else(|| {
+                CommitError::ApplyFailed(format!("object {object} vanished at commit"))
+            })?;
+            node.locked = locked;
+            Ok(())
+        }
+        DocumentOp::SetAppearance { object, appearance } => {
+            let node = document.scene.get_node_mut(object).ok_or_else(|| {
+                CommitError::ApplyFailed(format!("object {object} vanished at commit"))
+            })?;
+            match &mut node.item {
+                SceneItem::Path(item) => item.appearance = appearance,
+                SceneItem::Shape(item) => item.appearance = appearance,
+                _ => {
+                    return Err(CommitError::ApplyFailed(format!(
+                        "object {object} has no editable appearance"
+                    )));
+                }
+            }
             Ok(())
         }
         DocumentOp::MoveObjects { object, dx, dy } => {
@@ -618,9 +1075,31 @@ fn apply_operation(
                 ))),
             }
         }
-        DocumentOp::SetEffectParameter { effect, .. } => Err(CommitError::ApplyFailed(format!(
-            "effect {effect} has no appearance storage in this revision"
-        ))),
+        DocumentOp::SetEffectParameter { effect, parameter } => {
+            let owner = effect_state(document, effect)
+                .map_err(|error| CommitError::ApplyFailed(error.to_string()))?
+                .owner;
+            let node = document
+                .scene
+                .get_node_mut(owner)
+                .ok_or_else(|| CommitError::ApplyFailed("effect owner missing".into()))?;
+            if let Some(instance) = node
+                .geometry_effects
+                .items
+                .iter_mut()
+                .find(|instance| instance.id == effect)
+            {
+                set_effect_parameter(instance, parameter);
+            } else if let Some(instance) = node
+                .post_effects
+                .items
+                .iter_mut()
+                .find(|instance| instance.id == effect)
+            {
+                set_effect_parameter(instance, parameter);
+            }
+            Ok(())
+        }
         DocumentOp::ReorderChild {
             parent,
             child,
@@ -639,27 +1118,42 @@ pub fn commit_transaction(
     document: &mut Document,
     prepared: PreparedTransaction,
 ) -> std::result::Result<AppliedTransaction, CommitError> {
-    let mut undo_groups: Vec<Vec<DocumentOp>> = Vec::new();
-    for op in prepared.forward.clone() {
-        let undo = inverse_of(document, &op)
-            .map_err(|error| CommitError::ApplyFailed(error.to_string()))?;
-        if let Err(error) = apply_operation(document, op) {
-            for back in undo_groups.iter().rev().flatten().cloned() {
-                // Rollback mirrors applied work; a failure here would
-                // mean the document model itself broke mid-commit.
-                let _ = apply_operation(document, back);
-            }
-            return Err(CommitError::RolledBack(error.to_string()));
-        }
-        undo_groups.push(undo);
-    }
+    // Revalidate against the live state, including inverses. The staging copy
+    // exists only during commit; history stores narrow operations, not documents.
+    let validated = prepare_transaction(
+        document,
+        TransactionRequest {
+            command_id: prepared.command_id,
+            operations: prepared.forward.clone(),
+            merge_key: prepared.merge_key.clone(),
+        },
+        prepared.expected_revision,
+    )
+    .map_err(|error| CommitError::RolledBack(error.to_string()))?;
+    apply_ops_atomic(document, &validated.forward)
+        .map_err(|error| CommitError::RolledBack(error.to_string()))?;
     Ok(AppliedTransaction {
         affected_objects: prepared.affected_objects.clone(),
         command_id: prepared.command_id,
         merge_key: prepared.merge_key,
         forward: prepared.forward,
-        inverse: prepared.inverse,
+        inverse: validated.inverse,
     })
+}
+
+/// Apply a whole undo/redo sequence atomically, including reference validation.
+pub(crate) fn apply_ops_atomic(
+    document: &mut Document,
+    operations: &[DocumentOp],
+) -> std::result::Result<(), EngineError> {
+    let mut staged = document.clone();
+    for operation in operations {
+        apply_operation(&mut staged, operation.clone())
+            .map_err(|error| EngineError::Execution(error.to_string()))?;
+    }
+    staged.validate()?;
+    *document = staged;
+    Ok(())
 }
 
 /// Quietly apply one operation outside history (undo/redo reuse this

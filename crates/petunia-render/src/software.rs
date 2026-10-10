@@ -26,6 +26,7 @@ use rayon::prelude::*;
 pub struct SoftwareRenderer {
     _cache_bytes: usize,
     _pool_bytes: usize,
+    frame_budget_bytes: usize,
 }
 
 impl SoftwareRenderer {
@@ -37,7 +38,15 @@ impl SoftwareRenderer {
         Self {
             _cache_bytes: cache_bytes,
             _pool_bytes: pool_bytes,
+            frame_budget_bytes: 256 << 20,
         }
+    }
+
+    /// Limit full-frame working allocations independently of cache retention.
+    #[must_use]
+    pub fn with_frame_budget(mut self, bytes: usize) -> Self {
+        self.frame_budget_bytes = bytes;
+        self
     }
 
     /// Render one frame into RGBA8 bytes plus statistics.
@@ -50,10 +59,32 @@ impl SoftwareRenderer {
         if target.width == 0 || target.height == 0 {
             return Err(RenderError::Draw("empty render target".to_string()));
         }
+        let count = (target.width as usize)
+            .checked_mul(target.height as usize)
+            .ok_or_else(|| RenderError::Draw("render target size overflow".into()))?;
+        if !frame.view.scale.is_finite()
+            || frame.view.scale <= 0.0
+            || !frame.view.rotation.is_finite()
+            || !frame.view.offset_x.is_finite()
+            || !frame.view.offset_y.is_finite()
+        {
+            return Err(RenderError::Draw("invalid view transform".into()));
+        }
+        let depth = validate_frame(frame)?;
+        let required = count
+            .checked_mul(std::mem::size_of::<Pixel>())
+            .and_then(|bytes| bytes.checked_mul(depth + 4))
+            .and_then(|bytes| bytes.checked_add(count.checked_mul(4)?))
+            .ok_or_else(|| RenderError::Draw("working allocation size overflow".into()))?;
+        if required > self.frame_budget_bytes {
+            return Err(RenderError::Draw(
+                "frame working allocation budget exceeded".into(),
+            ));
+        }
         let tile_edge = options.tile_size.clamp(16, 512);
         let background = srgb_to_linear_pixel(options.background);
         let items = prepare_items(frame);
-        let mut pixels = vec![background; (target.width as usize) * (target.height as usize)];
+        let mut pixels = vec![background; count];
         let mut drawn = 0usize;
         for item in &items {
             drawn += draw_item(&mut pixels, target.width, item, frame.view, tile_edge)?;
@@ -65,6 +96,99 @@ impl SoftwareRenderer {
         };
         Ok((frame_to_rgba8(&pixels, target.width, false), stats))
     }
+}
+
+fn validate_frame(frame: &RenderFrame) -> Result<usize> {
+    let mut stack: Vec<_> = frame
+        .snapshot
+        .pages
+        .iter()
+        .flat_map(|page| page.primitives.iter().map(|primitive| (primitive, 1usize)))
+        .collect();
+    let mut maximum = 1;
+    let mut count = 0usize;
+    while let Some((primitive, depth)) = stack.pop() {
+        count += 1;
+        if depth > 64 || count > 100_000 {
+            return Err(RenderError::Draw(
+                "render graph depth/count limit exceeded".into(),
+            ));
+        }
+        maximum = maximum.max(depth);
+        if matches!(
+            primitive,
+            RenderPrimitive::Text(_) | RenderPrimitive::Raster(_)
+        ) {
+            return Err(RenderError::Draw(
+                "text/raster primitives must be materialized into paths/images".into(),
+            ));
+        }
+        if let RenderPrimitive::Group(group) = primitive {
+            if matches!(
+                group.mask,
+                Some(RenderMask::Alpha(_) | RenderMask::Luminance(_))
+            ) {
+                return Err(RenderError::Draw(
+                    "mask source must be resolved into snapshot primitives".into(),
+                ));
+            }
+            for effect in &group.effects {
+                if let RenderEffect::DropShadow(shadow) = effect {
+                    if shadow.spread != 0.0
+                        || !shadow.opacity.is_finite()
+                        || !(0.0..=1.0).contains(&shadow.opacity)
+                        || !shadow.offset.0.is_finite()
+                        || !shadow.offset.1.is_finite()
+                    {
+                        return Err(RenderError::Draw(
+                            "unsupported shadow spread or invalid shadow parameters".into(),
+                        ));
+                    }
+                }
+                let sigmas = match effect {
+                    RenderEffect::Blur { sigma_x, sigma_y } => (*sigma_x, *sigma_y),
+                    RenderEffect::DropShadow(shadow) => shadow.sigma,
+                    _ => (0.0, 0.0),
+                };
+                if !sigmas.0.is_finite()
+                    || !sigmas.1.is_finite()
+                    || sigmas.0 < 0.0
+                    || sigmas.1 < 0.0
+                {
+                    return Err(RenderError::Draw("invalid effect sigma".into()));
+                }
+                let radius = match effect {
+                    RenderEffect::Blur {
+                        sigma_x, sigma_y, ..
+                    } => sigma_x.max(*sigma_y),
+                    RenderEffect::DropShadow(shadow) => shadow.sigma.0.max(shadow.sigma.1),
+                    _ => 0.0,
+                };
+                let radius = radius * frame.view.scale;
+                if !radius.is_finite() || !(0.0..=1024.0).contains(&radius) {
+                    return Err(RenderError::Draw("effect kernel limit exceeded".into()));
+                }
+            }
+            stack.extend(
+                group
+                    .children
+                    .iter()
+                    .map(|primitive| (primitive, depth + 1)),
+            );
+            if let Some(RenderMask::Primitives { children, .. }) = &group.mask {
+                stack.extend(children.iter().map(|primitive| (primitive, depth + 2)));
+            }
+        }
+    }
+    for image in frame.snapshot.resources.images.values() {
+        if image.width == 0
+            || image.height == 0
+            || (image.width as usize).checked_mul(image.height as usize) != Some(image.pixels.len())
+        {
+            return Err(RenderError::Draw("invalid image extent/buffer".into()));
+        }
+    }
+    Ok(maximum)
 }
 
 impl crate::backend::RenderBackend for SoftwareRenderer {
@@ -119,11 +243,18 @@ enum PaintSampler {
     Linear(RenderGradient),
     Radial(RenderGradient),
     Conical(RenderGradient),
+    Pattern(
+        petunia_render_model::RenderPattern,
+        Option<std::sync::Arc<petunia_render_model::image::ResolvedImage>>,
+    ),
 }
 
 impl PaintSampler {
     fn sample(&self, doc_x: f64, doc_y: f64) -> petunia_render_model::RenderColor {
         match self {
+            Self::Pattern(pattern, image) => {
+                sample_pattern(pattern, image.as_deref(), doc_x, doc_y)
+            }
             Self::Solid(color) => *color,
             Self::Linear(gradient) => sample_linear(gradient, (doc_x, doc_y))
                 .unwrap_or(petunia_render_model::RenderColor::TRANSPARENT),
@@ -135,21 +266,193 @@ impl PaintSampler {
     }
 }
 
-fn sampler_for(paint: &RenderPaint) -> PaintSampler {
+fn sampler_for(
+    paint: &RenderPaint,
+    resources: &petunia_render_model::RenderResourceTable,
+) -> PaintSampler {
     match paint {
         RenderPaint::Solid(color) => PaintSampler::Solid(*color),
         RenderPaint::LinearGradient(gradient) => PaintSampler::Linear(gradient.clone()),
         RenderPaint::RadialGradient(gradient) => PaintSampler::Radial(gradient.clone()),
         RenderPaint::ConicalGradient(gradient) => PaintSampler::Conical(gradient.clone()),
-        RenderPaint::Pattern(_) => {
-            PaintSampler::Solid(petunia_render_model::RenderColor::TRANSPARENT)
-        }
+        RenderPaint::Pattern(pattern) => PaintSampler::Pattern(
+            pattern.clone(),
+            resources.images.get(&pattern.resource).cloned(),
+        ),
     }
+}
+
+fn sample_image(
+    image: &petunia_render_model::image::ResolvedImage,
+    x: f64,
+    y: f64,
+    policy: petunia_core::ImageSamplingPolicy,
+) -> petunia_render_model::RenderColor {
+    let at = |x: i64, y: i64| {
+        image.pixels[(y.clamp(0, image.height as i64 - 1) as usize) * image.width as usize
+            + x.clamp(0, image.width as i64 - 1) as usize]
+    };
+    if policy == petunia_core::ImageSamplingPolicy::Nearest {
+        return at(x.floor() as i64, y.floor() as i64);
+    }
+    let px = x - 0.5;
+    let py = y - 0.5;
+    let ix = px.floor() as i64;
+    let iy = py.floor() as i64;
+    if policy == petunia_core::ImageSamplingPolicy::Bicubic {
+        let weight = |distance: f64| {
+            let t = distance.abs();
+            if t < 1.0 {
+                1.5 * t.powi(3) - 2.5 * t.powi(2) + 1.0
+            } else if t < 2.0 {
+                -0.5 * t.powi(3) + 2.5 * t.powi(2) - 4.0 * t + 2.0
+            } else {
+                0.0
+            }
+        };
+        let mut color = petunia_render_model::RenderColor::TRANSPARENT;
+        for dy in -1..=2 {
+            for dx in -1..=2 {
+                let sample = at(ix + dx, iy + dy);
+                let coefficient =
+                    (weight(px - (ix + dx) as f64) * weight(py - (iy + dy) as f64)) as f32;
+                let alpha = sample.a * coefficient;
+                color.r += sample.r * alpha;
+                color.g += sample.g * alpha;
+                color.b += sample.b * alpha;
+                color.a += alpha;
+            }
+        }
+        if color.a > 1e-6 {
+            color.r /= color.a;
+            color.g /= color.a;
+            color.b /= color.a;
+            color.a = color.a.clamp(0.0, 1.0);
+        } else {
+            color = petunia_render_model::RenderColor::TRANSPARENT;
+        }
+        return color;
+    }
+    let fx = (px - ix as f64) as f32;
+    let fy = (py - iy as f64) as f32;
+    let weights = [
+        (at(ix, iy), (1.0 - fx) * (1.0 - fy)),
+        (at(ix + 1, iy), fx * (1.0 - fy)),
+        (at(ix, iy + 1), (1.0 - fx) * fy),
+        (at(ix + 1, iy + 1), fx * fy),
+    ];
+    let mut color = petunia_render_model::RenderColor::TRANSPARENT;
+    for (sample, weight) in weights {
+        let alpha = sample.a * weight;
+        color.r += sample.r * alpha;
+        color.g += sample.g * alpha;
+        color.b += sample.b * alpha;
+        color.a += alpha;
+    }
+    if color.a > 0.0 {
+        color.r /= color.a;
+        color.g /= color.a;
+        color.b /= color.a;
+    }
+    color
+}
+fn sample_pattern(
+    pattern: &petunia_render_model::RenderPattern,
+    image: Option<&petunia_render_model::image::ResolvedImage>,
+    x: f64,
+    y: f64,
+) -> petunia_render_model::RenderColor {
+    let Some(image) = image else {
+        return petunia_render_model::RenderColor::TRANSPARENT;
+    };
+    let Some(inverse) = pattern.transform.inverse() else {
+        return petunia_render_model::RenderColor::TRANSPARENT;
+    };
+    let point = inverse.transform_point(petunia_core::Point::new(x, y));
+    let repeat = |value: f64, extent: u32, policy: petunia_core::PatternRepeat| {
+        let size = extent as f64;
+        match policy {
+            petunia_core::PatternRepeat::Repeat => value.rem_euclid(size),
+            petunia_core::PatternRepeat::Mirror => {
+                let value = value.rem_euclid(2.0 * size);
+                if value >= size {
+                    2.0 * size - value
+                } else {
+                    value
+                }
+            }
+            petunia_core::PatternRepeat::Clamp => value.clamp(0.5, size - 0.5),
+        }
+    };
+    sample_image(
+        image,
+        repeat(point.x, image.width, pattern.repeat_x),
+        repeat(point.y, image.height, pattern.repeat_y),
+        petunia_core::ImageSamplingPolicy::Bilinear,
+    )
+}
+fn draw_image(
+    pixels: &mut [Pixel],
+    stride: u32,
+    primitive: &petunia_render_model::ImagePrimitive,
+    image: &petunia_render_model::image::ResolvedImage,
+    opacity: f32,
+    view: ViewTransform,
+) -> Result<()> {
+    if primitive.sampling == petunia_core::ImageSamplingPolicy::Bicubic {
+        return Err(RenderError::Draw(
+            "bicubic image sampling is not implemented".into(),
+        ));
+    }
+    let inverse = primitive
+        .transform
+        .inverse()
+        .ok_or_else(|| RenderError::Draw("image transform is singular".into()))?;
+    if view.scale == 0.0 {
+        return Err(RenderError::Draw("view scale is zero".into()));
+    }
+    let crop = primitive.source_rect;
+    let (min_x, min_y, max_x, max_y) = crop.map_or(
+        (0.0, 0.0, image.width as f64, image.height as f64),
+        |crop| {
+            (
+                crop.min.x * image.width as f64,
+                crop.min.y * image.height as f64,
+                crop.max.x * image.width as f64,
+                crop.max.y * image.height as f64,
+            )
+        },
+    );
+    for (index, pixel) in pixels.iter_mut().enumerate() {
+        let x = index as u32 % stride;
+        let y = index as u32 / stride;
+        let (doc_x, doc_y) = view
+            .inverse_apply(x as f64 + 0.5, y as f64 + 0.5)
+            .ok_or_else(|| RenderError::Draw("invalid view transform".into()))?;
+        let point = inverse.transform_point(petunia_core::Point::new(doc_x, doc_y));
+        if point.x < min_x || point.y < min_y || point.x >= max_x || point.y >= max_y {
+            continue;
+        }
+        let sample = sample_image(image, point.x, point.y, primitive.sampling);
+        let alpha = sample.a * opacity * primitive.opacity;
+        *pixel = composite(
+            Pixel {
+                r: sample.r * alpha,
+                g: sample.g * alpha,
+                b: sample.b * alpha,
+                a: alpha,
+            },
+            *pixel,
+            BlendMode::Normal,
+        );
+    }
+    Ok(())
 }
 
 /// Device-space vector content with resolved paint.
 struct PreparedVector {
     rings: Vec<(Vec<(f64, f64)>, bool)>,
+    fill_rule: FillRule,
     fill: Option<PaintSampler>,
     stroke: Option<(PaintSampler, f64)>,
     opacity: f32,
@@ -160,13 +463,18 @@ struct PreparedVector {
 /// composite through a temporary with effects, clip and group blend.
 enum FrameItem {
     Draw(PreparedVector),
+    Image {
+        primitive: petunia_render_model::ImagePrimitive,
+        image: Option<std::sync::Arc<petunia_render_model::image::ResolvedImage>>,
+        opacity: f32,
+    },
     Isolated {
         children: Vec<FrameItem>,
         opacity: f32,
         blend: BlendMode,
         effects: Vec<RenderEffect>,
         clip: Option<RenderClip>,
-        mask: Option<RenderMask>,
+        mask: Option<(Vec<FrameItem>, bool)>,
     },
 }
 
@@ -174,7 +482,14 @@ fn prepare_items(frame: &RenderFrame) -> Vec<FrameItem> {
     let mut out = Vec::new();
     for page in &frame.snapshot.pages {
         for primitive in &page.primitives {
-            collect_primitive(primitive, frame.view, 1.0, BlendMode::Normal, &mut out);
+            collect_primitive(
+                primitive,
+                frame.view,
+                1.0,
+                BlendMode::Normal,
+                &frame.snapshot.resources,
+                &mut out,
+            );
         }
     }
     out
@@ -185,19 +500,22 @@ fn collect_primitive(
     view: ViewTransform,
     opacity: f32,
     blend: BlendMode,
+    resources: &petunia_render_model::RenderResourceTable,
     out: &mut Vec<FrameItem>,
 ) {
     match primitive {
         RenderPrimitive::Vector(vector) => {
-            out.push(FrameItem::Draw(prepared_vector(
-                &vector.geometry.contours,
-                &vector.geometry.closed,
+            let mut prepared = prepared_vector(
+                &vector.geometry,
                 &vector.appearance,
                 &vector.transform,
                 view,
                 opacity,
                 blend,
-            )));
+                resources,
+            );
+            prepared.fill_rule = vector.geometry.fill_rule;
+            out.push(FrameItem::Draw(prepared));
         }
         RenderPrimitive::Group(group) => {
             let simple = group.blend_mode == BlendMode::Normal
@@ -208,12 +526,19 @@ fn collect_primitive(
                 && matches!(group.isolation, IsolationMode::Flattened);
             if simple {
                 for child in &group.children {
-                    collect_primitive(child, view, opacity * group.opacity, blend, out);
+                    collect_primitive(child, view, opacity * group.opacity, blend, resources, out);
                 }
             } else {
                 let mut children = Vec::new();
                 for child in &group.children {
-                    collect_primitive(child, view, 1.0, BlendMode::Normal, &mut children);
+                    collect_primitive(
+                        child,
+                        view,
+                        1.0,
+                        BlendMode::Normal,
+                        resources,
+                        &mut children,
+                    );
                 }
                 out.push(FrameItem::Isolated {
                     children,
@@ -221,29 +546,55 @@ fn collect_primitive(
                     blend: group.blend_mode,
                     effects: group.effects.clone(),
                     clip: group.clip.clone(),
-                    mask: group.mask.clone(),
+                    mask: group.mask.as_ref().map(|mask| {
+                        let (primitives, luminance) = match mask {
+                            RenderMask::Primitives {
+                                children,
+                                luminance,
+                            } => (children.as_slice(), *luminance),
+                            _ => (&[][..], false),
+                        };
+                        let mut items = Vec::new();
+                        for primitive in primitives {
+                            collect_primitive(
+                                primitive,
+                                view,
+                                1.0,
+                                BlendMode::Normal,
+                                resources,
+                                &mut items,
+                            );
+                        }
+                        (items, luminance)
+                    }),
                 });
             }
         }
         // Text, images and raster surfaces need decoded resources or
         // shaped runs the compiler only emits with providers present;
         // the v0.1 compiler degrades them with warnings instead.
-        RenderPrimitive::Text(_) | RenderPrimitive::Image(_) | RenderPrimitive::Raster(_) => {}
+        RenderPrimitive::Image(image) => out.push(FrameItem::Image {
+            primitive: image.clone(),
+            image: resources.images.get(&image.resource).cloned(),
+            opacity,
+        }),
+        RenderPrimitive::Text(_) | RenderPrimitive::Raster(_) => {}
     }
 }
 
 fn prepared_vector(
-    contours: &[Vec<(f64, f64)>],
-    closed: &[bool],
+    geometry: &petunia_render_model::RenderPath,
     appearance: &RenderAppearance,
     transform: &petunia_core::Transform2D,
     view: ViewTransform,
     opacity: f32,
     blend: BlendMode,
+    resources: &petunia_render_model::RenderResourceTable,
 ) -> PreparedVector {
-    let rings = contours
+    let rings = geometry
+        .contours
         .iter()
-        .zip(closed.iter())
+        .zip(geometry.closed.iter())
         .map(|(contour, closed)| {
             (
                 contour
@@ -262,14 +613,18 @@ fn prepared_vector(
         .collect();
     PreparedVector {
         rings,
-        fill: appearance.fill.as_ref().map(sampler_for),
+        fill_rule: FillRule::NonZero,
+        fill: appearance
+            .fill
+            .as_ref()
+            .map(|paint| sampler_for(paint, resources)),
         stroke: appearance.stroke.as_ref().map(|stroke| {
             (
-                sampler_for(&stroke.paint),
+                sampler_for(&stroke.paint, resources),
                 (stroke.width * view.scale).max(0.0),
             )
         }),
-        opacity,
+        opacity: opacity * appearance.opacity,
         blend,
     }
 }
@@ -283,6 +638,17 @@ fn draw_item(
     tile_edge: u32,
 ) -> Result<usize> {
     match item {
+        FrameItem::Image {
+            primitive,
+            image,
+            opacity,
+        } => {
+            let image = image
+                .as_deref()
+                .ok_or_else(|| RenderError::Draw("missing decoded image resource".into()))?;
+            draw_image(pixels, stride, primitive, image, *opacity, view)?;
+            Ok(1)
+        }
         FrameItem::Draw(vector) => {
             draw_vector_parallel(pixels, stride, vector, view, tile_edge);
             Ok(1)
@@ -295,13 +661,6 @@ fn draw_item(
             clip,
             mask,
         } => {
-            if mask.is_some() {
-                // Masks need decoded coverage resources; failing loud
-                // beats silently wrong pixels.
-                return Err(RenderError::Draw(
-                    "masks need decoded resources in v0.1".to_string(),
-                ));
-            }
             // Full-frame temporary: effects stay seam-free.
             let height = pixels.len() as u32 / stride.max(1);
             let mut temp = vec![Pixel::CLEAR; pixels.len()];
@@ -309,7 +668,25 @@ fn draw_item(
             for child in children {
                 drawn += draw_item(&mut temp, stride, child, view, tile_edge)?;
             }
-            apply_effects(&mut temp, stride, effects)?;
+            apply_effects(&mut temp, stride, effects, view)?;
+            if let Some((items, luminance)) = mask {
+                let mut coverage = vec![Pixel::CLEAR; pixels.len()];
+                for item in items {
+                    draw_item(&mut coverage, stride, item, view, tile_edge)?;
+                }
+                for (pixel, mask) in temp.iter_mut().zip(coverage) {
+                    let alpha = if *luminance {
+                        0.2126 * mask.r + 0.7152 * mask.g + 0.0722 * mask.b
+                    } else {
+                        mask.a
+                    };
+                    pixel.r *= alpha;
+                    pixel.g *= alpha;
+                    pixel.b *= alpha;
+                    pixel.a *= alpha;
+                }
+            }
+            let clip = clip.as_ref().map(|clip| device_clip(clip, view));
             composite_temp(
                 pixels,
                 stride,
@@ -447,10 +824,8 @@ fn rasterize_vector(
 ) {
     let to_local = |x: f64, y: f64| (x - origin.0, y - origin.1);
     let to_doc = |x: f64, y: f64| {
-        (
-            (x + origin.0 - view.offset_x) / view.scale,
-            (y + origin.1 - view.offset_y) / view.scale,
-        )
+        view.inverse_apply(x + origin.0, y + origin.1)
+            .unwrap_or((0.0, 0.0))
     };
     if view.scale == 0.0 {
         return;
@@ -464,7 +839,7 @@ fn rasterize_vector(
         fill_path(
             target,
             &path,
-            FillRule::NonZero,
+            vector.fill_rule,
             &sampler,
             vector.opacity,
             BlendMode::Normal,
@@ -536,12 +911,53 @@ fn composite_temp(
     Ok(())
 }
 
+fn device_clip(clip: &RenderClip, view: ViewTransform) -> RenderClip {
+    match clip {
+        RenderClip::Rect(rect) => RenderClip::Polygon(
+            [
+                (rect.x, rect.y),
+                (rect.x + rect.width, rect.y),
+                (rect.x + rect.width, rect.y + rect.height),
+                (rect.x, rect.y + rect.height),
+            ]
+            .into_iter()
+            .map(|(x, y)| view.apply(x, y))
+            .collect(),
+        ),
+        RenderClip::Polygon(points) => {
+            RenderClip::Polygon(points.iter().map(|(x, y)| view.apply(*x, *y)).collect())
+        }
+        RenderClip::Path(path) => {
+            let mut path = path.clone();
+            for contour in &mut path.contours {
+                for point in contour {
+                    *point = view.apply(point.0, point.1);
+                }
+            }
+            RenderClip::Path(path)
+        }
+    }
+}
+
 fn clip_contains(clip: &RenderClip, x: f64, y: f64) -> bool {
     match clip {
         RenderClip::Rect(rect) => {
             x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height
         }
         RenderClip::Polygon(points) => point_in_poly(x, y, points),
+        RenderClip::Path(path) => {
+            let winding: i32 = path
+                .contours
+                .iter()
+                .zip(&path.closed)
+                .filter(|(_, closed)| **closed)
+                .map(|(ring, _)| crate::rasterize::winding_number(x, y, ring))
+                .sum();
+            match path.fill_rule {
+                FillRule::NonZero => winding != 0,
+                FillRule::EvenOdd => winding % 2 != 0,
+            }
+        }
     }
 }
 
@@ -566,14 +982,25 @@ fn point_in_poly(x: f64, y: f64, ring: &[(f64, f64)]) -> bool {
 }
 
 /// Blur, shadow and adjustment passes over a temporary surface.
-fn apply_effects(pixels: &mut [Pixel], stride: u32, effects: &[RenderEffect]) -> Result<()> {
+fn apply_effects(
+    pixels: &mut [Pixel],
+    stride: u32,
+    effects: &[RenderEffect],
+    view: ViewTransform,
+) -> Result<()> {
     for effect in effects {
         match effect {
             RenderEffect::Blur { sigma_x, sigma_y } => {
-                separable_blur(pixels, stride, *sigma_x, *sigma_y);
+                separable_blur(
+                    pixels,
+                    stride,
+                    *sigma_x * view.scale,
+                    *sigma_y * view.scale,
+                    view.rotation,
+                );
             }
             RenderEffect::DropShadow(shadow) => {
-                apply_drop_shadow(pixels, stride, shadow);
+                apply_drop_shadow(pixels, stride, shadow, view);
             }
             RenderEffect::Adjustment(adjustment) => {
                 for pixel in pixels.iter_mut() {
@@ -624,96 +1051,85 @@ fn blur_kernel_1d(sigma: f64) -> Vec<f32> {
     weights
 }
 
-fn separable_blur(pixels: &mut [Pixel], stride: u32, sigma_x: f64, sigma_y: f64) {
-    if stride == 0 || pixels.is_empty() {
-        return;
+fn sample_pixel(source: &[Pixel], stride: u32, x: f64, y: f64) -> Pixel {
+    let height = source.len() / stride as usize;
+    if !x.is_finite()
+        || !y.is_finite()
+        || x < -1.0
+        || y < -1.0
+        || x >= stride as f64
+        || y >= height as f64
+    {
+        return Pixel::CLEAR;
     }
-    if !(sigma_x.is_finite() && sigma_y.is_finite() && sigma_x >= 0.0 && sigma_y >= 0.0) {
+    let at = |x: i64, y: i64| {
+        if x < 0 || y < 0 || x >= stride as i64 || y >= height as i64 {
+            Pixel::CLEAR
+        } else {
+            source[y as usize * stride as usize + x as usize]
+        }
+    };
+    if (x - x.round()).abs() < 1e-12 && (y - y.round()).abs() < 1e-12 {
+        return at(x.round() as i64, y.round() as i64);
+    }
+    let ix = x.floor() as i64;
+    let iy = y.floor() as i64;
+    let fx = (x - ix as f64) as f32;
+    let fy = (y - iy as f64) as f32;
+    let mut result = Pixel::CLEAR;
+    for (pixel, weight) in [
+        (at(ix, iy), (1. - fx) * (1. - fy)),
+        (at(ix + 1, iy), fx * (1. - fy)),
+        (at(ix, iy + 1), (1. - fx) * fy),
+        (at(ix + 1, iy + 1), fx * fy),
+    ] {
+        result.r += pixel.r * weight;
+        result.g += pixel.g * weight;
+        result.b += pixel.b * weight;
+        result.a += pixel.a * weight;
+    }
+    result
+}
+
+fn separable_blur(pixels: &mut [Pixel], stride: u32, sigma_x: f64, sigma_y: f64, rotation: f64) {
+    if stride == 0 || pixels.is_empty() || (sigma_x == 0.0 && sigma_y == 0.0) {
         return;
     }
     let height = pixels.len() as u32 / stride;
-    let kernel_x = blur_kernel_1d(sigma_x);
-    let kernel_y = blur_kernel_1d(sigma_y);
-    let radius_x = kernel_x.len() - 1;
-    let radius_y = kernel_y.len() - 1;
-    if radius_x == 0 && radius_y == 0 {
-        return;
-    }
+    let (sin, cos) = rotation.sin_cos();
     let source = pixels.to_vec();
-    let sample = |x: i64, y: i64| -> Pixel {
-        if x < 0 || y < 0 || x >= stride as i64 || y >= height as i64 {
-            // Documental blur reads transparent black outside.
-            Pixel::CLEAR
-        } else {
-            source[(y as u32 * stride + x as u32) as usize]
-        }
-    };
     let mut middle = source.clone();
+    blur_axis(&source, &mut middle, stride, height, sigma_x, (cos, sin));
+    blur_axis(&middle, pixels, stride, height, sigma_y, (-sin, cos));
+}
+
+fn blur_axis(
+    source: &[Pixel],
+    output: &mut [Pixel],
+    stride: u32,
+    height: u32,
+    sigma: f64,
+    axis: (f64, f64),
+) {
+    let kernel = blur_kernel_1d(sigma);
     for y in 0..height {
         for x in 0..stride {
-            let mut acc = [0.0f32; 4];
-            for (offset, weight) in kernel_x.iter().enumerate() {
-                let o = offset as i64;
-                let left = sample(x as i64 - o, y as i64);
-                let right = sample(x as i64 + o, y as i64);
-                let lanes = [
-                    [left.r, right.r],
-                    [left.g, right.g],
-                    [left.b, right.b],
-                    [left.a, right.a],
-                ];
-                for lane in 0..4 {
-                    acc[lane] += if o == 0 {
-                        lanes[lane][0] * weight
-                    } else {
-                        (lanes[lane][0] + lanes[lane][1]) * weight
-                    };
-                }
-            }
-            middle[(y * stride + x) as usize] = Pixel {
-                r: acc[0],
-                g: acc[1],
-                b: acc[2],
-                a: acc[3],
-            };
-        }
-    }
-    for y in 0..height {
-        for x in 0..stride {
-            let mut acc = [0.0f32; 4];
-            for (offset, weight) in kernel_y.iter().enumerate() {
-                let o = offset as i64;
-                let up = middle
-                    [((y as i64 - o).max(0).min(height as i64 - 1) as u32 * stride + x) as usize];
-                let down = middle
-                    [((y as i64 + o).max(0).min(height as i64 - 1) as u32 * stride + x) as usize];
-                // Transparent black outside the logical surface.
-                let up = if y as i64 - o < 0 { Pixel::CLEAR } else { up };
-                let down = if y as i64 + o >= height as i64 {
+            let mut value = Pixel::CLEAR;
+            for (offset, weight) in kernel.iter().enumerate() {
+                let dx = offset as f64 * axis.0;
+                let dy = offset as f64 * axis.1;
+                let left = sample_pixel(source, stride, x as f64 - dx, y as f64 - dy);
+                let right = if offset == 0 {
                     Pixel::CLEAR
                 } else {
-                    down
+                    sample_pixel(source, stride, x as f64 + dx, y as f64 + dy)
                 };
-                let lanes = [
-                    [up.r, down.r],
-                    [up.g, down.g],
-                    [up.b, down.b],
-                    [up.a, down.a],
-                ];
-                for lane in 0..4 {
-                    acc[lane] += if o == 0 {
-                        lanes[lane][0] * weight
-                    } else {
-                        (lanes[lane][0] + lanes[lane][1]) * weight
-                    };
-                }
+                value.r += (left.r + right.r) * weight;
+                value.g += (left.g + right.g) * weight;
+                value.b += (left.b + right.b) * weight;
+                value.a += (left.a + right.a) * weight;
             }
-            pixels[(y * stride + x) as usize] = Pixel {
-                r: acc[0],
-                g: acc[1],
-                b: acc[2],
-                a: acc[3],
-            };
+            output[(y * stride + x) as usize] = value;
         }
     }
 }
@@ -722,6 +1138,7 @@ fn apply_drop_shadow(
     pixels: &mut [Pixel],
     stride: u32,
     shadow: &petunia_render_model::ShadowEffect,
+    view: ViewTransform,
 ) {
     if stride == 0 || pixels.is_empty() {
         return;
@@ -736,29 +1153,34 @@ fn apply_drop_shadow(
             a: pixel.a,
         })
         .collect();
-    let ox = shadow.offset.0.round() as i64;
-    let oy = shadow.offset.1.round() as i64;
+    let (sin, cos) = view.rotation.sin_cos();
+    let ox = (shadow.offset.0 * cos - shadow.offset.1 * sin) * view.scale;
+    let oy = (shadow.offset.0 * sin + shadow.offset.1 * cos) * view.scale;
     let height = pixels.len() as u32 / stride;
     let mut shifted = vec![Pixel::CLEAR; pixels.len()];
     for y in 0..height {
         for x in 0..stride {
-            let (sx, sy) = (x as i64 - ox, y as i64 - oy);
-            if sx >= 0 && sy >= 0 && sx < stride as i64 && sy < height as i64 {
-                shifted[(y * stride + x) as usize] =
-                    layer[(sy as u32 * stride + sx as u32) as usize];
-            }
+            shifted[(y * stride + x) as usize] =
+                sample_pixel(&layer, stride, x as f64 - ox, y as f64 - oy);
         }
     }
     layer = shifted;
-    separable_blur(&mut layer, stride, shadow.sigma.0, shadow.sigma.1);
+    separable_blur(
+        &mut layer,
+        stride,
+        shadow.sigma.0 * view.scale,
+        shadow.sigma.1 * view.scale,
+        view.rotation,
+    );
     // Colorize in compositing space, then over behind the content.
     for pixel in layer.iter_mut() {
         let color = shadow.color;
+        let alpha = pixel.a * color.a * shadow.opacity;
         *pixel = Pixel {
-            r: color.r * pixel.a,
-            g: color.g * pixel.a,
-            b: color.b * pixel.a,
-            a: pixel.a,
+            r: color.r * alpha,
+            g: color.g * alpha,
+            b: color.b * alpha,
+            a: alpha,
         };
     }
     for (dst, shadow_pixel) in pixels.iter_mut().zip(layer.iter()) {
@@ -786,7 +1208,7 @@ mod tests {
             pages: vec![RenderPage {
                 page: PageId::new_v4(),
                 size: Size2::new(64.0, 64.0).expect("valid"),
-                primitives: vec![RenderPrimitive::Vector(VectorPrimitive {
+                primitives: vec![RenderPrimitive::Vector(Box::new(VectorPrimitive {
                     source: ObjectId::new_v4(),
                     geometry: path,
                     appearance: RenderAppearance {
@@ -801,13 +1223,14 @@ mod tests {
                     },
                     transform: petunia_core::Transform2D::IDENTITY,
                     bounds: petunia_core::Rect::new(10.0, 10.0, 20.0, 20.0),
-                })],
+                }))],
             }],
             resources: petunia_render_model::RenderResourceTable::new(),
         };
         RenderFrame {
             snapshot,
             view: ViewTransform {
+                rotation: 0.0,
                 scale: 1.0,
                 offset_x: 0.0,
                 offset_y: 0.0,
@@ -922,6 +1345,7 @@ mod tests {
 
         let mut frame = frame_with_square();
         let gradient = RenderGradient {
+            transform: petunia_core::Transform2D::IDENTITY,
             stops: vec![
                 RenderGradientStop {
                     offset: 0.0,
@@ -994,6 +1418,7 @@ mod tests {
 
         let mut frame = frame_with_square();
         let gradient = RenderGradient {
+            transform: petunia_core::Transform2D::IDENTITY,
             stops: vec![
                 RenderGradientStop {
                     offset: 0.0,

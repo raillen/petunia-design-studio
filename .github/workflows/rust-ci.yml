@@ -23,22 +23,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install stable toolchain
-        uses: dtolnay/rust-action@stable
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: 1.99.0
           components: rustfmt, clippy
 
       - name: Format
         run: cargo fmt --all -- --check
 
       - name: Check workspace
-        run: cargo check --workspace --all-targets
+        run: cargo check --locked --workspace --all-targets
 
       - name: Unit and integration tests
-        run: cargo test --workspace
+        run: cargo test --locked --workspace
 
       - name: Clippy (deny warnings)
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
   # Property suites exercitam invariantes com entradas geradas.
   properties:
@@ -47,16 +48,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install stable toolchain
-        uses: dtolnay/rust-action@stable
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
       - name: Core properties
-        run: cargo test -p petunia-core --test properties
+        run: cargo test --locked -p petunia-core --test properties
       - name: Engine properties and fuzz guards
         run: |
-          cargo test -p petunia-engine --test properties
-          cargo test -p petunia-engine --test fuzz
+          cargo test --locked -p petunia-engine --test properties
+          cargo test --locked -p petunia-engine --test fuzz
       - name: Render properties
-        run: cargo test -p petunia-render --test properties
+        run: cargo test --locked -p petunia-render --test properties
 
   # Suíte pesada: cadência própria (noite/manual), não em todo commit.
   benchmarks:
@@ -66,14 +69,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install stable toolchain
-        uses: dtolnay/rust-action@stable
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
       - name: Geometry benchmarks
-        run: cargo bench -p petunia-engine --bench geometry -- --quick
+        run: cargo bench --locked -p petunia-engine --bench geometry -- --quick
       - name: Spatial benchmarks
-        run: cargo bench -p petunia-engine --bench spatial -- --quick
+        run: cargo bench --locked -p petunia-engine --bench spatial -- --quick
       - name: Render benchmarks
-        run: cargo bench -p petunia-render --bench render -- --quick
+        run: cargo bench --locked -p petunia-render --bench render -- --quick
 
   # Website gates: SPA syntax, tracker consistency and data validation.
   website:

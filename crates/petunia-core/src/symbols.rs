@@ -128,6 +128,11 @@ pub struct SymbolRegistry {
 }
 
 impl SymbolRegistry {
+    /// Remove one record by identity; callers validate remaining references.
+    pub fn remove(&mut self, id: SymbolId) -> Option<SymbolDefinition> {
+        self.definitions.remove(&id)
+    }
+
     #[must_use]
     pub fn new() -> Self {
         Self {

@@ -293,3 +293,11 @@ Não usar DocumentId original para inferir que objetos devem preservar ObjectId.
 10. Clipboard externo é input não confiável.
 11. Paste inteiro é uma Transaction.
 12. Fragment schema é separado do schema completo de Document.
+
+## Closure e paste verificados em 2026-10-10
+
+Fragments coletam dependências transitivas de objetos, clip/mask/text refs, styles, fontes, resources, spots, swatches, símbolos, efeitos e grids. Remapping inclui IDs de contours, anchors e appearance items. Resources embedded recebem novos nomes de entry, evitando colisão dentro do PTND. Grids de Page são reassociados à página de destino.
+
+Copy de um subtree preserva seu world transform; paste em grupo usa a inversa do world transform do destino para manter a posição no documento. Inserção de registries, grids e subtrees constitui uma transação com undo conjunto. O clipboard nativo da sessão transporta fragment e blobs; hashes, decode e budgets são verificados antes do commit. Linked resources preservam sua URI e não disparam leitura implícita.
+
+Evidência: `history_fragments_regressions.rs` (12 testes) e `session_boundary.rs`. Policies de reuso externo e closure de novas entidades devem acompanhar seus futuros handlers. Gates em [Verification](#/docs/00-architecture/verification.md).

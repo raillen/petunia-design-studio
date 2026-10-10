@@ -1,0 +1,1367 @@
+{
+  "revision": {
+    "phosphor": "2b75f3ad12b420c9504ef05df8d2564a28f8500e",
+    "tabler": "a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d"
+  },
+  "license": "MIT; see individual preserved notices",
+  "assets": [
+    {
+      "key": "panel.dock",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/panel.dock.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/sidebar-simple.svg",
+      "sha256": "36818e1212cb24f5e1aa7e10480b0f4dc399d2c61d9b9b53c062d799dde162a3"
+    },
+    {
+      "key": "panel.dock",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/panel.dock.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/sidebar-simple-fill.svg",
+      "sha256": "a460c13062e50b43a643bbb1f52c16f08ba79d512d4be553c238381bc792bb0d"
+    },
+    {
+      "key": "panel.dock",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/panel.dock.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/layout-sidebar-right.svg",
+      "sha256": "fd2aa6ae63ca7d64f37d69053cbb9e2b39b2735d005767d6ece5a749b4167fdb"
+    },
+    {
+      "key": "panel.dock",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/panel.dock.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/layout-sidebar-right.svg",
+      "sha256": "800dc6f436d818085c1f10e8cd66a5b8e943c1898cf4b60c6192e0fb5eb6a80b"
+    },
+    {
+      "key": "panel.float",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/panel.float.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/arrow-square-out.svg",
+      "sha256": "8610e8f5c7d4952ae1ada34ef56fa7cbab1780bc85f25a5c9482b74144790fc8"
+    },
+    {
+      "key": "panel.float",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/panel.float.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/arrow-square-out-fill.svg",
+      "sha256": "1b26879605d3490b52b0dfa2b5ccaa52cad9e33607011c56f023c3bcb15f2984"
+    },
+    {
+      "key": "panel.float",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/panel.float.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/external-link.svg",
+      "sha256": "95de8d4e3e77d34b39a94e157ff26b5a860015c6ce3056794f63dd3a55805bbc"
+    },
+    {
+      "key": "panel.float",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/panel.float.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/external-link.svg",
+      "sha256": "1d0095325542e1a89bf41e5aae28a3aa4a59076f57809a3b8c384c71f8c1ad59"
+    },
+    {
+      "key": "object.path",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/object.path.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/bezier-curve.svg",
+      "sha256": "5ffb4c2ea00f0a68d631173f17b9f353d2fe0f44ed213ac7c943d6b10e6dc364"
+    },
+    {
+      "key": "object.path",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/object.path.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/bezier-curve-fill.svg",
+      "sha256": "6eb8aecc5185c4917e784504ea12859e81d5a88a51d9c4564deacbdde5a7b86c"
+    },
+    {
+      "key": "object.path",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/object.path.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/vector-bezier.svg",
+      "sha256": "631b0e54163bcf64ea012a3b15d93e47eb30f7142c6e20cedf1de80fdeea2aed"
+    },
+    {
+      "key": "object.path",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/vector-bezier.svg"
+    },
+    {
+      "key": "object.group",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/object.group.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/folders.svg",
+      "sha256": "36b164dda05b50eaecd3325301032e46c61f0eefb566eea97e2247ef87438274"
+    },
+    {
+      "key": "object.group",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/object.group.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/folders-fill.svg",
+      "sha256": "7f4e4f6a637ef4a83e962f40fcbb614799c163c485c0072bf0d71a294f2b8f01"
+    },
+    {
+      "key": "object.group",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/object.group.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/folders.svg",
+      "sha256": "4671b534becf8f0589b8fbd8872d26abcc2d2eda444a8385d23718dc59242d39"
+    },
+    {
+      "key": "object.group",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/object.group.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/folders.svg",
+      "sha256": "00a86c24cd305b8112a0e57b83bbd0b78c115a8d2558b304bb4f0124530218da"
+    },
+    {
+      "key": "object.shape",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/object.shape.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/shapes.svg",
+      "sha256": "c75e2c304e0383be46b1b8e8895baf8d17ef656c9c9a72cb29a3fb95216853df"
+    },
+    {
+      "key": "object.shape",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/object.shape.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/shapes-fill.svg",
+      "sha256": "f271aed310730de556cca69e12b6c5ba64becb0c4bdc398d2d8ff330197eca32"
+    },
+    {
+      "key": "object.shape",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/object.shape.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/category.svg",
+      "sha256": "92ee7386e4984da8fe31c40e52362dd1378c66310eb7496fcdf4d3b3b6415a38"
+    },
+    {
+      "key": "object.shape",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/object.shape.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/category.svg",
+      "sha256": "a0d03ba6247cf5676dd5229284b2abd86dd9c70a1ba61cdcdfca6126118e6b9a"
+    },
+    {
+      "key": "tool.select",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/tool.select.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/cursor.svg",
+      "sha256": "67df1a1f6d7868c4eed4705775cafd972c19a3ff25f99b1b260b525b7c85d1e4"
+    },
+    {
+      "key": "tool.select",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/tool.select.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/cursor-fill.svg",
+      "sha256": "7b3c9707eee43737c4109a73f081d6059b8c65f1279bb5dd8e9a3c75e185013d"
+    },
+    {
+      "key": "tool.select",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/tool.select.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/pointer.svg",
+      "sha256": "811735d187eaf6c8a7b7f06053140b8284cf4b1b2ea7ba1c8f340f1fbafbac24"
+    },
+    {
+      "key": "tool.select",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/tool.select.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/pointer.svg",
+      "sha256": "80615e4b6980aa33a000c6dc22a976221e9fd3a1c1d9d5ba3be7f15d5ea224fa"
+    },
+    {
+      "key": "tool.node",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/tool.node.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/bezier-curve.svg",
+      "sha256": "5ffb4c2ea00f0a68d631173f17b9f353d2fe0f44ed213ac7c943d6b10e6dc364"
+    },
+    {
+      "key": "tool.node",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/tool.node.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/bezier-curve-fill.svg",
+      "sha256": "6eb8aecc5185c4917e784504ea12859e81d5a88a51d9c4564deacbdde5a7b86c"
+    },
+    {
+      "key": "tool.node",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/tool.node.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/vector-bezier.svg",
+      "sha256": "631b0e54163bcf64ea012a3b15d93e47eb30f7142c6e20cedf1de80fdeea2aed"
+    },
+    {
+      "key": "tool.node",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/vector-bezier.svg"
+    },
+    {
+      "key": "tool.pen",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/tool.pen.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/pen-nib.svg",
+      "sha256": "1dd351c36da3639df0efe0c73d2524f5c00ca3e1ca2c8f66cc48d0e60f162736"
+    },
+    {
+      "key": "tool.pen",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/tool.pen.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/pen-nib-fill.svg",
+      "sha256": "e72f93917a62e549dbcf1c36ef82d2a16c816974dc2ae631e7d3c83ec0a035b1"
+    },
+    {
+      "key": "tool.pen",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/tool.pen.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/vector-spline.svg",
+      "sha256": "fd50c976d3c9eebfe69266ad14f575e1af2814e4fd1d6dfe569114b0ccae4558"
+    },
+    {
+      "key": "tool.pen",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/vector-spline.svg"
+    },
+    {
+      "key": "tool.rectangle",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/tool.rectangle.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/rectangle.svg",
+      "sha256": "0c0d719ced81064b5a466d2dcf39a09077d39309773504d0bdd02b2fdc9a4590"
+    },
+    {
+      "key": "tool.rectangle",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/tool.rectangle.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/rectangle-fill.svg",
+      "sha256": "7183ed26332d150613af52176ab26d13ba8512399511e4b91d997aeda72b9ea9"
+    },
+    {
+      "key": "tool.rectangle",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/tool.rectangle.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/rectangle.svg",
+      "sha256": "718463a9c2e832fecb673fc7ab3cb6dc99efad9b27ac1f1c7af46353ff92a151"
+    },
+    {
+      "key": "tool.rectangle",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/tool.rectangle.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/rectangle.svg",
+      "sha256": "3b81a029bfc4f41d87d4bbb61889cb5db2596a4593ff3648c3dcf791903d7354"
+    },
+    {
+      "key": "tool.ellipse",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/tool.ellipse.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/circle.svg",
+      "sha256": "efc9ee22b165d0d40c21b1c5ebe2463c99744af44ab6f530b4d6c44f25181974"
+    },
+    {
+      "key": "tool.ellipse",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/tool.ellipse.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/circle-fill.svg",
+      "sha256": "196c9eaad1db595b456841b93a407f932b281d5ba9f1038c03a93a3a6969cb12"
+    },
+    {
+      "key": "tool.ellipse",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/tool.ellipse.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/circle.svg",
+      "sha256": "d7e7e7ec68e225eabf75483881ce12a290a746d0e4ebb56b874c05e068438d0b"
+    },
+    {
+      "key": "tool.ellipse",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/tool.ellipse.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/circle.svg",
+      "sha256": "c802ae8a2aa74414fd86d3f85ab70991a0ac56f6aff66ece2db9b90233ce78cb"
+    },
+    {
+      "key": "tool.zoom",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/tool.zoom.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/magnifying-glass-plus.svg",
+      "sha256": "c61e00fdb994983b59cab26905a7ed45342d7319115d29f50050e26d1f210cb1"
+    },
+    {
+      "key": "tool.zoom",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/tool.zoom.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/magnifying-glass-plus-fill.svg",
+      "sha256": "c6e475df683ecab9b46cbe9e96fbe82b02266e3797c384b3c5949c2a637a1ed5"
+    },
+    {
+      "key": "tool.zoom",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/tool.zoom.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/zoom-in.svg",
+      "sha256": "b361e358c8d0035b2b822b2b497f83b60a00c31a6300b502838292c706070c4e"
+    },
+    {
+      "key": "tool.zoom",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/tool.zoom.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/zoom-in.svg",
+      "sha256": "e01dd9ca5d97c5745e45d66cab3175b4b2b19b49f4fe9a7c25f13fb6d31b9f1f"
+    },
+    {
+      "key": "tool.pan",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/tool.pan.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/hand.svg",
+      "sha256": "b845c51acbe69c5ac2ec208c5648806f33c0a86b06d2dfa53ebe599ccb0f9c65"
+    },
+    {
+      "key": "tool.pan",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/tool.pan.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/hand-fill.svg",
+      "sha256": "9a1598a0dce127935ad97ede769c77629f422de7a1eabe54b4ec1b2d0c19369b"
+    },
+    {
+      "key": "tool.pan",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/tool.pan.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/hand-stop.svg",
+      "sha256": "4a434c0cf83b70d5b7900b12a7531c7759e1467927a611454cb4e71b7140e377"
+    },
+    {
+      "key": "tool.pan",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/hand-stop.svg"
+    },
+    {
+      "key": "persona.vector",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/persona.vector.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/bezier-curve.svg",
+      "sha256": "5ffb4c2ea00f0a68d631173f17b9f353d2fe0f44ed213ac7c943d6b10e6dc364"
+    },
+    {
+      "key": "persona.vector",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/persona.vector.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/bezier-curve-fill.svg",
+      "sha256": "6eb8aecc5185c4917e784504ea12859e81d5a88a51d9c4564deacbdde5a7b86c"
+    },
+    {
+      "key": "persona.vector",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/persona.vector.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/vector-bezier.svg",
+      "sha256": "631b0e54163bcf64ea012a3b15d93e47eb30f7142c6e20cedf1de80fdeea2aed"
+    },
+    {
+      "key": "persona.vector",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/vector-bezier.svg"
+    },
+    {
+      "key": "persona.pixel",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/persona.pixel.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/squares-four.svg",
+      "sha256": "f70d6b20e08e028ab5b1714077681910a2431092cf7a23b82366ddaec554ab87"
+    },
+    {
+      "key": "persona.pixel",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/persona.pixel.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/squares-four-fill.svg",
+      "sha256": "728b2dbfa447ec3fec54f0f8b3b52cec573c51da00c00a6d73f699027758340c"
+    },
+    {
+      "key": "persona.pixel",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/persona.pixel.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/grid-dots.svg",
+      "sha256": "648ea8f11658b01bcebad577ad54c7fbd93c0203679cc27ad2281942f89d614e"
+    },
+    {
+      "key": "persona.pixel",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/grid-dots.svg"
+    },
+    {
+      "key": "persona.layout",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/persona.layout.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/columns.svg",
+      "sha256": "8b4196e037ffb15d68f031b437fa081c6c1907e17ca58225bdf6e3bd6c4e1ecd"
+    },
+    {
+      "key": "persona.layout",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/persona.layout.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/columns-fill.svg",
+      "sha256": "ad118a0007021058813da73cd5d6c8ac6972f3243ec6d1170b21beac7c8b47a1"
+    },
+    {
+      "key": "persona.layout",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/persona.layout.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/layout.svg",
+      "sha256": "55b849e496f5f4202f8a24f2518048b2dec8717312b50dacf7dc1663842f07c0"
+    },
+    {
+      "key": "persona.layout",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/persona.layout.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/layout.svg",
+      "sha256": "8e8e0192df6f76bfef1f44ac213c9a3a6026d46d95bd3712cf2d860b6cd5d1bf"
+    },
+    {
+      "key": "edit.undo",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/edit.undo.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/arrow-counter-clockwise.svg",
+      "sha256": "4eb160d5ae781107c674481ac081962e6bce6281a646129e6c3f960b9dd5dac6"
+    },
+    {
+      "key": "edit.undo",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/edit.undo.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/arrow-counter-clockwise-fill.svg",
+      "sha256": "e3d0f0459b6cbb52c485987d8612d77095202cf96c0b5e39b203686b004d864f"
+    },
+    {
+      "key": "edit.undo",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/edit.undo.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/arrow-back-up.svg",
+      "sha256": "42a20a833068ac155cc2e3a4176a9e80a918cc62c8bf48d3f826a2c47bde739d"
+    },
+    {
+      "key": "edit.undo",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/arrow-back-up.svg"
+    },
+    {
+      "key": "edit.redo",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/edit.redo.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/arrow-clockwise.svg",
+      "sha256": "4a78a777b692cb74826e3071ae7049cc0d3927e68a7b8272e7251b1760cd771f"
+    },
+    {
+      "key": "edit.redo",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/edit.redo.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/arrow-clockwise-fill.svg",
+      "sha256": "78963c5a0ad83b74ab6b382640759bc3b8b4f57afb770e7575ad884586476bd6"
+    },
+    {
+      "key": "edit.redo",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/edit.redo.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/arrow-forward-up.svg",
+      "sha256": "fd66d62f72c9c638108fbb97738d9ca1f969b4cf2cb54ece6f79b44d586409ad"
+    },
+    {
+      "key": "edit.redo",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/arrow-forward-up.svg"
+    },
+    {
+      "key": "edit.delete",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/edit.delete.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/trash.svg",
+      "sha256": "e6a830c0409f9e101e3695c981eef98427d39fd01f502b9cbd6900930b01f19c"
+    },
+    {
+      "key": "edit.delete",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/edit.delete.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/trash-fill.svg",
+      "sha256": "f78767cc15e1a7d6eea49c4efb515cf6fceaf07fbc421e8ce18373d07c14b673"
+    },
+    {
+      "key": "edit.delete",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/edit.delete.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/trash.svg",
+      "sha256": "4b90fa07a6d980736951d9e83b91432972b2bcecf81be4578608a0983f2ebc9d"
+    },
+    {
+      "key": "edit.delete",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/edit.delete.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/trash.svg",
+      "sha256": "dcb8e44b143d88efbfc742068cfbb1abdd2fc1af8d66d865acf7d2fa6b2a6ade"
+    },
+    {
+      "key": "edit.duplicate",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/edit.duplicate.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/copy.svg",
+      "sha256": "5a892fc6a72866e60c67db2088a87653cf44b57b1a5d183b36e950cdc5dd66b3"
+    },
+    {
+      "key": "edit.duplicate",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/edit.duplicate.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/copy-fill.svg",
+      "sha256": "eac5e853ad04f714e8d7f74932b62a6227d0853c9f31550e006c9b20f469172f"
+    },
+    {
+      "key": "edit.duplicate",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/edit.duplicate.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/copy.svg",
+      "sha256": "3a455a299db4ec939fd0473d15c81c1d3f30f65dec81a7de816317c989b06073"
+    },
+    {
+      "key": "edit.duplicate",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/edit.duplicate.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/copy.svg",
+      "sha256": "f9e4a4c376be69cea99e51ea4fa0d4b21689c11f78dd9413c55da810ad969f1c"
+    },
+    {
+      "key": "edit.selectAll",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/edit.selectAll.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/selection-all.svg",
+      "sha256": "881c1d741d30b990cddd22684ac16a2b2c4987d83d8678762b6c184a27de71e7"
+    },
+    {
+      "key": "edit.selectAll",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/edit.selectAll.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/selection-all-fill.svg",
+      "sha256": "0915fd72102ba5e6dc9ab0d476f655cbf7269fa247f0771e75e8dfc3092e53df"
+    },
+    {
+      "key": "edit.selectAll",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/edit.selectAll.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/select-all.svg",
+      "sha256": "e96ce4ff4318ae3ca93538491957617013e7916bdf0a506d5f6b38df3d68f03c"
+    },
+    {
+      "key": "edit.selectAll",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/select-all.svg"
+    },
+    {
+      "key": "document.new",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/document.new.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/file-plus.svg",
+      "sha256": "3b8413ff4a86a81cc9b32b2fa49c7088eaf40637637b7c18dc35c08b880eb56a"
+    },
+    {
+      "key": "document.new",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/document.new.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/file-plus-fill.svg",
+      "sha256": "f3122e2f1912627e7469220d73b7159e11799a5a92548e7bb2b0ac2af9fb07b6"
+    },
+    {
+      "key": "document.new",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/document.new.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/file-plus.svg",
+      "sha256": "fb1afebc6cdfe0679ed76018d2d2dbb96d927dddb093857e0c6a992d06cf38df"
+    },
+    {
+      "key": "document.new",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/file-plus.svg"
+    },
+    {
+      "key": "document.open",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/document.open.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/folder-open.svg",
+      "sha256": "9157518d00547242d3986c4fdaaf44a62ef056caf3ecee0c88137529947170ea"
+    },
+    {
+      "key": "document.open",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/document.open.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/folder-open-fill.svg",
+      "sha256": "f9e57c3d40ab536915f8302a4390405f5660ee7b7275a3f80b384d977c59373e"
+    },
+    {
+      "key": "document.open",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/document.open.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/folder-open.svg",
+      "sha256": "eed6d7ccbb5452986fa4f1083cc8d1afdee8f49a68af5c875f0689cdf5fb93a4"
+    },
+    {
+      "key": "document.open",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/document.open.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/folder-open.svg",
+      "sha256": "b79eeae8c61161645b893bec7e08ceb66ba859ed1377aed6bd27c61317e87e41"
+    },
+    {
+      "key": "document.save",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/document.save.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/floppy-disk.svg",
+      "sha256": "067b385ee62469be500d2d5bcd10e2aedd7529cd615ed180fa8414aaef0e40ab"
+    },
+    {
+      "key": "document.save",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/document.save.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/floppy-disk-fill.svg",
+      "sha256": "5cdcf21a2857922007b846b5ad02490374cf1a9bdf724d8be1fa9240ad3e246c"
+    },
+    {
+      "key": "document.save",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/document.save.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/device-floppy.svg",
+      "sha256": "332fb64778e96e0de3ef6a4262baa8bf2c1983d478bb14d284c4a2450f9e0130"
+    },
+    {
+      "key": "document.save",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/document.save.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/device-floppy.svg",
+      "sha256": "a24251298e67e031e3aff5a9d32f7c2fa1277c86bca0bea0723fef98e8f3ce72"
+    },
+    {
+      "key": "document.export",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/document.export.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/export.svg",
+      "sha256": "b3323cae86c93d7a4d344e921dc1500f97a73c66e5d9f0e6c46aab64e4a6f616"
+    },
+    {
+      "key": "document.export",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/document.export.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/export-fill.svg",
+      "sha256": "7d5ddac3f992a6ff4af227f61557b79b71b4071e437b24a0d171c7e077aabcaa"
+    },
+    {
+      "key": "document.export",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/document.export.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/file-export.svg",
+      "sha256": "0e3f251271b59c97bc61dc755f815c18f662f062b53ae0cd6030a93d709fe48d"
+    },
+    {
+      "key": "document.export",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/file-export.svg"
+    },
+    {
+      "key": "workspace.preferences",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/workspace.preferences.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/gear-six.svg",
+      "sha256": "2bb05ec80cc37505a3f21c74989dbb297ab8442a668f5ffbd6a8f7c1d5794c7b"
+    },
+    {
+      "key": "workspace.preferences",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/workspace.preferences.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/gear-six-fill.svg",
+      "sha256": "dc303bf88571d9aa8d56c30d2630303aa7aba4ca21c21010be3549d6c17666ce"
+    },
+    {
+      "key": "workspace.preferences",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/workspace.preferences.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/settings.svg",
+      "sha256": "ef9cf42d822c00b4fad5bc5eeceddd4e1ec3774bb7ddd09891d0fba274bc3e95"
+    },
+    {
+      "key": "workspace.preferences",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/workspace.preferences.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/settings.svg",
+      "sha256": "551b0c242b49f9051cbdb8340cd1f66ff41def571460e9cb489564f742b8d37b"
+    },
+    {
+      "key": "workspace.personas",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/workspace.personas.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/user-circle.svg",
+      "sha256": "5aee25838c1915058940900df322afc36b76f4ea7e48499c33603cf121258b2a"
+    },
+    {
+      "key": "workspace.personas",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/workspace.personas.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/user-circle-fill.svg",
+      "sha256": "4e16cdba116195993e6398bb097e7c4b354fb129fafdf2b56fd4b7c069f440d3"
+    },
+    {
+      "key": "workspace.personas",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/workspace.personas.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/user-circle.svg",
+      "sha256": "e3c4ab455255b68a305cd8a9e805e710d95775c27a15936338d0ee472b992be1"
+    },
+    {
+      "key": "workspace.personas",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/user-circle.svg"
+    },
+    {
+      "key": "workspace.palette",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/workspace.palette.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/command.svg",
+      "sha256": "50d8e0a378d091226285385d8e9f692a8238487273b9cc64e2ef28e2b34f2495"
+    },
+    {
+      "key": "workspace.palette",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/workspace.palette.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/command-fill.svg",
+      "sha256": "79330589f8a666ae65f0faa9293c94695c15bf5658231ab4d8bb3f954ac3b49d"
+    },
+    {
+      "key": "workspace.palette",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/workspace.palette.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/command.svg",
+      "sha256": "e2c48826702bf66925f59380f78e10404f23562b90563a95112cb004acb80e45"
+    },
+    {
+      "key": "workspace.palette",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/command.svg"
+    },
+    {
+      "key": "workspace.panels",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/workspace.panels.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/sidebar-simple.svg",
+      "sha256": "36818e1212cb24f5e1aa7e10480b0f4dc399d2c61d9b9b53c062d799dde162a3"
+    },
+    {
+      "key": "workspace.panels",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/workspace.panels.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/sidebar-simple-fill.svg",
+      "sha256": "a460c13062e50b43a643bbb1f52c16f08ba79d512d4be553c238381bc792bb0d"
+    },
+    {
+      "key": "workspace.panels",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/workspace.panels.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/layout-sidebar-right.svg",
+      "sha256": "fd2aa6ae63ca7d64f37d69053cbb9e2b39b2735d005767d6ece5a749b4167fdb"
+    },
+    {
+      "key": "workspace.panels",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/workspace.panels.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/layout-sidebar-right.svg",
+      "sha256": "800dc6f436d818085c1f10e8cd66a5b8e943c1898cf4b60c6192e0fb5eb6a80b"
+    },
+    {
+      "key": "workspace.shortcuts",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/workspace.shortcuts.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/keyboard.svg",
+      "sha256": "96646775c552eb7944a88071ec3d7b93f28fd0e19ae995cfb52957403e38422e"
+    },
+    {
+      "key": "workspace.shortcuts",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/workspace.shortcuts.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/keyboard-fill.svg",
+      "sha256": "43d265edc6585ecc2a8a28edd15abe550ad5aa9ffe916c439e8cd76d6ea7df54"
+    },
+    {
+      "key": "workspace.shortcuts",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/workspace.shortcuts.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/keyboard.svg",
+      "sha256": "9e290c3ff26878fad5fcf338eb5c8dc203651a20cc1806fd6d6f40625668c90b"
+    },
+    {
+      "key": "workspace.shortcuts",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/workspace.shortcuts.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/keyboard.svg",
+      "sha256": "a94f6763efd761da6b674d85d077c1f76071d495f890fabb389315080ca58b73"
+    },
+    {
+      "key": "view.fit",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/view.fit.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/arrows-out.svg",
+      "sha256": "f6cc35278b35b8bf1ab115ad65ad9925b75fc014eb47e81169a04cd24c6417fd"
+    },
+    {
+      "key": "view.fit",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/view.fit.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/arrows-out-fill.svg",
+      "sha256": "ffd62ba3569a4c5d5f3780c8f0b3f9b90c887f7eed13b57e5c9bedb277bbeccc"
+    },
+    {
+      "key": "view.fit",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/view.fit.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/arrows-maximize.svg",
+      "sha256": "106923855401d2164938e7db50f20c6a47c90d8f4aa4e299b94792ea87dd75e5"
+    },
+    {
+      "key": "view.fit",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/arrows-maximize.svg"
+    },
+    {
+      "key": "object.lock",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/object.lock.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/lock-simple.svg",
+      "sha256": "b99d3713ac86cb610eb66974d69de2aa1223c4f6387fb1053e3d375e62f5dc1c"
+    },
+    {
+      "key": "object.lock",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/object.lock.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/lock-simple-fill.svg",
+      "sha256": "54b137caf94b8082e63a2831e5b726bbc9cd32ad40938bf5656ff4d44b442d95"
+    },
+    {
+      "key": "object.lock",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/object.lock.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/lock.svg",
+      "sha256": "407856048124fdd63239f75a3640ca8f20a9acbc1f49cac9de0bcdb1cb42ec5f"
+    },
+    {
+      "key": "object.lock",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/object.lock.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/lock.svg",
+      "sha256": "6fe00677330957224bbba458c0dc653b2bb017db6903ace113ce927532383a27"
+    },
+    {
+      "key": "object.unlock",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/object.unlock.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/lock-simple-open.svg",
+      "sha256": "55c3dcdb0db66b65f4afab5ead515b0db381aecfbac9f61ec1e2691d83cc5330"
+    },
+    {
+      "key": "object.unlock",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/object.unlock.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/lock-simple-open-fill.svg",
+      "sha256": "fa4603d9987e96952fb892c19a717bfa674af6520f1e469eb6a812411303c60e"
+    },
+    {
+      "key": "object.unlock",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/object.unlock.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/lock-open.svg",
+      "sha256": "f1b1ef8aa7cdaad103e0062298ba5bf26c698b9f8a5c142cddeff19ab20b271c"
+    },
+    {
+      "key": "object.unlock",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/lock-open.svg"
+    },
+    {
+      "key": "object.visible",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/object.visible.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/eye.svg",
+      "sha256": "91d39f20bf95e0f36c07bd79b83a85fe6ff4ca20e2759c4afee7419ef80403fe"
+    },
+    {
+      "key": "object.visible",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/object.visible.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/eye-fill.svg",
+      "sha256": "86381b51cb6f305019503b4c5d4b02fe8df5941bab3f1475ee873006a8708420"
+    },
+    {
+      "key": "object.visible",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/object.visible.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/eye.svg",
+      "sha256": "45bdbd35bb18e9997a86dad8db6eb90931d1d53884484baf2c65e34d6f6e4f93"
+    },
+    {
+      "key": "object.visible",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/object.visible.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/eye.svg",
+      "sha256": "239a66701fff3a2c9926b93deb4e5d4b6cc8c4605f2cee8e7f601296129ebb7a"
+    },
+    {
+      "key": "object.hidden",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/object.hidden.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/eye-slash.svg",
+      "sha256": "070b0296a7df89ebf4cec12436e323b5531d458aa9aed3608924085889e1fd17"
+    },
+    {
+      "key": "object.hidden",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/object.hidden.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/eye-slash-fill.svg",
+      "sha256": "fc34ad807da63ae5f99a235618cddc1b2bef8d98d7c95004d38b61312540b90d"
+    },
+    {
+      "key": "object.hidden",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/object.hidden.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/eye-off.svg",
+      "sha256": "7fd56939026b76c23b64597bab2ad0b6aab824eef4e0edd772626126b8b20433"
+    },
+    {
+      "key": "object.hidden",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/eye-off.svg"
+    },
+    {
+      "key": "action.confirm",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/action.confirm.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/check.svg",
+      "sha256": "cbb89a8c42f283d4f846eb935e05d88c1be04462f16480e068c0f82b9ce40b12"
+    },
+    {
+      "key": "action.confirm",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/action.confirm.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/check-fill.svg",
+      "sha256": "d114007dc371976dc3e8f4ebc59c5aef429fae59ae58d56acdf231a52b4700be"
+    },
+    {
+      "key": "action.confirm",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/action.confirm.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/check.svg",
+      "sha256": "e206067a7d570997b5b3a7d30ab287c0b15a492787649a8b96dff8fad2862fbe"
+    },
+    {
+      "key": "action.confirm",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/action.confirm.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/check.svg",
+      "sha256": "210f3552d214d930102d850b8cac3d7fb2330b5efc8bd9ec30993b7b6f514b6b"
+    },
+    {
+      "key": "action.cancel",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/action.cancel.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/x.svg",
+      "sha256": "7397b15e1fa66eaf6ff9b59fe91d483cb5c3bcf75b2fe052097ab6f0593b513a"
+    },
+    {
+      "key": "action.cancel",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/action.cancel.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/x-fill.svg",
+      "sha256": "6ec0689770c1fb1dc7018039bef101079d2d20931c4661c3981cbe956f20c872"
+    },
+    {
+      "key": "action.cancel",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/action.cancel.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/x.svg",
+      "sha256": "9350785360414c39450c3505f17d1745e55a7534edace8548e30cf49e3727d43"
+    },
+    {
+      "key": "action.cancel",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/action.cancel.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/x.svg",
+      "sha256": "f27ef8b34f594a1c226c874c871cbb9bd3388789b82dfe362440e55b33e66585"
+    },
+    {
+      "key": "action.more",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/action.more.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/dots-three.svg",
+      "sha256": "ca4e748007101155641ec3041cd129bb03a8030d0eed16e313b9dd75e6beac77"
+    },
+    {
+      "key": "action.more",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/action.more.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/dots-three-fill.svg",
+      "sha256": "ea89ce2abd3e96a9473c7dbdefef4182d25704635c6f799a7dd10707a2c95764"
+    },
+    {
+      "key": "action.more",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/action.more.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/dots.svg",
+      "sha256": "798ff2bd35fdb045535872ed5d5e93e39a289c6fd0faaf01639ae84180e54dae"
+    },
+    {
+      "key": "action.more",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/action.more.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/dots.svg",
+      "sha256": "f400217f38f87e1c0a73c1663588565b986b223d66e7dc01fe569bca263cde93"
+    },
+    {
+      "key": "action.up",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/action.up.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/caret-up.svg",
+      "sha256": "bccc26004e73e5de783ac6dde607e3671e776261d81972ccdbd296b4aca21ca9"
+    },
+    {
+      "key": "action.up",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/action.up.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/caret-up-fill.svg",
+      "sha256": "a4703a6e23011c86e9d7d18234b30bba36ba04f43f37ca08bb3d04beb9e3770b"
+    },
+    {
+      "key": "action.up",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/action.up.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/chevron-up.svg",
+      "sha256": "b9a66bccd34ae897a255a38af9e66a1149adf6549f60108907ea3066e5d0e740"
+    },
+    {
+      "key": "action.up",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/chevron-up.svg"
+    },
+    {
+      "key": "action.down",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/action.down.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/caret-down.svg",
+      "sha256": "53f0cf2d0b144ac3cb07e353e0cd0853ffb3ed432d741460ce288edfcb0924b1"
+    },
+    {
+      "key": "action.down",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/action.down.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/caret-down-fill.svg",
+      "sha256": "33550432966b277d6cf891f4db186357f4a83b1f8a5c7770c6ad6f5dee9b0b34"
+    },
+    {
+      "key": "action.down",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/action.down.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/chevron-down.svg",
+      "sha256": "5a2e5c2a155ce06264a3f7299073ed636142dfd0b324b747387d9cfbf9fb5e3e"
+    },
+    {
+      "key": "action.down",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/action.down.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/chevron-down.svg",
+      "sha256": "281a9c576bdbfc3999a98b860d3ec0482176d80c15f52eb0d59bfb49543bab5f"
+    },
+    {
+      "key": "panel.layers",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/panel.layers.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/stack.svg",
+      "sha256": "ee9eaaeb345e8a28c9662cf8a59147cb86080bd922e41f143444189e0116ea7e"
+    },
+    {
+      "key": "panel.layers",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/panel.layers.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/stack-fill.svg",
+      "sha256": "549d53f6eaf6a1da0d66be403180199f1578f0651506bfc137ae036b1fc2a60b"
+    },
+    {
+      "key": "panel.layers",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/panel.layers.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/stack-2.svg",
+      "sha256": "fbe45033ef093505d88dd56cc421290aebc51a5e9dd6c49b68bda588f4d952d9"
+    },
+    {
+      "key": "panel.layers",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/panel.layers.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/stack-2.svg",
+      "sha256": "95509af53beb8eaf20107c5754c7daf5277814200e6bd8b1906f0221d3065456"
+    },
+    {
+      "key": "panel.history",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/panel.history.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/clock-counter-clockwise.svg",
+      "sha256": "06aa1cb0d2664789232f4addb1c5932c8ce14e48465c8e8fb09a651b619b44e3"
+    },
+    {
+      "key": "panel.history",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/panel.history.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/clock-counter-clockwise-fill.svg",
+      "sha256": "618d6c238df479c26b40aab3271602a801797338d5521a28a1b254a86edf5398"
+    },
+    {
+      "key": "panel.history",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/panel.history.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/history.svg",
+      "sha256": "5f8a5a975a8136a4755380c18db1fe533acf7dc4e34250ceae0272c5d2cb7312"
+    },
+    {
+      "key": "panel.history",
+      "family": "tabler",
+      "style": "fill",
+      "fallback": "outline",
+      "missingSource": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/history.svg"
+    },
+    {
+      "key": "panel.color",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/panel.color.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/palette.svg",
+      "sha256": "f16925171ff434d8e8768da0d06867d77cd50d9e78932ab12af65bccac7a1375"
+    },
+    {
+      "key": "panel.color",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/panel.color.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/palette-fill.svg",
+      "sha256": "c8f6bdc5d4ddff5ad039a926e13efe7ceb92f5a57e6a755df516ca05deadba53"
+    },
+    {
+      "key": "panel.color",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/panel.color.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/palette.svg",
+      "sha256": "d9c39bf1ce00d10694015d9d736ae6006a7e7b2f0df776dd206e1058a9a700a7"
+    },
+    {
+      "key": "panel.color",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/panel.color.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/palette.svg",
+      "sha256": "35389d2232f6480e32b3c92a6e16c4066b8d939874db0935451ac1d08b46c73e"
+    },
+    {
+      "key": "panel.inspector",
+      "family": "phosphor",
+      "style": "outline",
+      "file": "phosphor/outline/panel.inspector.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/regular/sliders-horizontal.svg",
+      "sha256": "1d937baa3bc51ec4052364edf30cf8991d550920534f5d413eb9f60535cc1916"
+    },
+    {
+      "key": "panel.inspector",
+      "family": "phosphor",
+      "style": "fill",
+      "file": "phosphor/fill/panel.inspector.svg",
+      "upstream": "https://raw.githubusercontent.com/phosphor-icons/core/2b75f3ad12b420c9504ef05df8d2564a28f8500e/assets/fill/sliders-horizontal-fill.svg",
+      "sha256": "59fdf39771e7939dd315912702f3c8241a9dfeb1f5b6512a074525884765a76c"
+    },
+    {
+      "key": "panel.inspector",
+      "family": "tabler",
+      "style": "outline",
+      "file": "tabler/outline/panel.inspector.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/outline/adjustments-horizontal.svg",
+      "sha256": "51c876babc598cf69ad1146f0fb621919a975758df0cc7abf45052006358a353"
+    },
+    {
+      "key": "panel.inspector",
+      "family": "tabler",
+      "style": "fill",
+      "file": "tabler/fill/panel.inspector.svg",
+      "upstream": "https://raw.githubusercontent.com/tabler/tabler-icons/a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d/icons/filled/adjustments-horizontal.svg",
+      "sha256": "1aad5f873bee74ea245a775c660893a5f3fcc89986257a80064ec4dc34ebfeb5"
+    }
+  ]
+}

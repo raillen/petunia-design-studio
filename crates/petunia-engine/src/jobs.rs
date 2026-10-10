@@ -14,7 +14,7 @@ use std::sync::{
     mpsc, Arc, Condvar, Mutex,
 };
 
-/// Scheduling class: interactive preempts background preempts batch.
+/// Scheduling class. Priority applies at cooperative task boundaries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum JobClass {
     Interactive,
@@ -56,6 +56,11 @@ pub struct JobProgress {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum JobError {
     Cancelled,
+    QueueFull {
+        limit: usize,
+    },
+    SchedulerShutdown,
+    ShutdownTimeout,
     StaleRevision {
         expected: DocumentRevision,
         current: DocumentRevision,
@@ -70,6 +75,9 @@ impl std::fmt::Display for JobError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Cancelled => write!(f, "job cancelled"),
+            Self::QueueFull { limit } => write!(f, "job queue limit reached: {limit}"),
+            Self::SchedulerShutdown => write!(f, "scheduler is shut down"),
+            Self::ShutdownTimeout => write!(f, "workers have not reached a cancellation point"),
             Self::StaleRevision { expected, current } => write!(
                 f,
                 "stale result: source revision {} but document is at {}",
@@ -168,19 +176,56 @@ pub fn check_revision(
 
 type Thunk = Box<dyn FnOnce() + Send + 'static>;
 
+struct QueuedJob {
+    id: JobId,
+    token: CancelToken,
+    run: Thunk,
+    reject: Box<dyn FnOnce(JobError) + Send + 'static>,
+}
+
 struct Queues {
-    interactive: VecDeque<(JobId, Thunk)>,
-    background: VecDeque<(JobId, Thunk)>,
-    batch: VecDeque<(JobId, Thunk)>,
+    interactive: VecDeque<QueuedJob>,
+    background: VecDeque<QueuedJob>,
+    batch: VecDeque<QueuedJob>,
+    running: std::collections::HashMap<JobId, CancelToken>,
     shutdown: bool,
+    priority_since: std::time::Instant,
+    next_batch: bool,
 }
 
 impl Queues {
-    fn pop(&mut self) -> Option<(JobId, Thunk)> {
+    fn depth(&self) -> usize {
+        self.interactive.len() + self.background.len() + self.batch.len()
+    }
+
+    fn lower_priority(&mut self) -> Option<QueuedJob> {
+        // Alternate the two lower classes at each fairness opportunity.
+        let job = if self.next_batch {
+            self.batch
+                .pop_front()
+                .or_else(|| self.background.pop_front())
+        } else {
+            self.background
+                .pop_front()
+                .or_else(|| self.batch.pop_front())
+        };
+        self.next_batch = !self.next_batch;
+        job
+    }
+
+    fn pop(&mut self, reserved: bool, budget: std::time::Duration) -> Option<QueuedJob> {
+        if reserved {
+            return self.interactive.pop_front();
+        }
+        if self.priority_since.elapsed() >= budget {
+            self.priority_since = std::time::Instant::now();
+            if let Some(job) = self.lower_priority() {
+                return Some(job);
+            }
+        }
         self.interactive
             .pop_front()
-            .or_else(|| self.background.pop_front())
-            .or_else(|| self.batch.pop_front())
+            .or_else(|| self.lower_priority())
     }
 }
 
@@ -189,6 +234,8 @@ impl Queues {
 pub struct SchedulerConfig {
     pub worker_threads: usize,
     pub max_queue_depth: usize,
+    /// Maximum priority burst before a lower-class fairness opportunity.
+    /// This does not forcibly interrupt a running closure.
     pub interactive_budget_ms: u64,
 }
 
@@ -202,14 +249,13 @@ impl Default for SchedulerConfig {
     }
 }
 
-/// Small priority scheduler: interactive drains before background
-/// before batch. Work runs on pool threads; results and progress
-/// travel back through channels the caller owns.
+/// Bounded priority scheduler with an interactive lane and lower-class
+/// fairness at task boundaries. Results and progress use caller channels.
 pub struct Scheduler {
     queues: Arc<(Mutex<Queues>, Condvar)>,
     config: SchedulerConfig,
     counter: std::sync::atomic::AtomicU64,
-    _workers: Vec<std::thread::JoinHandle<()>>,
+    workers: Vec<std::thread::JoinHandle<()>>,
 }
 
 impl Scheduler {
@@ -224,44 +270,59 @@ impl Scheduler {
 
     /// Spawn a pool with an explicit configuration and resource budgets.
     #[must_use]
-    pub fn with_config(config: SchedulerConfig) -> Self {
-        let threads = config.worker_threads.max(1);
+    pub fn with_config(mut config: SchedulerConfig) -> Self {
+        config.worker_threads = config.worker_threads.max(1);
+        let threads = config.worker_threads;
         let queues = Arc::new((
             Mutex::new(Queues {
                 interactive: VecDeque::new(),
                 background: VecDeque::new(),
                 batch: VecDeque::new(),
                 shutdown: false,
+                running: std::collections::HashMap::new(),
+                priority_since: std::time::Instant::now(),
+                next_batch: false,
             }),
             Condvar::new(),
         ));
         let mut workers = Vec::with_capacity(threads);
-        for _ in 0..threads {
+        let budget = std::time::Duration::from_millis(config.interactive_budget_ms.max(1));
+        for worker in 0..threads {
             let shared = Arc::clone(&queues);
+            // One lane stays available under background/batch saturation.
+            let reserved = threads > 1 && worker == 0;
             workers.push(std::thread::spawn(move || loop {
                 let task = {
                     let (lock, signal) = &*shared;
-                    let mut queues = lock.lock().expect("queue lock");
+                    let mut queues = lock.lock().unwrap_or_else(|error| error.into_inner());
                     loop {
                         if queues.shutdown {
                             return;
                         }
-                        if let Some(task) = queues.pop() {
-                            break Some(task);
+                        if let Some(task) = queues.pop(reserved, budget) {
+                            queues.running.insert(task.id, task.token.clone());
+                            break task;
                         }
-                        queues = signal.wait(queues).expect("queue lock");
+                        queues = signal
+                            .wait(queues)
+                            .unwrap_or_else(|error| error.into_inner());
                     }
                 };
-                if let Some((_, thunk)) = task {
-                    thunk();
-                }
+                let id = task.id;
+                (task.run)();
+                let (lock, signal) = &*shared;
+                lock.lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .running
+                    .remove(&id);
+                signal.notify_all();
             }));
         }
         Self {
             queues,
             config,
             counter: std::sync::atomic::AtomicU64::new(1),
-            _workers: workers,
+            workers,
         }
     }
 
@@ -297,52 +358,143 @@ impl Scheduler {
             source_revision,
             payload,
         };
-        let thunk: Thunk = Box::new(move || {
-            let JobRequest {
+        let rejected_sender = sender.clone();
+        let reject = Box::new(move |error| {
+            let _ = rejected_sender.send(JobResult {
                 id,
                 source_revision,
-                payload,
-                ..
-            } = request;
-            if worker_token.is_cancelled() {
-                let _ = sender.send(JobResult {
-                    id,
-                    source_revision,
-                    result: Err(JobError::Cancelled),
-                });
-                return;
-            }
-            let result = work(payload, worker_token, progress);
+                result: Err(error),
+            });
+        });
+        let thunk: Thunk = Box::new(move || {
+            let result = if worker_token.is_cancelled() {
+                Err(JobError::Cancelled)
+            } else {
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    work(request.payload, worker_token.clone(), progress)
+                })) {
+                    Ok(result) if !worker_token.is_cancelled() => result,
+                    Ok(_) => Err(JobError::Cancelled),
+                    Err(_) => Err(JobError::AlgorithmFailure("job panicked".to_string())),
+                }
+            };
             let _ = sender.send(JobResult {
                 id,
                 source_revision,
                 result,
             });
         });
-        {
-            let (lock, signal) = &*self.queues;
-            let mut queues = lock.lock().expect("queue lock");
+        let queued = QueuedJob {
+            id,
+            token: token.clone(),
+            run: thunk,
+            reject,
+        };
+        let (lock, signal) = &*self.queues;
+        let mut queues = lock.lock().unwrap_or_else(|error| error.into_inner());
+        let submission_error = if queues.shutdown {
+            (queued.reject)(JobError::SchedulerShutdown);
+            Some(JobError::SchedulerShutdown)
+        } else if queues.depth() >= self.config.max_queue_depth {
+            let error = JobError::QueueFull {
+                limit: self.config.max_queue_depth,
+            };
+            (queued.reject)(error.clone());
+            Some(error)
+        } else {
             match class {
-                JobClass::Interactive => queues.interactive.push_back((id, thunk)),
-                JobClass::Background => queues.background.push_back((id, thunk)),
-                JobClass::Batch => queues.batch.push_back((id, thunk)),
+                JobClass::Interactive => queues.interactive.push_back(queued),
+                JobClass::Background => queues.background.push_back(queued),
+                JobClass::Batch => queues.batch.push_back(queued),
             }
-            signal.notify_one();
-        }
+            signal.notify_all();
+            None
+        };
         JobHandle {
             id,
             token,
             receiver,
+            queues: Arc::downgrade(&self.queues),
+            submission_error,
         }
+    }
+
+    /// Return admission failures immediately, before the caller stores a handle.
+    pub fn try_submit<T, F>(
+        &self,
+        class: JobClass,
+        source_revision: DocumentRevision,
+        payload: T,
+        progress: mpsc::Sender<JobProgress>,
+        work: F,
+    ) -> std::result::Result<JobHandle<T>, JobError>
+    where
+        T: Send + 'static,
+        F: FnOnce(T, CancelToken, mpsc::Sender<JobProgress>) -> std::result::Result<T, JobError>
+            + Send
+            + 'static,
+    {
+        let handle = self.submit(class, source_revision, payload, progress, work);
+        if let Some(error) = handle.submission_error.clone() {
+            Err(error)
+        } else {
+            Ok(handle)
+        }
+    }
+
+    /// Cancel queued and running work, then join workers up to the deadline.
+    /// A closure must poll its token: Rust cannot forcibly interrupt user code.
+    /// On timeout this method can be retried after the closure returns.
+    pub fn shutdown(&mut self, timeout: std::time::Duration) -> std::result::Result<(), JobError> {
+        self.cancel_all();
+        let deadline = std::time::Instant::now() + timeout;
+        while self.workers.iter().any(|worker| !worker.is_finished()) {
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                return Err(JobError::ShutdownTimeout);
+            }
+            let (lock, signal) = &*self.queues;
+            let queues = lock.lock().unwrap_or_else(|error| error.into_inner());
+            let _ = signal.wait_timeout(
+                queues,
+                (deadline - now).min(std::time::Duration::from_millis(10)),
+            );
+        }
+        for worker in self.workers.drain(..) {
+            let _ = worker.join();
+        }
+        Ok(())
+    }
+
+    fn cancel_all(&self) {
+        let (lock, signal) = &*self.queues;
+        let pending = {
+            let mut queues = lock.lock().unwrap_or_else(|error| error.into_inner());
+            queues.shutdown = true;
+            for token in queues.running.values() {
+                token.cancel();
+            }
+            let mut pending: Vec<_> = queues.interactive.drain(..).collect();
+            pending.extend(queues.background.drain(..));
+            pending.extend(queues.batch.drain(..));
+            pending
+        };
+        for job in pending {
+            job.token.cancel();
+            (job.reject)(JobError::Cancelled);
+        }
+        signal.notify_all();
     }
 }
 
 impl Drop for Scheduler {
     fn drop(&mut self) {
-        let (lock, signal) = &*self.queues;
-        if let Ok(mut queues) = lock.lock() {
-            queues.shutdown = true;
-            signal.notify_all();
+        self.cancel_all();
+        // Join completed workers without waiting forever on non-cooperative code.
+        for worker in self.workers.drain(..) {
+            if worker.is_finished() {
+                let _ = worker.join();
+            }
         }
     }
 }
@@ -352,6 +504,8 @@ pub struct JobHandle<T> {
     id: JobId,
     token: CancelToken,
     receiver: mpsc::Receiver<JobResult<T>>,
+    queues: std::sync::Weak<(Mutex<Queues>, Condvar)>,
+    submission_error: Option<JobError>,
 }
 
 impl<T> JobHandle<T> {
@@ -361,18 +515,64 @@ impl<T> JobHandle<T> {
         self.id
     }
 
-    /// Request cancellation. Queued work still passes through the
-    /// worker, which reports `Cancelled` without running the payload;
-    /// in-flight work observes the token at its next safe point.
+    /// Cancel queued work immediately and release its queue capacity.
+    /// In-flight work observes the token at its next safe point.
     pub fn cancel(&self) {
         self.token.cancel();
+        let Some(shared) = self.queues.upgrade() else {
+            return;
+        };
+        let (lock, signal) = &*shared;
+        let removed = {
+            let mut queues = lock.lock().unwrap_or_else(|error| error.into_inner());
+            let mut removed = queues
+                .interactive
+                .iter()
+                .position(|job| job.id == self.id)
+                .and_then(|at| queues.interactive.remove(at));
+            if removed.is_none() {
+                removed = queues
+                    .background
+                    .iter()
+                    .position(|job| job.id == self.id)
+                    .and_then(|at| queues.background.remove(at));
+            }
+            if removed.is_none() {
+                removed = queues
+                    .batch
+                    .iter()
+                    .position(|job| job.id == self.id)
+                    .and_then(|at| queues.batch.remove(at));
+            }
+            removed
+        };
+        if let Some(job) = removed {
+            (job.reject)(JobError::Cancelled);
+        }
+        signal.notify_all();
+    }
+
+    /// Poll result delivery without blocking an event loop.
+    pub fn try_result(&self) -> Result<Option<JobResult<T>>> {
+        match self.receiver.try_recv() {
+            Ok(result) => Ok(Some(result)),
+            Err(mpsc::TryRecvError::Empty) => Ok(None),
+            Err(mpsc::TryRecvError::Disconnected) => Err(EngineError::Execution(
+                "job result channel disconnected".to_string(),
+            )),
+        }
     }
 
     /// Block for the result up to `timeout`.
     pub fn result(self, timeout: std::time::Duration) -> Result<JobResult<T>> {
-        self.receiver
-            .recv_timeout(timeout)
-            .map_err(|_| EngineError::Execution("job result timed out".to_string()))
+        self.receiver.recv_timeout(timeout).map_err(|error| {
+            EngineError::Execution(match error {
+                mpsc::RecvTimeoutError::Timeout => "job result timed out".to_string(),
+                mpsc::RecvTimeoutError::Disconnected => {
+                    "job result channel disconnected".to_string()
+                }
+            })
+        })
     }
 }
 

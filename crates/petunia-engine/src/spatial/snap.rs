@@ -191,6 +191,10 @@ fn check_scale(view_scale: f64) -> bool {
     view_scale.is_finite() && view_scale > 0.0
 }
 
+fn stable_uuid_key(id: u128) -> u64 {
+    (id as u64) ^ ((id >> 64) as u64)
+}
+
 /// Guide candidates: anchors within tolerance of an axis line snap
 /// along that axis only.
 #[must_use]
@@ -204,7 +208,7 @@ pub fn guide_candidates(
         return Vec::new();
     }
     let mut out = Vec::new();
-    for (guide_index, guide) in guides.iter().enumerate() {
+    for guide in guides {
         for (anchor_index, anchor) in anchors.iter().enumerate() {
             let (delta, distance) = match guide.axis {
                 GuideAxis::Vertical => {
@@ -229,7 +233,7 @@ pub fn guide_candidates(
                 priority: SnapPriority::Guide,
                 source: SnapSourceId {
                     provider: SnapProvider::Guide,
-                    key: ((guide_index as u64) << 32) | anchor_index as u64,
+                    key: stable_uuid_key(guide.id.as_uuid().as_u128()) ^ anchor_index as u64,
                 },
             });
         }
@@ -301,7 +305,7 @@ pub fn bounds_candidates(
         return Vec::new();
     }
     let mut out = Vec::new();
-    for (object_index, (id, bounds)) in objects.iter().enumerate() {
+    for (id, bounds) in objects {
         if excluded.contains(id) {
             continue;
         }
@@ -327,7 +331,7 @@ pub fn bounds_candidates(
                         priority: SnapPriority::EdgeCenter,
                         source: SnapSourceId {
                             provider: SnapProvider::ObjectBounds,
-                            key: ((object_index as u64) << 40)
+                            key: stable_uuid_key(id.as_uuid().as_u128())
                                 | ((anchor_index as u64) << 20)
                                 | edge_index as u64,
                         },
@@ -345,7 +349,7 @@ pub fn bounds_candidates(
                         priority: SnapPriority::EdgeCenter,
                         source: SnapSourceId {
                             provider: SnapProvider::ObjectBounds,
-                            key: ((object_index as u64) << 40)
+                            key: stable_uuid_key(id.as_uuid().as_u128())
                                 | ((anchor_index as u64) << 20)
                                 | (edge_index as u64 + 8),
                         },
@@ -370,49 +374,79 @@ pub fn rank_candidates<'a>(
     candidates: &'a [SnapCandidate],
     request: &SnapRequest,
 ) -> Option<&'a SnapCandidate> {
-    if !request.settings.enabled {
-        return None;
-    }
-    if let Some(previous) = request.previous {
-        if let Some(held) = candidates.iter().find(|candidate| {
-            candidate.target == previous.target
-                && candidate.distance_px <= request.settings.release_px
-                && request.constraint.allows(candidate.correction)
-        }) {
-            return Some(held);
-        }
-    }
     candidates
         .iter()
-        .filter(|candidate| {
-            request
-                .settings
-                .providers
-                .contains(&candidate.source.provider)
-                && request.constraint.allows(candidate.correction)
-                && candidate.distance_px <= request.settings.acquire_px
-        })
-        .min_by(|a, b| {
-            a.priority
-                .cmp(&b.priority)
-                .then_with(|| {
-                    a.distance_px
-                        .partial_cmp(&b.distance_px)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
-                .then_with(|| {
-                    (a.source.provider as u8, a.source.key)
-                        .cmp(&(b.source.provider as u8, b.source.key))
-                })
-        })
+        .filter(|candidate| eligible(candidate, request))
+        .min_by(|a, b| compare(a, b, request))
 }
 
-/// Solve one request: rank, then combine the best X and best Y
-/// corrections independently when constraints stay orthogonal.
+fn held(candidate: &SnapCandidate, request: &SnapRequest) -> bool {
+    request
+        .previous
+        .is_some_and(|latch| latch.target == candidate.target)
+}
+
+fn eligible(candidate: &SnapCandidate, request: &SnapRequest) -> bool {
+    let settings = &request.settings;
+    if !settings.enabled
+        || !check_scale(request.view_scale)
+        || !settings.acquire_px.is_finite()
+        || settings.acquire_px < 0.0
+        || !settings.release_px.is_finite()
+        || settings.release_px < settings.acquire_px
+        || !settings.tolerance_px.is_finite()
+        || settings.tolerance_px < 0.0
+        || !candidate.distance_px.is_finite()
+        || candidate.distance_px < 0.0
+        || !candidate.correction.dx.is_finite()
+        || !candidate.correction.dy.is_finite()
+        || !settings.providers.contains(&candidate.source.provider)
+        || !request.constraint.allows(candidate.correction)
+        || !candidate.constraint.allows(candidate.correction)
+    {
+        return false;
+    }
+    if let SnapTarget::ObjectBounds(id) | SnapTarget::PathNode(id, _) = candidate.target {
+        if request.moving.excluded.contains(&id) {
+            return false;
+        }
+    }
+    let threshold = if held(candidate, request) {
+        settings.release_px
+    } else {
+        settings.acquire_px.min(settings.tolerance_px)
+    };
+    candidate.distance_px <= threshold
+}
+
+fn compare(a: &SnapCandidate, b: &SnapCandidate, request: &SnapRequest) -> std::cmp::Ordering {
+    a.priority
+        .cmp(&b.priority)
+        .then_with(|| held(b, request).cmp(&held(a, request)))
+        .then_with(|| a.distance_px.total_cmp(&b.distance_px))
+        .then_with(|| {
+            (a.source.provider as u8, a.source.key).cmp(&(b.source.provider as u8, b.source.key))
+        })
+        .then_with(|| target_key(a.target).cmp(&target_key(b.target)))
+        .then_with(|| a.correction.dx.total_cmp(&b.correction.dx))
+        .then_with(|| a.correction.dy.total_cmp(&b.correction.dy))
+}
+
+fn target_key(target: SnapTarget) -> (u8, u128, u64) {
+    match target {
+        SnapTarget::Guide(id) => (0, id.as_uuid().as_u128(), 0),
+        SnapTarget::GridPoint(point) => (1, point.x.to_bits() as u128, point.y.to_bits()),
+        SnapTarget::ObjectBounds(id) => (2, id.as_uuid().as_u128(), 0),
+        SnapTarget::PathNode(id, node) => (3, id.as_uuid().as_u128(), node as u64),
+    }
+}
+
+/// Keep a two-axis target atomic; combine only orthogonal single-axis
+/// constraints. The same eligibility and hysteresis rules govern
+/// ranking and the correction actually returned to the caller.
 #[must_use]
 pub fn solve(request: &SnapRequest, candidates: &[SnapCandidate]) -> SnapResult {
-    let winner = rank_candidates(candidates, request);
-    let Some(winner) = winner else {
+    let Some(winner) = rank_candidates(candidates, request) else {
         return SnapResult {
             corrected: TransformDelta::default(),
             matches: Vec::new(),
@@ -420,78 +454,44 @@ pub fn solve(request: &SnapRequest, candidates: &[SnapCandidate]) -> SnapResult 
             latch: None,
         };
     };
-    // Independent axes: keep the best candidate affecting each axis.
-    // Axis pools honor the same provider, constraint and acquire
-    // gates as ranking.
-    let axis_eligible = |candidate: &&SnapCandidate| {
-        request
-            .settings
-            .providers
-            .contains(&candidate.source.provider)
-            && candidate.distance_px <= request.settings.acquire_px
-    };
-    let best_x = candidates
-        .iter()
-        .filter(|candidate| {
-            axis_eligible(candidate)
-                && candidate.correction.dx != 0.0
-                && request.constraint.allows(TransformDelta {
-                    dx: candidate.correction.dx,
-                    dy: 0.0,
-                })
-        })
-        .min_by(|a, b| rank_key(a).cmp(&rank_key(b)));
-    let best_y = candidates
-        .iter()
-        .filter(|candidate| {
-            axis_eligible(candidate)
-                && candidate.correction.dy != 0.0
-                && request.constraint.allows(TransformDelta {
-                    dx: 0.0,
-                    dy: candidate.correction.dy,
-                })
-        })
-        .min_by(|a, b| rank_key(a).cmp(&rank_key(b)));
-    let dx = best_x
-        .map(|candidate| candidate.correction.dx)
-        .unwrap_or(0.0);
-    let dy = best_y
-        .map(|candidate| candidate.correction.dy)
-        .unwrap_or(0.0);
-    let corrected = TransformDelta { dx, dy };
-    let mut matches = Vec::new();
-    if let Some(candidate) = best_x {
-        if dx != 0.0 {
-            matches.push(SnapMatch {
-                target: candidate.target,
-                correction: TransformDelta { dx, dy: 0.0 },
-                distance_px: candidate.distance_px,
-            });
-        }
-    }
-    if let Some(candidate) = best_y {
-        if dy != 0.0 {
-            matches.push(SnapMatch {
-                target: candidate.target,
-                correction: TransformDelta { dx: 0.0, dy },
-                distance_px: candidate.distance_px,
-            });
+    let mut selected = vec![winner];
+    let correction = winner.correction;
+    if correction.dx == 0.0 || correction.dy == 0.0 {
+        let other = candidates
+            .iter()
+            .filter(|candidate| {
+                eligible(candidate, request)
+                    && if correction.dx != 0.0 {
+                        candidate.correction.dx == 0.0 && candidate.correction.dy != 0.0
+                    } else {
+                        candidate.correction.dy == 0.0 && candidate.correction.dx != 0.0
+                    }
+            })
+            .min_by(|a, b| compare(a, b, request));
+        if let Some(other) = other {
+            selected.push(other);
         }
     }
     SnapResult {
-        corrected,
-        matches,
+        corrected: selected
+            .iter()
+            .fold(TransformDelta::default(), |delta, candidate| {
+                delta.combined(candidate.correction)
+            }),
+        matches: selected
+            .into_iter()
+            .map(|candidate| SnapMatch {
+                target: candidate.target,
+                correction: candidate.correction,
+                distance_px: candidate.distance_px,
+            })
+            .collect(),
         visuals: Vec::new(),
         latch: Some(SnapLatch {
             target: winner.target,
             priority: winner.priority,
         }),
     }
-}
-
-fn rank_key(candidate: &SnapCandidate) -> (SnapPriority, u64, u64) {
-    let distance = (candidate.distance_px * 1000.0) as u64;
-    (candidate.priority, distance, candidate.source.key)
 }
 
 #[cfg(test)]

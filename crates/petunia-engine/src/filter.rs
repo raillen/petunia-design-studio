@@ -39,8 +39,16 @@ impl RectI {
         Self {
             x: self.x.saturating_sub(radius),
             y: self.y.saturating_sub(radius),
-            width: self.width.saturating_add(radius * 2),
-            height: self.height.saturating_add(radius * 2),
+            width: self
+                .x
+                .saturating_add(self.width)
+                .saturating_add(radius)
+                .saturating_sub(self.x.saturating_sub(radius)),
+            height: self
+                .y
+                .saturating_add(self.height)
+                .saturating_add(radius)
+                .saturating_sub(self.y.saturating_sub(radius)),
         }
     }
 }
@@ -72,8 +80,11 @@ impl Surface {
                 "surface needs non-zero dimensions".to_string(),
             ));
         }
-        let count = width as u64 * height as u64 * 4;
-        if count > max_pixels {
+        let count = u64::from(width)
+            .checked_mul(u64::from(height))
+            .and_then(|count| count.checked_mul(4))
+            .ok_or_else(|| EngineError::Execution("surface allocation overflow".into()))?;
+        if count > max_pixels || usize::try_from(count).is_err() {
             return Err(EngineError::Execution(format!(
                 "surface of {count} floats exceeds guard {max_pixels}"
             )));
@@ -88,6 +99,9 @@ impl Surface {
     /// Read one channel with the declared edge behavior.
     #[must_use]
     pub fn sample(&self, x: i64, y: i64, channel: usize, edge: EdgeMode) -> f32 {
+        if self.width == 0 || self.height == 0 || channel >= 4 {
+            return 0.0;
+        }
         let (width, height) = (i64::from(self.width), i64::from(self.height));
         let (sx, sy) = match edge {
             EdgeMode::Transparent => {
@@ -100,7 +114,10 @@ impl Surface {
             EdgeMode::Repeat => (x.rem_euclid(width), y.rem_euclid(height)),
             EdgeMode::Mirror => (mirror_index(x, width), mirror_index(y, height)),
         };
-        self.pixels[((sy as u32 * self.width + sx as u32) * 4 + channel as u32) as usize]
+        self.pixels
+            .get((sy as usize * self.width as usize + sx as usize) * 4 + channel)
+            .copied()
+            .unwrap_or(0.0)
     }
 
     /// Write one channel; out-of-range writes are dropped.
@@ -139,6 +156,15 @@ pub trait ImageFilter {
 
     /// Evaluate over `output`, reading a superset from `input`.
     fn evaluate(&self, ctx: &FilterContext, input: &Surface, output: &mut Surface) -> Result<()>;
+
+    /// Compute a compact output whose origin is `region.x/y` in the full input.
+    fn evaluate_region(
+        &self,
+        ctx: &FilterContext,
+        input: &Surface,
+        region: RectI,
+        output: &mut Surface,
+    ) -> Result<()>;
 }
 
 /// Separable Gaussian blur with sigma-derived radius. Sigma zero is a
@@ -153,7 +179,7 @@ impl GaussianBlur {
     /// Sigmas must be finite and non-negative.
     pub fn new(sigma_x: f32, sigma_y: f32) -> Result<Self> {
         for sigma in [sigma_x, sigma_y] {
-            if !sigma.is_finite() || sigma < 0.0 {
+            if !sigma.is_finite() || !(0.0..=1365.0).contains(&sigma) {
                 return Err(EngineError::Execution(format!(
                     "invalid blur sigma rejected: {sigma}"
                 )));
@@ -192,44 +218,107 @@ impl ImageFilter for GaussianBlur {
                 "filter input and output dimensions must match".to_string(),
             ));
         }
+        self.evaluate_region(
+            ctx,
+            input,
+            RectI::new(0, 0, input.width, input.height)?,
+            output,
+        )
+    }
+    fn evaluate_region(
+        &self,
+        ctx: &FilterContext,
+        input: &Surface,
+        region: RectI,
+        output: &mut Surface,
+    ) -> Result<()> {
+        Self::new(self.sigma_x, self.sigma_y)?;
+        if region.width != output.width
+            || region.height != output.height
+            || region.width == 0
+            || region.height == 0
+            || input.width == 0
+            || input.height == 0
+            || input.pixels.len() != input.width as usize * input.height as usize * 4
+            || output.pixels.len() != output.width as usize * output.height as usize * 4
+        {
+            return Err(EngineError::Execution(
+                "invalid ROI/surface dimensions".into(),
+            ));
+        }
         let radius_x = Self::radius(self.sigma_x);
         let radius_y = Self::radius(self.sigma_y);
         let kernel_x = Self::kernel(self.sigma_x, radius_x);
         let kernel_y = Self::kernel(self.sigma_y, radius_y);
-        let mut scratch = Surface::transparent(input.width, input.height, ctx.max_pixels)?;
-        // Horizontal pass.
-        for y in 0..input.height {
-            for x in 0..input.width {
+        let scratch_height = region
+            .height
+            .checked_add(
+                radius_y
+                    .checked_mul(2)
+                    .ok_or_else(|| EngineError::Execution("blur expansion overflow".into()))?,
+            )
+            .ok_or_else(|| EngineError::Execution("blur expansion overflow".into()))?;
+        let mut scratch = Surface::transparent(region.width, scratch_height, ctx.max_pixels)?;
+        let origin_y = i64::from(region.y) - i64::from(radius_y);
+        for sy in 0..scratch_height {
+            let y = origin_y + i64::from(sy);
+            for sx in 0..region.width {
+                let x = i64::from(region.x) + i64::from(sx);
                 for channel in 0..4 {
-                    let mut acc = 0.0;
-                    for (offset, weight) in kernel_x.iter().enumerate() {
-                        let o = offset as i64;
-                        acc += input.sample(x as i64 - o, y as i64, channel, ctx.edge) * weight;
-                        if o > 0 {
-                            acc += input.sample(x as i64 + o, y as i64, channel, ctx.edge) * weight;
-                        }
+                    let mut sum = 0.0;
+                    for delta in -i64::from(radius_x)..=i64::from(radius_x) {
+                        let weight = kernel_x[delta.unsigned_abs() as usize];
+                        let alpha = input.sample(x + delta, y, 3, ctx.edge);
+                        let value = input.sample(x + delta, y, channel, ctx.edge);
+                        sum += if channel == 3 {
+                            value * weight
+                        } else {
+                            value * alpha * weight
+                        };
                     }
-                    scratch.set(x, y, channel, acc);
+                    scratch.set(sx, sy, channel, sum);
                 }
             }
         }
-        // Vertical pass.
+        // Keep the destination unchanged until all guards/allocations succeed.
+        let mut evaluated = Surface::transparent(output.width, output.height, ctx.max_pixels)?;
         for y in 0..output.height {
             for x in 0..output.width {
-                for channel in 0..4 {
-                    let mut acc = 0.0;
+                let mut pixel = [0.0; 4];
+                for (channel, sum) in pixel.iter_mut().enumerate() {
                     for (offset, weight) in kernel_y.iter().enumerate() {
-                        let o = offset as i64;
-                        acc += scratch.sample(x as i64, y as i64 - o, channel, ctx.edge) * weight;
-                        if o > 0 {
-                            acc +=
-                                scratch.sample(x as i64, y as i64 + o, channel, ctx.edge) * weight;
+                        *sum += scratch.sample(
+                            i64::from(x),
+                            i64::from(y) + i64::from(radius_y) - offset as i64,
+                            channel,
+                            EdgeMode::Transparent,
+                        ) * weight;
+                        if offset > 0 {
+                            *sum += scratch.sample(
+                                i64::from(x),
+                                i64::from(y) + i64::from(radius_y) + offset as i64,
+                                channel,
+                                EdgeMode::Transparent,
+                            ) * weight;
                         }
                     }
-                    output.set(x, y, channel, acc);
                 }
+                for channel in 0..3 {
+                    evaluated.set(
+                        x,
+                        y,
+                        channel,
+                        if pixel[3] > 0.0 {
+                            pixel[channel] / pixel[3]
+                        } else {
+                            0.0
+                        },
+                    );
+                }
+                evaluated.set(x, y, 3, pixel[3]);
             }
         }
+        *output = evaluated;
         Ok(())
     }
 }
@@ -248,6 +337,7 @@ mod tests {
     fn impulse_at(size: u32, at: u32) -> Surface {
         let mut surface = Surface::transparent(size, size, 1 << 26).expect("fits guard");
         surface.set(at, at, 0, 1.0);
+        surface.set(at, at, 3, 1.0);
         surface
     }
 
@@ -273,20 +363,20 @@ mod tests {
             .expect("evaluates");
         // Unit kernel: energy preserved within float error.
         assert!(
-            (total(&output, 0) - 1.0).abs() < 1e-4,
+            (total(&output, 3) - 1.0).abs() < 1e-4,
             "total {}",
-            total(&output, 0)
+            total(&output, 3)
         );
         // Peak spread below the impulse, neighbors above zero.
-        assert!(output.pixels[((12 * 25 + 12) * 4) as usize] < 1.0);
-        assert!(output.pixels[((12 * 25 + 13) * 4) as usize] > 0.0);
+        assert!(output.pixels[((12 * 25 + 12) * 4 + 3) as usize] < 1.0);
+        assert!(output.pixels[((12 * 25 + 13) * 4 + 3) as usize] > 0.0);
         // At the border, out-of-frame energy drops gracefully.
         let mut edge = Surface::transparent(9, 9, 1 << 26).expect("fits guard");
         GaussianBlur::new(1.5, 1.5)
             .expect("valid")
             .evaluate(&ctx(), &impulse(), &mut edge)
             .expect("evaluates");
-        let edge_total = total(&edge, 0);
+        let edge_total = total(&edge, 3);
         assert!(edge_total > 0.9 && edge_total <= 1.0, "total {edge_total}");
     }
 

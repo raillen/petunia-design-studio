@@ -9,18 +9,22 @@
 
 #![forbid(unsafe_code)]
 
+pub mod analysis;
 pub mod brush;
+pub mod color_management;
 pub mod command;
 pub mod compile;
 pub mod error;
 pub mod filter;
 pub mod fragments;
+pub mod generated;
 pub mod geometry;
 pub mod history;
 pub mod io;
 pub mod jobs;
 pub mod journal;
 pub mod mcp;
+pub mod persistence;
 pub mod plugins;
 pub mod ptnd;
 pub mod recovery;
@@ -28,6 +32,7 @@ pub mod snapping;
 pub mod spatial;
 pub mod text;
 pub mod tiles;
+pub mod trace;
 pub mod transaction;
 
 pub use command::{AddNodeCommand, Command, CommandHistory, TransformNodeCommand};

@@ -38,6 +38,7 @@
 - [PTND](docs/00-architecture/ptnd-format.md).
 - [Acessibilidade e neurodivergência — gates](docs/07-agents/accessibility.md).
 - [UX canônica](docs/04-ui/vector-edit-interaction.md): procurar também outras ferramentas da área no manifest.
+- [Design visual, personas e iconografia](docs/04-ui/visual-design.md): referência Affinity adaptada ao Petunia, Phosphor/Tabler e outline/fill.
 
 ## Reuso e migração
 - [Referências VectorCraft / PhotoCraft / LightCraft](docs/06-references/index.md).
@@ -50,3 +51,5 @@
 - [Manifesto do site](docs/manifest.json): índice de arquivos, não prova de implementação.
 - [README do projeto](../README.md): build e workspace.
 - [AGENTS.md](../AGENTS.md): regras de trabalho, a serem resolvidas com ADRs do produto.
+
+- [GUI nativa](docs/04-ui/native-desktop.md): adaptador Qt/QML/CXX-Qt, execução, fluxos e gates de validação.

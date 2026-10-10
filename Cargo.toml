@@ -6,6 +6,7 @@ members = [
     "crates/petunia-render-model",
     "crates/petunia-render",
     "crates/petunia-ui",
+    "crates/petunia-desktop",
 ]
 
 [workspace.package]
@@ -41,6 +42,14 @@ unicode-linebreak = "0.1"
 flate2 = "1.1"
 crc32fast = "1.5"
 blake3 = "1"
+lcms2 = { version = "6.1", features = ["static"] }
+wasmi = { version = "2.0", default-features = false, features = ["std", "validate", "deterministic", "portable-dispatch"] }
+wasmi_core = "2.0"
+wat = "1"
+qrcodegen = "1.8"
+barcoders = { version = "2", default-features = false }
+quircs = "0.10"
+hypher = "0.1.8"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 # Test-only tooling lives in the workspace list so crates opt in with

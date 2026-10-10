@@ -1008,6 +1008,14 @@ impl BlobStore {
         self.by_hash.len()
     }
 
+    /// Bytes retained by deduplicated immutable allocations, including undo resources.
+    #[must_use]
+    pub fn retained_bytes(&self) -> usize {
+        self.by_hash
+            .values()
+            .fold(0usize, |total, bytes| total.saturating_add(bytes.len()))
+    }
+
     /// True when no blobs are tracked.
     #[must_use]
     pub fn is_empty(&self) -> bool {
@@ -1028,29 +1036,43 @@ pub(crate) fn atomic_write(path: &std::path::Path, bytes: &[u8], tag: &str) -> R
     let parent = path
         .parent()
         .ok_or_else(|| EngineError::Execution("save path needs a parent directory".to_string()))?;
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.subsec_nanos())
-        .unwrap_or(0);
+    let parent = if parent.as_os_str().is_empty() {
+        std::path::Path::new(".")
+    } else {
+        parent
+    };
     let temporary = parent.join(format!(
-        ".{}.tmp-{stamp}-{}.{tag}",
+        ".{}.tmp-{}.{tag}",
         path.file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("document"),
-        std::process::id()
+        uuid::Uuid::new_v4()
     ));
-    {
-        let mut file = std::fs::File::create(&temporary)
+    let outcome = (|| {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
             .map_err(|error| EngineError::Execution(format!("temporary create failed: {error}")))?;
         use std::io::Write;
         file.write_all(bytes)
             .map_err(|error| EngineError::Execution(format!("temporary write failed: {error}")))?;
         file.sync_all()
             .map_err(|error| EngineError::Execution(format!("temporary sync failed: {error}")))?;
+        drop(file);
+        std::fs::rename(&temporary, path)
+            .map_err(|error| EngineError::Execution(format!("atomic replace failed: {error}")))?;
+        // Persist the directory entry as well as the file's contents on Unix.
+        #[cfg(unix)]
+        std::fs::File::open(parent)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| EngineError::Execution(format!("directory sync failed: {error}")))?;
+        Ok(())
+    })();
+    if outcome.is_err() {
+        let _ = std::fs::remove_file(&temporary);
     }
-    std::fs::rename(&temporary, path)
-        .map_err(|error| EngineError::Execution(format!("atomic replace failed: {error}")))?;
-    Ok(())
+    outcome
 }
 
 use std::time::SystemTime;
@@ -1144,15 +1166,12 @@ impl ExternalConflictDetector {
     }
 }
 
-/// Advisory cooperative file lock to detect concurrent studio instances.
-///
-/// Creates `<path>.lock` containing process metadata. If the lock is held
-/// by an active process, acquisition fails with an error. Stale locks from
-/// deceased processes are cleanly overridden.
+/// Cross-process advisory lock retained by an OS file handle.
+/// The metadata sidecar remains after release: unlinking it would let two
+/// contenders lock different inodes for the same document.
 #[derive(Debug)]
 pub struct CooperativeFileLock {
-    lock_path: std::path::PathBuf,
-    active: bool,
+    file: Option<std::fs::File>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1162,50 +1181,42 @@ struct LockPayload {
 }
 
 impl CooperativeFileLock {
-    /// Try to acquire an advisory lock for `target_file`.
+    /// Acquire atomically; the kernel releases stale locks when the owner exits.
     pub fn acquire(target_file: &std::path::Path) -> Result<Self> {
-        let lock_path = target_file.with_extension(format!(
-            "{}.lock",
-            target_file
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("ptnd")
-        ));
-        if lock_path.exists() {
-            if let Ok(bytes) = std::fs::read(&lock_path) {
-                if let Ok(payload) = serde_json::from_slice::<LockPayload>(&bytes) {
-                    if is_process_alive(payload.pid) {
-                        return Err(EngineError::Conflict(format!(
-                            "file {target_file:?} is locked by active process PID {}",
-                            payload.pid
-                        )));
-                    }
-                }
-            }
-        }
+        let mut lock_name = target_file.as_os_str().to_os_string();
+        lock_name.push(".lock");
+        let lock_path = std::path::PathBuf::from(lock_name);
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&lock_path)
+            .map_err(|error| EngineError::Execution(format!("open lock failed: {error}")))?;
+        file.try_lock().map_err(|error| {
+            EngineError::Conflict(format!("cannot acquire lock for {target_file:?}: {error}"))
+        })?;
         let payload = LockPayload {
             pid: std::process::id(),
-            created_unix_ms: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as u64)
+            created_unix_ms: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|duration| duration.as_millis() as u64)
                 .unwrap_or(0),
         };
         let bytes = serde_json::to_vec(&payload)
-            .map_err(|e| EngineError::Execution(format!("failed to serialize lock: {e}")))?;
-        std::fs::write(&lock_path, bytes)
-            .map_err(|e| EngineError::Execution(format!("failed to write lock file: {e}")))?;
-        Ok(Self {
-            lock_path,
-            active: true,
-        })
+            .map_err(|error| EngineError::Execution(format!("lock metadata failed: {error}")))?;
+        use std::io::{Seek, Write};
+        file.set_len(0)
+            .and_then(|()| file.rewind())
+            .and_then(|()| file.write_all(&bytes))
+            .and_then(|()| file.sync_all())
+            .map_err(|error| EngineError::Execution(format!("lock write failed: {error}")))?;
+        Ok(Self { file: Some(file) })
     }
 
-    /// Manually release the lock.
+    /// Closing the retained handle releases the OS lock.
     pub fn release(&mut self) {
-        if self.active {
-            let _ = std::fs::remove_file(&self.lock_path);
-            self.active = false;
-        }
+        self.file.take();
     }
 }
 
@@ -1213,16 +1224,6 @@ impl Drop for CooperativeFileLock {
     fn drop(&mut self) {
         self.release();
     }
-}
-
-#[cfg(unix)]
-fn is_process_alive(pid: u32) -> bool {
-    std::path::Path::new(&format!("/proc/{pid}")).exists()
-}
-
-#[cfg(not(unix))]
-fn is_process_alive(_pid: u32) -> bool {
-    false
 }
 
 #[cfg(test)]

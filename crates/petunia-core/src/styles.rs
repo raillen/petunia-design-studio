@@ -214,6 +214,11 @@ pub struct StyleRegistry {
 }
 
 impl StyleRegistry {
+    /// Remove one record by identity; callers validate remaining references.
+    pub fn remove(&mut self, id: StyleId) -> Option<StyleDefinition> {
+        self.styles.remove(&id)
+    }
+
     #[must_use]
     pub fn new() -> Self {
         Self {

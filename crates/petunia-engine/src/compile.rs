@@ -9,13 +9,17 @@
 
 use crate::geometry::bezier::flatten_contour;
 use crate::transaction::DocumentRevision;
-use petunia_core::{ObjectId, PageId, Rect, SceneItem, SceneNode, Size2, Tolerance, VectorPath};
+use petunia_core::{ObjectId, Rect, SceneItem, SceneNode, Tolerance};
 use petunia_render_model::{
     CompileWarning, RenderAppearance, RenderClip, RenderColor, RenderFrame, RenderGroup,
     RenderPaint, RenderPath, RenderPrimitive, RenderQuality, RenderResourceTable, RenderSnapshot,
     RenderTarget, SnapshotRevision, VectorPrimitive, ViewTransform,
 };
 use std::collections::HashMap;
+#[path = "evaluation.rs"]
+mod evaluation;
+
+pub use evaluation::{shape_path as evaluate_shape, stroke_outline as evaluate_stroke};
 
 /// Flatten tolerance per quality, in document units.
 #[must_use]
@@ -27,44 +31,202 @@ pub fn flatten_tolerance(quality: RenderQuality) -> f64 {
     }
 }
 
-/// Compile one document into a snapshot plus warnings. Single page
-/// for now: page and spread modeling lands with the document
-/// structure wave.
+/// Compile every authorial page into a revisioned snapshot plus warnings.
 #[must_use]
 pub fn compile_document(
     document: &petunia_core::Document,
     revision: DocumentRevision,
     quality: RenderQuality,
 ) -> (RenderSnapshot, Vec<CompileWarning>) {
-    let tolerance = Tolerance::new(flatten_tolerance(quality)).expect("constant tolerance");
+    compile_document_with_providers(document, revision, quality, &CompileProviders::default())
+}
+
+/// Explicit runtime evaluation dependencies. No filesystem/resource reads occur in compilation.
+#[derive(Default)]
+pub struct CompileProviders<'a> {
+    pub color_profiles: HashMap<petunia_core::ColorSpaceRef, std::sync::Arc<[u8]>>,
+    pub fonts: Option<&'a crate::text::FontRegistry>,
+    pub default_character: Option<&'a petunia_core::CharacterStyle>,
+    pub default_paragraph: Option<&'a petunia_core::ParagraphStyle>,
+    pub images: HashMap<
+        petunia_core::ResourceId,
+        std::sync::Arc<petunia_render_model::image::ResolvedImage>,
+    >,
+}
+
+/// Compile every authorial page with immutable runtime resource providers.
+#[must_use]
+pub fn compile_document_with_providers(
+    document: &petunia_core::Document,
+    revision: DocumentRevision,
+    quality: RenderQuality,
+    providers: &CompileProviders<'_>,
+) -> (RenderSnapshot, Vec<CompileWarning>) {
+    let tolerance = Tolerance(flatten_tolerance(quality));
+    let mut colors = crate::color_management::ColorEngine::new();
+    for (space, bytes) in &providers.color_profiles {
+        let _ = colors.register_profile(space.clone(), bytes);
+    }
     let mut compiler = Compiler {
         tolerance,
         warnings: Vec::new(),
+        binding_source: None,
+        text_layouts: HashMap::new(),
+        scope: CompileScope::new(document),
+        providers,
+        colors,
+        depth: 0,
     };
-    let mut primitives = Vec::new();
-    for id in document.scene.root_order() {
-        compiler.compile_node(document, *id, &mut primitives);
+    let pages = document
+        .scene
+        .page_ids()
+        .into_iter()
+        .map(|page| {
+            let mut primitives = Vec::new();
+            for id in document.scene.page_roots(page).unwrap_or_default() {
+                compiler.compile_node(document, *id, &mut primitives);
+            }
+            petunia_render_model::RenderPage {
+                page,
+                size: document
+                    .pages
+                    .get(page)
+                    .map_or(document.setup.default_page.size, |page| page.spec.size),
+                primitives,
+            }
+        })
+        .collect();
+    let mut resources = RenderResourceTable::new();
+    resources.images = providers.images.clone();
+    for (resource_id, resource) in document.resources.iter() {
+        resources.insert(
+            resource_id,
+            petunia_render_model::ResourceEntry {
+                kind: resource.kind,
+                revision: 0,
+            },
+        );
     }
-    let canvas = document.default_page_size();
     let snapshot = RenderSnapshot {
         revision: SnapshotRevision(revision.0),
-        pages: vec![petunia_render_model::RenderPage {
-            page: PageId::new_v4(),
-            size: Size2::new(canvas.width.max(1.0), canvas.height.max(1.0))
-                .unwrap_or(Size2::new(8.0, 8.0).expect("constant size")),
-            primitives,
-        }],
-        resources: RenderResourceTable::new(),
+        pages,
+        resources,
     };
     (snapshot, compiler.warnings)
 }
 
-struct Compiler {
-    tolerance: Tolerance,
-    warnings: Vec<CompileWarning>,
+#[derive(Default)]
+struct CompileScope {
+    binding_only: std::collections::HashSet<ObjectId>,
+    flow_previous: HashMap<ObjectId, Vec<ObjectId>>,
+}
+impl CompileScope {
+    fn new(document: &petunia_core::Document) -> Self {
+        let mut scope = Self::default();
+        for node in scene_nodes(document) {
+            if let Some(clip) = node.clip {
+                if clip.use_as == petunia_core::BindingSourceUse::BindingOnly {
+                    scope.binding_only.insert(clip.source);
+                }
+            }
+            if let SceneItem::Text(text) = &node.item {
+                if let Some(next) = text.flow.next {
+                    scope.flow_previous.entry(next).or_default().push(node.id);
+                }
+            }
+        }
+        scope
+    }
 }
 
-impl Compiler {
+struct Compiler<'a> {
+    tolerance: Tolerance,
+    warnings: Vec<CompileWarning>,
+    binding_source: Option<ObjectId>,
+    text_layouts: HashMap<ObjectId, crate::text::TextLayout>,
+    scope: CompileScope,
+    providers: &'a CompileProviders<'a>,
+    colors: crate::color_management::ColorEngine,
+    depth: usize,
+}
+
+impl Compiler<'_> {
+    fn flow_layout(
+        &mut self,
+        document: &petunia_core::Document,
+        id: ObjectId,
+        fonts: &crate::text::FontRegistry,
+        character: &petunia_core::CharacterStyle,
+        paragraph: &petunia_core::ParagraphStyle,
+    ) -> Option<Result<crate::text::TextLayout, crate::text::TextEvaluationError>> {
+        if let Some(layout) = self.text_layouts.get(&id) {
+            return Some(Ok(layout.clone()));
+        }
+        let mut root = id;
+        let mut seen = std::collections::HashSet::new();
+        let mut linked = document.scene.get_node(id).is_some_and(
+            |node| matches!(&node.item,SceneItem::Text(text) if text.flow.next.is_some()),
+        );
+        loop {
+            if !seen.insert(root) || seen.len() > 64 {
+                return Some(Err(crate::text::TextEvaluationError::Invalid(
+                    "flow cycle/depth limit".into(),
+                )));
+            }
+            let predecessors = self
+                .scope
+                .flow_previous
+                .get(&root)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            match predecessors {
+                [] => break,
+                [previous] => {
+                    root = *previous;
+                    linked = true;
+                }
+                _ => {
+                    return Some(Err(crate::text::TextEvaluationError::Invalid(
+                        "frame has multiple incoming text flows".into(),
+                    )))
+                }
+            }
+        }
+        if !linked {
+            return None;
+        }
+        let mut frames = Vec::new();
+        let mut cursor = Some(root);
+        seen.clear();
+        while let Some(id) = cursor {
+            if !seen.insert(id) || frames.len() >= 64 {
+                return Some(Err(crate::text::TextEvaluationError::Invalid(
+                    "flow cycle/depth limit".into(),
+                )));
+            }
+            let Some(SceneItem::Text(text)) = document.scene.get_node(id).map(|node| &node.item)
+            else {
+                return Some(Err(crate::text::TextEvaluationError::Invalid(
+                    "flow target is not text".into(),
+                )));
+            };
+            frames.push((id, text));
+            cursor = text.flow.next;
+        }
+        match crate::text::evaluate_text_flow(
+            &frames,
+            &document.styles,
+            fonts,
+            character,
+            paragraph,
+        ) {
+            Ok(layouts) => {
+                self.text_layouts.extend(layouts);
+                self.text_layouts.get(&id).cloned().map(Ok)
+            }
+            Err(error) => Some(Err(error)),
+        }
+    }
     fn warn(&mut self, source: ObjectId, message: impl Into<String>) {
         self.warnings.push(CompileWarning {
             source,
@@ -78,56 +240,143 @@ impl Compiler {
         id: ObjectId,
         out: &mut Vec<RenderPrimitive>,
     ) {
+        if self.depth >= 256 {
+            self.warn(
+                id,
+                "scene/reference nesting exceeds evaluation limit; skipped",
+            );
+            return;
+        }
+        self.depth += 1;
+        self.compile_node_inner(document, id, out);
+        self.depth -= 1;
+    }
+
+    fn compile_node_inner(
+        &mut self,
+        document: &petunia_core::Document,
+        id: ObjectId,
+        out: &mut Vec<RenderPrimitive>,
+    ) {
         let Some(node) = document.scene.get_node(id) else {
             self.warn(id, "dangling scene reference skipped");
             return;
         };
+        if !node.visible
+            || document.scene.ancestors(id).iter().any(|ancestor| {
+                document
+                    .scene
+                    .get_node(*ancestor)
+                    .is_some_and(|node| !node.visible)
+            })
+        {
+            return;
+        }
+        if self.binding_source != Some(id) && self.scope.binding_only.contains(&id) {
+            return;
+        }
+        let mut evaluated_node = node.clone();
+        evaluated_node.transform = document.scene.world_transform(id).unwrap_or(node.transform);
+        let node = &evaluated_node;
+        let mut content = Vec::new();
         match &node.item {
-            SceneItem::Path(object) => {
-                out.push(self.compile_path(document, node, object));
-            }
-            SceneItem::Group(children) => {
-                let mut compiled = Vec::new();
-                for child in children {
-                    self.compile_node(document, *child, &mut compiled);
-                }
-                // Opacity-only groups flatten when provably identical;
-                // anything else keeps explicit group semantics.
-                if node.opacity >= 1.0
-                    && node.clip.is_none()
-                    && compiled
-                        .iter()
-                        .all(|primitive| matches!(primitive, RenderPrimitive::Vector(_)))
-                {
-                    out.extend(compiled);
-                } else {
-                    // Clips resolve in the attach_clips post-pass,
-                    // which sees the whole document at once.
-                    out.push(RenderPrimitive::Group(RenderGroup {
-                        source: id,
-                        children: compiled,
-                        opacity: node.opacity,
-                        blend_mode: petunia_core::appearance::BlendMode::Normal,
-                        mask: None,
-                        clip: None,
-                        effects: Vec::new(),
-                        isolation: petunia_render_model::IsolationMode::Flattened,
-                        bounds: self.node_bounds(document, node),
-                    }));
-                }
-            }
-            SceneItem::Shape(_)
-            | SceneItem::Text(_)
-            | SceneItem::Image(_)
-            | SceneItem::PixelLayer(_)
-            | SceneItem::Trace(_)
-            | SceneItem::GeneratedVector(_)
-            | SceneItem::SymbolInstance(_) => {
-                self.warn(
-                    id,
-                    "item needs an evaluation provider not present in v0.1; skipped with warning",
+            SceneItem::Path(object) => self.compile_path(document, node, object, &mut content),
+            SceneItem::Shape(object) => {
+                let path = evaluation::shape_path(object.shape, self.tolerance);
+                self.compile_path(
+                    document,
+                    node,
+                    &petunia_core::PathObject {
+                        path,
+                        appearance: object.appearance.clone(),
+                    },
+                    &mut content,
                 );
             }
+            SceneItem::Group(children) => {
+                if node
+                    .geometry_effects
+                    .items
+                    .iter()
+                    .any(|effect| effect.enabled)
+                {
+                    self.warn(id,"group geometry effects require a subtree evaluator; source subtree retained");
+                }
+                for child in children {
+                    self.compile_node(document, *child, &mut content);
+                }
+            }
+            SceneItem::Text(object) => self.compile_text(document, node, object, &mut content),
+            SceneItem::Image(object) => self.compile_image(node, object, &mut content),
+            SceneItem::GeneratedVector(object) => {
+                match crate::generated::evaluate_generator(&object.generator) {
+                    Ok(generated) => self.compile_path(
+                        document,
+                        node,
+                        &petunia_core::PathObject {
+                            path: generated.path,
+                            appearance: object.appearance.clone(),
+                        },
+                        &mut content,
+                    ),
+                    Err(error) => self.warn(id, format!("generator evaluation failed: {error}")),
+                }
+            }
+            SceneItem::PixelLayer(layer) => self.compile_image(
+                node,
+                &petunia_core::ImageObject {
+                    resource: layer.surface.resource,
+                    source_rect: None,
+                    sampling: petunia_core::ImageSamplingPolicy::Nearest,
+                },
+                &mut content,
+            ),
+            SceneItem::Trace(trace) => self.compile_trace(document, node, trace, &mut content),
+            SceneItem::SymbolInstance(instance) => {
+                self.compile_symbol(document, node, instance, &mut content)
+            }
+        }
+        let effects = self.compile_effects(document, node);
+        let clip = node.clip.and_then(|binding| {
+            let clip = self
+                .clip_geometry(document, binding.source)
+                .map(RenderClip::Path);
+            if clip.is_none() {
+                self.warn(
+                    id,
+                    "clip source is unavailable or unsupported; target skipped",
+                );
+            }
+            clip
+        });
+        if node.clip.is_some() && clip.is_none() {
+            return;
+        }
+        let mask = node.mask.map(|binding| {
+            let previous = self.binding_source.replace(binding.source);
+            let mut children = Vec::new();
+            self.compile_node(document, binding.source, &mut children);
+            self.binding_source = previous;
+            petunia_render_model::RenderMask::Primitives {
+                children,
+                luminance: binding.mode == petunia_core::MaskMode::Luminance,
+            }
+        });
+        let bounds = effect_bounds(primitive_list_bounds(&content), &effects);
+        if node.opacity < 1.0 || clip.is_some() || mask.is_some() || !effects.is_empty() {
+            out.push(RenderPrimitive::Group(RenderGroup {
+                source: id,
+                children: content,
+                opacity: node.opacity,
+                blend_mode: petunia_core::BlendMode::Normal,
+                mask,
+                clip,
+                effects,
+                isolation: petunia_render_model::IsolationMode::Isolated,
+                bounds,
+            }));
+        } else {
+            out.extend(content);
         }
     }
 
@@ -136,53 +385,584 @@ impl Compiler {
         document: &petunia_core::Document,
         node: &SceneNode,
         object: &petunia_core::PathObject,
-    ) -> RenderPrimitive {
+        out: &mut Vec<RenderPrimitive>,
+    ) {
         let mut geometry = RenderPath::new();
+        geometry.fill_rule = object.path.fill_rule;
         for contour in &object.path.contours {
-            let flat = flatten_contour(contour, self.tolerance);
+            let remaining = (1usize << 18)
+                .saturating_sub(geometry.contours.iter().map(Vec::len).sum::<usize>());
+            let flat = match crate::geometry::bezier::try_flatten_contour(
+                contour,
+                self.tolerance,
+                remaining,
+            ) {
+                Ok(points) => points,
+                Err(error) => {
+                    self.warn(node.id, format!("geometry evaluation unavailable: {error}"));
+                    return;
+                }
+            };
             geometry.push_contour(
                 flat.iter().map(|point| (point.x, point.y)).collect(),
                 contour.closed,
             );
         }
-        // First enabled fill and stroke win; the stack order beyond
-        // that belongs to a multi-pass compositor, not this compiler.
-        let mut fill = None;
-        let mut stroke = None;
+        for effect in node
+            .geometry_effects
+            .items
+            .iter()
+            .filter(|effect| effect.enabled)
+        {
+            self.warn(
+                node.id,
+                format!(
+                    "geometry effect {:?} has no faithful evaluator; source geometry retained",
+                    effect.operation
+                ),
+            );
+        }
         for item in object.appearance.items.iter().filter(|item| item.enabled) {
-            match &item.kind {
+            let (fill, stroke) = match &item.kind {
                 petunia_core::AppearanceKind::Fill(paint) => {
-                    if fill.is_none() {
-                        fill = self.compile_paint(document, node, node.id, paint);
-                    }
+                    (self.compile_paint(document, node, node.id, paint), None)
                 }
                 petunia_core::AppearanceKind::Stroke(style) => {
-                    if stroke.is_none() {
-                        let width = style.width.max(0.0);
-                        if let Some(paint) = self.compile_color(document, node.id, &style.paint) {
-                            stroke = Some(petunia_render_model::RenderStroke { paint, width });
+                    if style.start_marker.is_some() || style.end_marker.is_some() {
+                        self.warn(
+                            node.id,
+                            "stroke markers require a vector definition provider; markers omitted",
+                        );
+                    }
+                    let paint = self.compile_color(document, node.id, &style.paint);
+                    let outline = evaluation::stroke_outline(&object.path, style, self.tolerance);
+                    let primitive = RenderPrimitive::Vector(Box::new(VectorPrimitive {
+                        source: node.id,
+                        bounds: render_path_bounds(&outline, node.transform),
+                        geometry: outline,
+                        appearance: RenderAppearance {
+                            fill: paint,
+                            stroke: None,
+                            opacity: item.opacity,
+                        },
+                        transform: node.transform,
+                    }));
+                    self.push_appearance(node, item, primitive, out);
+                    continue;
+                }
+            };
+            let primitive = RenderPrimitive::Vector(Box::new(VectorPrimitive {
+                source: node.id,
+                geometry: geometry.clone(),
+                appearance: RenderAppearance {
+                    fill,
+                    stroke,
+                    opacity: item.opacity,
+                },
+                transform: node.transform,
+                bounds: render_path_bounds(&geometry, node.transform),
+            }));
+            self.push_appearance(node, item, primitive, out);
+        }
+    }
+
+    fn push_appearance(
+        &self,
+        node: &SceneNode,
+        item: &petunia_core::AppearanceItem,
+        primitive: RenderPrimitive,
+        out: &mut Vec<RenderPrimitive>,
+    ) {
+        if item.blend_mode == petunia_core::BlendMode::Normal {
+            out.push(primitive);
+        } else {
+            let bounds = primitive_bounds(&primitive);
+            out.push(RenderPrimitive::Group(RenderGroup {
+                source: node.id,
+                children: vec![primitive],
+                opacity: 1.0,
+                blend_mode: item.blend_mode,
+                mask: None,
+                clip: None,
+                effects: Vec::new(),
+                isolation: petunia_render_model::IsolationMode::Isolated,
+                bounds,
+            }));
+        }
+    }
+
+    fn compile_text(
+        &mut self,
+        document: &petunia_core::Document,
+        node: &SceneNode,
+        object: &petunia_core::TextObject,
+        out: &mut Vec<RenderPrimitive>,
+    ) {
+        let Some(fonts) = self.providers.fonts else {
+            self.warn(
+                node.id,
+                "text needs an explicitly loaded font registry; skipped",
+            );
+            return;
+        };
+        let default = petunia_core::CharacterStyle {
+            font: petunia_core::FontRef {
+                family: "sans-serif".into(),
+                style_name: None,
+                resource: None,
+                axes: Vec::new(),
+            },
+            size: 16.0,
+            color: petunia_core::ColorSource::Value(petunia_core::ColorValue::Process(
+                petunia_core::ProcessColor {
+                    value: petunia_core::ProcessColorValue::Rgb(petunia_core::Rgba {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        alpha: 1.0,
+                    }),
+                    space: petunia_core::ColorSpaceRef::Builtin(
+                        petunia_core::BuiltinColorSpace::Srgb,
+                    ),
+                },
+            )),
+            tracking: 0.0,
+            baseline_shift: 0.0,
+            language: "und".into(),
+            slant: petunia_core::FontSlant::Normal,
+            features: Vec::new(),
+        };
+        let paragraph = petunia_core::ParagraphStyle {
+            alignment: petunia_core::TextAlignment::Left,
+            line_height: 19.2,
+            space_before: 0.0,
+            space_after: 0.0,
+            first_line_indent: 0.0,
+            left_indent: 0.0,
+            right_indent: 0.0,
+            hyphenation: false,
+            baseline_grid: None,
+        };
+        let character = self.providers.default_character.unwrap_or(&default);
+        let paragraph = self.providers.default_paragraph.unwrap_or(&paragraph);
+        let evaluated = if let petunia_core::TextContainer::OnPath(reference) = object.container {
+            let path = document
+                .scene
+                .get_node(reference.target)
+                .and_then(|target| match &target.item {
+                    SceneItem::Path(object) => Some(object.path.clone()),
+                    SceneItem::Shape(object) => Some(evaluate_shape(object.shape, self.tolerance)),
+                    _ => None,
+                });
+            match (
+                path,
+                node.transform.inverse(),
+                document.scene.world_transform(reference.target),
+            ) {
+                (Some(mut path), Some(inverse), Some(world)) => {
+                    let mapping = inverse.concat(world);
+                    for contour in &mut path.contours {
+                        for anchor in &mut contour.nodes {
+                            anchor.point = mapping.transform_point(anchor.point);
+                            anchor.handle_in =
+                                anchor.handle_in.map(|point| mapping.transform_point(point));
+                            anchor.handle_out = anchor
+                                .handle_out
+                                .map(|point| mapping.transform_point(point));
+                        }
+                    }
+                    crate::text::evaluate_text_on_path(
+                        object,
+                        &path,
+                        &document.styles,
+                        fonts,
+                        character,
+                        paragraph,
+                    )
+                }
+                _ => Err(crate::text::TextEvaluationError::MissingPathProvider),
+            }
+        } else {
+            self.flow_layout(document, node.id, fonts, character, paragraph)
+                .unwrap_or_else(|| {
+                    crate::text::evaluate_text(
+                        object,
+                        &document.styles,
+                        fonts,
+                        character,
+                        paragraph,
+                    )
+                })
+        };
+        match evaluated {
+            Ok(layout) => {
+                for warning in layout.warnings {
+                    self.warn(node.id, warning);
+                }
+                if layout.overflow {
+                    self.warn(node.id, "text frame overflow");
+                }
+                let mut glyphs = Vec::new();
+                for outline in layout.outlines {
+                    let appearance = petunia_core::Appearance {
+                        items: vec![petunia_core::AppearanceItem {
+                            id: petunia_core::AppearanceItemId::new_v4(),
+                            enabled: true,
+                            opacity: 1.0,
+                            blend_mode: petunia_core::BlendMode::Normal,
+                            kind: petunia_core::AppearanceKind::Fill(petunia_core::Paint::Solid(
+                                outline.color,
+                            )),
+                        }],
+                    };
+                    self.compile_path(
+                        document,
+                        node,
+                        &petunia_core::PathObject {
+                            path: outline.path,
+                            appearance,
+                        },
+                        &mut glyphs,
+                    );
+                }
+                if let petunia_core::TextContainer::Frame(frame) = object.container {
+                    if frame.overflow == petunia_core::TextOverflow::Clip {
+                        let points = [
+                            (0.0, 0.0),
+                            (frame.size.width, 0.0),
+                            (frame.size.width, frame.size.height),
+                            (0.0, frame.size.height),
+                        ]
+                        .map(|(x, y)| {
+                            let point = node
+                                .transform
+                                .transform_point(petunia_core::Point::new(x, y));
+                            (point.x, point.y)
+                        })
+                        .to_vec();
+                        out.push(RenderPrimitive::Group(RenderGroup {
+                            source: node.id,
+                            bounds: primitive_list_bounds(&glyphs),
+                            children: glyphs,
+                            opacity: 1.0,
+                            blend_mode: petunia_core::BlendMode::Normal,
+                            mask: None,
+                            clip: Some(RenderClip::Polygon(points)),
+                            effects: Vec::new(),
+                            isolation: petunia_render_model::IsolationMode::Isolated,
+                        }));
+                        return;
+                    }
+                }
+                out.extend(glyphs);
+            }
+            Err(error) => self.warn(node.id, format!("text layout failed: {error}")),
+        }
+    }
+
+    fn compile_trace(
+        &mut self,
+        document: &petunia_core::Document,
+        node: &SceneNode,
+        trace: &petunia_core::TraceObject,
+        out: &mut Vec<RenderPrimitive>,
+    ) {
+        let Some(image) = self.providers.images.get(&trace.source) else {
+            self.warn(node.id, "trace requires decoded image provider; skipped");
+            return;
+        };
+        let encode = |v: f32| {
+            if v <= 0.0031308 {
+                12.92 * v
+            } else {
+                1.055 * v.powf(1.0 / 2.4) - 0.055
+            }
+        };
+        let pixels: Vec<u8> = image
+            .pixels
+            .iter()
+            .flat_map(|pixel| {
+                [encode(pixel.r), encode(pixel.g), encode(pixel.b), pixel.a]
+                    .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
+            })
+            .collect();
+        let snapshot = match crate::analysis::RgbaSnapshot::new(
+            image.width as usize,
+            image.height as usize,
+            pixels,
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                self.warn(node.id, error.to_string());
+                return;
+            }
+        };
+        match crate::trace::evaluate_trace(
+            &snapshot,
+            &trace.spec,
+            &crate::analysis::AnalysisLimits::default(),
+            &crate::jobs::CancelToken::default(),
+        ) {
+            Ok(paths) => {
+                for path in paths {
+                    let appearance = petunia_core::Appearance {
+                        items: vec![petunia_core::AppearanceItem {
+                            id: petunia_core::AppearanceItemId::new_v4(),
+                            enabled: true,
+                            opacity: 1.0,
+                            blend_mode: petunia_core::BlendMode::Normal,
+                            kind: petunia_core::AppearanceKind::Fill(petunia_core::Paint::Solid(
+                                petunia_core::ColorSource::Value(path.color),
+                            )),
+                        }],
+                    };
+                    self.compile_path(
+                        document,
+                        node,
+                        &petunia_core::PathObject {
+                            path: path.path,
+                            appearance,
+                        },
+                        out,
+                    );
+                }
+            }
+            Err(error) => self.warn(node.id, format!("trace evaluation failed: {error}")),
+        }
+    }
+
+    fn compile_symbol(
+        &mut self,
+        document: &petunia_core::Document,
+        node: &SceneNode,
+        instance: &petunia_core::SymbolInstance,
+        out: &mut Vec<RenderPrimitive>,
+    ) {
+        let Some(definition) = document.symbols.get(instance.definition) else {
+            self.warn(node.id, "missing symbol definition; skipped");
+            return;
+        };
+        let mut expanded = document.clone();
+        expanded.scene = petunia_core::SceneGraph::new();
+        let page = expanded.scene.default_page();
+        let mut pending = definition.nodes.clone();
+        for change in &instance.overrides {
+            let Some(target) = pending.get_mut(&change.target) else {
+                self.warn(node.id, "missing symbol override target");
+                continue;
+            };
+            match &change.value {
+                petunia_core::SymbolOverrideValue::Visibility(visible) => target.visible = *visible,
+                petunia_core::SymbolOverrideValue::TextContent(text) => {
+                    if let SceneItem::Text(object) = &mut target.item {
+                        object.text = text.clone();
+                        object.runs.clear();
+                        object.paragraphs.clear();
+                    }
+                }
+                petunia_core::SymbolOverrideValue::Paint(color) => {
+                    if let Some(appearance) = match &mut target.item {
+                        SceneItem::Path(object) => Some(&mut object.appearance),
+                        SceneItem::Shape(object) => Some(&mut object.appearance),
+                        SceneItem::GeneratedVector(object) => Some(&mut object.appearance),
+                        _ => None,
+                    } {
+                        for item in &mut appearance.items {
+                            match &mut item.kind {
+                                petunia_core::AppearanceKind::Fill(paint) => {
+                                    *paint = petunia_core::Paint::Solid(color.clone())
+                                }
+                                petunia_core::AppearanceKind::Stroke(style) => {
+                                    style.paint = color.clone()
+                                }
+                            }
                         }
                     }
                 }
+                petunia_core::SymbolOverrideValue::Resource(resource) => match &mut target.item {
+                    SceneItem::Image(image) => image.resource = *resource,
+                    SceneItem::PixelLayer(layer) => layer.surface.resource = *resource,
+                    SceneItem::Trace(trace) => trace.source = *resource,
+                    _ => self.warn(node.id, "resource override target has no resource"),
+                },
             }
         }
-        let bounds = self.node_bounds_opt(object);
-        RenderPrimitive::Vector(VectorPrimitive {
+        let mut queue = std::collections::VecDeque::new();
+        for root in &definition.roots {
+            queue.push_back((*root, None));
+        }
+        while let Some((id, parent)) = queue.pop_front() {
+            let Some(mut child) = pending.remove(&id) else {
+                self.warn(node.id, "symbol contains dangling/cyclic subtree");
+                continue;
+            };
+            let children = child.item.children().unwrap_or_default().to_vec();
+            if let SceneItem::Group(list) = &mut child.item {
+                list.clear();
+            }
+            let inserted = if let Some(parent) = parent {
+                child.parent = petunia_core::ParentRef::Object(parent);
+                expanded.scene.insert_child(parent, child, None)
+            } else {
+                child.parent = petunia_core::ParentRef::Page(page);
+                child.transform = node.transform.concat(child.transform);
+                expanded.scene.insert_root(page, child)
+            };
+            if let Err(error) = inserted {
+                self.warn(node.id, format!("symbol expansion failed: {error}"));
+                continue;
+            }
+            for child in children {
+                queue.push_back((child, Some(id)));
+            }
+        }
+        let scope = std::mem::replace(&mut self.scope, CompileScope::new(&expanded));
+        let layouts = std::mem::take(&mut self.text_layouts);
+        let mut children = Vec::new();
+        for root in &definition.roots {
+            self.compile_node(&expanded, *root, &mut children);
+        }
+        self.scope = scope;
+        self.text_layouts = layouts;
+        for child in &mut children {
+            bind_instance_source(child, node.id);
+        }
+        out.push(RenderPrimitive::Group(RenderGroup {
             source: node.id,
-            geometry,
-            appearance: RenderAppearance {
-                fill,
-                stroke,
-                opacity: node.opacity.clamp(0.0, 1.0),
-            },
-            transform: node.transform,
-            bounds,
-        })
+            bounds: primitive_list_bounds(&children),
+            children,
+            opacity: 1.0,
+            blend_mode: petunia_core::BlendMode::Normal,
+            mask: None,
+            clip: None,
+            effects: Vec::new(),
+            isolation: petunia_render_model::IsolationMode::Flattened,
+        }));
     }
 
-    /// Resolve one authorial paint to a render paint. Solid colors
-    /// resolve; gradients, patterns and unimplemented spaces degrade
-    /// with a warning instead of a silent fallback.
+    fn compile_image(
+        &mut self,
+        node: &SceneNode,
+        object: &petunia_core::ImageObject,
+        out: &mut Vec<RenderPrimitive>,
+    ) {
+        let Some(image) = self.providers.images.get(&object.resource) else {
+            self.warn(
+                node.id,
+                "image bytes need an immutable decoded resource provider; skipped",
+            );
+            return;
+        };
+        out.push(RenderPrimitive::Image(
+            petunia_render_model::ImagePrimitive {
+                source: node.id,
+                resource: object.resource,
+                source_rect: object.source_rect,
+                transform: node.transform,
+                sampling: object.sampling,
+                opacity: 1.0,
+                bounds: transformed_rect(
+                    Rect::new(0.0, 0.0, image.width as f64, image.height as f64),
+                    node.transform,
+                ),
+            },
+        ));
+    }
+
+    fn clip_geometry(
+        &self,
+        document: &petunia_core::Document,
+        source: ObjectId,
+    ) -> Option<RenderPath> {
+        let node = document.scene.get_node(source)?;
+        let path = match &node.item {
+            SceneItem::Path(object) => object.path.clone(),
+            SceneItem::Shape(object) => evaluation::shape_path(object.shape, self.tolerance),
+            _ => return None,
+        };
+        let transform = document.scene.world_transform(source)?;
+        let mut geometry = RenderPath::new();
+        geometry.fill_rule = path.fill_rule;
+        for contour in path.contours.iter().filter(|contour| contour.closed) {
+            geometry.push_contour(
+                crate::geometry::bezier::try_flatten_contour(contour, self.tolerance, 1 << 18)
+                    .ok()?
+                    .iter()
+                    .map(|point| {
+                        let point = transform.transform_point(*point);
+                        (point.x, point.y)
+                    })
+                    .collect(),
+                true,
+            );
+        }
+        if geometry.contours.is_empty() {
+            None
+        } else {
+            Some(geometry)
+        }
+    }
+
+    fn compile_effects(
+        &mut self,
+        document: &petunia_core::Document,
+        node: &SceneNode,
+    ) -> Vec<petunia_render_model::RenderEffect> {
+        let mut effects = Vec::new();
+        for effect in node
+            .post_effects
+            .items
+            .iter()
+            .filter(|effect| effect.enabled)
+        {
+            if effect.opacity != 1.0
+                || effect.blend_mode != petunia_core::BlendMode::Normal
+                || effect.mask.is_some()
+            {
+                self.warn(
+                    node.id,
+                    "effect opacity/blend/mask requires effect-instance compositor; effect omitted",
+                );
+                continue;
+            }
+            match &effect.operation {
+                petunia_core::PostPaintEffect::GaussianBlur(blur) => {
+                    effects.push(petunia_render_model::RenderEffect::Blur {
+                        sigma_x: blur.sigma_x,
+                        sigma_y: blur.sigma_y,
+                    })
+                }
+                petunia_core::PostPaintEffect::DropShadow(shadow) => {
+                    if shadow.spread != 0.0 {
+                        self.warn(
+                            node.id,
+                            "nonzero shadow spread requires coverage morphology; effect omitted",
+                        );
+                        continue;
+                    }
+                    if let Some(color) = self.resolve_color(document, node.id, &shadow.color) {
+                        effects.push(petunia_render_model::RenderEffect::DropShadow(Box::new(
+                            petunia_render_model::ShadowEffect {
+                                offset: (shadow.offset.dx, shadow.offset.dy),
+                                sigma: (shadow.sigma.dx, shadow.sigma.dy),
+                                color,
+                                spread: shadow.spread,
+                                opacity: 1.0,
+                            },
+                        )));
+                    }
+                }
+                _ => self.warn(
+                    node.id,
+                    "post-paint effect has no faithful evaluator; omitted with diagnostic",
+                ),
+            }
+        }
+        effects
+    }
+
+    /// Resolve authorial paint using explicit color/image providers. Missing
+    /// providers and unsupported vector patterns produce diagnostics.
     fn compile_paint(
         &mut self,
         document: &petunia_core::Document,
@@ -199,22 +979,33 @@ impl Compiler {
             }
             petunia_core::Paint::Pattern(pattern) => match &pattern.source {
                 petunia_core::PatternSource::Raster(res_id) => {
+                    let Some(image) = self.providers.images.get(res_id) else {
+                        self.warn(id, "pattern needs a decoded image resource; skipped");
+                        return None;
+                    };
                     let transform = if pattern.space == petunia_core::PaintSpace::Object {
                         node.transform.concat(pattern.transform)
                     } else {
                         pattern.transform
                     };
+                    if transform.inverse().is_none() {
+                        self.warn(id, "pattern transform is singular; skipped");
+                        return None;
+                    }
                     Some(RenderPaint::Pattern(petunia_render_model::RenderPattern {
                         resource: *res_id,
-                        width: 64,
-                        height: 64,
+                        width: image.width,
+                        height: image.height,
                         repeat_x: pattern.repeat_x,
                         repeat_y: pattern.repeat_y,
                         transform,
                     }))
                 }
                 petunia_core::PatternSource::Vector(_) => {
-                    self.warn(id, "vector pattern paint needs a rasterizer pass; skipped");
+                    self.warn(
+                        id,
+                        "vector pattern requires reusable tile provider; skipped",
+                    );
                     None
                 }
             },
@@ -255,16 +1046,12 @@ impl Compiler {
                 start_angle,
             } => (*center, *center, 0.0, start_angle.radians()),
         };
-        let place = |point: petunia_core::Point| {
-            if gradient.space == petunia_core::PaintSpace::Object {
-                node.transform.transform_point(point)
-            } else {
-                point
-            }
-        };
-        let start = place(start);
-        let end = place(end);
         let evaluated = petunia_render_model::RenderGradient {
+            transform: if gradient.space == petunia_core::PaintSpace::Object {
+                node.transform
+            } else {
+                petunia_core::Transform2D::IDENTITY
+            },
             stops,
             interpolation: gradient.interpolation,
             spread: gradient.spread,
@@ -334,10 +1121,18 @@ impl Compiler {
                     b: channels.b,
                     a: channels.alpha.clamp(0.0, 1.0),
                 }),
-                _ => {
-                    self.warn(id, "color needs a managed transform; skipped");
-                    None
-                }
+                _ => match self.colors.to_linear_srgb(&process) {
+                    Ok(color) => Some(RenderColor {
+                        r: color.r,
+                        g: color.g,
+                        b: color.b,
+                        a: color.alpha,
+                    }),
+                    Err(error) => {
+                        self.warn(id, format!("color conversion failed: {error}"));
+                        None
+                    }
+                },
             },
             ColorValue::Spot(reference) => {
                 let Some(ink) = document.spots.get(reference.id) else {
@@ -360,71 +1155,105 @@ impl Compiler {
             }
         }
     }
+}
 
-    fn node_bounds(&self, document: &petunia_core::Document, node: &SceneNode) -> Rect {
-        match &node.item {
-            SceneItem::Path(object) => self
-                .path_bounds(&object.path)
-                .unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0)),
-            SceneItem::Group(children) => {
-                let mut bounds: Option<Rect> = None;
-                for child in children {
-                    if let Some(node) = document.scene.get_node(*child) {
-                        let child_bounds = self.node_bounds(document, node);
-                        bounds = Some(match bounds {
-                            Some(existing) => union_rect(existing, child_bounds),
-                            None => child_bounds,
-                        });
-                    }
-                }
-                bounds.unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0))
+fn primitive_bounds(primitive: &RenderPrimitive) -> Rect {
+    match primitive {
+        RenderPrimitive::Vector(v) => v.bounds,
+        RenderPrimitive::Group(g) => g.bounds,
+        RenderPrimitive::Text(t) => t.bounds,
+        RenderPrimitive::Image(i) => i.bounds,
+        RenderPrimitive::Raster(r) => r.bounds,
+    }
+}
+fn primitive_list_bounds(primitives: &[RenderPrimitive]) -> Rect {
+    primitives
+        .iter()
+        .map(primitive_bounds)
+        .reduce(union_rect)
+        .unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0))
+}
+fn render_path_bounds(path: &RenderPath, transform: petunia_core::Transform2D) -> Rect {
+    let mut bounds: Option<Rect> = None;
+    for (x, y) in path.contours.iter().flatten() {
+        let point = transform.transform_point(petunia_core::Point::new(*x, *y));
+        let rect = Rect::new(point.x, point.y, 0.0, 0.0);
+        bounds = Some(bounds.map_or(rect, |b| union_rect(b, rect)));
+    }
+    bounds.unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0))
+}
+fn effect_bounds(mut bounds: Rect, effects: &[petunia_render_model::RenderEffect]) -> Rect {
+    for effect in effects {
+        match effect {
+            petunia_render_model::RenderEffect::Blur { sigma_x, sigma_y } => {
+                bounds.x -= 3.0 * sigma_x;
+                bounds.y -= 3.0 * sigma_y;
+                bounds.width += 6.0 * sigma_x;
+                bounds.height += 6.0 * sigma_y;
             }
-            _ => Rect::new(0.0, 0.0, 0.0, 0.0),
+            petunia_render_model::RenderEffect::DropShadow(shadow) => {
+                let spread = shadow.spread.max(0.0);
+                bounds = union_rect(
+                    bounds,
+                    Rect::new(
+                        bounds.x + shadow.offset.0 - 3.0 * shadow.sigma.0 - spread,
+                        bounds.y + shadow.offset.1 - 3.0 * shadow.sigma.1 - spread,
+                        bounds.width + 6.0 * shadow.sigma.0 + 2.0 * spread,
+                        bounds.height + 6.0 * shadow.sigma.1 + 2.0 * spread,
+                    ),
+                );
+            }
+            _ => {}
         }
     }
+    bounds
+}
 
-    fn node_bounds_opt(&self, object: &petunia_core::PathObject) -> Rect {
-        let mut bounds: Option<Rect> = None;
-        for contour in &object.path.contours {
-            for point in &contour.nodes {
-                let slot = Rect::new(point.point.x, point.point.y, 0.0, 0.0);
-                bounds = Some(match bounds {
-                    Some(existing) => union_rect(existing, slot),
-                    None => slot,
-                });
-            }
-        }
-        let mut bounds = bounds.unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0));
-        // Conservative pad for the widest enabled stroke.
-        let mut pad = 0.0f64;
-        for item in object.appearance.items.iter().filter(|item| item.enabled) {
-            if let petunia_core::AppearanceKind::Stroke(style) = &item.kind {
-                pad = pad.max((style.width / 2.0).max(0.0));
-            }
-        }
-        if pad > 0.0 {
-            bounds = Rect::new(
-                bounds.x - pad,
-                bounds.y - pad,
-                bounds.width + pad * 2.0,
-                bounds.height + pad * 2.0,
-            );
-        }
-        bounds
+fn transformed_rect(rect: Rect, transform: petunia_core::Transform2D) -> Rect {
+    let corners = [
+        (rect.x, rect.y),
+        (rect.x + rect.width, rect.y),
+        (rect.x + rect.width, rect.y + rect.height),
+        (rect.x, rect.y + rect.height),
+    ];
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for (x, y) in corners {
+        let point = transform.transform_point(petunia_core::Point::new(x, y));
+        min_x = min_x.min(point.x);
+        min_y = min_y.min(point.y);
+        max_x = max_x.max(point.x);
+        max_y = max_y.max(point.y);
     }
+    Rect::new(min_x, min_y, max_x - min_x, max_y - min_y)
+}
 
-    fn path_bounds(&self, path: &VectorPath) -> Option<Rect> {
-        let mut bounds: Option<Rect> = None;
-        for contour in &path.contours {
-            for point in flatten_contour(contour, self.tolerance) {
-                let slot = Rect::new(point.x, point.y, 0.0, 0.0);
-                bounds = Some(match bounds {
-                    Some(existing) => union_rect(existing, slot),
-                    None => slot,
-                });
+fn scene_nodes(document: &petunia_core::Document) -> impl Iterator<Item = &SceneNode> {
+    document
+        .scene
+        .root_lists()
+        .into_iter()
+        .flat_map(|roots| roots.iter().copied())
+        .flat_map(|id| std::iter::once(id).chain(document.scene.descendants(id)))
+        .filter_map(|id| document.scene.get_node(id))
+}
+
+// Expanded geometry belongs to the selectable authorial instance. Definition
+// identities remain in Core for typed overrides, never become scene objects.
+fn bind_instance_source(primitive: &mut RenderPrimitive, source: ObjectId) {
+    match primitive {
+        RenderPrimitive::Vector(value) => value.source = source,
+        RenderPrimitive::Image(value) => value.source = source,
+        RenderPrimitive::Text(value) => value.source = source,
+        RenderPrimitive::Raster(value) => value.source = source,
+        RenderPrimitive::Group(group) => {
+            group.source = source;
+            for child in &mut group.children {
+                bind_instance_source(child, source);
             }
         }
-        bounds
     }
 }
 
@@ -465,12 +1294,31 @@ pub fn headless_frame(
     RenderFrame {
         snapshot,
         view: ViewTransform {
+            rotation: 0.0,
             scale,
             offset_x: 0.0,
             offset_y: 0.0,
         },
         target: RenderTarget { width, height },
     }
+}
+
+/// Select one page explicitly for a headless frame; pages never overpaint each other.
+#[must_use]
+pub fn headless_page_frame(
+    mut snapshot: RenderSnapshot,
+    page: petunia_core::PageId,
+    width: u32,
+    height: u32,
+    scale: f64,
+) -> Option<RenderFrame> {
+    let selected = snapshot
+        .pages
+        .iter()
+        .position(|candidate| candidate.page == page)?;
+    let page = snapshot.pages.remove(selected);
+    snapshot.pages = vec![page];
+    Some(headless_frame(snapshot, width, height, scale))
 }
 
 /// Clip bindings resolve through their source path geometry.
@@ -513,7 +1361,14 @@ impl ClipResolver for PathClipResolver {
                     polygon.extend(
                         flatten_contour(contour, self.tolerance)
                             .iter()
-                            .map(|point| (point.x, point.y)),
+                            .map(|point| {
+                                let point = document
+                                    .scene
+                                    .world_transform(binding.source)
+                                    .unwrap_or(node.transform)
+                                    .transform_point(*point);
+                                (point.x, point.y)
+                            }),
                     );
                 }
                 if polygon.len() >= 3 {
@@ -665,18 +1520,30 @@ mod tests {
         let RenderPrimitive::Vector(vector) = &snapshot.pages[0].primitives[0] else {
             panic!("expected vector");
         };
-        // First enabled fill wins: sRGB red linearizes to 1.0.
         let RenderPaint::Solid(fill) = vector.appearance.fill.as_ref().expect("fill") else {
-            panic!("expected solid fill");
+            panic!("solid");
         };
         assert_eq!((fill.r, fill.g, fill.b), (1.0, 0.0, 0.0));
-        // The stroke resolves with its own paint and width.
-        let stroke = vector.appearance.stroke.as_ref().expect("stroke");
-        assert_eq!(stroke.width, 4.0);
-        let RenderPaint::Solid(paint) = &stroke.paint else {
-            panic!("expected solid stroke");
+        assert_eq!(
+            snapshot.pages[0].primitives.len(),
+            3,
+            "complete ordered stack"
+        );
+        let RenderPrimitive::Vector(stroke) = &snapshot.pages[0].primitives[2] else {
+            panic!("stroke outline");
         };
-        assert!(paint.g > 0.9, "{paint:?}");
+        assert!(
+            stroke.appearance.stroke.is_none(),
+            "stroke is evaluated into a local outline"
+        );
+        let RenderPaint::Solid(paint) = stroke.appearance.fill.as_ref().expect("paint") else {
+            panic!("solid");
+        };
+        assert!(paint.g > 0.9);
+        assert!(
+            stroke.bounds.width > 10.0,
+            "stroke visual bounds include outline"
+        );
     }
 
     #[test]
@@ -930,7 +1797,8 @@ mod tests {
             .expect("group primitive");
         match group.clip.as_ref().expect("clip attached") {
             RenderClip::Polygon(points) => assert!(points.len() >= 3, "{points:?}"),
-            RenderClip::Rect(_) => panic!("expected polygon clip"),
+            RenderClip::Path(path) => assert!(!path.contours.is_empty()),
+            RenderClip::Rect(_) => panic!("expected polygon/path clip"),
         }
     }
 }

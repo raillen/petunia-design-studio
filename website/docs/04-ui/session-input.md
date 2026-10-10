@@ -140,3 +140,11 @@ Gap encontrado e corrigido durante a verificacao: a camada de foco consumia Esca
 | `#![forbid(unsafe_code)]` nos 5 crates | pass: nenhum `unsafe` fora do forbid |
 
 Riscos/limites: verificacao headless apenas. Nenhuma GUI real exercitada; Smart Delete ainda nao tem preview visual do erro, e o arraste de node continua sem geometria final. U01 permanece IN PROGRESS (2/3 checkpoints).
+
+## Sessão headless integrada em 2026-10-10
+
+A sessão agora fornece compile/render por página ativa, registries explícitos de fontes/imagens/blobs, save/open, confirmação de revisão salva, clipboard nativo e commit de raster via transação. Recursos têm limite de retenção; undo mantém versões anteriores disponíveis. View rotation, pan, zoom e DPR compartilham o contrato entre render e ponteiro lógico.
+
+Hit-test respeita ancestors ocultos/locked, identidade de instâncias e contexto de grupos. Marquee opera em coordenadas de view; snap recebe coordenadas do documento e usa grids affine, guides e bounds com hysteresis. Evidência: `session_boundary.rs` (4 testes) e testes de tools.
+
+Esta é uma integração headless. Ponte Qt/QML/CXX-Qt, canvas, painéis, controles de recursos pendentes, GC e QA de acessibilidade não estão implementados. [Matriz](#/docs/00-architecture/implementation-matrix.md) e [gates](#/docs/00-architecture/verification.md).

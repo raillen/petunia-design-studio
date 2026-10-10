@@ -128,6 +128,39 @@ pub struct VectorPath {
 }
 
 impl VectorPath {
+    /// Validate persisted identity and finite geometry independently of renderability.
+    pub fn validate(&self) -> crate::error::Result<()> {
+        let mut contours = std::collections::HashSet::new();
+        let mut nodes = std::collections::HashSet::new();
+        for contour in &self.contours {
+            if !contours.insert(contour.id) {
+                return Err(crate::CoreError::InvalidPath(format!(
+                    "duplicate contour {}",
+                    contour.id
+                )));
+            }
+            for node in &contour.nodes {
+                if !nodes.insert(node.id) {
+                    return Err(crate::CoreError::InvalidPath(format!(
+                        "duplicate node {}",
+                        node.id
+                    )));
+                }
+                for point in std::iter::once(node.point)
+                    .chain(node.handle_in)
+                    .chain(node.handle_out)
+                {
+                    if !point.x.is_finite() || !point.y.is_finite() {
+                        return Err(crate::CoreError::InvalidPath(format!(
+                            "non-finite coordinate on {}",
+                            node.id
+                        )));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
     #[must_use]
     pub const fn new() -> Self {
         Self {

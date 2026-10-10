@@ -87,6 +87,12 @@ pub fn action_name(action: ActionId) -> Option<String> {
         ActionId::NudgeRight => "Mover 1 px à direita",
         ActionId::NudgeUp => "Mover 1 px para cima",
         ActionId::NudgeDown => "Mover 1 px para baixo",
+        ActionId::CommandPalette => "Paleta de comandos",
+        ActionId::ManagePersonas => "Gerenciar personas",
+        ActionId::Preferences => "Preferências",
+        ActionId::ShortcutEditor => "Editor de atalhos",
+        ActionId::FocusNext => "Próxima região do workspace",
+        ActionId::FocusPrevious => "Região anterior do workspace",
     };
     Some(name.to_string())
 }
@@ -138,5 +144,29 @@ mod tests {
         assert!(!hover_reveals_after(399));
         assert!(hover_reveals_after(400));
         assert!(hover_reveals_after(HOVER_DELAY_MS));
+    }
+
+    #[test]
+    fn workspace_navigation_labels_follow_rebound_shortcuts() {
+        let mut table = ShortcutTable::defaults();
+        table
+            .rebind(ActionId::FocusNext, KeyCombo::key("f7"))
+            .unwrap();
+        let tooltip = tooltip_for(ActionId::FocusNext, &table).unwrap();
+        assert_eq!(tooltip.name, "Próxima região do workspace");
+        assert_eq!(tooltip.shortcut.as_deref(), Some("f7"));
+        assert_eq!(
+            palette_label_for(ActionId::FocusNext, &table),
+            Some(tooltip.display())
+        );
+        for action in [
+            ActionId::CommandPalette,
+            ActionId::ManagePersonas,
+            ActionId::Preferences,
+            ActionId::ShortcutEditor,
+            ActionId::FocusPrevious,
+        ] {
+            assert!(tooltip_for(action, &table).is_some());
+        }
     }
 }

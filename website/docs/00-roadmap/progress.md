@@ -80,3 +80,9 @@ Verification — 2026-10-09, Linux:
 Risks/limites: a verificação em navegador está pendente neste slice (servidor local do usuário). O painel registra fatos de execução fornecidos pelos contribuidores, e o validador não comprova que a evidência humana é verdadeira. O site não foi publicado.
 
 Next checkpoint: atualizar os IDs afetados na próxima implementação; G01 continua como próxima fronteira do Engine. T01 pode encerrar somente o escopo do painel acima; isso não fecha os gates de produto.
+
+## Auditoria e correções pré-GUI — 2026-10-10
+
+A auditoria reabriu checkpoints cujo comportamento não correspondia à documentação. As 15 regressões da auditoria e as novas integrações passaram; a evidência atual refere-se ao working tree sobre `6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9`, não aos commits históricos citados acima.
+
+E01 fecha a correção de transactions/history no escopo de pruning e hard budget. C03, C04, G01, E02, E03, R01, U01 e Q01 continuam IN PROGRESS: checkpoints explícitos registram appearance ligada, efeitos, guards legados, snap completo, I/O, lifecycle, cache/pool e QA ainda pendentes. A [matriz](#/docs/00-architecture/implementation-matrix.md) separa entregas executáveis dos contratos restantes; [Verification](#/docs/00-architecture/verification.md) registra os resultados.

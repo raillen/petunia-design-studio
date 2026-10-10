@@ -2,11 +2,13 @@
 
 Workspace é composição de interface: janelas, docking, panels, menus e contexto. Não é documento.
 
+Personas customizáveis, temas, iconografia Phosphor/Tabler e feedback seguem [Design visual, personas e iconografia](#/docs/04-ui/visual-design.md). A implementação Qt/QML/CXX-Qt está em `petunia-desktop`; [execução e QA](#/docs/04-ui/native-desktop.md). Gates de tecnologias assistivas e plataformas seguem abertos.
+
 ## Qt boundary
 
 Qt/QML e CXX-Qt pertencem exclusivamente à camada de interface.
 
-Outros crates não importam tipos Qt. Core, Engine e Render expõem dados e comandos próprios; `petunia-ui` converte esses contratos em objetos/props expostos ao QML e em eventos de interação.
+Outros crates não importam tipos Qt. Core, Engine e Render expõem dados e comandos próprios; `petunia-ui` mantém a sessão headless; `petunia-desktop` converte snapshots e comandos em objetos/props expostos ao QML.
 
 CXX-Qt é a fronteira controlada entre Rust e Qt/C++. Tipos Qt, QObject, sinais/slots e detalhes de janela permanecem nessa borda e não vazam para Core, Engine ou Render.
 

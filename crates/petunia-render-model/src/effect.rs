@@ -32,6 +32,11 @@ pub struct ShadowEffect {
 pub enum RenderMask {
     Alpha(ObjectId),
     Luminance(ObjectId),
+    /// Evaluated coverage subtree, immutable for the snapshot lifetime.
+    Primitives {
+        children: Vec<crate::primitive::RenderPrimitive>,
+        luminance: bool,
+    },
 }
 
 /// Clip geometry for one group or primitive.
@@ -39,6 +44,7 @@ pub enum RenderMask {
 pub enum RenderClip {
     Rect(Rect),
     Polygon(Vec<(f64, f64)>),
+    Path(crate::primitive::RenderPath),
 }
 
 /// Adjustment domain: each adjustment names the space its math is

@@ -486,3 +486,9 @@ Escopo: `SpotRegistry`, subtrees de definição com ciclos reais e effect stacks
 | `node website/scripts/verify-progress.cjs` | pass |
 
 Riscos/limites: avaliadores por kind de efeito e render de gradients/patterns seguem futuros, com avisos explícitos até lá.
+
+## Registries e instâncias em 2026-10-10
+
+Styles/symbols integram a closure de fragments, remapping e operações transacionais reversíveis. Símbolos são expandidos virtualmente no compiler; seus itens derivados preservam a identidade da instância autoral para hit/seleção. Isso não substitui os comandos autorais de detach/expand nem fecha a ligação de AppearanceSource a objetos.
+
+Evidência: `history_fragments_regressions.rs` (12 testes) e `render_bridge_regressions.rs` (5 testes). O checkpoint anterior de styles foi delimitado a modelos/registries; wiring e handlers permanecem abertos. [Gates](#/docs/00-architecture/verification.md).

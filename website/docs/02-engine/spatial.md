@@ -509,3 +509,9 @@ Objetivo é proteger latência.
 10. Grids affine compartilham basis-vector model.
 11. Perspective grid usa evaluation projetiva separada.
 12. Smart guides não viram Guides persistentes automaticamente.
+
+## Integração verificada em 2026-10-10
+
+O índice e narrow phase compartilham world transforms, página ativa e visibilidade efetiva. Hit de snapshots cobre texto materializado, imagens recortadas e instâncias de símbolos. Contours respeitam fill rule e strokes usam o evaluator compartilhado. Ranking e hysteresis possuem testes de saída; a sessão mantém snap em coordenadas do documento e tolerância de ponteiro em view.
+
+Evidência: `scheduler_spatial_regressions.rs` (13 testes), `render_bridge_regressions.rs` e `session_boundary.rs` (4 testes). Providers baseline/perspective, guides de artboard e markers continuam pendentes. [Gates](#/docs/00-architecture/verification.md).

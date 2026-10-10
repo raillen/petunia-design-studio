@@ -650,3 +650,11 @@ Overflow é resultado válido e consultável.
 11. Grapheme/BiDi/line-break seguem UAX #29/#9/#14, respectivamente.
 12. Tags de idioma seguem BCP 47.
 13. Texto autoral não é normalizado Unicode silenciosamente.
+
+## Evaluation materializada em 2026-10-10
+
+Fontes são carregadas explicitamente; o registry retém bytes compartilhados e a compilação não depende de reler o arquivo original. Layout resolve styles, fallback por grapheme, BiDi conectado, shaping, wrap/hyphenation e outlines. O compiler materializa texto como geometria de render.
+
+Text-on-path usa arclength, tangente, start offset e transformação entre path e texto, preservando o conteúdo autoral. Linked frames concatenam o conteúdo em ordem, sem inserir separadores, e distribuem linhas inteiras entre frames; não reescrevem as strings do Core. A avaliação limita a cadeia a 64 frames e 65.536 bytes. Overflow e condições sem suporte são diagnosticados.
+
+Evidência: `text_raster_contracts.rs`, `text_path_regressions.rs` (3 testes) e testes de layout. Baseline grids, layout editorial completo, caret e seleção tipográfica continuam pendentes. Gates em [Verification](#/docs/00-architecture/verification.md).

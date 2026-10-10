@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 /// One evaluated drawable, distinguished by semantics.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RenderPrimitive {
-    Vector(VectorPrimitive),
+    Vector(Box<VectorPrimitive>),
     Text(TextPrimitive),
     Image(ImagePrimitive),
     Raster(RasterPrimitive),
@@ -35,6 +35,7 @@ pub struct VectorPrimitive {
 pub struct RenderPath {
     pub contours: Vec<Vec<(f64, f64)>>,
     pub closed: Vec<bool>,
+    pub fill_rule: petunia_core::FillRule,
 }
 
 impl RenderPath {
@@ -44,6 +45,7 @@ impl RenderPath {
         Self {
             contours: Vec::new(),
             closed: Vec::new(),
+            fill_rule: petunia_core::FillRule::NonZero,
         }
     }
 

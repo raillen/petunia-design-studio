@@ -222,6 +222,11 @@ pub struct SpotRegistry {
 }
 
 impl SpotRegistry {
+    /// Remove one record by identity; callers validate remaining references.
+    pub fn remove(&mut self, id: SpotColorId) -> Option<SpotColor> {
+        self.entries.remove(&id)
+    }
+
     /// Empty registry.
     #[must_use]
     pub fn new() -> Self {

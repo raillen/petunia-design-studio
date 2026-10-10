@@ -316,11 +316,25 @@ impl SceneGraph {
     /// dangling mandatory reference survives. Returns the removed
     /// nodes parent-first, ready to be re-inserted for undo.
     pub fn remove_subtree(&mut self, id: ObjectId) -> Result<Vec<SceneNode>> {
-        if !self.nodes.contains_key(&id) {
-            return Err(CoreError::ObjectNotFound(id.to_string()));
+        self.remove_subtrees(&[id])
+    }
+
+    /// Remove multiple roots as one structural mutation. A binding between
+    /// removed subtrees is allowed; any surviving owner of a removed source
+    /// rejects the entire operation before changing either ownership list.
+    pub fn remove_subtrees(&mut self, roots: &[ObjectId]) -> Result<Vec<SceneNode>> {
+        let mut gone = HashSet::new();
+        let mut removed = Vec::new();
+        for root in roots {
+            if !self.nodes.contains_key(root) {
+                return Err(CoreError::ObjectNotFound(root.to_string()));
+            }
+            for id in std::iter::once(*root).chain(self.descendants(*root)) {
+                if gone.insert(id) {
+                    removed.push(id);
+                }
+            }
         }
-        let removed: Vec<ObjectId> = std::iter::once(id).chain(self.descendants(id)).collect();
-        let gone: HashSet<ObjectId> = removed.iter().copied().collect();
         for node in self.nodes.values() {
             if gone.contains(&node.id) {
                 continue;
@@ -328,13 +342,15 @@ impl SceneGraph {
             for source in binding_sources(node) {
                 if gone.contains(&source) {
                     return Err(CoreError::DanglingReference(format!(
-                        "node {} is still a clip/mask source of {}",
-                        source, node.id,
+                        "node {source} is still a clip/mask source of {}",
+                        node.id,
                     )));
                 }
             }
         }
-        self.detach(id);
+        for root in roots {
+            self.detach(*root);
+        }
         let mut out = Vec::with_capacity(removed.len());
         for victim in removed {
             if let Some(node) = self.nodes.remove(&victim) {
@@ -721,11 +737,15 @@ impl SceneGraph {
                 node.id,
             )));
         }
-        if !node.opacity.is_finite() {
+        if !node.opacity.is_finite() || !(0.0..=1.0).contains(&node.opacity) {
             return Err(CoreError::InvariantViolation(format!(
                 "non-finite opacity on {}",
                 node.id,
             )));
+        }
+        if let SceneItem::Path(object) = &node.item {
+            object.path.validate()?;
+            object.appearance.validate()?;
         }
         if let Some(clip) = &node.clip {
             if clip.target != node.id {

@@ -27,7 +27,7 @@
     {
       "id": "interface",
       "title": "4 · Interface",
-      "description": "Sessão, input, ferramentas e workspace; GUI fora do fechamento até discussão conjunta."
+      "description": "Sessão, input, ferramentas e workspace Qt/QML; checkpoints de GUI e acessibilidade com evidência própria."
     },
     {
       "id": "quality",
@@ -315,6 +315,66 @@
       "revision": "98d50d3d4d046daf9148528312440bd67536d176",
       "document": "04-ui/selection-nodes-handles.md",
       "summary": "Decisão C (bounds discretos para 2+ nodes) em 2026-10-10: overlay de bounding box gerado automaticamente para 2+ nodes selecionados em espaço de documento, com preferência desativável. Gates: workspace 407 passed/0 failed, clippy -D warnings limpo, fmt limpo."
+    },
+    "ev-audit-20261010-e01": {
+      "revision": "working-tree sobre 6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9",
+      "document": "02-engine/commands-history.md",
+      "summary": "Transactions staged, revisões monotônicas, dirty por snapshot, budget forward/inverse e rollback: history_fragments_regressions (12) e audit_regressions (15)."
+    },
+    "ev-audit-20261010-e02": {
+      "revision": "working-tree sobre 6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9",
+      "document": "02-engine/spatial.md",
+      "summary": "Spatial por world/page/visibilidade, fill rules, strokes, recursos de snapshot e hysteresis: scheduler_spatial_regressions (13) e session_boundary (4)."
+    },
+    "ev-audit-20261010-e03": {
+      "revision": "working-tree sobre 6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9",
+      "document": "02-engine/io-jobs-plugins.md",
+      "summary": "WASM real com fuel/memória e grants, queue limitada/lane interativa, PTND e fragments staged; 493 testes workspace passaram. Não fecha import/export, autosave ou Host API completa."
+    },
+    "ev-audit-20261010-c03": {
+      "revision": "working-tree sobre 6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9",
+      "document": "01-core/appearance-effects.md",
+      "summary": "Appearance local compilada em ordem com opacity/blend, clip/mask e efeitos básicos: audit_regressions e render_bridge_regressions. ICC real: 5 testes color_management."
+    },
+    "ev-audit-20261010-c04": {
+      "revision": "working-tree sobre 6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9",
+      "document": "01-core/styles-symbols.md",
+      "summary": "Registries e closure/remapping transacionais, instâncias de símbolos selecionáveis; history_fragments_regressions e render_bridge_regressions. Ligação de appearance styles e comandos de detach/expand ainda pendentes."
+    },
+    "ev-audit-20261010-g01": {
+      "revision": "working-tree sobre 6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9",
+      "document": "02-engine/geometry.md",
+      "summary": "Line/Cubic unilaterais, RDP iterativo e flatten checked com budgets/erros; render_bridge_regressions e testes Bézier. Consumidores legados ainda pendentes."
+    },
+    "ev-audit-20261010-r01": {
+      "revision": "working-tree sobre 6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9",
+      "document": "03-render/pipeline.md",
+      "summary": "Compiler→snapshot→pixels: 15 audit_regressions, 5 render_bridge_regressions e 4 session_boundary passaram. Budget de frame e kernels verificado; cache/pool e efeitos completos pendentes."
+    },
+    "ev-audit-20261010-u01": {
+      "revision": "working-tree sobre 6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9",
+      "document": "04-ui/session-input.md",
+      "summary": "4 testes session_boundary passaram: recursos/render/clipboard/undo/save/open, dirty e conflitos, view/DPR e snap/contexto. GUI permanece pendente."
+    },
+    "ev-audit-20261010-q01": {
+      "revision": "working-tree sobre 6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9",
+      "document": "00-architecture/verification.md",
+      "summary": "493 testes Rust passaram; fmt e clippy sem avisos. Gates do site e benchmarks registrados em Verification; QA de interação/multiplataforma ainda aberto."
+    },
+    "ev-audit-text": {
+      "revision": "working-tree sobre 6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9",
+      "document": "02-engine/text-layout.md",
+      "summary": "Shaping/BiDi/fallback e outlines reais, text-on-path, fluxo ligado e fontes memory-owned: text_raster_contracts e text_path_regressions (3) passaram."
+    },
+    "ev-u01-visual-spec-20261010": {
+      "revision": "working tree sobre 6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9",
+      "document": "04-ui/visual-design.md",
+      "summary": "SPECIFICATION_ONLY: referência Affinity adaptada ao manifesto/ADR-0012; personas customizáveis, temas, Phosphor/Tabler outline/fill e fallback. Gates documentais e contraste registrados no capítulo; GUI/assets não implementados. U01 mantém status e checkpoints de runtime."
+    },
+    "ev-u01-native-20261010": {
+      "revision": "working tree sobre 6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9",
+      "document": "04-ui/native-desktop.md",
+      "summary": "GUI funcional Qt 6.8.2/CXX-Qt: personas e preferências persistentes, 172 entradas Phosphor/Tabler, temas e escala 100–200%, canvas/painéis e arquivos. PASS: 537 testes Rust, 26 QtQuickTest, fmt/Clippy/lint e seis capturas nativas em DPI 1/2 conferidas por pixels e revisão independente. QA assistiva/multiplataforma e controladores de pintura/texto não concluídos."
     }
   },
   "tasks": [
@@ -475,9 +535,9 @@
       "title": "Núcleo: color e appearance",
       "description": "Valor de cor com perfil explícito, Spot, swatches, gradients, appearance e effects.",
       "document": "01-core/color.md",
-      "status": "DONE",
+      "status": "IN PROGRESS",
       "updated": "2026-10-10",
-      "baseline": "Cor e appearance em revisões anteriores; fiação PathObject/ShapeObject e StrokeStyle com paint em ad596c5. Segue futuro: render de gradients/patterns e effect stacks no node.",
+      "baseline": "Cor e appearance em revisões anteriores; fiação PathObject/ShapeObject e StrokeStyle com paint em ad596c5. Segue futuro: render de gradients/patterns e effect stacks no node. Auditoria 2026-10-10: critérios reabertos por divergências reproduzidas; correção pré-GUI em execução. Correções verificadas no working tree sobre 6e2be4e; evidência atual separada das revisões históricas. Pendências mantidas em checkpoints explícitos.",
       "checkpoints": [
         {
           "title": "color.rs com RGBA e espaços básicos",
@@ -497,12 +557,17 @@
         {
           "title": "Color management com ICC encapsulado",
           "completed": true,
-          "evidence": "ev-c03"
+          "evidence": "ev-audit-20261010-c03"
         },
         {
           "title": "Appearance ligada aos itens Path/Shape com compilação preservando pixels",
           "completed": true,
-          "evidence": "ev-c03-appearance"
+          "evidence": "ev-audit-20261010-c03"
+        },
+        {
+          "title": "Appearance ligada, effects geometry e compositor completo de EffectInstance",
+          "completed": false,
+          "evidence": null
         }
       ],
       "documents": [
@@ -516,14 +581,14 @@
       "title": "Núcleo: styles, texto, raster e gerados",
       "description": "Styles linkáveis, symbols acíclicos, texto/raster/resources e conteúdo vetorial gerado com proveniência.",
       "document": "01-core/styles-symbols.md",
-      "status": "DONE",
+      "status": "IN PROGRESS",
       "updated": "2026-10-10",
-      "baseline": "Styles/texto/raster/gerados em revisões anteriores; fiação estrutural (spots, subtrees, effect stacks) em 7806e2c. Seguem futuros: avaliadores por kind de efeito e render de gradients/patterns.",
+      "baseline": "Styles/texto/raster/gerados em revisões anteriores; fiação estrutural (spots, subtrees, effect stacks) em 7806e2c. Seguem futuros: avaliadores por kind de efeito e render de gradients/patterns. Auditoria 2026-10-10: critérios reabertos por divergências reproduzidas; correção pré-GUI em execução. Correções verificadas no working tree sobre 6e2be4e; evidência atual separada das revisões históricas. Pendências mantidas em checkpoints explícitos.",
       "checkpoints": [
         {
-          "title": "styles.rs e symbols.rs com overrides tipados e detach explícito",
+          "title": "styles.rs e symbols.rs com registries e modelos de overrides/detach",
           "completed": true,
-          "evidence": "ev-styles"
+          "evidence": "ev-audit-20261010-c04"
         },
         {
           "title": "text.rs, raster.rs e resources.rs com registries",
@@ -538,7 +603,12 @@
         {
           "title": "Fiação estrutural: spots, subtrees de Symbol e effect stacks",
           "completed": true,
-          "evidence": "ev-c04-structural"
+          "evidence": "ev-audit-20261010-c04"
+        },
+        {
+          "title": "Ligação de appearance styles aos objetos e handlers de detach/expand",
+          "completed": false,
+          "evidence": null
         }
       ],
       "documents": [
@@ -555,8 +625,8 @@
       "description": "Command → DocumentOp → Transaction → HistoryEntry com undo/redo atômico.",
       "document": "02-engine/commands-history.md",
       "status": "DONE",
-      "updated": "2026-10-09",
-      "baseline": "Implementado em 7d0cbb6: DocumentOp, prepare/commit atômico com rollback, HistoryEntry com revisions, undo/redo, budget e coalescing. Follow-up: SetEffectParameter aguarda appearance storage.",
+      "updated": "2026-10-10",
+      "baseline": "Implementado em 7d0cbb6: DocumentOp, prepare/commit atômico com rollback, HistoryEntry com revisions, undo/redo, budget e coalescing. Follow-up: SetEffectParameter aguarda appearance storage. Auditoria 2026-10-10: critérios reabertos por divergências reproduzidas; correção pré-GUI em execução. Correções verificadas no working tree sobre 6e2be4e; evidência atual separada das revisões históricas. Pendências mantidas em checkpoints explícitos.",
       "checkpoints": [
         {
           "title": "command.rs com comandos básicos e history",
@@ -566,12 +636,12 @@
         {
           "title": "DocumentOp e Transaction atômica",
           "completed": true,
-          "evidence": "ev-e01"
+          "evidence": "ev-audit-20261010-e01"
         },
         {
-          "title": "HistoryEntry com memory budget e spill",
+          "title": "HistoryEntry com payload budget, pruning e rejeição antes do commit",
           "completed": true,
-          "evidence": "ev-e01"
+          "evidence": "ev-audit-20261010-e01"
         }
       ],
       "documents": [
@@ -584,9 +654,9 @@
       "title": "Engine: geometry booleana",
       "description": "Bézier robusto, boolean, offset, simplify, smooth, cleanup, curve fit e Shape Builder com proveniência.",
       "document": "02-engine/geometry.md",
-      "status": "DONE",
-      "updated": "2026-10-09",
-      "baseline": "Implementado em 7d0cbb6: Bézier, bounds, interseções, boolean via i_overlay, offset miter, simplify RDP e Shape Builder com proveniência. Follow-up: curve fitting e planar subdivision completa.",
+      "status": "IN PROGRESS",
+      "updated": "2026-10-10",
+      "baseline": "Implementado em 7d0cbb6: Bézier, bounds, interseções, boolean via i_overlay, offset miter, simplify RDP e Shape Builder com proveniência. Follow-up: curve fitting e planar subdivision completa. Correções verificadas no working tree sobre 6e2be4e; evidência atual separada das revisões históricas. Pendências mantidas em checkpoints explícitos.",
       "checkpoints": [
         {
           "title": "Bézier, bounds e interseções com predicates robustos",
@@ -602,6 +672,11 @@
           "title": "Executar e registrar os gates aplicáveis do documento, com regressões e limites de ambiente.",
           "completed": true,
           "evidence": "ev-geometry"
+        },
+        {
+          "title": "Migrar consumidores legados de flatten/Smart Delete para budgets e erros explícitos",
+          "completed": false,
+          "evidence": null
         }
       ],
       "documents": [
@@ -614,9 +689,9 @@
       "title": "Engine: spatial e snapping",
       "description": "R-tree, hit-test, candidatos, ranking, hysteresis e snapping com grids.",
       "document": "02-engine/spatial.md",
-      "status": "DONE",
-      "updated": "2026-10-09",
-      "baseline": "Implementado em 7d0cbb6: R-tree via rstar com trait, hit-test broad/narrow com fill-rule, ranking determinístico e measurement. Follow-up: narrow phases de texto/imagem/symbols e perspective snap.",
+      "status": "IN PROGRESS",
+      "updated": "2026-10-10",
+      "baseline": "Implementado em 7d0cbb6: R-tree via rstar com trait, hit-test broad/narrow com fill-rule, ranking determinístico e measurement. Follow-up: narrow phases de texto/imagem/symbols e perspective snap. Auditoria 2026-10-10: critérios reabertos por divergências reproduzidas; correção pré-GUI em execução. Correções verificadas no working tree sobre 6e2be4e; evidência atual separada das revisões históricas. Pendências mantidas em checkpoints explícitos.",
       "checkpoints": [
         {
           "title": "snapping.rs com snap básico de ponto",
@@ -626,12 +701,17 @@
         {
           "title": "Índice R-tree com hit-test e ranking",
           "completed": true,
-          "evidence": "ev-e02"
+          "evidence": "ev-audit-20261010-e02"
         },
         {
-          "title": "Snapping com candidatos, hysteresis e grids",
+          "title": "Snapping com candidatos, hysteresis e grids affine",
           "completed": true,
-          "evidence": "ev-e02"
+          "evidence": "ev-audit-20261010-e02"
+        },
+        {
+          "title": "Providers baseline/perspective, guides locais de artboard e markers",
+          "completed": false,
+          "evidence": null
         }
       ],
       "documents": [
@@ -644,29 +724,29 @@
       "title": "Engine: brush, texto, I/O e plugins",
       "description": "Brush/raster, text/layout, color, import/export, persistência, fragments, jobs e plugins WASM/MCP.",
       "document": "02-engine/brush-raster.md",
-      "status": "DONE",
+      "status": "IN PROGRESS",
       "updated": "2026-10-10",
-      "baseline": "I/O com PTND ZIP, recovery journal e fragments em 7d0cbb6; container físico em 290be45; recovery em a3e2079; previews/extensions/COW em eec048a; conflitos/locks/undo em 1520772.",
+      "baseline": "I/O com PTND ZIP, recovery journal e fragments em 7d0cbb6; container físico em 290be45; recovery em a3e2079; previews/extensions/COW em eec048a; conflitos/locks/undo em 1520772. Auditoria 2026-10-10: critérios reabertos por divergências reproduzidas; correção pré-GUI em execução. Correções verificadas no working tree sobre 6e2be4e; evidência atual separada das revisões históricas. Pendências mantidas em checkpoints explícitos.",
       "checkpoints": [
         {
           "title": "Brush/raster com resampling, tiles COW e filtros",
           "completed": true,
-          "evidence": "ev-brush"
+          "evidence": "ev-audit-20261010-e03"
         },
         {
           "title": "Text/layout com Unicode, BiDi, shaping e fallback",
           "completed": true,
-          "evidence": "ev-text"
+          "evidence": "ev-audit-text"
         },
         {
           "title": "I/O com PTND ZIP, recovery journal e fragments",
           "completed": true,
-          "evidence": "ev-io"
+          "evidence": "ev-audit-20261010-e03"
         },
         {
           "title": "Scheduler, plugins WASM e adapter MCP",
           "completed": true,
-          "evidence": "ev-io"
+          "evidence": "ev-audit-20261010-e03"
         },
         {
           "title": "PTND físico: manifest real, save/load, Zip64 e hardening",
@@ -689,14 +769,39 @@
           "evidence": "ev-e03-conflicts-locks"
         },
         {
-          "title": "SchedulerConfig e preempção prioritária de jobs interativos",
+          "title": "Fila limitada, lane interativa e shutdown cooperativo",
           "completed": true,
-          "evidence": "ev-e03-scheduler-budget"
+          "evidence": "ev-audit-20261010-e03"
         },
         {
           "title": "Runtime WASM e sandbox com medição de combustível e limites de memória",
           "completed": true,
-          "evidence": "ev-e03-wasm-host"
+          "evidence": "ev-audit-20261010-e03"
+        },
+        {
+          "title": "Importador SVG, exportação de documento e Host API completa",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Autosave/recovery na sessão e validação de resultados por sessão/recurso",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Texto editorial/baseline grids e perfis ICC de entrada/saída/proofing",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Handlers raster/gerados e GC dos recursos conforme histórico",
+          "completed": false,
+          "evidence": null
+        },
+        {
+          "title": "Extrair fases de compile e adapters da sessão em módulos de responsabilidade única",
+          "completed": false,
+          "evidence": null
         }
       ],
       "documents": [
@@ -718,34 +823,34 @@
       "title": "Render: model, software e compositor",
       "description": "Crate render-model imutável, software tiled renderer, compositor, cache, overlays e output.",
       "document": "03-render/render-model.md",
-      "status": "DONE",
+      "status": "IN PROGRESS",
       "updated": "2026-10-10",
-      "baseline": "Render model, software tiled renderer e compositor em a0e42f4; avaliação e render de gradientes lineares e radiais com testes golden em bba0837.",
+      "baseline": "Render model, software tiled renderer e compositor em a0e42f4; avaliação e render de gradientes lineares e radiais com testes golden em bba0837. Auditoria 2026-10-10: critérios reabertos por divergências reproduzidas; correção pré-GUI em execução. Correções verificadas no working tree sobre 6e2be4e; evidência atual separada das revisões históricas. Pendências mantidas em checkpoints explícitos.",
       "checkpoints": [
         {
           "title": "backend.rs com contrato RenderBackend e software mínimo",
           "completed": true,
-          "evidence": "ev-r01"
+          "evidence": "ev-audit-20261010-r01"
         },
         {
           "title": "Crate render-model com RenderSnapshot imutável",
           "completed": true,
-          "evidence": "ev-r01"
+          "evidence": "ev-audit-20261010-r01"
         },
         {
           "title": "Tiled renderer, compositor e paint evaluation",
           "completed": true,
-          "evidence": "ev-r02"
+          "evidence": "ev-audit-20261010-r01"
         },
         {
           "title": "Cache, overlays, adjustments e output headless",
-          "completed": true,
-          "evidence": "ev-r03"
+          "completed": false,
+          "evidence": null
         },
         {
           "title": "Avaliação e render de gradientes lineares e radiais com testes golden",
           "completed": true,
-          "evidence": "ev-r01-gradients"
+          "evidence": "ev-audit-20261010-r01"
         },
         {
           "title": "Configuração de tile size no renderer com equivalência exata de pixels",
@@ -756,6 +861,11 @@
           "title": "Contrato GPU, gradiente cônico e HDR tone mapping",
           "completed": true,
           "evidence": "ev-r01-conical-gpu-hdr"
+        },
+        {
+          "title": "Geometry effects, EffectInstance completo, vector patterns e markers",
+          "completed": false,
+          "evidence": null
         }
       ],
       "documents": [
@@ -771,16 +881,16 @@
       "id": "U01",
       "phase": "interface",
       "title": "Interface: sessão, ferramentas e workspace",
-      "description": "Sessao, input, tools e Vector Edit hibrbridos ja existem headless em petunia-ui (ADR-0012); workspace tem estado de paineis e acessibilidade por padrao segue em discussao conjunta.",
+      "description": "Sessão e GUI nativa petunia-desktop em Qt/QML/CXX-Qt; personas, preferências, Phosphor/Tabler, canvas, painéis e arquivos integrados e verificados em Linux/offscreen. QA multiplataforma e tecnologias assistivas permanece aberta.",
       "document": "04-ui/session-input.md",
       "status": "IN PROGRESS",
       "updated": "2026-10-10",
-      "baseline": "Sessão/tools/foco/tooltips/Smart Delete/nudges headless entregues; node drag, marquee e pen com commit em 072d6dd. Segue IN PROGRESS: workspace visual, painéis e QA de GUI.",
+      "baseline": "Sessão/tools/foco/tooltips/Smart Delete/nudges headless entregues; node drag, marquee e pen com commit em 072d6dd. Working tree sobre 6e2be4e: GUI Qt/QML/CXX-Qt funcional, personas customizáveis, ícones Phosphor/Tabler outline/fill, temas/densidade/escala, painéis e salvamento/exportação entregues em 2026-10-10. Evidência ev-u01-native-20261010 registra 537 testes Rust, 26 resultados QtQuickTest, Clippy/lint e janela real em DPI 1/2 com leitura de pixels. O checkpoint original da ponte foi separado entre integração funcional verificada e QA de plataformas/tecnologias assistivas ainda não executada; não declara acessibilidade completa. Pintura/texto sem controlador de janela permanecem indisponíveis.",
       "checkpoints": [
         {
           "title": "Sessão mínima com input, tools e ações",
           "completed": true,
-          "evidence": "ui-checkpoint"
+          "evidence": "ev-audit-20261010-u01"
         },
         {
           "title": "Vector Edit híbrido com ADR-0011 (após discussão conjunta)",
@@ -796,6 +906,16 @@
           "title": "Decisão C: bounds discretos para 2+ nodes com preferência desativável",
           "completed": true,
           "evidence": "ev-u01-decision-c"
+        },
+        {
+          "title": "Ponte Qt/QML/CXX-Qt e canvas: integração funcional verificada em Linux/offscreen",
+          "completed": true,
+          "evidence": "ev-u01-native-20261010"
+        },
+        {
+          "title": "QA da GUI com tecnologias assistivas, plataformas finais, GPU e dispositivos de caneta",
+          "completed": false,
+          "evidence": null
         }
       ],
       "documents": [
@@ -820,7 +940,9 @@
         "04-ui/advanced-creative-tools-interaction.md",
         "04-ui/workspace.md",
         "04-ui/accessibility.md",
-        "00-architecture/adr/0012-interaction-contract.md"
+        "00-architecture/adr/0012-interaction-contract.md",
+        "04-ui/visual-design.md",
+        "04-ui/native-desktop.md"
       ]
     },
     {
@@ -829,14 +951,14 @@
       "title": "Gates: verificação, benchmarks e fuzzing",
       "description": "Quality gates por módulo, benchmarks de geometria/render, fuzzing de PTND e CI executando tudo.",
       "document": "00-architecture/verification.md",
-      "status": "DONE",
+      "status": "IN PROGRESS",
       "updated": "2026-10-10",
-      "baseline": "Gates e fuzzing em 7f259f1; superfícies externas do Core em 8a214d4; chaves duplicadas estritas em f2ba265. Segue futuro: benchmark de interação e fuzzing contínuo.",
+      "baseline": "Gates e fuzzing em 7f259f1; superfícies externas do Core em 8a214d4; chaves duplicadas estritas em f2ba265. Segue futuro: benchmark de interação e fuzzing contínuo. Auditoria 2026-10-10: critérios reabertos por divergências reproduzidas; correção pré-GUI em execução. Correções verificadas no working tree sobre 6e2be4e; evidência atual separada das revisões históricas. Pendências mantidas em checkpoints explícitos.",
       "checkpoints": [
         {
           "title": "Quality gates por módulo executados e registrados",
           "completed": true,
-          "evidence": "ev-q01"
+          "evidence": "ev-audit-20261010-q01"
         },
         {
           "title": "Benchmarks de geometry, spatial e render com budgets",
@@ -857,6 +979,11 @@
           "title": "Chaves duplicadas em mapas de identidade recusadas com erro tipado",
           "completed": true,
           "evidence": "ev-q01-dup-keys"
+        },
+        {
+          "title": "Benchmarks de interação/cache, fuzzing contínuo e QA multiplataforma",
+          "completed": false,
+          "evidence": null
         }
       ],
       "documents": [

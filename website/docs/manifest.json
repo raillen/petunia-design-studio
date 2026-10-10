@@ -317,8 +317,16 @@
           "path": "04-ui/workspace.md"
         },
         {
+          "title": "Design visual, personas e iconografia",
+          "path": "04-ui/visual-design.md"
+        },
+        {
           "title": "acessibilidade",
           "path": "04-ui/accessibility.md"
+        },
+        {
+          "title": "GUI nativa: execução e validação",
+          "path": "04-ui/native-desktop.md"
         }
       ]
     },

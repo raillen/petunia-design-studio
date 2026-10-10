@@ -78,7 +78,7 @@ impl RStarIndex {
 
     /// Insert or replace the entry for its object.
     pub fn insert(&mut self, entry: SpatialEntry) {
-        self.tree.remove(&entry);
+        self.remove(entry.object);
         self.tree.insert(entry);
     }
 

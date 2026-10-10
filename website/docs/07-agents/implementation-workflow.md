@@ -24,12 +24,12 @@ Tarefa puramente documental pode parar em docs/consistência/links e **não** pr
 petunia-core    = dados persistentes, IDs tipados, documento/SceneGraph
 petunia-engine  = geometria, tools/commands, validação, snapping, jobs
 petunia-render  = software reference rendering, paint/composition/caches
-petunia-ui      = Qt/QML/CXX-Qt bridge, Input+ToolController, panels
+petunia-ui      = sessão/Input+ToolController headless; ponte Qt/QML/CXX-Qt e panels visuais pendentes
 
-petunia-render-model = contrato arquitetural definido, não crate existente
+petunia-render-model = crate existente, snapshots imutáveis Engine → Render
 ```
 
-Boundary principal: `UI → Engine → Core`, `UI → Render → Core`; `Engine → render-model ← Render` **quando a crate for criada no milestone correto**. `Core` não importa Qt, engine ou render; `Engine` não importa render/UI; `Render` não importa Engine/UI.
+Boundary principal: `UI → Engine → Core`, `UI → Render → Core`; `Engine → render-model ← Render` **já presente no workspace**. `Core` não importa Qt, engine ou render; `Engine` não importa render/UI; `Render` não importa Engine/UI.
 
 **Um comando autoral = uma transação semântica**, com preview, cancel, undo/redo e error handling. Input de ponteiro e overlays vivem no Session State enquanto a mudança ainda não foi confirmada. Não registrar um `Command` por frame de drag. Invalidation/version guard preserva state se source mudar.
 

@@ -59,21 +59,24 @@ fn ramer_douglas_peucker(
     tolerance: f64,
     keep: &mut [bool],
 ) {
-    if last <= first + 1 {
-        return;
-    }
-    let (mut farthest, mut best) = (first, 0.0);
-    for index in first + 1..last {
-        let distance = perpendicular_distance(points[index], points[first], points[last]);
-        if distance > best {
-            best = distance;
-            farthest = index;
+    let mut pending = vec![(first, last)];
+    while let Some((first, last)) = pending.pop() {
+        if last <= first + 1 {
+            continue;
         }
-    }
-    if best > tolerance {
-        keep[farthest] = true;
-        ramer_douglas_peucker(points, first, farthest, tolerance, keep);
-        ramer_douglas_peucker(points, farthest, last, tolerance, keep);
+        let (mut farthest, mut best) = (first, 0.0);
+        for index in first + 1..last {
+            let distance = perpendicular_distance(points[index], points[first], points[last]);
+            if distance > best {
+                best = distance;
+                farthest = index;
+            }
+        }
+        if best > tolerance {
+            keep[farthest] = true;
+            pending.push((farthest, last));
+            pending.push((first, farthest));
+        }
     }
 }
 

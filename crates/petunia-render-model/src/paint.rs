@@ -70,6 +70,8 @@ pub struct RenderGradient {
     pub interpolation: GradientInterpolation,
     pub spread: GradientSpread,
     pub space: PaintSpace,
+    #[serde(default)]
+    pub transform: Transform2D,
     pub start: (f64, f64),
     pub end: (f64, f64),
     pub radius: f64,

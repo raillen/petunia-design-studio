@@ -690,15 +690,25 @@ Load do documento nunca executa plugin automaticamente apenas porque um payload 
 11. Load de PTND não executa payload de plugin/MCP automaticamente.
 12. Host API, package version e data schema version são independentes.
 
-## Verificação do runtime WASM e sandbox (2026-10-10)
+## Verificação inicial das políticas do host (2026-10-10; revisão histórica)
 
-Escopo: `WasmPluginHost` com validação de magic `\0asm\1\0\0\0`, medição de combustível (fuel metering), limites de memória linear, tabela de handles com detecção de stale handles, e invocação de Host API com gates de permissão deny-by-default. Revisão `d236eb01c9e5fd681213991a0703c2c4b8d8143e` sobre branch `petunia-design-rust`.
+Esta revisão histórica não executava bytecode WASM: testava políticas e contadores do host. A auditoria reabriu o checkpoint; a execução real foi implementada na correção descrita abaixo.
+
+Escopo original: `WasmPluginHost` com validação de magic `\0asm\1\0\0\0`, medição de combustível (fuel metering), limites de memória linear, tabela de handles com detecção de stale handles, e invocação de Host API com gates de permissão deny-by-default. Revisão `d236eb01c9e5fd681213991a0703c2c4b8d8143e` sobre branch `petunia-design-rust`.
 
 | Gate executado | Resultado |
 |---|---|
-| `cargo test --workspace` | pass: 404 passed / 0 failed (Engine com testes de runtime WASM) |
+| `cargo test --workspace` | pass: 404 passed / 0 failed (Engine com testes das políticas do host) |
 | `cargo clippy --workspace --all-targets -- -D warnings` | pass |
 | `cargo fmt --all -- --check` | pass |
 | `node website/scripts/verify-progress.cjs` | pass |
 
 Riscos/limites: plugins de interface gráfica (QML/UI) permanecem fora do escopo v0.1.
+
+## Runtime e adapters verificados em 2026-10-10
+
+`WasmPluginHost` executa bytecode com wasmi, portable dispatch, fuel e limites de memória/tabela/stack. Grants do host são independentes das capabilities declaradas pelo módulo. DocumentQuery, CommandSubmit e LogWrite possuem ABI concreta; comandos são staged e publicados como uma transação somente após o guest terminar com sucesso. Trap, módulo inválido e limite excedido não publicam edits. Os testes executam módulos WASM reais, inclusive loop sem término e tentativa de exceder recursos. Isso substitui a validação inicial de magic/version e listas de operações simuladas.
+
+O scheduler limita a fila, oferece lane interativa reservada quando há pelo menos dois workers, fairness na retirada da fila e shutdown com deadline. Cancelamento de um job em execução depende da cooperação do algoritmo. Não há preempção de closures arbitrárias; quantum de fila não é timeslicing de execução. Evidência: `scheduler_spatial_regressions.rs` (13 testes) e testes do módulo `plugins`.
+
+PNG/JPEG são limitados antes da decodificação completa; o serializer SVG preserva segmentos Line/Cubic, handles unilaterais e fechamento curvo. Importador SVG, exportação de documento, demais funções da Host API e guards de aplicação de resultados por sessão/recurso continuam pendentes. Gates em [Verification](#/docs/00-architecture/verification.md).

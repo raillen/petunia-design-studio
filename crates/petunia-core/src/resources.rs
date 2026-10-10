@@ -169,6 +169,11 @@ pub struct ResourceRegistry {
 }
 
 impl ResourceRegistry {
+    /// Remove one record by identity; callers validate remaining references.
+    pub fn remove(&mut self, id: ResourceId) -> Option<ResourceRecord> {
+        self.records.remove(&id)
+    }
+
     #[must_use]
     pub fn new() -> Self {
         Self {

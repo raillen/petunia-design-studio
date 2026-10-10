@@ -431,3 +431,9 @@ Escopo: `PathObject`/`ShapeObject`, remoção do `Fill`/`Stroke` legados, `Strok
 | `node website/scripts/verify-progress.cjs` | pass |
 
 Riscos/limites: gradients, patterns e spots degradam com aviso até o renderer suportá-los; effect stacks no node e swatch/spot registries dedicados seguem futuros.
+
+## Limite entre modelo e evaluator em 2026-10-10
+
+Os tipos autorais e registries não significam que todos os efeitos já tenham evaluator. A ponte atual avalia appearance local ordenada, opacity/blend e strokes, clip/mask e blur/drop shadow básicos. Alteração de parâmetros é transacional e reversível.
+
+AppearanceSource existe como modelo, mas sua ligação a objetos e resolução de StyleId/overrides/detach ainda precisam ser integradas. Geometry effects e composição completa de EffectInstance permanecem pendentes; casos não avaliados recebem diagnóstico. Evidência de pixels e undo em `render_bridge_regressions.rs`, `audit_regressions.rs` e `history_fragments_regressions.rs`; [matriz atual](#/docs/00-architecture/implementation-matrix.md).

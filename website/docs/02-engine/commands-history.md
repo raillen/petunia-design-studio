@@ -773,3 +773,9 @@ Recovery possui checkpoint/journal próprios e lifecycle independente.
 10. Core valida invariantes mesmo quando Engine já validou a operação.
 11. History respeita budget runtime e pode podar o prefixo antigo sem alterar o estado atual.
 12. Operação não é commitada se o sistema não puder preservar sua atomicidade/Undo conforme o contrato.
+
+## Correções verificadas em 2026-10-10
+
+O History mantém um contador de revisão independente do cursor: undo seguido de um novo commit não reutiliza a revisão descartada. O dirty compara a revisão corrente com a revisão efetivamente salva; reconhecer um snapshot antigo não limpa alterações posteriores. Commit, undo e redo validam o documento staged antes de publicar a mudança, inclusive registries, efeitos e remoção conjunta de subtrees.
+
+O orçamento contabiliza os payloads serializados forward/inverse, recalcula inversas a partir do documento e rejeita operações acima do hard limit antes do commit. A política atual usa pruning e rejeição; não implementa spill em disco. Evidência: `history_fragments_regressions.rs` (12 testes), `audit_regressions.rs` e `session_boundary.rs`. Gates e limites do ambiente em [Verification](#/docs/00-architecture/verification.md).

@@ -36,6 +36,8 @@ pub struct RenderGroup {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ViewTransform {
     pub scale: f64,
+    #[serde(default)]
+    pub rotation: f64,
     pub offset_x: f64,
     pub offset_y: f64,
 }
@@ -44,10 +46,23 @@ impl ViewTransform {
     /// Map a document point into device pixels.
     #[must_use]
     pub fn apply(&self, x: f64, y: f64) -> (f64, f64) {
+        let (sin, cos) = self.rotation.sin_cos();
         (
-            x * self.scale + self.offset_x,
-            y * self.scale + self.offset_y,
+            (x * cos - y * sin) * self.scale + self.offset_x,
+            (x * sin + y * cos) * self.scale + self.offset_y,
         )
+    }
+
+    /// Inverse device mapping; a singular scale has no inverse.
+    #[must_use]
+    pub fn inverse_apply(&self, x: f64, y: f64) -> Option<(f64, f64)> {
+        if !self.scale.is_finite() || self.scale == 0.0 || !self.rotation.is_finite() {
+            return None;
+        }
+        let x = (x - self.offset_x) / self.scale;
+        let y = (y - self.offset_y) / self.scale;
+        let (sin, cos) = self.rotation.sin_cos();
+        Some((x * cos + y * sin, -x * sin + y * cos))
     }
 }
 

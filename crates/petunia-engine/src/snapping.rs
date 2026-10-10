@@ -48,17 +48,37 @@ pub fn snap_point(point: Point, guides: &[SnapGuide], config: &SnapConfig) -> Sn
     let mut snapped_x = false;
     let mut snapped_y = false;
 
-    // Check guides
+    let valid_threshold = config.threshold.is_finite() && config.threshold >= 0.0;
+    if !valid_threshold || !point.x.is_finite() || !point.y.is_finite() {
+        return SnapResult {
+            snapped_point: point,
+            snapped_x: false,
+            snapped_y: false,
+        };
+    }
+    let mut distance_x = f64::INFINITY;
+    let mut distance_y = f64::INFINITY;
+    // Prefer the nearest guide; equal distances use the lower coordinate.
     for guide in guides {
         match guide.orientation {
             SnapOrientation::Vertical => {
-                if (point.x - guide.position).abs() <= config.threshold {
+                let distance = (point.x - guide.position).abs();
+                if distance <= config.threshold
+                    && (distance < distance_x
+                        || (distance == distance_x && guide.position < result_x))
+                {
+                    distance_x = distance;
                     result_x = guide.position;
                     snapped_x = true;
                 }
             }
             SnapOrientation::Horizontal => {
-                if (point.y - guide.position).abs() <= config.threshold {
+                let distance = (point.y - guide.position).abs();
+                if distance <= config.threshold
+                    && (distance < distance_y
+                        || (distance == distance_y && guide.position < result_y))
+                {
+                    distance_y = distance;
                     result_y = guide.position;
                     snapped_y = true;
                 }
@@ -67,7 +87,10 @@ pub fn snap_point(point: Point, guides: &[SnapGuide], config: &SnapConfig) -> Sn
     }
 
     // Fallback to grid snapping if not snapped by guide
-    if let Some(spacing) = config.grid_spacing {
+    if let Some(spacing) = config
+        .grid_spacing
+        .filter(|spacing| spacing.is_finite() && *spacing > 0.0)
+    {
         if !snapped_x {
             let nearest_x = (point.x / spacing).round() * spacing;
             if (point.x - nearest_x).abs() <= config.threshold {

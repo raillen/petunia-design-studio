@@ -491,3 +491,9 @@ Erro de allocation/guard é tipado e não deixa PixelSurface parcialmente atuali
 11. Live Liquify persiste deformação, não pixels já deformados.
 12. Stroke commitado corresponde a uma Transaction.
 13. CPU/GPU obedecem à mesma matemática de blend/filter.
+
+## Raster materializado em 2026-10-10
+
+Dabs alteram pixels reais em tiles COW; preview/cancel preservam a fonte e undo restaura versões. Filtros trabalham em ROI/pixels premultiplicados. RasterEdit materializa PNG e ResourceRecord junto com SetPixelSurface; a sessão valida bytes/decode/budget antes de aplicar a transação.
+
+Evidência: `text_raster_contracts.rs` e testes de brush/filter/tiles. Ferramentas raster da UI e coleta de recursos conforme retenção de history ainda precisam de integração. [Gates](#/docs/00-architecture/verification.md).

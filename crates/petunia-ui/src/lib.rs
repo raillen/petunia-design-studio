@@ -18,6 +18,7 @@ pub mod focus;
 pub mod input;
 pub mod layers;
 pub mod numeric;
+pub mod preferences;
 pub mod shortcuts;
 pub mod tools;
 pub mod tooltips;
@@ -33,6 +34,10 @@ pub use focus::{DisabledReason, FocusEntry, FocusManager, FocusOutcome, FocusZon
 pub use input::{PointerEvent, ToolKind, UserAction};
 pub use layers::{LayerKey, LayerKind, LayerRow, LayersPanel};
 pub use numeric::{InputMethod, NumericField, SizeFields};
+pub use preferences::{
+    Appearance, Density, IconFamily, IconStyle, Persona, PreferenceError, PreferenceRecovery,
+    ShortcutBinding, UiPreferences,
+};
 pub use shortcuts::{ActionId, BindError, KeyCombo, ShortcutTable};
 pub use tools::{
     HitTarget, NodeTool, OverlayPrimitive, PointerSample, SelectTool, ToolController, ToolResponse,

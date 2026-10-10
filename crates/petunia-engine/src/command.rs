@@ -1,7 +1,11 @@
 //! Command pattern implementation, undo/redo stack, and document transactions.
 
 use crate::error::{EngineError, Result};
-use petunia_core::{Document, ObjectId, SceneNode, Transform2D};
+use crate::transaction::{
+    apply_ops_atomic, commit_transaction, prepare_transaction, AppliedTransaction, CommandId,
+    DocumentOp, DocumentRevision, TransactionRequest,
+};
+use petunia_core::{Document, ObjectId, ParentRef, SceneNode, Transform2D};
 
 /// Trait implemented by any undoable document modification command.
 pub trait Command: std::fmt::Debug + Send + Sync {
@@ -19,7 +23,7 @@ pub trait Command: std::fmt::Debug + Send + Sync {
 #[derive(Debug)]
 pub struct AddNodeCommand {
     node: Option<SceneNode>,
-    added_id: Option<ObjectId>,
+    applied: Option<AppliedTransaction>,
 }
 
 impl AddNodeCommand {
@@ -27,7 +31,7 @@ impl AddNodeCommand {
     pub fn new(node: SceneNode) -> Self {
         Self {
             node: Some(node),
-            added_id: None,
+            applied: None,
         }
     }
 }
@@ -38,23 +42,56 @@ impl Command for AddNodeCommand {
     }
 
     fn execute(&mut self, document: &mut Document) -> Result<()> {
+        if self.applied.is_some() {
+            return Err(EngineError::Execution("command already executed".into()));
+        }
         let node = self
             .node
-            .take()
-            .ok_or_else(|| EngineError::Execution("Command already executed".into()))?;
-        let id = node.id;
-        document.scene.insert_node(node);
-        self.added_id = Some(id);
+            .as_ref()
+            .ok_or_else(|| EngineError::Execution("command node missing".into()))?
+            .clone();
+        let operation = match node.parent {
+            ParentRef::Page(page) => DocumentOp::InsertRoot {
+                index: document
+                    .scene
+                    .page_roots(page)
+                    .ok_or_else(|| EngineError::Execution("page missing".into()))?
+                    .len(),
+                node: Box::new(node),
+            },
+            ParentRef::Object(parent) => DocumentOp::InsertNode {
+                parent,
+                index: document
+                    .scene
+                    .children_of(parent)
+                    .ok_or_else(|| EngineError::Execution("group missing".into()))?
+                    .len(),
+                node: Box::new(node),
+            },
+        };
+        let prepared = prepare_transaction(
+            document,
+            TransactionRequest {
+                command_id: CommandId::new_v4(),
+                operations: vec![operation],
+                merge_key: None,
+            },
+            DocumentRevision::GENESIS,
+        )
+        .map_err(|error| EngineError::Execution(error.to_string()))?;
+        let applied = commit_transaction(document, prepared)
+            .map_err(|error| EngineError::Execution(error.to_string()))?;
+        self.applied = Some(applied);
         Ok(())
     }
 
     fn undo(&mut self, document: &mut Document) -> Result<()> {
-        let id = self
-            .added_id
-            .take()
-            .ok_or_else(|| EngineError::Execution("Nothing to undo".into()))?;
-        let removed = document.scene.remove_node(id)?;
-        self.node = Some(removed);
+        let applied = self
+            .applied
+            .as_ref()
+            .ok_or_else(|| EngineError::Execution("nothing to undo".into()))?;
+        apply_ops_atomic(document, &applied.inverse)?;
+        self.applied = None;
         Ok(())
     }
 }
@@ -84,23 +121,33 @@ impl Command for TransformNodeCommand {
     }
 
     fn execute(&mut self, document: &mut Document) -> Result<()> {
-        let node = document.scene.get_node_mut(self.id).ok_or_else(|| {
+        let node = document.scene.get_node(self.id).ok_or_else(|| {
             EngineError::Core(petunia_core::CoreError::ObjectNotFound(self.id.to_string()))
         })?;
-        self.previous_transform = Some(node.transform);
-        node.transform = self.new_transform;
+        let previous = node.transform;
+        apply_ops_atomic(
+            document,
+            &[DocumentOp::SetTransform {
+                object: self.id,
+                transform: self.new_transform,
+            }],
+        )?;
+        self.previous_transform = Some(previous);
         Ok(())
     }
 
     fn undo(&mut self, document: &mut Document) -> Result<()> {
-        let prev = self
+        let previous = self
             .previous_transform
-            .take()
-            .ok_or_else(|| EngineError::Execution("No previous transform saved".into()))?;
-        let node = document.scene.get_node_mut(self.id).ok_or_else(|| {
-            EngineError::Core(petunia_core::CoreError::ObjectNotFound(self.id.to_string()))
-        })?;
-        node.transform = prev;
+            .ok_or_else(|| EngineError::Execution("no previous transform saved".into()))?;
+        apply_ops_atomic(
+            document,
+            &[DocumentOp::SetTransform {
+                object: self.id,
+                transform: previous,
+            }],
+        )?;
+        self.previous_transform = None;
         Ok(())
     }
 }
@@ -127,7 +174,10 @@ impl CommandHistory {
         mut command: Box<dyn Command>,
         document: &mut Document,
     ) -> Result<()> {
-        command.execute(document)?;
+        let mut staged = document.clone();
+        command.execute(&mut staged)?;
+        staged.validate()?;
+        *document = staged;
         self.undo_stack.push(command);
         self.redo_stack.clear();
         Ok(())
@@ -136,7 +186,15 @@ impl CommandHistory {
     /// Undoes the last command.
     pub fn undo(&mut self, document: &mut Document) -> Result<()> {
         let mut command = self.undo_stack.pop().ok_or(EngineError::NothingToUndo)?;
-        command.undo(document)?;
+        let mut staged = document.clone();
+        if let Err(error) = command
+            .undo(&mut staged)
+            .and_then(|()| staged.validate().map_err(EngineError::from))
+        {
+            self.undo_stack.push(command);
+            return Err(error);
+        }
+        *document = staged;
         self.redo_stack.push(command);
         Ok(())
     }
@@ -144,7 +202,15 @@ impl CommandHistory {
     /// Redoes the most recently undone command.
     pub fn redo(&mut self, document: &mut Document) -> Result<()> {
         let mut command = self.redo_stack.pop().ok_or(EngineError::NothingToRedo)?;
-        command.execute(document)?;
+        let mut staged = document.clone();
+        if let Err(error) = command
+            .execute(&mut staged)
+            .and_then(|()| staged.validate().map_err(EngineError::from))
+        {
+            self.redo_stack.push(command);
+            return Err(error);
+        }
+        *document = staged;
         self.undo_stack.push(command);
         Ok(())
     }

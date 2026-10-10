@@ -942,3 +942,9 @@ Todos os algoritmos:
 12. Provenance é preservada o suficiente para reconstruir source curves quando possível.
 13. Nenhum cleanup altera Source sem Command.
 14. Resultado parcial nunca é apresentado como sucesso total.
+
+## Guard de flatten em 2026-10-10
+
+`try_flatten_contour` possui traversal iterativo, tolerância explícita, validação de coordenadas e limites de profundidade/pontos com erros tipados. Compiler, clips, texto em path e interação adotam o caminho checked. Segments Line ignoram handles; Cubic respeita handles unilaterais. Simplify RDP usa stack explícita.
+
+Isso não encerra a revisão de todos os consumidores legados de flatten e Smart Delete. APIs antigas ainda precisam de migração para budgets/erros explícitos. Evidência: testes de Bézier, `render_bridge_regressions.rs` e `path_contracts.rs`; [gates](#/docs/00-architecture/verification.md).

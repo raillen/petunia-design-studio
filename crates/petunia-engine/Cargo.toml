@@ -6,11 +6,21 @@ license.workspace = true
 description = "Business logic, command transactions, undo/redo stack, and snapping engine for Petunia Design Studio"
 
 [dev-dependencies]
+petunia-render = { workspace = true }
 criterion = { workspace = true }
 proptest = { workspace = true }
+wat = { workspace = true }
+quircs = { workspace = true }
 
 [dependencies]
 petunia-core = { workspace = true }
+blake3 = { workspace = true }
+lcms2 = { workspace = true }
+wasmi = { workspace = true }
+wasmi_core = { workspace = true }
+qrcodegen = { workspace = true }
+barcoders = { workspace = true }
+hypher = { workspace = true }
 petunia-render-model = { workspace = true }
 crc32fast = { workspace = true }
 flate2 = { workspace = true }

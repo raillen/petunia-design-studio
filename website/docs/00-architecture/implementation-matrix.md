@@ -6,31 +6,30 @@ A matriz registra **arquivos existentes**, responsabilidades atuais e módulos n
 
 A documentação de arquitetura/Core/Engine/Render já define o alvo. A tabela abaixo separa **implementação atual** de **contrato técnico fechado**, evitando tratar uma decisão já tomada como “próxima decisão”.
 
-| Área | Implementação atual | Contrato técnico |
+| Área | Implementação atual (2026-10-10) | Contrato ainda pendente |
 |---|---|---|
-| Core / Color | RGBA + poucos espaços | valor + perfil/espaço explícito, Spot, Swatches, gradients |
-| Core / Math | tipos básicos | f64 canônico, coordenadas Y-down, tolerâncias contextuais, transforms robustos |
-| Core / Path | nodes cúbicos + contours | Line+Cubic, IDs estáveis, fill semantics; ParametricShape separado em `shape.rs` |
-| Core / Generated Content | ausente | TraceObject + GeneratedVectorObject, source/params autorais e geometria derivada |
-| Core / Styles + Symbols | parcial | styles flat/linkable com overrides tipados; symbols acíclicos, nested e detach explícito |
-| Core / Guides + Grids + Slices | parcial | guides tipadas; affine/baseline/perspective grids; slices reproduzíveis sem path absoluto |
-| Core / Crop + Clipping | parcial | Image source_rect normalizado + ClipBinding; trim destrutivo separado |
-| Core / Scene | Path/Group simples | hierarquia ordenada, bindings, symbols, generated content e atomic structural mutations |
-| Core / Document | canvas + scene | Pages/Spreads/Artboards, registries, resources, styles e setup |
-| Engine / Commands | undo/redo básico | Command → DocumentOp → Transaction → HistoryEntry |
-| Engine / Geometry | parcial | Bézier, boolean, offset, simplify, smooth, cleanup, curve fit, Shape Builder e provenance |
-| Engine / Spatial | snapping básico | R*-tree, hit-test, candidates, ranking, hysteresis e grids |
-| Engine / Brush/Raster | parcial | One Euro, arc-length resampling, tiled COW, filters/ROI |
-| Engine / Text/Layout | parcial | Unicode/BiDi/shaping/line layout/fallback/linked frames |
-| Engine / Color | parcial | Little CMS 2 encapsulado, ICC transforms, proofing e cache |
-| Engine / I/O/Plugins | parcial | import/export contracts, scheduler, WASM plugins, MCP adapter |
-| Engine / Persistence | conceitual | save por snapshot, PTND ZIP/ZIP64, autosave separado, checkpoint + recovery journal |
-| Engine / Fragments | ausente | DocumentFragment, dependency closure, ID remapping e copy/paste atômico |
-| Render Model | ainda ausente | contrato imutável Engine → Render já definido arquiteturalmente |
-| Render | software mínimo | tiled software reference renderer + render graph + compositor |
-| UI | sessão mínima | **fora deste fechamento; volta para discussão conjunta** |
+| Core / Color | RGB/CMYK/Gray/Lab, espaços explícitos, Spot, Swatches e gradients | policies profissionais de saída e proofing |
+| Core / Math + Path | f64, transforms, Line/Cubic, handles unilaterais, IDs e validação | guards de flatten em todos os consumidores legados |
+| Core / Generated Content | modelos persistentes; Engine avalia Trace/QR/Barcode | comandos de Expand e ferramentas de parâmetros |
+| Core / Styles + Symbols | registries, text styles, símbolos e overrides tipados | ligação de AppearanceSource aos objetos, resolução de StyleId/overrides e detach |
+| Core / Guides + Grids + Slices | modelos e invariantes; affine/baseline/perspective grids | autoria completa, providers locais e todos os tipos de snap |
+| Core / Crop + Scene + Document | crop, bindings, hierarquia, Pages/Spreads/Artboards e validação | trim destrutivo e handlers de autoria completos |
+| Engine / Commands | transactions staged, revisões inéditas, undo/redo, pruning e hard budget | handlers dos controles ainda não implementados |
+| Engine / Geometry | Bézier, booleans, offset, simplify, curve fit e Shape Builder | geometry effects integrados e guards em APIs legadas |
+| Engine / Spatial | R*-tree, world/page/visibilidade, hit de snapshot e hysteresis | perspective/baseline snap, guides em artboards e markers |
+| Engine / Brush/Raster | dabs reais, tiles COW, preview/cancel, PNG transacional e filtros ROI | tools raster e GC de recursos conforme retenção do histórico |
+| Engine / Text/Layout | BiDi, shaping, fallback, estilos, wrap, hyphenation, outlines, on-path e linked frames | baseline grids, layout editorial e caret/seleção tipográfica |
+| Engine / Color | Little CMS 2 estático encapsulado, ICC RGB/CMYK/Gray/Lab e cache | perfis de entrada/saída de imagens, proofing e gamut |
+| Engine / I/O/Plugins | PNG/JPEG limitados, SVG path serializer, negotiation, scheduler, WASM real e MCP | importador SVG, exportadores de documento e Host API completa |
+| Engine / Persistence | PTND ZIP/ZIP64, save snapshot, lock OS, conflito, previews/extensions e recovery | lifecycle de autosave/recovery e guards de sessão/recurso para jobs |
+| Engine / Fragments | closure, recursos/registries/grids, remapping e paste/undo atômico | policies de reuso externo e novas entidades conforme handlers surgirem |
+| Render Model | crate presente; snapshots imutáveis e recursos derivados | ampliar contrato para providers adicionais |
+| Render | software tiled, fill rules, paints, strokes, clips/masks, blur/shadow e pixels de recursos | effect-instance compositor, geometry effects, vector patterns, markers e pool/cache no pipeline |
+| UI | sessão headless e adaptador petunia-desktop Qt/QML/CXX-Qt; canvas, painéis, personas, preferências e arquivos | QA com tecnologias assistivas, GPU e plataformas; pintura/texto sem controlador de janela |
 
-> **Atualização 2026-10-09:** a discussão conjunta foi realizada e o contrato de interação está aprovado no [ADR-0012](#/docs/00-architecture/adr/0012-interaction-contract.md) (hit-test, context bar, targets, atalhos, tooltip, aparência, Smart Delete, campos numéricos, workspace, ponte Qt). A UI continua fora do fechamento **técnico** de Core/Engine/Render; o que mudou é que a camada de interação agora tem direção única. Implementação e QA de GUI seguem como trabalho futuro.
+As regressões em `audit_regressions.rs` fecham os bugs reproduzidos na auditoria inicial. **Não fecham os contratos pendentes desta tabela.** Recursos e efeitos sem avaliação fiel produzem diagnóstico explícito e preservam os dados autorais.
+
+> **Atualização 2026-10-09:** a discussão conjunta foi realizada e o contrato de interação está aprovado no [ADR-0012](#/docs/00-architecture/adr/0012-interaction-contract.md) (hit-test, context bar, targets, atalhos, tooltip, aparência, Smart Delete, campos numéricos, workspace, ponte Qt). A UI continua fora do fechamento **técnico** de Core/Engine/Render; o que mudou é que a camada de interação agora tem direção única. A janela Qt/QML foi implementada em `petunia-desktop` em 2026-10-10; [execução e limites](#/docs/04-ui/native-desktop.md). QA assistivo e multiplataforma permanece aberto.
 
 ## Arquivos-alvo do Núcleo
 
@@ -143,6 +142,12 @@ petunia-ui/src/
 
 Qt/QML e CXX-Qt permanecem na borda de UI. Nenhum tipo Qt deve entrar em Core, Engine ou Render.
 
+## Refatoração ainda necessária
+
+A extração de `app/runtime.rs` separou os adapters de persistência/providers/clipboard. Ainda há concentração de responsabilidades em `compile.rs`, `fragments.rs`, `software.rs` e `app.rs`. Antes de ampliar os handlers e a ponte GUI, extrair fases de compilation/effects/resources, separar closure/remapping de fragments, separar sampling/composição de pixels e reduzir os adapters da sessão. A refatoração deve preservar as regressões de saída; tamanho de arquivo sozinho não comprova uma responsabilidade incorreta.
+
+Os caches/pools precisam de integração real com invalidação e limites; capacidades reservadas no construtor não provam uso. Consumers legados de flatten devem migrar para APIs checked, e resultados de jobs devem validar identidade/revisão de sessão e recurso antes de publicar.
+
 ## Ordem de implementação recomendada
 
 1. Consolidar Core: math/units/ids/path/shape/color/appearance/scene/document/resources.
@@ -157,7 +162,7 @@ Qt/QML e CXX-Qt permanecem na borda de UI. Nenhum tipo Qt deve entrar em Core, E
 10. Consolidar import/export e capability negotiation.
 11. Implementar scheduler/jobs, plugin Host API WASM e MCP adapter.
 12. Executar diagnostics/observability, verification, benchmarks e fuzzing; corrigir gargalos.
-13. **Parar antes de Tools/Workspace/Acessibilidade/GUI e retomar discussão conjunta.**
+13. **Discussão de interação concluída pelo ADR-0012; executar e verificar Tools/Workspace/Acessibilidade/GUI conforme o contrato.**
 
 A ordem privilegia invariantes e contratos antes da camada de interação.
 
@@ -188,7 +193,7 @@ A especificação de arquitetura/motor é considerada **fechada o suficiente par
 | Render Model/Pipeline/Compositor/Paint/Adjustments | ✅ Definido |
 | Cache/Output/Headless | ✅ Definido |
 | Diagnostics/Verification/Security limits | ✅ Definido |
-| Tools/Workspace/Acessibilidade/GUI/UX | ⏸ discussão conjunta |
+| Tools/Workspace/Acessibilidade/GUI/UX | ✅ Contrato ADR-0012 aprovado; GUI funcional verificada em Linux/offscreen; QA assistiva/multiplataforma aberta |
 
 “Definido” não significa “já implementado”. Significa que a implementação possui uma direção técnica única e critérios de correção suficientes para começar sem rediscutir a arquitetura a cada módulo.
 
@@ -198,7 +203,7 @@ A especificação de arquitetura/motor é considerada **fechada o suficiente par
 
 **✅ Fechado em 2026-10-09 pelo [ADR-0012](#/docs/00-architecture/adr/0012-interaction-contract.md):** precedência de hit-test, context bar, targets e âncoras, atalhos primários + editor reatribuível, tooltip, aparência/temas, Smart Delete, campos numéricos, workspace e ponte Qt.
 
-**Ainda é trabalho futuro:** especificação de pixels e QML concreto, implementação do ContextStack/ToolControllers, QA de usabilidade. Contrato aprovado não é funcionalidade implementada.
+**Entrega 2026-10-10:** tokens e QML concretos, sessão e adaptador Qt integrados e verificados conforme [GUI nativa](#/docs/04-ui/native-desktop.md). ContextStack/ToolControllers completos e QA de usabilidade nas plataformas finais continuam pendentes. A entrega funcional não fecha esses gates.
 
 Detalhes: [Vector Edit — especificação](#/docs/04-ui/vector-edit-interaction.md) e [ADR-0011](#/docs/00-architecture/adr/0011-hybrid-vector-edit.md). O código atual ainda não implementa ContextStack e ToolControllers completos.
 
@@ -217,7 +222,7 @@ As cinco famílias e as ferramentas avançadas foram aprovadas como escopo funci
 
 A especificação canônica vive em [Core Models](#/docs/01-core/creative-features.md), [Creative Operations](#/docs/02-engine/creative-operations.md) e [Tools Overview](#/docs/04-ui/creative-tools-overview.md).
 
-**Estado real:** contratos escritos no site; crates e funcionalidades ainda precisam ser codificadas e verificadas. A definição de GUI/UX ainda exige a discussão conjunta.
+**Estado real dessas ferramentas criativas:** os contratos estão escritos; as famílias Smart/Advanced da tabela ainda precisam de implementação e verificação próprias. A GUI base já possui contrato aprovado e implementação funcional; isso não implementa automaticamente essas famílias.
 
 ## Decisões propositalmente não congeladas
 
@@ -229,13 +234,13 @@ Esses pontos **não foram esquecidos**. Permanecem abertos porque a filosofia do
 | Tile size raster/render | depende de cache locality, brush, blur e memória |
 | Número de worker threads | depende de hardware e budget interativo |
 | Threshold incremental vs rebuild do R*-tree | benchmark |
-| Runtime WASM concreto | medir startup/binário/sandbox/throughput |
+| Runtime WASM | wasmi escolhido e testado; medir startup/binário/sandbox/throughput |
 | Backend GPU | pós software-reference; precisa preservar semântica |
 | HDR completo | exige política de luminância/output real |
 | Mesh Gradient avançado | precisa modelo próprio, não enum reservado |
 | Tables/editorial avançado | pós-v0.1-stable |
 | UI plugin extension | será discutida com GUI/UX |
-| Tools, Workspace, Acessibilidade e GUI/UX | ~~discussão conjunta com o usuário~~ → **contrato aprovado (ADR-0012, 2026-10-09)**; implementação e QA seguem futuras |
+| Tools, Workspace, Acessibilidade e GUI/UX | ~~discussão conjunta com o usuário~~ → **contrato aprovado (ADR-0012, 2026-10-09)**; GUI base implementada e verificada em 2026-10-10, QA de plataformas e tecnologias assistivas permanece aberto |
 
 Uma decisão “aberta por evidência” não autoriza implementações incompatíveis. Os contratos ao redor já estão definidos.
 

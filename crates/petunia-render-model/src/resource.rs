@@ -19,6 +19,9 @@ pub struct ResourceEntry {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RenderResourceTable {
     pub entries: HashMap<ResourceId, ResourceEntry>,
+    /// Runtime immutable resource handles; never persisted into document files.
+    #[serde(skip)]
+    pub images: HashMap<ResourceId, std::sync::Arc<crate::image::ResolvedImage>>,
 }
 
 impl RenderResourceTable {
@@ -27,6 +30,7 @@ impl RenderResourceTable {
     pub fn new() -> Self {
         Self {
             entries: HashMap::new(),
+            images: HashMap::new(),
         }
     }
 

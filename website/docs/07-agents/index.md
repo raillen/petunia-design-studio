@@ -28,7 +28,7 @@
 
 ## Invariantes inegociáveis
 
-- **Stack atual e arquitetura:** `petunia-core`, `petunia-engine`, `petunia-render`, `petunia-ui` em Rust; UI arquiteturalmente **Qt/QML via CXX-Qt**, sem Qt no Core/Engine. `petunia-render-model` está **especificado, não presente no workspace atual**.
+- **Stack atual e arquitetura:** `petunia-core`, `petunia-engine`, `petunia-render`, `petunia-ui` em Rust; UI arquiteturalmente **Qt/QML via CXX-Qt**, sem Qt no Core/Engine. `petunia-render-model` está **presente no workspace**, com snapshots e recursos derivados imutáveis.
 - **Core é autoral:** IDs tipados, SceneGraph, caminhos, documento PTND e regras não destrutivas permanecem com Petunia; integrações externas passam por adapters.
 - **Interação de Vector Edit:** ADR-0011 híbrido Select→Vector Edit; Bend explícito; nenhuma edição por hover; foco distinto da seleção; alteração via Transaction.
 - **Cores, coordenadas e render:** seguir docs canônicas de unidade, FillRule, perfis de cor, alpha, transform e RenderSnapshot sem "correção" baseada em palpites.

@@ -21,20 +21,28 @@ use crate::tools::{
 };
 use crate::tooltips::tooltip_for;
 use crate::workspace::{ViewState, WorkspaceState};
-use petunia_core::{
-    Document, FillRule, ObjectId, ParentRef, Point, SceneItem, SceneNode, Size2, VectorPath,
-};
+use petunia_core::{Document, ObjectId, ParentRef, Point, SceneItem, SceneNode, Size2, VectorPath};
 use petunia_engine::compile;
 use petunia_engine::geometry::{
     delete_node, flatten_contour, preview_delete, SmartDeleteMode, SmartDeleteOutcome,
 };
+
+use petunia_engine::ptnd::{BlobStore, FileFingerprint};
+use petunia_engine::spatial::{SnapLatch, SnapSettings};
 use petunia_engine::EngineError;
 use petunia_engine::History;
 use petunia_engine::{prepare_transaction, TransactionRequest};
 use petunia_engine::{CommandId, DocumentOp, DocumentRevision, HistoryDescription};
 use petunia_render::RenderOptions;
 use petunia_render::SoftwareRenderer;
+use petunia_render_model::RenderQuality;
 use petunia_render_model::RenderStats;
+use std::cell::Cell;
+mod runtime;
+pub use runtime::NativeClipboard;
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Ghost preview of a Smart Delete: candidate curve points plus the
 /// honest error number the UI displays next to them.
@@ -68,6 +76,15 @@ pub struct StudioSession {
     layers_selection: Vec<ObjectId>,
     show_multi_node_bounds: bool,
     captured: bool,
+    active_page: petunia_core::PageId,
+    blobs: BlobStore,
+    fonts: petunia_engine::text::FontRegistry,
+    images: HashMap<petunia_core::ResourceId, Arc<petunia_render_model::image::ResolvedImage>>,
+    extensions: BTreeMap<String, Vec<u8>>,
+    preview: Option<Vec<u8>>,
+    destination: Option<(PathBuf, FileFingerprint)>,
+    snap_latch: Cell<Option<SnapLatch>>,
+    snap_settings: SnapSettings,
 }
 
 /// One controller of each kind, owned by the session. Pointer events
@@ -84,8 +101,10 @@ impl StudioSession {
     /// A fresh session with an empty document.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
+        let document = Document::new(name);
+        let active_page = document.scene.default_page();
         Self {
-            document: Document::new(name),
+            document,
             history: History::new(64 << 20, 256 << 20),
             active_tool: ToolKind::Select,
             contexts: ContextStack::new(),
@@ -102,6 +121,15 @@ impl StudioSession {
             layers_selection: Vec::new(),
             show_multi_node_bounds: true,
             captured: false,
+            active_page,
+            blobs: BlobStore::new(),
+            fonts: petunia_engine::text::FontRegistry::new(),
+            images: HashMap::new(),
+            extensions: BTreeMap::new(),
+            preview: None,
+            destination: None,
+            snap_latch: Cell::new(None),
+            snap_settings: SnapSettings::default(),
         }
     }
 
@@ -109,6 +137,53 @@ impl StudioSession {
     #[must_use]
     pub fn revision(&self) -> DocumentRevision {
         self.history.current_revision()
+    }
+
+    /// Whether one committed transaction can be undone.
+    #[must_use]
+    pub fn can_undo(&self) -> bool {
+        self.history.can_undo()
+    }
+
+    /// Whether one transaction can be redone.
+    #[must_use]
+    pub fn can_redo(&self) -> bool {
+        self.history.can_redo()
+    }
+
+    /// Project retained history without exposing the writer to panels.
+    #[must_use]
+    pub fn history_rows(&self) -> Vec<(HistoryDescription, DocumentRevision, bool)> {
+        let (entries, applied) = self.history.entries();
+        entries
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| (entry.description, entry.after_revision, index < applied))
+            .collect()
+    }
+
+    /// Pending input is Session State and must be resolved before switching.
+    #[must_use]
+    pub fn interaction_active(&self) -> bool {
+        self.captured || !self.tools.pen.points().is_empty()
+    }
+
+    /// Select known editable objects from a semantic GUI panel.
+    pub fn set_selection(&mut self, objects: Vec<ObjectId>) -> Result<()> {
+        if objects.iter().any(|id| !self.is_editable(*id)) {
+            return Err(crate::UiError::State(
+                "o objeto está ausente, oculto ou bloqueado".into(),
+            ));
+        }
+        let mut unique = Vec::with_capacity(objects.len());
+        for id in objects {
+            if !unique.contains(&id) {
+                unique.push(id);
+            }
+        }
+        self.selection.set_objects(unique);
+        self.sync_layers();
+        Ok(())
     }
 
     /// Read-only document access.
@@ -237,7 +312,7 @@ impl StudioSession {
 
     /// Press Escape, following the approved ordering.
     pub fn on_escape(&mut self) -> EscapeOutcome {
-        if self.captured {
+        if self.interaction_active() {
             match self.active_tool {
                 ToolKind::NodeEdit => {
                     let mut tool = self.tools.node.clone();
@@ -336,10 +411,45 @@ impl StudioSession {
     /// Whether an object may be edited: exists, visible and unlocked.
     #[must_use]
     pub fn is_editable(&self, id: ObjectId) -> bool {
-        self.document
+        std::iter::once(id)
+            .chain(self.document.scene.ancestors(id))
+            .all(|id| {
+                self.document
+                    .scene
+                    .get_node(id)
+                    .is_some_and(|node| node.visible && !node.locked)
+            })
+    }
+
+    /// Select a validated path node from a semantic keyboard control.
+    /// Selection and context are transient; no document revision is created.
+    pub fn select_node(&mut self, node: crate::NodeId, additive: bool) -> Result<()> {
+        if self.interaction_active() || !self.is_editable(node.object) {
+            return Err(crate::UiError::State(
+                "Nó indisponível durante esta operação".into(),
+            ));
+        }
+        let valid = self
+            .document
             .scene
-            .get_node(id)
-            .is_some_and(|node| node.visible && !node.locked)
+            .get_node(node.object)
+            .and_then(|scene| scene.item_path())
+            .and_then(|path| path.contours.get(node.contour as usize))
+            .and_then(|contour| contour.nodes.get(node.node as usize))
+            .is_some();
+        if !valid {
+            return Err(crate::UiError::State("Nó inexistente".into()));
+        }
+        if !additive {
+            self.selection.set_objects(vec![node.object]);
+            self.selection.sub.clear();
+        } else {
+            self.selection.add_objects([node.object]);
+        }
+        self.selection.sub.select_node(node);
+        self.on_enter();
+        self.sync_layers();
+        Ok(())
     }
 
     /// Double-click: pick an object and open its semantic context.
@@ -524,11 +634,32 @@ impl StudioSession {
 
     /// Run one pointer event through the active tool.
     pub fn handle_pointer(&mut self, pointer: PointerEvent) -> Result<ToolResponse> {
-        let (sample, is_end) = match pointer {
-            PointerEvent::Down { position, .. } => (PointerSample::new(position), false),
-            PointerEvent::Move { position, .. } => (PointerSample::new(position), false),
-            PointerEvent::Up { position } => (PointerSample::new(position), true),
+        let (position, pressure) = match pointer {
+            PointerEvent::Down { position, pressure }
+            | PointerEvent::Move { position, pressure } => (position, pressure),
+            PointerEvent::Up { position } => (position, 1.0),
         };
+        let mut sample = PointerSample::new(position);
+        sample.pressure = pressure;
+        self.dispatch_pointer_sample(pointer, sample)
+    }
+
+    /// Preserve modifier and stylus information received at the Qt boundary.
+    pub fn dispatch_pointer_sample(
+        &mut self,
+        pointer: PointerEvent,
+        sample: PointerSample,
+    ) -> Result<ToolResponse> {
+        if !sample.position.x.is_finite()
+            || !sample.position.y.is_finite()
+            || !sample.pressure.is_finite()
+            || !(0.0..=1.0).contains(&sample.pressure)
+        {
+            return Err(crate::UiError::State(
+                "coordenadas ou pressão inválidas".into(),
+            ));
+        }
+        let is_end = matches!(pointer, PointerEvent::Up { .. });
         let response = match self.active_tool {
             ToolKind::NodeEdit => {
                 let mut tool = self.tools.node.clone();
@@ -583,6 +714,25 @@ impl StudioSession {
         Ok(response)
     }
 
+    /// Explicitly finish a staged open pen path as one transaction.
+    pub fn finish_pen(&mut self) -> Result<ToolResponse> {
+        let mut tool = self.tools.pen.clone();
+        let response = tool.finish(self);
+        if let ToolResponse::Commit(operations) = &response {
+            self.commit_request(
+                TransactionRequest {
+                    command_id: CommandId::new_v4(),
+                    operations: operations.clone(),
+                    merge_key: None,
+                },
+                HistoryDescription::InsertObjects,
+            )?;
+        }
+        self.tools.pen = tool;
+        self.sync_layers();
+        Ok(response)
+    }
+
     /// Apply one selection delta. Selecting a sub-item keeps its object
     /// in the object selection, per D2.
     fn apply_selection(&mut self, delta: SelectionDelta) {
@@ -615,17 +765,41 @@ impl StudioSession {
         &mut self,
         options: &RenderOptions,
     ) -> std::result::Result<(Vec<u8>, RenderStats), EngineError> {
-        let (snapshot, warnings) =
-            compile::compile_document(&self.document, self.revision(), options.quality);
-        for warning in &warnings {
-            eprintln!(
-                "[render] primitiva degradada {}: {}",
-                warning.source, warning.message
-            );
+        if !self.view.scale.is_finite()
+            || self.view.scale <= 0.0
+            || !self.view.dpr.is_finite()
+            || self.view.dpr <= 0.0
+            || !self.view.rotation.is_finite()
+            || !self.view.pan_x.is_finite()
+            || !self.view.pan_y.is_finite()
+            || !self.view.viewport.width.is_finite()
+            || !self.view.viewport.height.is_finite()
+        {
+            return Err(EngineError::Execution("invalid viewport transform".into()));
         }
-        let width = self.view.viewport.width.max(1.0) as u32;
-        let height = self.view.viewport.height.max(1.0) as u32;
-        let frame = compile::headless_frame(snapshot, width, height, self.view.scale);
+        let (snapshot, warnings) = self.compile_snapshot(options.quality);
+        for warning in &warnings {
+            eprintln!("[render] {}: {}", warning.source, warning.message);
+        }
+        let width = (self.view.viewport.width * self.view.dpr).ceil().max(1.0);
+        let height = (self.view.viewport.height * self.view.dpr).ceil().max(1.0);
+        if width > u32::MAX as f64 || height > u32::MAX as f64 || width * height > (64 << 20) as f64
+        {
+            return Err(EngineError::Limit(
+                "viewport exceeds render target budget".into(),
+            ));
+        }
+        let mut frame = compile::headless_page_frame(
+            snapshot,
+            self.active_page,
+            width as u32,
+            height as u32,
+            self.view.effective_scale(),
+        )
+        .ok_or_else(|| EngineError::Execution("active page missing from snapshot".into()))?;
+        frame.view.rotation = self.view.rotation;
+        frame.view.offset_x = self.view.pan_x * self.view.dpr;
+        frame.view.offset_y = self.view.pan_y * self.view.dpr;
         let mut renderer = SoftwareRenderer::new(64 << 20, 64 << 20);
         renderer
             .render(&frame, options)
@@ -638,90 +812,164 @@ impl StudioSession {
     /// first), which is the same order the semantic tree exposes.
     #[must_use]
     pub fn hit_test(&self, view_point: Point) -> Vec<HitTarget> {
-        let document_point = self.view_transform().view_to_doc(view_point);
-        let tolerance = self.view.document_tolerance(8.0).unwrap_or(8.0);
-
-        let mut targets: Vec<HitTarget> = Vec::new();
-        let mut fills: Vec<HitTarget> = Vec::new();
-
-        for id in self.document.scene.root_order() {
-            let Some(node) = self.document.scene.get_node(*id) else {
-                continue;
-            };
-            if !node.visible {
+        use petunia_engine::spatial::{self, HitTestMode, HitTestRequest, RStarIndex};
+        let view = self.view_transform();
+        if !view.scale.is_finite() || view.scale <= 0.0 || !view.rotation.is_finite() {
+            return Vec::new();
+        }
+        let document_point = view.view_to_doc(view_point);
+        let mut handles = Vec::new();
+        let mut nodes = Vec::new();
+        let mut segments = Vec::new();
+        for id in spatial::paint_order_on_page(&self.document, self.active_page)
+            .into_iter()
+            .rev()
+        {
+            if !self.is_editable(id) || !self.selection.objects().contains(&id) {
                 continue;
             }
-            let SceneItem::Path(object) = &node.item else {
+            let Some(node) = self.document.scene.get_node(id) else {
                 continue;
             };
-            let path = &object.path;
-            let Some(local) = self.to_local(node, document_point) else {
+            let Some(path) = node.item_path() else {
                 continue;
             };
-            let (node_hit, handle_hit) = node_hit(path, local, tolerance);
-            if let Some((node, handle)) = handle_hit {
-                targets.push(HitTarget::Handle {
-                    object: *id,
-                    contour: node.0,
-                    node: node.1,
+            let Some(world) = self.document.scene.world_transform(id) else {
+                continue;
+            };
+            let mut screen_path = path.clone();
+            for contour in &mut screen_path.contours {
+                for anchor in &mut contour.nodes {
+                    anchor.point = view.doc_to_view(world.transform_point(anchor.point));
+                    anchor.handle_in = anchor
+                        .handle_in
+                        .map(|point| view.doc_to_view(world.transform_point(point)));
+                    anchor.handle_out = anchor
+                        .handle_out
+                        .map(|point| view.doc_to_view(world.transform_point(point)));
+                }
+            }
+            let (anchor, handle) = node_hit(&screen_path, view_point, 8.0);
+            if let Some(((contour, node), handle)) = handle {
+                handles.push(HitTarget::Handle {
+                    object: id,
+                    contour,
+                    node,
                     handle,
                 });
-                continue;
-            }
-            if let Some((contour, node)) = node_hit {
-                targets.push(HitTarget::Node {
-                    object: *id,
+            } else if let Some((contour, node)) = anchor {
+                nodes.push(HitTarget::Node {
+                    object: id,
                     contour,
                     node,
                 });
-                continue;
-            }
-            if path_contains(path, local) {
-                fills.push(HitTarget::Fill { object: *id });
-            }
-        }
-
-        targets.extend(fills);
-        targets
-    }
-
-    fn to_local(&self, node: &SceneNode, document_point: Point) -> Option<Point> {
-        let local = node.transform.inverse()?.transform_point(document_point);
-        (local.x.is_finite() && local.y.is_finite()).then_some(local)
-    }
-
-    /// Geometric bounds of one object from its path anchors, unioned
-    /// through groups. `None` for items without computable bounds.
-    fn object_bounds(&self, id: ObjectId) -> Option<petunia_core::Rect> {
-        let node = self.document.scene.get_node(id)?;
-        match &node.item {
-            SceneItem::Path(object) => {
-                let mut bounds: Option<petunia_core::Rect> = None;
-                for contour in &object.path.contours {
-                    for anchor in contour.nodes.iter().map(|node| node.point) {
-                        let slot = petunia_core::Rect::new(anchor.x, anchor.y, 0.0, 0.0);
-                        bounds = Some(match bounds {
-                            Some(existing) => existing.union(slot),
-                            None => slot,
-                        });
+            } else {
+                for (ci, contour) in screen_path.contours.iter().enumerate() {
+                    let count = contour.nodes.len();
+                    let segment_count = if contour.closed {
+                        count
+                    } else {
+                        count.saturating_sub(1)
+                    };
+                    for from in 0..segment_count {
+                        let to = (from + 1) % count;
+                        let mut piece = petunia_core::Contour::new(false);
+                        piece.nodes = vec![contour.nodes[from].clone(), contour.nodes[to].clone()];
+                        let points = petunia_engine::geometry::bezier::try_flatten_contour(
+                            &piece,
+                            petunia_core::Tolerance(0.15),
+                            65536,
+                        )
+                        .unwrap_or_default();
+                        if points
+                            .windows(2)
+                            .any(|pair| segment_distance(view_point, pair[0], pair[1]) <= 8.0)
+                        {
+                            segments.push(HitTarget::Segment {
+                                object: id,
+                                contour: ci as u32,
+                                from: from as u32,
+                                to: to as u32,
+                            });
+                            break;
+                        }
                     }
                 }
-                bounds
             }
-            SceneItem::Group(children) => {
-                let mut bounds: Option<petunia_core::Rect> = None;
-                for child in children {
-                    if let Some(child_bounds) = self.object_bounds(*child) {
-                        bounds = Some(match bounds {
-                            Some(existing) => existing.union(child_bounds),
-                            None => child_bounds,
-                        });
-                    }
-                }
-                bounds
-            }
-            _ => None,
         }
+        let (snapshot, _) = self.compile_snapshot(RenderQuality::Authoring);
+        let index = RStarIndex::bulk_load(spatial::entries_for_snapshot(&snapshot));
+        let (sin, cos) = view.rotation.sin_cos();
+        let matrix = petunia_core::Transform2D {
+            a: cos * view.scale,
+            b: sin * view.scale,
+            c: -sin * view.scale,
+            d: cos * view.scale,
+            tx: view.offset_x,
+            ty: view.offset_y,
+        };
+        let fills = spatial::hit_test_with_snapshot(
+            &self.document,
+            &snapshot,
+            &index,
+            HitTestRequest {
+                page: self.active_page,
+                point_document: document_point,
+                tolerance_px: 8.0,
+                mode: HitTestMode::Any,
+            },
+            matrix,
+        );
+        handles.extend(nodes);
+        handles.extend(segments);
+        handles.extend(
+            fills
+                .into_iter()
+                .filter_map(|hit| self.scoped_object(hit.object))
+                .fold(Vec::new(), |mut objects, id| {
+                    if !objects.contains(&id) {
+                        objects.push(id);
+                    }
+                    objects
+                })
+                .into_iter()
+                .map(|object| HitTarget::Fill { object }),
+        );
+        handles
+    }
+
+    fn scoped_object(&self, id: ObjectId) -> Option<ObjectId> {
+        let parent = match self.contexts.current() {
+            EditContext::Scene => None,
+            EditContext::Group { group } => Some(*group),
+            EditContext::Vector { targets, .. } => return targets.contains(&id).then_some(id),
+            EditContext::Shape { target }
+            | EditContext::Text { target }
+            | EditContext::Symbol { target } => return (*target == id).then_some(id),
+        };
+        let mut cursor = id;
+        loop {
+            match self.document.scene.parent_of(cursor)? {
+                ParentRef::Page(page) => {
+                    return (parent.is_none() && page == self.active_page).then_some(cursor)
+                }
+                ParentRef::Object(object) if Some(object) == parent => return Some(cursor),
+                ParentRef::Object(object) => cursor = object,
+            }
+        }
+    }
+
+    /// Evaluated world bounds shared by rendering and spatial selection.
+    pub fn object_bounds(&self, id: ObjectId) -> Option<petunia_core::Rect> {
+        let (snapshot, _) = self.compile_snapshot(RenderQuality::Authoring);
+        let descendants: std::collections::HashSet<_> = std::iter::once(id)
+            .chain(self.document.scene.descendants(id))
+            .collect();
+        petunia_engine::spatial::entries_for_snapshot(&snapshot)
+            .into_iter()
+            .filter(|entry| descendants.contains(&entry.object))
+            .map(|entry| entry.bounds)
+            .reduce(|left, right| left.union(right))
     }
 
     fn item_kind(&self, id: ObjectId) -> ItemKind {
@@ -738,6 +986,7 @@ impl StudioSession {
     fn view_transform(&self) -> ViewTransform {
         ViewTransform {
             scale: self.view.scale,
+            rotation: self.view.rotation,
             offset_x: self.view.pan_x,
             offset_y: self.view.pan_y,
         }
@@ -909,12 +1158,17 @@ impl StudioSession {
         name: impl Into<String>,
         path: VectorPath,
     ) -> std::result::Result<(), EngineError> {
-        let page = self.document.scene.default_page();
+        let page = self.active_page;
         let node = SceneNode::new_path(name, path, ParentRef::Page(page));
         let request = TransactionRequest {
             command_id: CommandId::new_v4(),
             operations: vec![DocumentOp::InsertRoot {
-                index: self.document.scene.len(),
+                index: self
+                    .document
+                    .scene
+                    .page_roots(self.active_page)
+                    .unwrap_or_default()
+                    .len(),
                 node: Box::new(node),
             }],
             merge_key: None,
@@ -953,6 +1207,16 @@ impl StudioSession {
         Ok(true)
     }
 
+    /// Adapter entry point for confirmed edits; tools and the GUI share the writer.
+    pub fn apply_edit(
+        &mut self,
+        request: TransactionRequest,
+        description: HistoryDescription,
+    ) -> Result<()> {
+        self.commit_request(request, description)?;
+        Ok(())
+    }
+
     /// Commit one request atomically through the session.
     pub fn commit_request(
         &mut self,
@@ -979,27 +1243,120 @@ impl ToolServices for StudioSession {
         StudioSession::hit_test(self, view_point)
     }
 
-    fn snap(&self, view_point: Point) -> (Point, Option<String>) {
-        // Guides, grid and bounds providers still have no persistent
-        // store in Core, so the point passes through uncorrected.
-        (view_point, None)
+    fn snap(&self, document_point: Point) -> (Point, Option<String>) {
+        use petunia_engine::spatial::*;
+        if !self.snap_settings.enabled || !self.view.scale.is_finite() || self.view.scale <= 0.0 {
+            self.snap_latch.set(None);
+            return (document_point, None);
+        }
+        let anchor = document_point;
+        let scale = self.view.scale;
+        let tolerance = petunia_core::Tolerance(self.snap_settings.release_px / scale);
+        let guides: Vec<_> = self
+            .document
+            .guides
+            .iter()
+            .filter_map(|(_, guide)| match guide.scope {
+                petunia_core::GuideScope::Document => Some(*guide),
+                petunia_core::GuideScope::Page(page) if page == self.active_page => Some(*guide),
+                _ => None,
+            })
+            .collect();
+        let mut candidates = guide_candidates(&guides, &[anchor], tolerance, scale);
+        for (_, grid) in self.document.grids.iter() {
+            if !matches!(grid.scope, petunia_core::GridScope::Document)
+                && grid.scope != petunia_core::GridScope::Page(self.active_page)
+            {
+                continue;
+            }
+            if let petunia_core::GridSpec::Affine(spec) = grid.spec {
+                candidates.extend(affine_grid_candidates(
+                    &spec,
+                    grid.origin,
+                    &[anchor],
+                    tolerance,
+                    scale,
+                ));
+            }
+        }
+        let (snapshot, _) = self.compile_snapshot(RenderQuality::Authoring);
+        let bounds: Vec<_> = entries_for_snapshot(&snapshot)
+            .into_iter()
+            .filter(|entry| self.is_editable(entry.object))
+            .map(|entry| (entry.object, entry.bounds))
+            .collect();
+        let excluded: Vec<_> = self
+            .selection
+            .objects()
+            .iter()
+            .flat_map(|id| std::iter::once(*id).chain(self.document.scene.descendants(*id)))
+            .collect();
+        candidates.extend(bounds_candidates(
+            &bounds,
+            &excluded,
+            &[anchor],
+            tolerance,
+            scale,
+        ));
+        let request = SnapRequest {
+            page: self.active_page,
+            moving: MovingGeometry {
+                excluded,
+                anchors: vec![anchor],
+            },
+            proposed: TransformDelta::default(),
+            constraint: SnapConstraint::Free,
+            settings: self.snap_settings.clone(),
+            view_scale: scale,
+            previous: self.snap_latch.get(),
+        };
+        let result = solve(&request, &candidates);
+        self.snap_latch.set(result.latch);
+        let corrected = Point::new(
+            anchor.x + result.corrected.dx,
+            anchor.y + result.corrected.dy,
+        );
+        (
+            corrected,
+            result
+                .matches
+                .first()
+                .map(|hit| format!("{:?}", hit.target)),
+        )
     }
 
     fn marquee_select(&self, min: Point, max: Point) -> Vec<ObjectId> {
-        let mut selected = Vec::new();
-        for id in self.document.scene.root_order() {
-            let Some(bounds) = self.object_bounds(*id) else {
+        let (snapshot, _) = self.compile_snapshot(RenderQuality::Authoring);
+        let mut bounds = BTreeMap::<ObjectId, petunia_core::Rect>::new();
+        for entry in petunia_engine::spatial::entries_for_snapshot(&snapshot) {
+            if !self.is_editable(entry.object) {
                 continue;
-            };
-            let lower = bounds.min();
-            let upper = bounds.max();
-            let inside =
-                lower.x >= min.x && lower.y >= min.y && upper.x <= max.x && upper.y <= max.y;
-            if inside {
-                selected.push(*id);
+            }
+            if let Some(id) = self.scoped_object(entry.object) {
+                bounds
+                    .entry(id)
+                    .and_modify(|old| *old = old.union(entry.bounds))
+                    .or_insert(entry.bounds);
             }
         }
-        selected
+        petunia_engine::spatial::paint_order_on_page(&self.document, self.active_page)
+            .into_iter()
+            .filter(|id| {
+                bounds.get(id).is_some_and(|bounds| {
+                    [
+                        bounds.min(),
+                        Point::new(bounds.x + bounds.width, bounds.y),
+                        bounds.max(),
+                        Point::new(bounds.x, bounds.y + bounds.height),
+                    ]
+                    .into_iter()
+                    .map(|point| self.view_transform().doc_to_view(point))
+                    .all(|point| {
+                        point.x >= min.x && point.y >= min.y && point.x <= max.x && point.y <= max.y
+                    })
+                })
+            })
+            .collect()
     }
 }
 
@@ -1052,11 +1409,15 @@ impl ToolSession for StudioSession {
     }
 
     fn default_page(&self) -> petunia_core::PageId {
-        self.document.scene.default_page()
+        self.active_page
     }
 
     fn root_count(&self) -> usize {
-        self.document.scene.len()
+        self.document
+            .scene
+            .page_roots(self.active_page)
+            .unwrap_or_default()
+            .len()
     }
 
     fn is_editable(&self, id: ObjectId) -> bool {
@@ -1131,38 +1492,16 @@ fn node_hit(
     (node_candidate, handle_candidate)
 }
 
-fn path_contains(path: &VectorPath, local: Point) -> bool {
-    for contour in &path.contours {
-        if !contour.closed || contour.nodes.len() < 3 {
-            continue;
-        }
-        let ring: Vec<Point> = contour.nodes.iter().map(|node| node.point).collect();
-        if point_in_polygon(local, &ring, path.fill_rule) {
-            return true;
-        }
-    }
-    false
-}
-
-fn point_in_polygon(point: Point, ring: &[Point], rule: FillRule) -> bool {
-    let mut winding = 0i32;
-    let count = ring.len();
-    for index in 0..count {
-        let a = ring[index];
-        let b = ring[(index + 1) % count];
-        let cross = (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
-        if a.y <= point.y {
-            if b.y > point.y && cross > 0.0 {
-                winding += 1;
-            }
-        } else if b.y <= point.y && cross < 0.0 {
-            winding -= 1;
-        }
-    }
-    match rule {
-        FillRule::NonZero => winding != 0,
-        FillRule::EvenOdd => winding % 2 != 0,
-    }
+fn segment_distance(point: Point, a: Point, b: Point) -> f64 {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let length = dx * dx + dy * dy;
+    let t = if length > 0.0 {
+        (((point.x - a.x) * dx + (point.y - a.y) * dy) / length).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    distance(point, Point::new(a.x + t * dx, a.y + t * dy))
 }
 
 #[cfg(test)]
@@ -1272,7 +1611,13 @@ mod tests {
                 pressure: 1.0,
             }))
             .expect("dispatch");
-        assert!(matches!(response, ToolResponse::Failed(_)), "{response:?}");
+        assert!(
+            matches!(
+                response,
+                ToolResponse::Selection(SelectionDelta::ClearObjects)
+            ),
+            "{response:?}"
+        );
     }
 
     #[test]

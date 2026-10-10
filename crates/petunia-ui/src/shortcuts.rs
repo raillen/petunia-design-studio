@@ -65,12 +65,15 @@ impl KeyCombo {
     /// accessibility gate forbids as an essential action.
     #[must_use]
     pub fn is_modifier_only(&self) -> bool {
-        self.alt && !self.ctrl && !self.shift && is_modifier_key(&self.key)
+        is_modifier_key(&self.key)
     }
 }
 
 fn is_modifier_key(key: &str) -> bool {
-    matches!(key, "alt" | "altgr" | "ctrl")
+    matches!(
+        key.to_ascii_lowercase().as_str(),
+        "alt" | "altgr" | "ctrl" | "control" | "shift" | "meta" | "super" | "cmd" | "command"
+    )
 }
 
 /// Actions reachable by shortcut.
@@ -95,6 +98,12 @@ pub enum ActionId {
     NudgeRight,
     NudgeUp,
     NudgeDown,
+    CommandPalette,
+    ManagePersonas,
+    Preferences,
+    ShortcutEditor,
+    FocusNext,
+    FocusPrevious,
 }
 
 impl ActionId {
@@ -121,6 +130,12 @@ impl ActionId {
             Self::NudgeRight => "nudge.right",
             Self::NudgeUp => "nudge.up",
             Self::NudgeDown => "nudge.down",
+            Self::CommandPalette => "workspace.palette",
+            Self::ManagePersonas => "workspace.personas",
+            Self::Preferences => "workspace.preferences",
+            Self::ShortcutEditor => "workspace.shortcuts",
+            Self::FocusNext => "workspace.focus_next",
+            Self::FocusPrevious => "workspace.focus_previous",
         }
     }
 }
@@ -150,6 +165,12 @@ pub fn default_bindings() -> Vec<(ActionId, KeyCombo)> {
         (NudgeRight, KeyCombo::key("ArrowRight")),
         (NudgeUp, KeyCombo::key("ArrowUp")),
         (NudgeDown, KeyCombo::key("ArrowDown")),
+        (CommandPalette, KeyCombo::key("k").with_ctrl()),
+        (ManagePersonas, KeyCombo::key("p").with_ctrl().with_shift()),
+        (Preferences, KeyCombo::key(",").with_ctrl()),
+        (ShortcutEditor, KeyCombo::key("k").with_ctrl().with_shift()),
+        (FocusNext, KeyCombo::key("f6")),
+        (FocusPrevious, KeyCombo::key("f6").with_shift()),
     ]
 }
 
@@ -220,7 +241,12 @@ impl ShortcutTable {
     pub fn action_for(&self, combo: &KeyCombo) -> Option<ActionId> {
         self.bindings
             .iter()
-            .find(|(_, bound)| *bound == combo)
+            .find(|(_, bound)| {
+                bound.key.eq_ignore_ascii_case(&combo.key)
+                    && bound.ctrl == combo.ctrl
+                    && bound.shift == combo.shift
+                    && bound.alt == combo.alt
+            })
             .map(|(action, _)| *action)
     }
 
@@ -236,14 +262,14 @@ impl ShortcutTable {
         self.bindings.remove(&action).is_some()
     }
 
-    /// Restore one action to its primary binding.
+    /// Restore one action to its primary binding. Refuse restoration if another
+    /// action currently owns that key; the table remains unchanged on failure.
     pub fn reset_action(&mut self, action: ActionId) -> bool {
         if let Some((_, combo)) = default_bindings()
             .into_iter()
             .find(|(candidate, _)| *candidate == action)
         {
-            self.bindings.insert(action, combo);
-            true
+            self.rebind(action, combo).is_ok()
         } else {
             false
         }
@@ -288,7 +314,7 @@ mod tests {
     #[test]
     fn defaults_cover_the_primary_set() {
         let table = ShortcutTable::defaults();
-        assert_eq!(table.len(), 19);
+        assert_eq!(table.len(), 25);
         assert_eq!(
             table
                 .combo_for(ActionId::Undo)
@@ -361,5 +387,71 @@ mod tests {
     fn display_matches_platform_independent_order() {
         let combo = KeyCombo::key("z").with_ctrl().with_shift();
         assert_eq!(combo.display(), "Ctrl+Shift+z");
+    }
+
+    #[test]
+    fn workspace_actions_have_rebindable_defaults_and_conflicts_are_transactional() {
+        let mut table = ShortcutTable::defaults();
+        assert_eq!(
+            table.action_for(&KeyCombo::key("f6")),
+            Some(ActionId::FocusNext)
+        );
+        assert_eq!(
+            table.action_for(&KeyCombo::key("f6").with_shift()),
+            Some(ActionId::FocusPrevious)
+        );
+        assert_eq!(
+            table.action_for(&KeyCombo::key("k").with_ctrl()),
+            Some(ActionId::CommandPalette)
+        );
+        assert_eq!(ActionId::ManagePersonas.as_str(), "workspace.personas");
+        assert_eq!(ActionId::Preferences.as_str(), "workspace.preferences");
+        assert_eq!(ActionId::ShortcutEditor.as_str(), "workspace.shortcuts");
+        let before = table.clone();
+        assert!(matches!(
+            table.rebind(ActionId::Preferences, KeyCombo::key("F6")),
+            Err(BindError::Conflict { .. })
+        ));
+        assert_eq!(table, before);
+        table
+            .rebind(ActionId::FocusNext, KeyCombo::key("f7"))
+            .unwrap();
+        assert_eq!(table.action_for(&KeyCombo::key("f6")), None);
+        assert_eq!(
+            table.action_for(&KeyCombo::key("F7")),
+            Some(ActionId::FocusNext)
+        );
+        assert!(table.reset_action(ActionId::FocusNext));
+        assert_eq!(
+            table.action_for(&KeyCombo::key("f6")),
+            Some(ActionId::FocusNext)
+        );
+    }
+
+    #[test]
+    fn restoring_default_cannot_steal_another_action_binding() {
+        let mut table = ShortcutTable::defaults();
+        table
+            .rebind(ActionId::FocusNext, KeyCombo::key("f7"))
+            .unwrap();
+        table
+            .rebind(ActionId::Preferences, KeyCombo::key("f6"))
+            .unwrap();
+        let before = table.clone();
+        assert!(!table.reset_action(ActionId::FocusNext));
+        assert_eq!(table, before);
+    }
+
+    #[test]
+    fn modifier_names_never_form_a_complete_shortcut() {
+        for key in ["alt", "AltGr", "ctrl", "Shift", "Meta", "super", "cmd"] {
+            let mut table = ShortcutTable::defaults();
+            let before = table.clone();
+            assert!(matches!(
+                table.rebind(ActionId::CommandPalette, KeyCombo::key(key)),
+                Err(BindError::ModifierOnly { .. })
+            ));
+            assert_eq!(table, before);
+        }
     }
 }

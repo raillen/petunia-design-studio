@@ -146,6 +146,7 @@ pub enum HitTarget {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ViewTransform {
     pub scale: f64,
+    pub rotation: f64,
     pub offset_x: f64,
     pub offset_y: f64,
 }
@@ -154,19 +155,20 @@ impl ViewTransform {
     /// View point from a document point.
     #[must_use]
     pub fn doc_to_view(&self, point: Point) -> Point {
+        let (sin, cos) = self.rotation.sin_cos();
         Point::new(
-            point.x * self.scale + self.offset_x,
-            point.y * self.scale + self.offset_y,
+            (point.x * cos - point.y * sin) * self.scale + self.offset_x,
+            (point.x * sin + point.y * cos) * self.scale + self.offset_y,
         )
     }
 
     /// Document point from a view point.
     #[must_use]
     pub fn view_to_doc(&self, point: Point) -> Point {
-        Point::new(
-            (point.x - self.offset_x) / self.scale,
-            (point.y - self.offset_y) / self.scale,
-        )
+        let x = (point.x - self.offset_x) / self.scale;
+        let y = (point.y - self.offset_y) / self.scale;
+        let (sin, cos) = self.rotation.sin_cos();
+        Point::new(x * cos + y * sin, -x * sin + y * cos)
     }
 }
 
@@ -180,7 +182,7 @@ pub trait ToolServices {
     fn snap(&self, point: Point) -> (Point, Option<String>);
 
     /// Root objects whose geometric bounds sit fully inside the
-    /// document-space rect, in z-order. Decision A: containment.
+    /// view-space rect, in z-order. Decision A: containment.
     fn marquee_select(&self, min: Point, max: Point) -> Vec<ObjectId>;
 }
 
@@ -266,6 +268,7 @@ pub struct SelectTool {
     down_at: Option<Point>,
     dragging: bool,
     additive: bool,
+    object_drag: bool,
 }
 
 /// Controllers stay small and cloneable: the session owns one of
@@ -280,6 +283,7 @@ impl SelectTool {
             down_at: None,
             dragging: false,
             additive: false,
+            object_drag: false,
         }
     }
 }
@@ -295,6 +299,7 @@ impl ToolController for SelectTool {
         self.down_at = Some(sample.position);
         self.dragging = false;
         self.additive = sample.shift;
+        self.object_drag = false;
 
         let target = ctx
             .services()
@@ -307,6 +312,7 @@ impl ToolController for SelectTool {
                 if !ctx.is_editable(object) {
                     return ToolResponse::Failed(format!("objeto {object} está travado ou oculto"));
                 }
+                self.object_drag = !self.additive;
                 if self.additive {
                     ToolResponse::Selection(SelectionDelta::ToggleObject(object))
                 } else if ctx.selected_objects().contains(&object) {
@@ -332,9 +338,23 @@ impl ToolController for SelectTool {
         if !self.dragging && is_drag(origin, sample.position) {
             self.dragging = true;
             ctx.capture();
+            if self.object_drag {
+                let view = ctx.view();
+                return ToolResponse::Overlay(vec![OverlayPrimitive::Line {
+                    from: view.view_to_doc(origin),
+                    to: view.view_to_doc(sample.position),
+                }]);
+            }
             return ToolResponse::Overlay(vec![marquee(origin, sample.position)]);
         }
         if self.dragging {
+            if self.object_drag {
+                let view = ctx.view();
+                return ToolResponse::Overlay(vec![OverlayPrimitive::Line {
+                    from: view.view_to_doc(origin),
+                    to: view.view_to_doc(sample.position),
+                }]);
+            }
             return ToolResponse::Overlay(vec![marquee(origin, sample.position)]);
         }
         ToolResponse::Idle
@@ -349,8 +369,27 @@ impl ToolController for SelectTool {
             // Marquee selects by containment; the click case cleared
             // or replaced the selection back in `begin`.
             if let Some(origin) = origin {
-                let from = ctx.view().view_to_doc(origin);
-                let to = ctx.view().view_to_doc(sample.position);
+                if self.object_drag {
+                    self.object_drag = false;
+                    let view = ctx.view();
+                    let from = view.view_to_doc(origin);
+                    let to = view.view_to_doc(sample.position);
+                    let dx = to.x - from.x;
+                    let dy = to.y - from.y;
+                    let operations = ctx
+                        .selected_objects()
+                        .iter()
+                        .filter(|id| ctx.is_editable(**id))
+                        .map(|id| DocumentOp::MoveObjects {
+                            object: *id,
+                            dx,
+                            dy,
+                        })
+                        .collect();
+                    return ToolResponse::Commit(operations);
+                }
+                let from = origin;
+                let to = sample.position;
                 let min = Point::new(from.x.min(to.x), from.y.min(to.y));
                 let max = Point::new(from.x.max(to.x), from.y.max(to.y));
                 let objects = ctx.services().marquee_select(min, max);
@@ -364,6 +403,7 @@ impl ToolController for SelectTool {
         self.down_at = None;
         self.dragging = false;
         self.additive = false;
+        self.object_drag = false;
         ctx.release();
         ToolResponse::Idle
     }
@@ -546,6 +586,16 @@ impl PenTool {
     #[must_use]
     pub fn points(&self) -> &[Point] {
         &self.points
+    }
+
+    /// Explicit Enter completes an open path, without inventing a closure.
+    pub fn finish(&mut self, ctx: &mut dyn ToolSession) -> ToolResponse {
+        if self.points.len() < 2 {
+            return ToolResponse::Failed(
+                "adicione pelo menos dois pontos antes de confirmar".into(),
+            );
+        }
+        self.commit_path(ctx, false)
     }
 
     fn close_tolerance(view: ViewTransform) -> f64 {
@@ -754,6 +804,7 @@ mod tests {
             },
             view: ViewTransform {
                 scale: 2.0,
+                rotation: 0.0,
                 offset_x: 10.0,
                 offset_y: 20.0,
             },
@@ -805,7 +856,8 @@ mod tests {
     #[test]
     fn select_marquee_commits_nothing() {
         let object = ObjectId::new_v4();
-        let mut ctx = session(vec![HitTarget::Fill { object }], object);
+        // A marquee starts on empty canvas. A hit object starts object drag.
+        let mut ctx = session(Vec::new(), object);
         let mut tool = SelectTool::new();
         tool.begin(&mut ctx, &PointerSample::new(Point::new(0.0, 0.0)));
         let response = tool.update(&mut ctx, &PointerSample::new(Point::new(40.0, 50.0)));

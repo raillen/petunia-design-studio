@@ -15,3 +15,15 @@ pub use unicode::{
     analyze_paragraph, break_opportunities, embedding_levels, grapheme_boundaries, script_runs,
     ParagraphDirection,
 };
+
+pub mod evaluate;
+pub mod flow;
+pub mod path;
+pub use evaluate::{
+    evaluate_text, GlyphOutline, LayoutLine, PositionedGlyph, TextEvaluationError, TextLayout,
+};
+pub use flow::evaluate_text_flow;
+pub use path::evaluate_text_on_path;
+
+pub mod hyphenation;
+pub use hyphenation::{HyphenationProvider, PatternHyphenation};

@@ -62,6 +62,7 @@ pub fn shape_run(
         ParagraphDirection::LeftToRight => rustybuzz::Direction::LeftToRight,
         ParagraphDirection::RightToLeft => rustybuzz::Direction::RightToLeft,
     });
+    buffer.guess_segment_properties();
     let output = rustybuzz::shape(&face, &[], buffer);
     let infos = output.glyph_infos();
     let positions = output.glyph_positions();
@@ -124,7 +125,8 @@ pub struct FontQuery {
 #[derive(Debug, Clone)]
 pub struct ResolvedFace {
     pub family: String,
-    pub bytes: Vec<u8>,
+    pub bytes: std::sync::Arc<Vec<u8>>,
+    pub index: u32,
 }
 
 /// System font registry: explicit directories plus optional system
@@ -133,26 +135,86 @@ pub struct ResolvedFace {
 #[derive(Debug, Default)]
 pub struct FontRegistry {
     database: fontdb::Database,
+    face_bytes: std::collections::HashMap<fontdb::ID, std::sync::Arc<Vec<u8>>>,
+    loaded: std::collections::HashSet<petunia_core::ContentHash>,
 }
 
 impl FontRegistry {
     /// Empty registry; load directories or system fonts explicitly.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            database: fontdb::Database::new(),
+        Self::default()
+    }
+
+    /// Load caller-owned font data (embedded/document or test fixtures).
+    pub fn load_data(&mut self, bytes: Vec<u8>) {
+        if !self.loaded.insert(petunia_core::ContentHash::new(&bytes)) {
+            return;
         }
+        let bytes = std::sync::Arc::new(bytes);
+        let ids = self
+            .database
+            .load_font_source(fontdb::Source::Binary(bytes.clone()));
+        for id in ids {
+            self.face_bytes.insert(id, bytes.clone());
+        }
+    }
+
+    /// Resolve an indivisible grapheme cluster, first honoring requested family
+    /// and then choosing a deterministic fallback with complete cmap coverage.
+    pub fn resolve_cluster(&self, query: &FontQuery, cluster: &str) -> Option<ResolvedFace> {
+        let covers = |resolved: &ResolvedFace| {
+            ttf_parser::Face::parse(&resolved.bytes, resolved.index).is_ok_and(|face| {
+                cluster
+                    .chars()
+                    .filter(|ch| !ch.is_control() && *ch != '\u{200d}' && *ch != '\u{fe0f}')
+                    .all(|ch| face.glyph_index(ch).is_some())
+            })
+        };
+        if let Some(requested) = self.resolve(query).filter(covers) {
+            return Some(requested);
+        }
+        let mut faces: Vec<_> = self.database.faces().collect();
+        faces.sort_by_key(|face| (face.post_script_name.clone(), face.index));
+        for face in faces {
+            if let Some(bytes) = self.face_bytes.get(&face.id).cloned() {
+                let resolved = ResolvedFace {
+                    family: face
+                        .families
+                        .first()
+                        .map_or_else(String::new, |(name, _)| name.clone()),
+                    bytes,
+                    index: face.index,
+                };
+                if covers(&resolved) {
+                    return Some(resolved);
+                }
+            }
+        }
+        self.resolve(query)
     }
 
     /// Load fonts from explicit directories (recursive).
     pub fn load_dir(&mut self, dir: &std::path::Path) {
-        self.database.load_fonts_dir(dir);
+        let mut sources = fontdb::Database::new();
+        sources.load_fonts_dir(dir);
+        self.materialize_sources(&sources);
     }
 
     /// Load platform system fonts. Availability varies by machine;
     /// absence is a normal empty result, never an error.
     pub fn load_system_fonts(&mut self) {
-        self.database.load_system_fonts();
+        let mut sources = fontdb::Database::new();
+        sources.load_system_fonts();
+        self.materialize_sources(&sources);
+    }
+
+    fn materialize_sources(&mut self, sources: &fontdb::Database) {
+        for face in sources.faces() {
+            if let Some(bytes) = sources.with_face_data(face.id, |bytes, _| bytes.to_vec()) {
+                self.load_data(bytes);
+            }
+        }
     }
 
     /// Number of indexed faces.
@@ -172,7 +234,7 @@ impl FontRegistry {
     #[must_use]
     pub fn resolve(&self, query: &FontQuery) -> Option<ResolvedFace> {
         for family in &query.families {
-            let mut best: Option<(u32, String, Vec<u8>)> = None;
+            let mut best: Option<(u32, String, std::sync::Arc<Vec<u8>>, u32)> = None;
             for face in self.database.faces() {
                 if !face
                     .families
@@ -185,23 +247,22 @@ impl FontRegistry {
                 let is_italic = !matches!(face.style, fontdb::Style::Normal);
                 let score = face.weight.0.abs_diff(query.weight) as u32 * 2
                     + u32::from(is_italic != wanted_italic);
-                let better = best.as_ref().is_none_or(|(known, _, _)| score < *known);
+                let better = best.as_ref().is_none_or(|(known, _, _, _)| score < *known);
                 if better {
-                    let bytes = self
-                        .database
-                        .with_face_data(face.id, |data, _| data.to_vec())?;
+                    let bytes = self.face_bytes.get(&face.id).cloned()?;
                     let name = face
                         .families
                         .first()
                         .map(|(name, _)| name.clone())
                         .unwrap_or_else(|| family.clone());
-                    best = Some((score, name, bytes));
+                    best = Some((score, name, bytes, face.index));
                 }
             }
-            if let Some((_, name, bytes)) = best {
+            if let Some((_, name, bytes, index)) = best {
                 return Some(ResolvedFace {
                     family: name,
                     bytes,
+                    index,
                 });
             }
         }
@@ -339,18 +400,14 @@ mod tests {
     #[test]
     fn shaping_with_system_font_or_reports_unavailable() {
         let mut registry = FontRegistry::new();
-        registry.load_system_fonts();
-        let query = FontQuery {
-            families: vec!["DejaVu Sans".to_string(), "Liberation Sans".to_string()],
-            weight: 400,
-            italic: false,
-        };
-        let Some(face) = registry.resolve(&query) else {
-            // No system fonts here: the empty-registry path is the
-            // asserted behavior, not a silent pass.
-            assert!(registry.is_empty());
-            return;
-        };
+        registry.load_data(include_bytes!("../../tests/fixtures/fonts/DejaVuSans.ttf").to_vec());
+        let face = registry
+            .resolve(&FontQuery {
+                families: vec!["DejaVu Sans".into()],
+                weight: 400,
+                italic: false,
+            })
+            .expect("fixture font resolves");
         let glyphs = shape_run(&face.bytes, "Hello", ParagraphDirection::LeftToRight, 12.0)
             .expect("system font shapes");
         assert!(!glyphs.is_empty());

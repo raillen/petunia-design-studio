@@ -61,9 +61,9 @@ impl Target {
 
 /// Reference twin of the engine winding test, kept beside the
 /// sampler it serves so the renderer never depends on engine code.
-fn point_in_ring(x: f64, y: f64, ring: &[(f64, f64)], rule: FillRule) -> bool {
+pub(crate) fn winding_number(x: f64, y: f64, ring: &[(f64, f64)]) -> i32 {
     if ring.len() < 3 {
-        return false;
+        return 0;
     }
     let mut winding = 0i32;
     for index in 0..ring.len() {
@@ -78,10 +78,7 @@ fn point_in_ring(x: f64, y: f64, ring: &[(f64, f64)], rule: FillRule) -> bool {
             winding -= 1;
         }
     }
-    match rule {
-        FillRule::NonZero => winding != 0,
-        FillRule::EvenOdd => winding % 2 != 0,
-    }
+    winding
 }
 
 fn point_segment_distance(x: f64, y: f64, a: (f64, f64), b: (f64, f64)) -> f64 {
@@ -115,14 +112,17 @@ pub fn fill_path(
                 for sx in 0..SAMPLES_PER_AXIS {
                     let px = x as f64 + (sx as f64 + 0.5) * step;
                     let py = y as f64 + (sy as f64 + 0.5) * step;
-                    if path
+                    let winding: i32 = path
                         .contours
                         .iter()
-                        .zip(path.closed.iter())
-                        .any(|(contour, closed)| {
-                            *closed && contour.len() >= 3 && point_in_ring(px, py, contour, rule)
-                        })
-                    {
+                        .zip(&path.closed)
+                        .filter(|(_, closed)| **closed)
+                        .map(|(contour, _)| winding_number(px, py, contour))
+                        .sum();
+                    if match rule {
+                        FillRule::NonZero => winding != 0,
+                        FillRule::EvenOdd => winding % 2 != 0,
+                    } {
                         covered += 1;
                     }
                 }

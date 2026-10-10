@@ -716,3 +716,24 @@ Escopo: `serialization.rs` com rejeição estrita ligada a todos os mapas de ide
 | `node website/scripts/verify-progress.cjs` | pass |
 
 Riscos/limites: duplicatas em vetores ordenados (children, roots, order) continuam validadas por invariante própria, não no parse.
+
+## Correções da auditoria e ponte headless — 2026-10-10
+
+Revisão: working tree sobre `6e2be4e1ce400e1b4642acc2de1007d7cd5e67c9`; mudanças ainda não commitadas. Ambiente Linux x86_64, Rust 1.99.0, quatro jobs de build. As evidências históricas acima não atestam esta implementação.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace --locked` | 493 passed / 0 failed / 0 ignored |
+| `cargo fmt --all -- --check` | pass |
+| `cargo clippy --workspace --locked --all-targets -- -D warnings` | pass |
+| `cargo bench --locked -p petunia-engine --bench geometry --bench spatial -p petunia-render --bench render -- --quick` | pass; 40 casos com medição |
+| `node --check website/app.js` e `node --check website/progress/progress.js` | pass |
+| `node website/scripts/verify-progress.cjs` | pass; 14 processos, 101 documentos cobertos |
+| `node --test website/tests/progress.test.cjs` | 6 passed / 0 failed |
+| `git diff --check` | pass |
+
+As 15 regressões de `audit_regressions.rs` passaram, incluindo o controle de render. Novas suítes comprovam revisions/budgets/rollback, closure/remapping/undo de fragments, guards de decode, locks e save atômico, WASM real, scheduler/spatial, fontes/texto/raster, Document→pixels e a sessão headless.
+
+`session_boundary.rs` testa: recursos + render + clipboard + undo/redo + save/open; conclusão de save antigo e conflito externo; rotation/pan/DPR; snap em coordenadas de documento e seleção por contexto. Fontes de fixture possuem seus notices/licenças versionados. Os testes de QR incluem decode independente do encoder.
+
+Limites: benchmarks `--quick` são medições locais de geometria/spatial/render, não certificação de latência interativa. Não foram executados QA Windows/macOS, Qt/QML, acessibilidade visual, benchmarks da futura GUI ou fuzzing noturno contínuo. Recursos sem evaluator completo não estão fechados por testes de diagnóstico. [Matriz de implementação](#/docs/00-architecture/implementation-matrix.md) e tracker mantêm esses contratos pendentes.

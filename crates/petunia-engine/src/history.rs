@@ -8,8 +8,8 @@
 
 use crate::error::{EngineError, Result};
 use crate::transaction::{
-    apply_quiet, commit_transaction, AppliedTransaction, DocumentRevision, MergeKey,
-    PreparedTransaction, TransactionError,
+    apply_ops_atomic, commit_transaction, prepare_transaction, AppliedTransaction, DocumentOp,
+    DocumentRevision, MergeKey, PreparedTransaction, TransactionError, TransactionRequest,
 };
 use petunia_core::Document;
 use serde::{Deserialize, Serialize};
@@ -39,26 +39,43 @@ pub struct HistoryEntry {
 }
 
 impl HistoryEntry {
-    /// Rough payload cost for retention policy. It does not need to be
-    /// perfect: inverse geometry, refs and metadata dominate, so each
-    /// operation counts a flat estimate plus per-object overhead.
+    /// Conservative payload estimate including both geometry directions.
     #[must_use]
     pub fn estimated_bytes(&self) -> u64 {
         estimate_transaction(
-            self.transaction.forward.len(),
-            self.transaction.inverse.len(),
+            &self.transaction.forward,
+            &self.transaction.inverse,
             self.transaction.affected_objects.len(),
         )
     }
 }
 
-/// Shared estimator so oversized work is refused before anything is
-/// applied or truncated.
-fn estimate_transaction(forward: usize, inverse: usize, affected: usize) -> u64 {
-    const PER_OPERATION: u64 = 256;
-    const PER_OBJECT: u64 = 16;
-    const BASE: u64 = 128;
-    BASE + PER_OPERATION * (forward + inverse) as u64 + PER_OBJECT * affected as u64
+/// Count serialized nested payload without allocating another geometry buffer.
+/// The multiplier and inline operation sizes account for in-memory containers
+/// and spare allocation capacity; this is a retention estimate, not an allocator.
+fn estimate_transaction(forward: &[DocumentOp], inverse: &[DocumentOp], affected: usize) -> u64 {
+    struct Counter(u64);
+    impl std::io::Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.saturating_add(bytes.len() as u64);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = Counter(0);
+    if serde_json::to_writer(&mut counter, &(forward, inverse)).is_err() {
+        return u64::MAX;
+    }
+    counter
+        .0
+        .saturating_mul(2)
+        .saturating_add(
+            ((forward.len() + inverse.len()) * std::mem::size_of::<DocumentOp>()) as u64,
+        )
+        .saturating_add((affected * std::mem::size_of::<petunia_core::ObjectId>()) as u64)
+        .saturating_add(128)
 }
 
 /// Linear undo history with revision tracking and memory budget.
@@ -69,6 +86,7 @@ pub struct History {
     position: usize,
     current_revision: DocumentRevision,
     saved_revision: DocumentRevision,
+    highest_revision: DocumentRevision,
     soft_budget_bytes: u64,
     hard_budget_bytes: u64,
 }
@@ -84,7 +102,8 @@ impl History {
             position: 0,
             current_revision: DocumentRevision::GENESIS,
             saved_revision: DocumentRevision::GENESIS,
-            soft_budget_bytes,
+            highest_revision: DocumentRevision::GENESIS,
+            soft_budget_bytes: soft_budget_bytes.min(hard_budget_bytes),
             hard_budget_bytes,
         }
     }
@@ -105,6 +124,19 @@ impl History {
     /// the document clean again without a separate dirty flag.
     pub fn save_checkpoint(&mut self) {
         self.saved_revision = self.current_revision;
+    }
+
+    /// Acknowledge the revision actually written by an asynchronous save.
+    /// Editing may already have advanced the document; only that saved state
+    /// becomes the checkpoint, so newer authorial changes remain dirty.
+    pub fn mark_saved(&mut self, revision: DocumentRevision) -> Result<()> {
+        if revision > self.highest_revision {
+            return Err(EngineError::Execution(
+                "saved revision was never allocated by this history".into(),
+            ));
+        }
+        self.saved_revision = revision;
+        Ok(())
     }
 
     /// Number of retained entries (undoable plus redoable).
@@ -129,11 +161,23 @@ impl History {
         self.position < self.entries.len()
     }
 
+    /// Immutable retained entries and applied prefix, for a history panel.
+    #[must_use]
+    pub fn entries(&self) -> (&[HistoryEntry], usize) {
+        (&self.entries, self.position)
+    }
+
     /// Restore history entries during crash recovery so the user can
     /// undo replayed transactions.
     pub fn restore_entries(&mut self, entries: Vec<HistoryEntry>) {
         if let Some(last) = entries.last() {
             self.current_revision = last.after_revision;
+        }
+        for entry in &entries {
+            self.highest_revision = self
+                .highest_revision
+                .max(entry.before_revision)
+                .max(entry.after_revision);
         }
         self.entries.extend(entries);
         self.position = self.entries.len();
@@ -157,11 +201,23 @@ impl History {
                 .to_string(),
             ));
         }
+        // Public prepared DTOs can be stale or malformed; derive the actual
+        // inverses against the current document before calculating retention.
+        let prepared = prepare_transaction(
+            document,
+            TransactionRequest {
+                command_id: prepared.command_id,
+                operations: prepared.forward,
+                merge_key: prepared.merge_key,
+            },
+            self.current_revision,
+        )
+        .map_err(|error| EngineError::Execution(error.to_string()))?;
         // Refuse oversized work before touching the document or the
         // redo branch: without safe undo there is no atomic commit.
         let cost = estimate_transaction(
-            prepared.forward.len(),
-            prepared.inverse.len(),
+            &prepared.forward,
+            &prepared.inverse,
             prepared.affected_objects.len(),
         );
         if cost > self.hard_budget_bytes {
@@ -170,13 +226,16 @@ impl History {
                 self.hard_budget_bytes
             )));
         }
-        // A fresh edit after undo discards the old redo branch.
-        self.entries.truncate(self.position);
+        let after = DocumentRevision(self.highest_revision.0.checked_add(1).ok_or_else(|| {
+            EngineError::Execution("document revision space exhausted".to_string())
+        })?);
         let merge_key = prepared.merge_key.clone();
         let applied = commit_transaction(document, prepared)
             .map_err(|error| EngineError::Execution(error.to_string()))?;
+        // Preserve redo until the document commit succeeds.
+        self.entries.truncate(self.position);
         let before = self.current_revision;
-        let after = before.next();
+        self.highest_revision = after;
         let entry = HistoryEntry {
             transaction: applied,
             before_revision: before,
@@ -190,6 +249,9 @@ impl History {
             if let Some(combined) = self.entries.pop_if(|last| {
                 last.transaction.merge_key.as_ref() == Some(&key)
                     && last.after_revision != self.saved_revision
+                    && last.description == description
+                    && last.transaction.affected_objects == entry.transaction.affected_objects
+                    && last.estimated_bytes().saturating_add(cost) <= self.hard_budget_bytes
             }) {
                 let mut forward = combined.transaction.forward;
                 forward.extend(entry.transaction.forward);
@@ -242,7 +304,7 @@ impl History {
             }
             // Never drop entries at or after the current position:
             // they are the reachable undo/redo path.
-            if drop >= self.position {
+            if drop + 1 >= self.position {
                 break;
             }
             freed += entry.estimated_bytes();
@@ -260,9 +322,7 @@ impl History {
             .get(..self.position)
             .and_then(|window| window.last())
             .ok_or(EngineError::NothingToUndo)?;
-        for back in entry.transaction.inverse.clone() {
-            apply_quiet(document, back)?;
-        }
+        apply_ops_atomic(document, &entry.transaction.inverse)?;
         self.position -= 1;
         self.current_revision = entry.before_revision;
         Ok(())
@@ -275,9 +335,7 @@ impl History {
             .get(self.position)
             .cloned()
             .ok_or(EngineError::NothingToRedo)?;
-        for forward in entry.transaction.forward {
-            apply_quiet(document, forward)?;
-        }
+        apply_ops_atomic(document, &entry.transaction.forward)?;
         self.position += 1;
         self.current_revision = entry.after_revision;
         Ok(())
@@ -384,15 +442,31 @@ mod tests {
         // A fresh edit discards the old redo branch.
         commit_insert(&mut history, &mut document, parent, None);
         assert!(!history.can_redo());
-        assert_eq!(history.current_revision(), DocumentRevision(1));
+        assert_eq!(history.current_revision(), DocumentRevision(2));
     }
 
     #[test]
     fn coalescing_joins_keys_but_not_across_save() {
         let (mut document, parent) = group_document();
         let mut history = History::new(SOFT, HARD);
-        commit_insert(&mut history, &mut document, parent, Some("typing"));
-        commit_insert(&mut history, &mut document, parent, Some("typing"));
+        for visible in [false, true] {
+            let prepared = prepare_transaction(
+                &document,
+                TransactionRequest {
+                    command_id: CommandId::new_v4(),
+                    merge_key: Some(MergeKey("typing".into())),
+                    operations: vec![DocumentOp::SetVisibility {
+                        object: parent,
+                        visible,
+                    }],
+                },
+                history.current_revision(),
+            )
+            .expect("prepare");
+            history
+                .commit(&mut document, prepared, HistoryDescription::SetVisibility)
+                .expect("commit");
+        }
         assert_eq!(history.len(), 1);
 
         history.save_checkpoint();

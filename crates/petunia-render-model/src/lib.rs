@@ -40,3 +40,6 @@ pub use primitive::{RenderPath, RenderPrimitive, VectorPrimitive};
 pub use resource::{RenderResourceTable, ResourceEntry};
 pub use snapshot::{RenderPage, RenderQuality, RenderSnapshot, SnapshotRevision};
 pub use text::{PositionedGlyph, TextPrimitive, TextRun};
+
+pub mod blend;
+pub use blend::apply_blend;

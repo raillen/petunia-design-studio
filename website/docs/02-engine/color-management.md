@@ -303,3 +303,9 @@ A API Petunia não expõe handles mutáveis do CMM para workers. Se o backend ex
 6. Conteúdo sem perfil segue política explícita de import; não é reinterpretado silenciosamente.
 7. CMYK/Spot autoral é preservado sempre que a operação não exige materialização/conversão.
 8. Render/output usa transformações derivadas; não altera o Document.
+
+## Backend executável em 2026-10-10
+
+`ColorEngine` encapsula Little CMS 2, compilado estaticamente, com perfis fornecidos explicitamente em memória. Há conversões ICC RGB/CMYK/Gray/Lab e builtins sRGB, Linear sRGB, Display P3 e Lab D50; cache inclui conteúdo dos perfis, formatos, intent e BPC. Perfil ausente ou inválido retorna erro tipado. O compiler recebe o provider de cor explicitamente.
+
+Os cinco testes do módulo `color_management` verificam conversões, erros e identidade do cache. Isso não implementa extração de ICC de PNG/JPEG, incorporação de perfil na exportação, soft proofing ou indicação de gamut. A decodificação de imagens da sessão atualmente assume sRGB. Gates em [Verification](#/docs/00-architecture/verification.md).

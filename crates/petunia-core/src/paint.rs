@@ -46,6 +46,12 @@ pub struct SwatchRegistry {
 }
 
 impl SwatchRegistry {
+    /// Remove one record by identity; callers validate remaining references.
+    pub fn remove(&mut self, id: SwatchId) -> Option<Swatch> {
+        self.order.retain(|entry| *entry != id);
+        self.entries.remove(&id)
+    }
+
     /// Empty registry.
     #[must_use]
     pub fn new() -> Self {

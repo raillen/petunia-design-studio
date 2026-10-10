@@ -431,3 +431,11 @@ Escopo: `GpuRenderContract` com `MockGpuBackend`, amostragem de gradiente cônic
 | `node website/scripts/verify-progress.cjs` | pass |
 
 Riscos/limites: driver físico GPU real (Vulkan/Metal/WGPU) continua opcional para milestones posteriores; referência de software continua como autoridade semântica.
+
+## Ponte documento → pixels verificada em 2026-10-10
+
+O compiler preserva PageIds autorais, todas as páginas, visibilidade efetiva, world transforms e ordem de appearance items. Fill rules, fills/strokes separados, opacity/blend dos itens e isolamento de opacity de grupos chegam ao renderer. Providers explícitos materializam texto, imagens, pixel layers, generated content e símbolos. Instâncias de símbolos conservam identidade autoral para seleção.
+
+Clips e masks derivados, blur e drop shadow básicos são avaliados. Sampling inclui nearest, bilinear e bicubic premultiplicado. Blur usa escala/rotação de view e shadow respeita alpha da cor. O renderer verifica orçamento de frame, profundidade, quantidade de primitives e sigma antes das alocações principais. DTOs Text/Raster não materializados e masks não resolvidas retornam erro tipado.
+
+Geometry effects, composição completa por EffectInstance (opacity/blend/mask), inner shadow/glow, shadow spread, markers, vector patterns e pool/cache integrados continuam pendentes. No compiler, os casos sem suporte emitem diagnóstico e preservam os dados autorais. Evidência: `audit_regressions.rs` (15 testes), `render_bridge_regressions.rs` (5 testes), testes do renderer e `session_boundary.rs`. Gates em [Verification](#/docs/00-architecture/verification.md).

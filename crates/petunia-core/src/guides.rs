@@ -449,6 +449,11 @@ impl GridRegistry {
         self.entries.iter().map(|(id, grid)| (*id, grid))
     }
 
+    /// Remove a runtime transaction's registry entry.
+    pub fn remove(&mut self, id: GridId) -> Option<GridDefinition> {
+        self.entries.remove(&id)
+    }
+
     /// Number of tracked grid definitions.
     #[must_use]
     pub fn len(&self) -> usize {

@@ -29,3 +29,37 @@ pub struct RasterPrimitive {
     pub opacity: f32,
     pub bounds: Rect,
 }
+
+/// Immutable decoded linear RGB pixels shared by snapshot resources.
+/// Resource loading/color conversion is performed before compilation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedImage {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<crate::paint::RenderColor>,
+}
+impl ResolvedImage {
+    /// Checked image extent prevents invalid buffers entering the renderer.
+    pub fn new(width: u32, height: u32, pixels: Vec<crate::paint::RenderColor>) -> Option<Self> {
+        if width == 0
+            || height == 0
+            || (width as usize).checked_mul(height as usize)? != pixels.len()
+        {
+            return None;
+        }
+        if pixels.iter().any(|pixel| {
+            !pixel.r.is_finite()
+                || !pixel.g.is_finite()
+                || !pixel.b.is_finite()
+                || !pixel.a.is_finite()
+                || !(0.0..=1.0).contains(&pixel.a)
+        }) {
+            return None;
+        }
+        Some(Self {
+            width,
+            height,
+            pixels,
+        })
+    }
+}

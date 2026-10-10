@@ -24,6 +24,7 @@ pub fn sample_gradient(gradient: &RenderGradient, t: f64) -> Result<RenderColor>
 
 /// Evaluate a linear gradient at a document point.
 pub fn sample_linear(gradient: &RenderGradient, point: (f64, f64)) -> Result<RenderColor> {
+    let point = gradient_point(gradient, point)?;
     let dx = gradient.end.0 - gradient.start.0;
     let dy = gradient.end.1 - gradient.start.1;
     let denom = dx * dx + dy * dy;
@@ -39,6 +40,7 @@ pub fn sample_linear(gradient: &RenderGradient, point: (f64, f64)) -> Result<Ren
 /// Evaluate a radial gradient at a document point under the local
 /// unit-radius space the geometry resolved.
 pub fn sample_radial(gradient: &RenderGradient, point: (f64, f64)) -> Result<RenderColor> {
+    let point = gradient_point(gradient, point)?;
     if !(gradient.radius.is_finite() && gradient.radius > 0.0) {
         return Err(RenderError::Draw(
             "degenerate radial gradient: non-positive radius".to_string(),
@@ -55,6 +57,7 @@ pub fn sample_radial(gradient: &RenderGradient, point: (f64, f64)) -> Result<Ren
 /// Angles map to normalized parameter `t in 0..1` starting from
 /// `start_angle`.
 pub fn sample_conical(gradient: &RenderGradient, point: (f64, f64)) -> Result<RenderColor> {
+    let point = gradient_point(gradient, point)?;
     let dx = point.0 - gradient.start.0;
     let dy = point.1 - gradient.start.1;
     if dx == 0.0 && dy == 0.0 {
@@ -65,6 +68,15 @@ pub fn sample_conical(gradient: &RenderGradient, point: (f64, f64)) -> Result<Re
     let tau = 2.0 * std::f64::consts::PI;
     let t = delta.rem_euclid(tau) / tau;
     sample_gradient(gradient, t)
+}
+
+fn gradient_point(gradient: &RenderGradient, point: (f64, f64)) -> Result<(f64, f64)> {
+    let inverse = gradient
+        .transform
+        .inverse()
+        .ok_or_else(|| RenderError::Draw("gradient transform is singular".into()))?;
+    let point = inverse.transform_point(petunia_core::Point::new(point.0, point.1));
+    Ok((point.x, point.y))
 }
 
 /// Sample a pattern at a document-space point using wrap/repeat mode.
@@ -78,6 +90,8 @@ pub fn sample_pattern(
     }
     let local = pattern
         .transform
+        .inverse()
+        .ok_or_else(|| RenderError::Draw("pattern transform is singular".into()))?
         .transform_point(petunia_core::Point::new(point.0, point.1));
     let u = wrap_coordinate(local.x, pattern.width as f64, pattern.repeat_x);
     let v = wrap_coordinate(local.y, pattern.height as f64, pattern.repeat_y);
@@ -367,6 +381,7 @@ mod tests {
 
     fn two_stop(midpoint: f32) -> RenderGradient {
         RenderGradient {
+            transform: petunia_core::Transform2D::IDENTITY,
             stops: vec![
                 RenderGradientStop {
                     offset: 0.0,

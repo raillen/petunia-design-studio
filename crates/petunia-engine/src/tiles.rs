@@ -37,7 +37,11 @@ impl TileVersion {
                 "tile needs non-zero dimensions".to_string(),
             ));
         }
-        let byte_count = width as usize * height as usize * bytes_per_pixel(format);
+        let byte_count = (width as usize)
+            .checked_mul(height as usize)
+            .and_then(|pixels| pixels.checked_mul(bytes_per_pixel(format)))
+            .filter(|bytes| *bytes <= 16 << 20)
+            .ok_or_else(|| EngineError::Execution("tile allocation exceeds 16 MiB guard".into()))?;
         Ok(Self {
             width,
             height,
@@ -56,7 +60,7 @@ impl TileVersion {
 /// Logical tile map with copy-on-write edits and a dirty set for
 /// renderer uploads. Tile size stays a measured runtime choice, not
 /// an architectural constant frozen here.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct TileStore {
     tiles: HashMap<TileCoord, TileVersion>,
     dirty: HashSet<TileCoord>,
@@ -143,7 +147,15 @@ impl TileStore {
             self.tiles
                 .insert(coord, TileVersion::zeroed(width, height, format)?);
         }
-        let tile = self.tiles.get_mut(&coord).expect("inserted above");
+        let tile = self
+            .tiles
+            .get_mut(&coord)
+            .ok_or_else(|| EngineError::Execution("tile missing after allocation".into()))?;
+        if tile.width != width || tile.height != height || tile.format != format {
+            return Err(EngineError::Execution(
+                "tile dimensions/format mismatch".into(),
+            ));
+        }
         if !tile.is_unique() {
             let cloned: Vec<u8> = tile.bytes.as_ref().clone();
             tile.bytes = Arc::new(cloned);
@@ -192,5 +204,29 @@ mod tests {
         assert!(store
             .write_tile(coord(1, 0), 64, 64, PixelFormat::Rgba8Unorm)
             .is_err());
+    }
+}
+
+/// Atomic version exchange. Arc-backed copies preserve untouched tiles and let
+/// cancel/undo/replay exchange references without rerunning brush dynamics.
+#[derive(Debug, Clone)]
+pub struct TileTransaction {
+    before: TileStore,
+    after: TileStore,
+}
+impl TileTransaction {
+    #[must_use]
+    pub fn new(before: TileStore, after: TileStore) -> Self {
+        Self { before, after }
+    }
+    pub fn apply(&self, destination: &mut TileStore) {
+        *destination = self.after.clone();
+    }
+    pub fn undo(&self, destination: &mut TileStore) {
+        *destination = self.before.clone();
+    }
+    #[must_use]
+    pub fn dirty_tiles(&self) -> Vec<TileCoord> {
+        self.after.dirty_tiles()
     }
 }

@@ -156,17 +156,37 @@ pub fn import_raster_image(bytes: &[u8], limits: &IoLimits) -> Result<ImportedIm
             ))
         }
     }
-    let image = image::load_from_memory(bytes)
-        .map_err(|error| EngineError::Execution(format!("image decode failed: {error}")))?
-        .into_rgba8();
-    if image.width() > limits.max_dimension_px || image.height() > limits.max_dimension_px {
-        return Err(EngineError::Execution(format!(
-            "image {}x{} exceeds dimension limit {}",
-            image.width(),
-            image.height(),
-            limits.max_dimension_px
+    let format = match probe.format {
+        DetectedFormat::Png => image::ImageFormat::Png,
+        DetectedFormat::Jpeg => image::ImageFormat::Jpeg,
+        _ => return Err(EngineError::Execution("unsupported image format".into())),
+    };
+    let reader = image::ImageReader::with_format(std::io::Cursor::new(bytes), format);
+    let (width, height) = reader
+        .into_dimensions()
+        .map_err(|error| EngineError::Execution(format!("image header failed: {error}")))?;
+    let decoded_bytes = u64::from(width)
+        .checked_mul(u64::from(height))
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or_else(|| EngineError::Limit("image dimensions overflow".into()))?;
+    if width > limits.max_dimension_px
+        || height > limits.max_dimension_px
+        || decoded_bytes > limits.max_embedded_bytes
+    {
+        return Err(EngineError::Limit(format!(
+            "image {width}x{height} exceeds decoding budget"
         )));
     }
+    let mut reader = image::ImageReader::with_format(std::io::Cursor::new(bytes), format);
+    let mut decoder_limits = image::Limits::default();
+    decoder_limits.max_image_width = Some(limits.max_dimension_px);
+    decoder_limits.max_image_height = Some(limits.max_dimension_px);
+    decoder_limits.max_alloc = Some(limits.max_embedded_bytes);
+    reader.limits(decoder_limits);
+    let image = reader
+        .decode()
+        .map_err(|error| EngineError::Execution(format!("image decode failed: {error}")))?
+        .into_rgba8();
     let mut warnings = Vec::new();
     if probe.format == DetectedFormat::Jpeg {
         warnings.push(ImportWarning {
@@ -228,12 +248,12 @@ pub fn path_to_svg_data(path: &VectorPath) -> String {
                 continue;
             }
             let previous = &contour.nodes[index - 1];
-            match (previous.handle_out, node.handle_in) {
-                (Some(out), Some(into)) => {
+            match crate::geometry::bezier::segment_bezier(previous, node) {
+                Some(curve) => {
                     let _ = write!(
                         data,
                         "C {} {} {} {} {} {} ",
-                        out.x, out.y, into.x, into.y, node.point.x, node.point.y
+                        curve.p1.x, curve.p1.y, curve.p2.x, curve.p2.y, node.point.x, node.point.y
                     );
                 }
                 _ => {
@@ -242,6 +262,20 @@ pub fn path_to_svg_data(path: &VectorPath) -> String {
             }
         }
         if contour.closed {
+            if let (Some(last), Some(first)) = (contour.nodes.last(), contour.nodes.first()) {
+                if let Some(curve) = crate::geometry::bezier::segment_bezier(last, first) {
+                    let _ = write!(
+                        data,
+                        "C {} {} {} {} {} {} ",
+                        curve.p1.x,
+                        curve.p1.y,
+                        curve.p2.x,
+                        curve.p2.y,
+                        first.point.x,
+                        first.point.y
+                    );
+                }
+            }
             data.push_str("Z ");
         }
     }
