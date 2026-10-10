@@ -582,3 +582,16 @@ Detalhes variam por sistema operacional e pertencem ao I/O Engine.
 16. UUIDs usam representação textual canônica.
 17. ContentHash não substitui identidade.
 18. Save deve permitir escrita temporária + replace seguro.
+
+## Verificação do ContentHash BLAKE3 (2026-10-10)
+
+Escopo: digest BLAKE3-256 com forma textual tagueada e parse estrito. Revisão `cdd5fa68cd8798936e6a81ec05c176ce7b5f793a` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 361 passed / 0 failed |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: serialização de IDs continua lowercase por herança do `uuid`; detecção de modificação externa usa o hash via I/O.

@@ -240,6 +240,11 @@
       "revision": "f2ba26553d2451ba8efb914f879bfedeab9ce940",
       "document": "00-architecture/verification.md",
       "summary": "Chaves duplicadas em 2026-10-10: helper compartilhado em serialization.rs recusa a primeira chave repetida nomeando-a, ligado a todos os mapas de identidade do Core e aos blobs do journal; roots de symbols validados. Teste ponta a ponta duplica entrada real do scene map. Gates: workspace 361 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
+    },
+    "ev-c01-blake3": {
+      "revision": "cdd5fa68cd8798936e6a81ec05c176ce7b5f793a",
+      "document": "01-core/ids-serialization.md",
+      "summary": "ContentHash BLAKE3 em 2026-10-10: digest BLAKE3-256 com forma textual tagueada blake3:<hex>, parse estrito com erros tipados, serialização só minúscula, fuzz de digests hostis. Gates: workspace 361 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
     }
   },
   "tasks": [
@@ -295,8 +300,8 @@
       "description": "Primitivas f64, unidades canônicas com conversões e IDs tipados com serialização.",
       "document": "01-core/math.md",
       "status": "DONE",
-      "updated": "2026-10-09",
-      "baseline": "Implementado em b16d4eb: math.rs com primitivas, Size2, Angle, Tolerance contextual, canonicalização e document_tolerance; units.rs; id.rs com 12 IDs.",
+      "updated": "2026-10-10",
+      "baseline": "Math/units/ids em revisões anteriores; ContentHash BLAKE3 tagueado em cdd5fa6. Segue futuro: benchmark de interação e fuzzing contínuo.",
       "checkpoints": [
         {
           "title": "math.rs com Point, Vec2, Rect e Transform2D",
@@ -317,6 +322,11 @@
           "title": "Tolerâncias contextuais e canonicalização de -0.0 em math.rs",
           "completed": true,
           "evidence": "ev-c01"
+        },
+        {
+          "title": "ContentHash BLAKE3-256 tagueado com parse estrito",
+          "completed": true,
+          "evidence": "ev-c01-blake3"
         }
       ],
       "documents": [
