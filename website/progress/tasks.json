@@ -230,6 +230,11 @@
       "revision": "a3e20794ebc79ea8774aa4b66de049e5d8ede080",
       "document": "02-engine/persistence-recovery.md",
       "summary": "Journal de recovery em 2026-10-10: framing com magic/schema/checksum por record, replay por prefixo confirmado com stop reasons tipados, appends com continuidade de revision, sessões de recovery com checkpoint validado antes do replace, rotação do journal só depois, replay pelo commit lane com skip de records obsoletos e parada no último consistente, clean shutdown e permissões restritivas. Gates: workspace 349 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
+    },
+    "ev-q01-core-fuzz": {
+      "revision": "8a214d418dfe62475baa46149ebb545309a5ee6d",
+      "document": "00-architecture/verification.md",
+      "summary": "Fuzz guards do Core em 2026-10-10: truncamentos, mutações com seed e bytes aleatórios nunca causam panic no DTO; nesting profundo atinge o budget de recursão; escalares e floats overflow falham tipados; from_json_limited impõe budget exato; UUID canônico estrito na serialização e no parse; duplicate keys sem panic. Gates: workspace 359 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
     }
   },
   "tasks": [
@@ -685,8 +690,8 @@
       "description": "Quality gates por módulo, benchmarks de geometria/render, fuzzing de PTND e CI executando tudo.",
       "document": "00-architecture/verification.md",
       "status": "DONE",
-      "updated": "2026-10-09",
-      "baseline": "Implementado em 7f259f1: property suites (Core 12, Engine 11, Render 8), fuzz guards (5 suítes), benchmarks criterion (geometry/spatial/render) e rust-ci.yml. Follow-up: benchmark de interação (hit-test/snap) quando a UI existir, e fuzzing contínuo noturno.",
+      "updated": "2026-10-10",
+      "baseline": "Gates e fuzzing em 7f259f1; superfícies externas do Core (DTO, UUID, hash) endurecidas em 8a214d4. Segue futuro: benchmark de interação e fuzzing contínuo.",
       "checkpoints": [
         {
           "title": "Quality gates por módulo executados e registrados",
@@ -702,6 +707,11 @@
           "title": "Fuzzing de PTND, paths e serialização na CI",
           "completed": true,
           "evidence": "ev-q03"
+        },
+        {
+          "title": "Fuzzing de superfícies externas do Core (DTO, UUID, hash)",
+          "completed": true,
+          "evidence": "ev-q01-core-fuzz"
         }
       ],
       "documents": [

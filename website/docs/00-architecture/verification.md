@@ -690,3 +690,16 @@ Se mudar semântica, não é apenas otimização; precisa de decisão arquitetur
 8. CI rápido e suites pesadas possuem cadências diferentes.
 9. Feature sem testes de seus invariantes não está tecnicamente fechada.
 10. UX/GUI quality gates serão definidos junto com a discussão de Interface.
+
+## Verificação das superfícies externas do Core (2026-10-10)
+
+Escopo: fuzz guards determinísticos do DTO, UUID e ContentHash. Revisão `8a214d418dfe62475baa46149ebb545309a5ee6d` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 359 passed / 0 failed (Core com 10 testes de fuzz) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: detecção estrita de chaves duplicadas em mapas de identidade continua futura; ContentHash segue SHA-256 sem tag de algoritmo (BLAKE3 tagueado é follow-up).
