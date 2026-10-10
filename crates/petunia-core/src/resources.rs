@@ -108,6 +108,7 @@ pub struct ResourceRecord {
 /// collection checks scene, style, symbol and history references.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ResourceRegistry {
+    #[serde(deserialize_with = "crate::serialization::deserialize_unique_btree_map")]
     records: BTreeMap<ResourceId, ResourceRecord>,
 }
 

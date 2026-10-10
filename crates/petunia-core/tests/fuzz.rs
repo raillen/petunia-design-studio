@@ -196,17 +196,46 @@ fn content_hash_rejects_hostile_digests() {
     }
 }
 
-/// Duplicate identity keys collapse without panicking. Strict
-/// duplicate detection is follow-up work; this test locks the
-/// no-panic property, not the leniency.
+/// Duplicate identity keys fail with a typed error naming the key.
+/// The last one never wins silently.
 #[test]
-fn duplicate_keys_never_panic() {
-    let json = valid_document_json();
-    // Splice a duplicate node entry into the scene map, if present.
-    if let Some(nodes_at) = json.find("\"nodes\"") {
-        let mut duped = json.clone();
-        duped.insert_str(nodes_at + 8, "\"dup\":{},");
-        let _ = Document::from_json(&duped);
+fn duplicate_identity_keys_are_rejected() {
+    let mut document = Document::new("dup");
+    let page = document.scene.default_page();
+    for name in ["a", "b"] {
+        document.scene.insert_node(SceneNode::new_path(
+            name,
+            VectorPath::rect(0.0, 0.0, 1.0, 1.0),
+            ParentRef::Page(page),
+        ));
     }
-    let _ = Document::from_json(&json);
+    let json = document.to_json().expect("serializes");
+    // Copy the first node entry inside the scene nodes map.
+    let marker = "\"nodes\": {";
+    let at = json.find(marker).expect("nodes map") + marker.len();
+    let mut depth = 0usize;
+    let mut end = at;
+    for (index, byte) in json.bytes().enumerate().skip(at) {
+        match byte {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = index + 1;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    assert!(end > at, "first entry found");
+    let first = &json[at..end];
+    let duped = format!("{}{},{}{}", &json[..at], first, first, &json[end..]);
+    let error = Document::from_json(&duped).expect_err("must reject duplicates");
+    assert!(
+        error.to_string().contains("duplicate identity key"),
+        "{error}",
+    );
+    // The honest document still parses.
+    assert!(Document::from_json(&json).is_ok());
 }

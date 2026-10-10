@@ -71,6 +71,7 @@ pub struct SymbolInstance {
 /// Registry of definitions by identity.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SymbolRegistry {
+    #[serde(deserialize_with = "crate::serialization::deserialize_unique_btree_map")]
     definitions: BTreeMap<SymbolId, SymbolDefinition>,
 }
 
@@ -91,6 +92,13 @@ impl SymbolRegistry {
     #[must_use]
     pub fn get(&self, id: SymbolId) -> Option<&SymbolDefinition> {
         self.definitions.get(&id)
+    }
+
+    /// Iterate definitions in deterministic order; traversal only.
+    pub fn iter(&self) -> impl Iterator<Item = (SymbolId, &SymbolDefinition)> {
+        self.definitions
+            .iter()
+            .map(|(id, definition)| (*id, definition))
     }
 
     /// Number of tracked definitions.

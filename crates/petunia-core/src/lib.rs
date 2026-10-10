@@ -27,6 +27,7 @@ pub mod path;
 pub mod raster;
 pub mod resources;
 pub mod scene;
+pub mod serialization;
 pub mod shape;
 pub mod styles;
 pub mod symbols;
@@ -87,6 +88,7 @@ pub use resources::{
     ResourceSource,
 };
 pub use scene::{Fill, MaskBinding, MaskMode, ParentRef, SceneGraph, SceneItem, SceneNode, Stroke};
+pub use serialization::deserialize_unique_btree_map;
 pub use shape::{
     CornerRadii, EllipseArc, EllipseSpec, ParametricShape, PolygonSpec, RectangleSpec, StarSpec,
 };

@@ -146,7 +146,9 @@ impl SceneNode {
 /// iteration. `BTreeMap` keeps even the serialized form deterministic.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SceneGraph {
+    #[serde(deserialize_with = "crate::serialization::deserialize_unique_btree_map")]
     nodes: BTreeMap<ObjectId, SceneNode>,
+    #[serde(deserialize_with = "crate::serialization::deserialize_unique_btree_map")]
     pages: BTreeMap<PageId, Vec<ObjectId>>,
     default_page: PageId,
 }

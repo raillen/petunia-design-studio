@@ -67,6 +67,7 @@ pub enum JournalOperation {
     TransactionApplied {
         description: String,
         ops: Vec<DocumentOp>,
+        #[serde(deserialize_with = "petunia_core::serialization::deserialize_unique_btree_map")]
         blobs: BTreeMap<ResourceId, Vec<u8>>,
     },
 }

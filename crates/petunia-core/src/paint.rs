@@ -40,6 +40,7 @@ pub enum SwatchValue {
 /// iteration never defines presentation order.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SwatchRegistry {
+    #[serde(deserialize_with = "crate::serialization::deserialize_unique_btree_map")]
     entries: std::collections::BTreeMap<SwatchId, Swatch>,
     order: Vec<SwatchId>,
 }

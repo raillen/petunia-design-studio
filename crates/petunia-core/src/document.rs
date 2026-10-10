@@ -96,6 +96,7 @@ impl Page {
 /// spreads carry the editorial arrangement separately.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PageCollection {
+    #[serde(deserialize_with = "crate::serialization::deserialize_unique_btree_map")]
     pages: BTreeMap<PageId, Page>,
 }
 
@@ -187,6 +188,7 @@ pub struct DocumentMetadata {
     pub modified_unix_ms: u64,
     pub notes: String,
     /// Namespaced custom metadata.
+    #[serde(deserialize_with = "crate::serialization::deserialize_unique_btree_map")]
     pub custom: BTreeMap<String, String>,
 }
 
@@ -262,6 +264,7 @@ pub struct Document {
     pub metadata: DocumentMetadata,
     pub setup: DocumentSetup,
     pub pages: PageCollection,
+    #[serde(deserialize_with = "crate::serialization::deserialize_unique_btree_map")]
     pub spreads: BTreeMap<SpreadId, Spread>,
     pub scene: SceneGraph,
     pub resources: ResourceRegistry,
@@ -451,6 +454,17 @@ impl Document {
     }
 
     fn validate_symbols(&self) -> Result<()> {
+        use std::collections::HashSet;
+        for (id, definition) in self.symbols.iter() {
+            let mut seen = HashSet::new();
+            for root in &definition.roots {
+                if !seen.insert(root) {
+                    return Err(CoreError::InvariantViolation(format!(
+                        "symbol {id} lists duplicate root {root}"
+                    )));
+                }
+            }
+        }
         for (id, instance) in self.symbol_instances() {
             let Some(definition) = self.symbols.get(instance.definition) else {
                 return Err(CoreError::DanglingReference(format!(

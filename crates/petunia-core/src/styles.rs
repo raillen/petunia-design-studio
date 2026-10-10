@@ -209,6 +209,7 @@ impl StyleDefinition {
 /// separate ordered collection: map iteration never defines it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct StyleRegistry {
+    #[serde(deserialize_with = "crate::serialization::deserialize_unique_btree_map")]
     styles: BTreeMap<StyleId, StyleDefinition>,
 }
 

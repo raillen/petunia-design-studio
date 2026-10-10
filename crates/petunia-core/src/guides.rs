@@ -377,6 +377,7 @@ pub struct ExportColorOptions {
 /// Lookup of persistent guides by identity.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct GuideRegistry {
+    #[serde(deserialize_with = "crate::serialization::deserialize_unique_btree_map")]
     entries: std::collections::BTreeMap<GuideId, Guide>,
 }
 
@@ -420,6 +421,7 @@ impl GuideRegistry {
 /// Lookup of persistent grid definitions by identity.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct GridRegistry {
+    #[serde(deserialize_with = "crate::serialization::deserialize_unique_btree_map")]
     entries: std::collections::BTreeMap<GridId, GridDefinition>,
 }
 
@@ -463,6 +465,7 @@ impl GridRegistry {
 /// Lookup of reusable export slices by identity.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SliceRegistry {
+    #[serde(deserialize_with = "crate::serialization::deserialize_unique_btree_map")]
     entries: std::collections::BTreeMap<SliceId, ExportSlice>,
 }
 
