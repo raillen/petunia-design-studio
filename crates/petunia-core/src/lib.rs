@@ -43,7 +43,7 @@ pub use appearance::{
 pub use color::{
     BuiltinColorSpace, Cmyka, ColorRgba, ColorSpace, ColorSpaceRef, ColorValue, DocumentColorSpec,
     EncodedRgba, Graya, Laba, LinearRgba, ProcessColor, ProcessColorValue, RenderingIntent, Rgba,
-    SpotColor, SpotColorRef,
+    SpotColor, SpotColorRef, SpotRegistry,
 };
 pub use color_management::ColorTransform;
 pub use crop::{BindingSourceUse, ClipBinding, ImageSourceRect, NormalizedPoint};

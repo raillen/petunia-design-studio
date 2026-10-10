@@ -2,6 +2,7 @@
 
 use crate::appearance::Appearance;
 use crate::crop::ClipBinding;
+use crate::effects::{GeometryEffectStack, PostPaintEffectStack};
 use crate::error::{CoreError, Result};
 use crate::generated::{GeneratedVectorObject, TraceObject};
 use crate::id::{ObjectId, PageId};
@@ -98,6 +99,11 @@ pub struct SceneNode {
     pub locked: bool,
     pub transform: Transform2D,
     pub opacity: f32,
+    /// Geometry effects run before appearance; unevaluated stacks
+    /// compile with explicit warnings until their evaluator lands.
+    pub geometry_effects: GeometryEffectStack,
+    /// Post-paint effects consume the painted result.
+    pub post_effects: PostPaintEffectStack,
     pub clip: Option<ClipBinding>,
     pub mask: Option<MaskBinding>,
     pub item: SceneItem,
@@ -152,6 +158,8 @@ impl SceneNode {
             locked: false,
             transform: Transform2D::IDENTITY,
             opacity: 1.0,
+            geometry_effects: GeometryEffectStack::default(),
+            post_effects: PostPaintEffectStack::default(),
             clip: None,
             mask: None,
             item: SceneItem::Path(PathObject {
@@ -727,6 +735,25 @@ impl SceneGraph {
                 )));
             }
         }
+        for instance in node
+            .geometry_effects
+            .items
+            .iter()
+            .map(|item| (item.id, item.opacity, "geometry"))
+            .chain(
+                node.post_effects
+                    .items
+                    .iter()
+                    .map(|item| (item.id, item.opacity, "post-paint")),
+            )
+        {
+            let (id, opacity, phase) = instance;
+            if !opacity.is_finite() || !(0.0..=1.0).contains(&opacity) {
+                return Err(CoreError::InvariantViolation(format!(
+                    "{phase} effect {id} opacity out of 0..=1: {opacity}"
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -928,6 +955,8 @@ mod tests {
             locked: false,
             transform: Transform2D::IDENTITY,
             opacity: 1.0,
+            geometry_effects: GeometryEffectStack::default(),
+            post_effects: PostPaintEffectStack::default(),
             clip: None,
             mask: None,
             item: SceneItem::Group(Vec::new()),
@@ -998,6 +1027,8 @@ mod tests {
             locked: false,
             transform: Transform2D::IDENTITY,
             opacity: 1.0,
+            geometry_effects: GeometryEffectStack::default(),
+            post_effects: PostPaintEffectStack::default(),
             clip: None,
             mask: None,
             item: SceneItem::Group(Vec::new()),
@@ -1081,6 +1112,8 @@ mod tests {
             locked: false,
             transform: Transform2D::IDENTITY,
             opacity: 1.0,
+            geometry_effects: GeometryEffectStack::default(),
+            post_effects: PostPaintEffectStack::default(),
             clip: None,
             mask: None,
             item: SceneItem::Group(Vec::new()),

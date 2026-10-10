@@ -243,11 +243,21 @@ impl Compiler {
                     None
                 }
             },
-            ColorValue::Spot(_) => {
-                // Spot inks have no definition registry in this
-                // revision, so no alternate preview can resolve.
-                self.warn(id, "spot ink without a definition registry; skipped");
-                None
+            ColorValue::Spot(reference) => {
+                let Some(ink) = document.spots.get(reference.id) else {
+                    self.warn(id, "spot ink without a definition; skipped");
+                    return None;
+                };
+                if !reference.tint.is_finite() || !(0.0..=1.0).contains(&reference.tint) {
+                    self.warn(id, "spot tint outside 0..=1; skipped");
+                    return None;
+                }
+                // The alternate preview stands in for the ink.
+                self.compile_color(
+                    document,
+                    id,
+                    &petunia_core::ColorSource::Value(ColorValue::Process(ink.alternate.clone())),
+                )
             }
         }
     }
@@ -571,6 +581,64 @@ mod tests {
     }
 
     #[test]
+    fn spot_ink_resolves_through_its_alternate() {
+        use petunia_core::{
+            Appearance, AppearanceItem, AppearanceItemId, AppearanceKind, BlendMode, ColorSource,
+            ColorValue, SpotColor, SpotColorRef,
+        };
+        let mut document = document_with_rect();
+        let id = document.scene.root_order()[0];
+        let ink = SpotColor {
+            id: petunia_core::SpotColorId::new_v4(),
+            name: "Brand Red".to_string(),
+            alternate: petunia_core::ProcessColor {
+                value: petunia_core::ProcessColorValue::Rgb(petunia_core::Rgba {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 1.0,
+                    alpha: 1.0,
+                }),
+                space: petunia_core::ColorSpaceRef::Builtin(petunia_core::BuiltinColorSpace::Srgb),
+            },
+        };
+        let ink_id = ink.id;
+        document.spots.insert(ink);
+        let appearance = Appearance {
+            items: vec![AppearanceItem {
+                id: AppearanceItemId::new_v4(),
+                enabled: true,
+                opacity: 1.0,
+                blend_mode: BlendMode::Normal,
+                kind: AppearanceKind::Fill(petunia_core::Paint::Solid(ColorSource::Value(
+                    ColorValue::Spot(SpotColorRef {
+                        id: ink_id,
+                        tint: 0.5,
+                    }),
+                ))),
+            }],
+        };
+        if let petunia_core::SceneItem::Path(object) =
+            &mut document.scene.get_node_mut(id).expect("node").item
+        {
+            object.appearance = appearance;
+        }
+        let (snapshot, warnings) = compile_document(
+            &document,
+            DocumentRevision::GENESIS,
+            RenderQuality::Authoring,
+        );
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let RenderPrimitive::Vector(vector) = &snapshot.pages[0].primitives[0] else {
+            panic!("expected vector");
+        };
+        // The blue alternate stands in for the ink.
+        let RenderPaint::Solid(fill) = vector.appearance.fill.as_ref().expect("fill") else {
+            panic!("expected solid fill");
+        };
+        assert_eq!((fill.r, fill.g, fill.b), (0.0, 0.0, 1.0));
+    }
+
+    #[test]
     fn unresolvable_paint_degrades_with_warnings() {
         use petunia_core::{
             Appearance, AppearanceItem, AppearanceItemId, AppearanceKind, BlendMode,
@@ -621,6 +689,8 @@ mod tests {
             locked: false,
             transform: petunia_core::Transform2D::IDENTITY,
             opacity: 1.0,
+            geometry_effects: Default::default(),
+            post_effects: Default::default(),
             clip: None,
             mask: None,
             item: SceneItem::Text(

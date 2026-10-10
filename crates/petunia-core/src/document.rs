@@ -6,7 +6,7 @@
 //! clipboard, job progress) never enters this model.
 
 use crate::appearance::{Appearance, AppearanceKind, Paint, PatternSource};
-use crate::color::{ColorSpaceRef, DocumentColorSpec};
+use crate::color::{ColorSpaceRef, DocumentColorSpec, SpotRegistry};
 use crate::error::{CoreError, Result};
 use crate::guides::{GridRegistry, GuideRegistry, SliceRegistry};
 use crate::id::{DocumentId, ObjectId, PageId, ResourceId, SpreadId};
@@ -271,6 +271,7 @@ pub struct Document {
     pub styles: StyleRegistry,
     pub symbols: SymbolRegistry,
     pub swatches: SwatchRegistry,
+    pub spots: SpotRegistry,
     pub guides: GuideRegistry,
     pub grids: GridRegistry,
     pub slices: SliceRegistry,
@@ -295,6 +296,7 @@ impl Document {
             styles: StyleRegistry::new(),
             symbols: SymbolRegistry::new(),
             swatches: SwatchRegistry::new(),
+            spots: SpotRegistry::new(),
             guides: GuideRegistry::new(),
             grids: GridRegistry::new(),
             slices: SliceRegistry::new(),
@@ -455,6 +457,7 @@ impl Document {
 
     fn validate_symbols(&self) -> Result<()> {
         use std::collections::HashSet;
+        let mut edges = Vec::new();
         for (id, definition) in self.symbols.iter() {
             let mut seen = HashSet::new();
             for root in &definition.roots {
@@ -463,6 +466,27 @@ impl Document {
                         "symbol {id} lists duplicate root {root}"
                     )));
                 }
+            }
+        }
+        for (id, definition) in self.symbols.iter() {
+            for nested in definition.nested_definitions() {
+                edges.push((id, vec![nested]));
+            }
+        }
+        // Collapse per-definition edges for the cycle check.
+        {
+            use std::collections::BTreeMap;
+            let mut merged: BTreeMap<crate::id::SymbolId, Vec<crate::id::SymbolId>> =
+                BTreeMap::new();
+            for (from, nested) in edges {
+                merged.entry(from).or_default().extend(nested);
+            }
+            let edges: Vec<(crate::id::SymbolId, Vec<crate::id::SymbolId>)> =
+                merged.into_iter().collect();
+            if crate::symbols::has_symbol_cycle(&edges) {
+                return Err(CoreError::CycleDetected(
+                    "symbol definitions form a dependency cycle".to_string(),
+                ));
             }
         }
         for (id, instance) in self.symbol_instances() {
@@ -474,9 +498,11 @@ impl Document {
             };
             let _ = definition;
             for override_ in &instance.overrides {
-                if self.scene.get_node(override_.target).is_none() {
+                // Override targets address the definition subtree by
+                // stable identity, never the scene or a text path.
+                if !definition.nodes.contains_key(&override_.target) {
                     return Err(CoreError::DanglingReference(format!(
-                        "symbol override of {id} targets missing node {}",
+                        "symbol override of {id} targets {} outside its definition",
                         override_.target,
                     )));
                 }
@@ -994,9 +1020,12 @@ impl Document {
                         reference.tint
                     )));
                 }
-                // Spot ink definitions have no dedicated registry in
-                // this revision; existence stays unchecked and is
-                // recorded as follow-up work.
+                if self.spots.get(reference.id).is_none() {
+                    return Err(CoreError::DanglingReference(format!(
+                        "{what} references missing spot {}",
+                        reference.id
+                    )));
+                }
                 Ok(())
             }
         }
@@ -1118,11 +1147,108 @@ mod tests {
             locked: false,
             transform: crate::math::Transform2D::IDENTITY,
             opacity: 1.0,
+            geometry_effects: Default::default(),
+            post_effects: Default::default(),
             clip: None,
             mask: None,
             item: SceneItem::Text(text),
         };
         document.scene.insert_node(node);
+        assert!(document.validate().is_err());
+    }
+
+    #[test]
+    fn missing_spot_reference_fails_validation() {
+        use crate::color::{
+            BuiltinColorSpace, ColorSpaceRef, ColorValue, ProcessColor, ProcessColorValue, Rgba,
+            SpotColorRef,
+        };
+        fn red() -> ColorValue {
+            ColorValue::Process(ProcessColor {
+                value: ProcessColorValue::Rgb(Rgba {
+                    r: 1.0,
+                    g: 0.0,
+                    b: 0.0,
+                    alpha: 1.0,
+                }),
+                space: ColorSpaceRef::Builtin(BuiltinColorSpace::Srgb),
+            })
+        }
+        let mut document = Document::new("Spots");
+        let missing = crate::id::SpotColorId::new_v4();
+        // A swatch pointing at an undefined ink is dangling.
+        document.swatches.insert(crate::paint::Swatch {
+            id: crate::id::SwatchId::new_v4(),
+            name: "brand".to_string(),
+            value: crate::paint::SwatchValue::Color(ColorValue::Spot(SpotColorRef {
+                id: missing,
+                tint: 0.5,
+            })),
+        });
+        assert!(document.validate().is_err());
+        // Defining the ink repairs the document.
+        document.spots.insert(crate::color::SpotColor {
+            id: missing,
+            name: "Brand Red".to_string(),
+            alternate: match red() {
+                ColorValue::Process(process) => process,
+                _ => unreachable!("red is a process color"),
+            },
+        });
+        assert!(document.validate().is_ok());
+    }
+
+    #[test]
+    fn nested_symbol_cycles_fail_validation() {
+        use crate::scene::SceneItem;
+        use crate::symbols::{SymbolDefinition, SymbolInstance};
+        let mut document = Document::new("Symbols");
+        let page = document.scene.default_page();
+        fn host(
+            id: ObjectId,
+            page: crate::id::PageId,
+            definition: crate::id::SymbolId,
+        ) -> SceneNode {
+            SceneNode {
+                id,
+                name: "host".to_string(),
+                parent: ParentRef::Page(page),
+                visible: true,
+                locked: false,
+                transform: crate::math::Transform2D::IDENTITY,
+                opacity: 1.0,
+                geometry_effects: Default::default(),
+                post_effects: Default::default(),
+                clip: None,
+                mask: None,
+                item: SceneItem::SymbolInstance(SymbolInstance {
+                    definition,
+                    overrides: Vec::new(),
+                }),
+            }
+        }
+        // Definition A hosts an instance of B; B hosts A back.
+        let node_a = ObjectId::new_v4();
+        let node_b = ObjectId::new_v4();
+        let mut nodes_a = std::collections::BTreeMap::new();
+        nodes_a.insert(node_a, host(node_a, page, crate::id::SymbolId::new_v4()));
+        let mut nodes_b = std::collections::BTreeMap::new();
+        nodes_b.insert(node_b, host(node_b, page, crate::id::SymbolId::new_v4()));
+        let mut def_a = SymbolDefinition::new("A", vec![node_a], nodes_a).expect("valid");
+        let mut def_b = SymbolDefinition::new("B", vec![node_b], nodes_b).expect("valid");
+        // Point the hosts at each other to close the cycle.
+        if let crate::scene::SceneItem::SymbolInstance(instance) =
+            &mut def_a.nodes.get_mut(&node_a).expect("host").item
+        {
+            instance.definition = def_b.id;
+        }
+        if let crate::scene::SceneItem::SymbolInstance(instance) =
+            &mut def_b.nodes.get_mut(&node_b).expect("host").item
+        {
+            instance.definition = def_a.id;
+        }
+        document.symbols.insert(def_a);
+        document.symbols.insert(def_b);
         assert!(document.validate().is_err());
     }
 

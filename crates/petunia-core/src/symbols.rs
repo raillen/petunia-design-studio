@@ -11,18 +11,29 @@ use crate::paint::ColorSource;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 
-/// One reusable authorial structure. Internal object IDs stay global
-/// to the document; evaluation derives instance subtrees.
+/// One reusable authorial structure: its own node subtree plus the
+/// roots addressing it. Internal object IDs stay global to the
+/// document; evaluation derives instance subtrees without copying
+/// them into the scene.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SymbolDefinition {
     pub id: SymbolId,
     pub name: String,
     pub roots: Vec<ObjectId>,
+    /// Authorial subtree. Roots address entries here; every other
+    /// node parents an object inside this same map, never a page.
+    pub nodes: BTreeMap<ObjectId, crate::scene::SceneNode>,
 }
 
 impl SymbolDefinition {
-    /// Names must be non-empty; roots must hold no duplicates.
-    pub fn new(name: impl Into<String>, roots: Vec<ObjectId>) -> Result<Self> {
+    /// Names must be non-empty; roots must be unique entries of
+    /// `nodes`; every non-root node must parent an object inside the
+    /// same map, since definitions are page-less.
+    pub fn new(
+        name: impl Into<String>,
+        roots: Vec<ObjectId>,
+        nodes: BTreeMap<ObjectId, crate::scene::SceneNode>,
+    ) -> Result<Self> {
         let name = name.into();
         if name.trim().is_empty() {
             return Err(CoreError::InvariantViolation(
@@ -35,11 +46,52 @@ impl SymbolDefinition {
                 "symbol roots must not repeat".to_string(),
             ));
         }
+        for root in &roots {
+            if !nodes.contains_key(root) {
+                return Err(CoreError::InvariantViolation(format!(
+                    "symbol root {root} is not in the definition subtree"
+                )));
+            }
+        }
+        for (id, node) in &nodes {
+            match node.parent {
+                crate::scene::ParentRef::Page(_) => {
+                    if !roots.contains(id) {
+                        return Err(CoreError::InvariantViolation(format!(
+                            "symbol node {id} parents a page instead of the definition"
+                        )));
+                    }
+                }
+                crate::scene::ParentRef::Object(host) => {
+                    if !nodes.contains_key(&host) {
+                        return Err(CoreError::InvariantViolation(format!(
+                            "symbol node {id} parents {host} outside the definition"
+                        )));
+                    }
+                }
+            }
+        }
         Ok(Self {
             id: SymbolId::new_v4(),
             name,
             roots,
+            nodes,
         })
+    }
+
+    /// Definitions referenced by nested instances inside this
+    /// subtree, for dependency-cycle validation.
+    #[must_use]
+    pub fn nested_definitions(&self) -> Vec<SymbolId> {
+        let mut out = Vec::new();
+        for node in self.nodes.values() {
+            if let crate::scene::SceneItem::SymbolInstance(instance) = &node.item {
+                if !out.contains(&instance.definition) {
+                    out.push(instance.definition);
+                }
+            }
+        }
+        out
     }
 }
 
@@ -145,12 +197,67 @@ pub fn has_symbol_cycle(edges: &[(SymbolId, Vec<SymbolId>)]) -> bool {
 mod tests {
     use super::*;
 
+    fn leaf(id: ObjectId) -> crate::scene::SceneNode {
+        crate::scene::SceneNode {
+            id,
+            name: "leaf".to_string(),
+            parent: crate::scene::ParentRef::Object(ObjectId::new_v4()),
+            visible: true,
+            locked: false,
+            transform: crate::Transform2D::IDENTITY,
+            opacity: 1.0,
+            clip: None,
+            mask: None,
+            geometry_effects: Default::default(),
+            post_effects: Default::default(),
+            item: crate::scene::SceneItem::Group(Vec::new()),
+        }
+    }
+
     #[test]
     fn definition_rejects_blank_names_and_duplicate_roots() {
         let root = ObjectId::new_v4();
-        assert!(SymbolDefinition::new("Button", vec![root]).is_ok());
-        assert!(SymbolDefinition::new("  ", vec![root]).is_err());
-        assert!(SymbolDefinition::new("Button", vec![root, root]).is_err());
+        let mut nodes = BTreeMap::new();
+        nodes.insert(root, leaf(root));
+        // The leaf parents an outside object: fix it to a page root.
+        nodes.get_mut(&root).expect("leaf").parent =
+            crate::scene::ParentRef::Page(crate::PageId::new_v4());
+        assert!(SymbolDefinition::new("Button", vec![root], nodes.clone()).is_ok());
+        assert!(SymbolDefinition::new("  ", vec![root], nodes.clone()).is_err());
+        assert!(SymbolDefinition::new("Button", vec![root, root], nodes.clone()).is_err());
+        assert!(SymbolDefinition::new("Button", vec![ObjectId::new_v4()], nodes).is_err());
+    }
+
+    #[test]
+    fn definition_lists_nested_definitions() {
+        use crate::scene::SceneItem;
+        use crate::symbols::SymbolInstance;
+        let root = ObjectId::new_v4();
+        let mut nodes = BTreeMap::new();
+        let inner = SymbolId::new_v4();
+        nodes.insert(
+            root,
+            crate::scene::SceneNode {
+                id: root,
+                name: "host".to_string(),
+                parent: crate::scene::ParentRef::Page(crate::PageId::new_v4()),
+                visible: true,
+                locked: false,
+                transform: crate::Transform2D::IDENTITY,
+                opacity: 1.0,
+                clip: None,
+                mask: None,
+                geometry_effects: Default::default(),
+                post_effects: Default::default(),
+                item: SceneItem::SymbolInstance(SymbolInstance {
+                    definition: inner,
+                    overrides: Vec::new(),
+                }),
+            },
+        );
+        let definition =
+            SymbolDefinition::new("Button", vec![root], nodes).expect("valid definition");
+        assert_eq!(definition.nested_definitions(), vec![inner]);
     }
 
     #[test]

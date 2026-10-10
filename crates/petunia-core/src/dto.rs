@@ -6,6 +6,7 @@
 //! replace). Refactoring domain structs never changes the file format
 //! silently; the schema version gates every load.
 
+use crate::color::SpotRegistry;
 use crate::document::{Document, DocumentMetadata, DocumentSetup, Page, PageCollection, Spread};
 use crate::error::{CoreError, Result};
 use crate::guides::{GridRegistry, GuideRegistry, SliceRegistry};
@@ -51,6 +52,7 @@ pub struct DocumentDtoV1 {
     pub styles: StyleRegistry,
     pub symbols: SymbolRegistry,
     pub swatches: SwatchRegistry,
+    pub spots: SpotRegistry,
     pub guides: GuideRegistry,
     pub grids: GridRegistry,
     pub slices: SliceRegistry,
@@ -81,6 +83,7 @@ impl DocumentDtoV1 {
             styles: document.styles.clone(),
             symbols: document.symbols.clone(),
             swatches: document.swatches.clone(),
+            spots: document.spots.clone(),
             guides: document.guides.clone(),
             grids: document.grids.clone(),
             slices: document.slices.clone(),
@@ -126,6 +129,7 @@ impl DocumentDtoV1 {
             styles: self.styles,
             symbols: self.symbols,
             swatches: self.swatches,
+            spots: self.spots,
             guides: self.guides,
             grids: self.grids,
             slices: self.slices,

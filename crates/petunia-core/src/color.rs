@@ -214,6 +214,49 @@ pub struct SpotColor {
     pub alternate: ProcessColor,
 }
 
+/// Lookup of spot ink definitions by identity. Inks live here;
+/// uses reference them by [`SpotColorId`] and carry their own tint.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SpotRegistry {
+    entries: std::collections::BTreeMap<SpotColorId, SpotColor>,
+}
+
+impl SpotRegistry {
+    /// Empty registry.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Insert or replace a spot ink definition.
+    pub fn insert(&mut self, spot: SpotColor) {
+        self.entries.insert(spot.id, spot);
+    }
+
+    /// Look up an ink by identity.
+    #[must_use]
+    pub fn get(&self, id: SpotColorId) -> Option<&SpotColor> {
+        self.entries.get(&id)
+    }
+
+    /// Iterate entries in deterministic order; traversal only.
+    pub fn iter(&self) -> impl Iterator<Item = (SpotColorId, &SpotColor)> {
+        self.entries.iter().map(|(id, spot)| (*id, spot))
+    }
+
+    /// Number of tracked inks.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// True when no ink is tracked.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
 /// Use of one spot ink at a given tint. The tint belongs to the use,
 /// so the same ink serves at several percentages.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
