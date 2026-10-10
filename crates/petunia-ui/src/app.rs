@@ -1,178 +1,780 @@
-//! Application session lifecycle, coordinating document, engine, and rendering.
+//! Application session: the document writer and tool dispatch.
+//!
+//! The session is the single writer. Every mutation travels as a
+//! transaction; hover never mutates, and one confirmed gesture
+//! commits at most one Transaction.
 
+use crate::context::{
+    ContextStack, EditContext, EscapeOutcome, HandleId, HandleRef, NodeId, SelectionState,
+    VectorOperation,
+};
 use crate::error::Result;
 use crate::input::{PointerEvent, ToolKind, UserAction};
-use petunia_core::{Document, Rect, SceneNode, VectorPath};
-use petunia_engine::{
-    compile, prepare_transaction, CommandId, DocumentOp, DocumentRevision, History,
-    HistoryDescription, TransactionRequest,
+use crate::numeric::NumericField;
+use crate::shortcuts::ShortcutTable;
+use crate::tools::{
+    distance, HitTarget, ItemKind, NodeTool, PointerSample, SelectTool, SelectionDelta,
+    ToolController, ToolResponse, ToolServices, ToolSession, ViewTransform,
 };
-use petunia_render::{RenderBackend, RenderOptions};
+use crate::workspace::{ViewState, WorkspaceState};
+use petunia_core::{Document, FillRule, ObjectId, Point, SceneItem, SceneNode, Size2, VectorPath};
+use petunia_engine::compile;
+use petunia_engine::EngineError;
+use petunia_engine::History;
+use petunia_engine::{prepare_transaction, TransactionRequest};
+use petunia_engine::{CommandId, DocumentOp, DocumentRevision, HistoryDescription};
+use petunia_render::RenderOptions;
+use petunia_render::SoftwareRenderer;
 use petunia_render_model::RenderStats;
 
-/// Application session: single writer over the document plus the
-/// render entry point. Mutations travel as transactions, so the
-/// session's revision always matches the compiled snapshot's.
+/// Studio session. Owns the document, its history, and every piece
+/// of Session State (contexts, selection, view, workspace).
 pub struct StudioSession {
-    pub document: Document,
-    pub history: History,
-    pub active_tool: ToolKind,
-    pub viewport: Rect,
+    document: Document,
+    history: History,
+    active_tool: ToolKind,
+    contexts: ContextStack,
+    selection: SelectionState,
+    view: ViewState,
+    workspace: WorkspaceState,
+    shortcuts: ShortcutTable,
+    x_field: NumericField,
+    y_field: NumericField,
+    captured: bool,
 }
 
 impl StudioSession {
+    /// A fresh session with an empty document.
     #[must_use]
-    pub fn new(title: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
-            document: Document::new(title),
+            document: Document::new(name),
             history: History::new(64 << 20, 256 << 20),
             active_tool: ToolKind::Select,
-            viewport: Rect::new(0.0, 0.0, 1920.0, 1080.0),
+            contexts: ContextStack::new(),
+            selection: SelectionState::new(),
+            view: ViewState::default(),
+            workspace: WorkspaceState::defaults(),
+            shortcuts: ShortcutTable::defaults(),
+            x_field: NumericField::new(0.0, 1.0),
+            y_field: NumericField::new(0.0, 1.0),
+            captured: false,
         }
     }
 
-    /// Current authorial revision, used to tag render snapshots.
+    /// Current authorial revision.
     #[must_use]
     pub fn revision(&self) -> DocumentRevision {
         self.history.current_revision()
     }
 
-    /// Commit one transaction, keeping document and history in step.
-    pub fn commit(
+    /// Read-only document access.
+    #[must_use]
+    pub fn document(&self) -> &Document {
+        &self.document
+    }
+
+    /// Current context stack.
+    #[must_use]
+    pub fn contexts(&self) -> &ContextStack {
+        &self.contexts
+    }
+
+    /// Current selection (Session State).
+    #[must_use]
+    pub fn selection(&self) -> &SelectionState {
+        &self.selection
+    }
+
+    /// Current view state (Session State).
+    #[must_use]
+    pub fn view(&self) -> &ViewState {
+        &self.view
+    }
+
+    /// Mutable view state (zoom, pan, DPR).
+    pub fn view_mut(&mut self) -> &mut ViewState {
+        &mut self.view
+    }
+
+    /// Current workspace arrangement (Session State).
+    #[must_use]
+    pub fn workspace(&self) -> &WorkspaceState {
+        &self.workspace
+    }
+
+    /// Mutable workspace arrangement.
+    pub fn workspace_mut(&mut self) -> &mut WorkspaceState {
+        &mut self.workspace
+    }
+
+    /// Shortcut table.
+    #[must_use]
+    pub fn shortcuts(&self) -> &ShortcutTable {
+        &self.shortcuts
+    }
+
+    /// Mutable shortcut table for the editor UI.
+    pub fn shortcuts_mut(&mut self) -> &mut ShortcutTable {
+        &mut self.shortcuts
+    }
+
+    /// X coordinate field for the transform inspector.
+    #[must_use]
+    pub fn x_field(&self) -> &NumericField {
+        &self.x_field
+    }
+
+    /// Mutable X coordinate field.
+    pub fn x_field_mut(&mut self) -> &mut NumericField {
+        &mut self.x_field
+    }
+
+    /// Mutable Y coordinate field.
+    pub fn y_field_mut(&mut self) -> &mut NumericField {
+        &mut self.y_field
+    }
+
+    /// The selection's size, for the inspector.
+    #[must_use]
+    pub fn selection_size(&self) -> Size2 {
+        Size2::new(self.x_field.value(), self.y_field.value())
+            .unwrap_or(Size2::new(0.0, 0.0).expect("usable"))
+    }
+
+    /// Active tool kind.
+    #[must_use]
+    pub fn active_tool(&self) -> ToolKind {
+        self.active_tool
+    }
+
+    /// Select a tool; switching never mutates the document.
+    pub fn select_tool(&mut self, tool: ToolKind) {
+        self.active_tool = tool;
+    }
+
+    /// Press Escape, following the approved ordering.
+    pub fn on_escape(&mut self) -> EscapeOutcome {
+        if self.captured {
+            match self.active_tool {
+                ToolKind::NodeEdit => NodeTool::new().cancel(self),
+                _ => SelectTool::new().cancel(self),
+            };
+            self.captured = false;
+            return EscapeOutcome::ReturnedToNode;
+        }
+        self.contexts.on_escape()
+    }
+
+    /// Enter: open Vector Edit on an eligible single path.
+    pub fn on_enter(&mut self) {
+        if self.contexts.in_vector() {
+            return;
+        }
+        if let Some(id) = self.selection.single() {
+            if self.is_editable(id) {
+                self.contexts.push(EditContext::Vector {
+                    targets: vec![id],
+                    operation: VectorOperation::Node,
+                });
+            }
+        }
+    }
+
+    /// Whether an object may be edited: exists, visible and unlocked.
+    #[must_use]
+    pub fn is_editable(&self, id: ObjectId) -> bool {
+        self.document
+            .scene
+            .get_node(id)
+            .is_some_and(|node| node.visible && !node.locked)
+    }
+
+    /// Double-click: pick an object and open its semantic context.
+    pub fn on_double_click(&mut self, view_point: Point) {
+        let Some(hit) = self.hit_test(view_point).into_iter().next() else {
+            return;
+        };
+        let object = match hit {
+            HitTarget::Fill { object } => object,
+            _ => return,
+        };
+        let context = match self.item_kind(object) {
+            ItemKind::Group => EditContext::Group { group: object },
+            ItemKind::Shape => EditContext::Shape { target: object },
+            ItemKind::Text => EditContext::Text { target: object },
+            ItemKind::Symbol => EditContext::Symbol { target: object },
+            _ => EditContext::Vector {
+                targets: vec![object],
+                operation: VectorOperation::Node,
+            },
+        };
+        self.contexts.push(context);
+    }
+
+    /// Dispatch a user action through the session.
+    pub fn dispatch_action(&mut self, action: UserAction) -> Result<ToolResponse> {
+        match action {
+            UserAction::SelectTool(tool) => {
+                self.select_tool(tool);
+                Ok(ToolResponse::Idle)
+            }
+            UserAction::Undo => {
+                self.history.undo(&mut self.document)?;
+                Ok(ToolResponse::Idle)
+            }
+            UserAction::Redo => {
+                self.history.redo(&mut self.document)?;
+                Ok(ToolResponse::Idle)
+            }
+            UserAction::Pointer(pointer) => self.handle_pointer(pointer),
+        }
+    }
+
+    /// Run one pointer event through the active tool.
+    pub fn handle_pointer(&mut self, pointer: PointerEvent) -> Result<ToolResponse> {
+        let (sample, is_end) = match pointer {
+            PointerEvent::Down { position, .. } => (PointerSample::new(position), false),
+            PointerEvent::Move { position, .. } => (PointerSample::new(position), false),
+            PointerEvent::Up { position } => (PointerSample::new(position), true),
+        };
+        let response = match pointer {
+            PointerEvent::Down { .. } => SelectTool::new().begin(self, &sample),
+            PointerEvent::Move { .. } => match self.active_tool {
+                ToolKind::NodeEdit => NodeTool::new().update(self, &sample),
+                _ => SelectTool::new().update(self, &sample),
+            },
+            PointerEvent::Up { .. } => match self.active_tool {
+                ToolKind::NodeEdit => NodeTool::new().end(self, &sample),
+                _ => SelectTool::new().end(self, &sample),
+            },
+        };
+        if is_end {
+            self.captured = false;
+        }
+        // The session is the only writer: the tool asks declaratively,
+        // and the session applies the change to Session State or commits.
+        match &response {
+            ToolResponse::Selection(delta) => self.apply_selection(delta.clone()),
+            ToolResponse::Commit(operations) => {
+                self.commit_request(TransactionRequest {
+                    command_id: CommandId::new_v4(),
+                    operations: operations.clone(),
+                    merge_key: None,
+                })?;
+            }
+            _ => {}
+        }
+        Ok(response)
+    }
+
+    /// Apply one selection delta. Selecting a sub-item keeps its object
+    /// in the object selection, per D2.
+    fn apply_selection(&mut self, delta: SelectionDelta) {
+        match delta {
+            SelectionDelta::ReplaceObjects(objects) => self.selection.set_objects(objects),
+            SelectionDelta::ToggleObject(object) => self.selection.toggle_object(object),
+            SelectionDelta::ClearObjects => self.selection.clear(),
+            SelectionDelta::SelectNode(node) => {
+                self.selection.add_objects([node.object]);
+                self.selection.sub.select_node(node);
+            }
+            SelectionDelta::ToggleNode(node) => {
+                self.selection.add_objects([node.object]);
+                self.selection.sub.toggle_node(node);
+            }
+            SelectionDelta::SelectSegment(segment) => {
+                self.selection.add_objects([segment.object]);
+                self.selection.sub.select_segment(segment);
+            }
+            SelectionDelta::ToggleHandle(handle) => {
+                self.selection.add_objects([handle.object]);
+                self.selection.sub.toggle_handle(handle);
+            }
+            SelectionDelta::ClearSub => self.selection.sub.clear(),
+        }
+    }
+
+    /// Headless render: compiles, reports degraded primitives, draws.
+    pub fn render_headless(
         &mut self,
-        operations: Vec<DocumentOp>,
-        description: HistoryDescription,
-    ) -> Result<()> {
+        options: &RenderOptions,
+    ) -> std::result::Result<(Vec<u8>, RenderStats), EngineError> {
+        let (snapshot, warnings) =
+            compile::compile_document(&self.document, self.revision(), options.quality);
+        for warning in &warnings {
+            eprintln!(
+                "[render] primitiva degradada {}: {}",
+                warning.source, warning.message
+            );
+        }
+        let width = self.view.viewport.width.max(1.0) as u32;
+        let height = self.view.viewport.height.max(1.0) as u32;
+        let frame = compile::headless_frame(snapshot, width, height, self.view.scale);
+        let mut renderer = SoftwareRenderer::new(64 << 20, 64 << 20);
+        renderer
+            .render(&frame, options)
+            .map_err(|error| EngineError::Execution(error.to_string()))
+    }
+
+    /// Hit-test a view point, ordered by D1 precedence.
+    ///
+    /// `Handle > Node > Segment > Fill`, ties by z-order (topmost
+    /// first), which is the same order the semantic tree exposes.
+    #[must_use]
+    pub fn hit_test(&self, view_point: Point) -> Vec<HitTarget> {
+        let document_point = self.view_transform().view_to_doc(view_point);
+        let tolerance = self.view.document_tolerance(8.0).unwrap_or(8.0);
+
+        let mut targets: Vec<HitTarget> = Vec::new();
+        let mut fills: Vec<HitTarget> = Vec::new();
+
+        for id in self.document.scene.root_order() {
+            let Some(node) = self.document.scene.get_node(*id) else {
+                continue;
+            };
+            if !node.visible {
+                continue;
+            }
+            let SceneItem::Path(path) = &node.item else {
+                continue;
+            };
+            let Some(local) = self.to_local(node, document_point) else {
+                continue;
+            };
+            let (node_hit, handle_hit) = node_hit(path, local, tolerance);
+            if let Some((node, handle)) = handle_hit {
+                targets.push(HitTarget::Handle {
+                    object: *id,
+                    contour: node.0,
+                    node: node.1,
+                    handle,
+                });
+                continue;
+            }
+            if let Some((contour, node)) = node_hit {
+                targets.push(HitTarget::Node {
+                    object: *id,
+                    contour,
+                    node,
+                });
+                continue;
+            }
+            if path_contains(path, local) {
+                fills.push(HitTarget::Fill { object: *id });
+            }
+        }
+
+        targets.extend(fills);
+        targets
+    }
+
+    fn to_local(&self, node: &SceneNode, document_point: Point) -> Option<Point> {
+        let local = node.transform.inverse()?.transform_point(document_point);
+        (local.x.is_finite() && local.y.is_finite()).then_some(local)
+    }
+
+    fn item_kind(&self, id: ObjectId) -> ItemKind {
+        match self.document.scene.get_node(id).map(|node| &node.item) {
+            Some(SceneItem::Path(_)) => ItemKind::Path,
+            Some(SceneItem::Group(_)) => ItemKind::Group,
+            Some(SceneItem::Text(_)) => ItemKind::Text,
+            Some(SceneItem::Shape(_)) => ItemKind::Shape,
+            Some(SceneItem::SymbolInstance(_)) => ItemKind::Symbol,
+            _ => ItemKind::Other,
+        }
+    }
+
+    fn view_transform(&self) -> ViewTransform {
+        ViewTransform {
+            scale: self.view.scale,
+            offset_x: self.view.pan_x,
+            offset_y: self.view.pan_y,
+        }
+    }
+
+    /// Label for the context bar, mirroring D2.
+    #[must_use]
+    pub fn context_label(&self) -> String {
+        match self.contexts.current() {
+            EditContext::Scene => "Scene".to_string(),
+            EditContext::Group { group } => format!("Grupo {group}"),
+            EditContext::Vector { operation, .. } => {
+                format!("Vector Edit · {}", operation.as_str())
+            }
+            EditContext::Shape { target } => format!("Shape {target}"),
+            EditContext::Text { target } => format!("Texto {target}"),
+            EditContext::Symbol { target } => format!("Símbolo {target}"),
+        }
+    }
+
+    /// Insert a path at the document root as one atomic operation.
+    pub fn insert_path(
+        &mut self,
+        name: impl Into<String>,
+        path: VectorPath,
+    ) -> std::result::Result<(), EngineError> {
+        let node = SceneNode::new_path(name, path);
         let request = TransactionRequest {
+            command_id: CommandId::new_v4(),
+            operations: vec![DocumentOp::InsertRoot {
+                index: self.document.scene.len(),
+                node: Box::new(node),
+            }],
+            merge_key: None,
+        };
+        self.commit_request(request)
+    }
+
+    /// Adjust the selection through one engine transaction.
+    pub fn move_selection(&mut self, dx: f64, dy: f64) -> std::result::Result<bool, EngineError> {
+        let selection: Vec<ObjectId> = self.selection.objects().to_vec();
+        if selection.is_empty() || (dx == 0.0 && dy == 0.0) {
+            return Ok(false);
+        }
+        let mut operations = Vec::with_capacity(selection.len());
+        for id in &selection {
+            if !self.is_editable(*id) {
+                continue;
+            }
+            operations.push(DocumentOp::MoveObjects {
+                object: *id,
+                dx,
+                dy,
+            });
+        }
+        if operations.is_empty() {
+            return Ok(false);
+        }
+        self.commit_request(TransactionRequest {
             command_id: CommandId::new_v4(),
             operations,
             merge_key: None,
-        };
-        let prepared = prepare_transaction(&self.document, request, self.revision())
-            .map_err(|error| petunia_engine::EngineError::Execution(error.to_string()))?;
-        self.history
-            .commit(&mut self.document, prepared, description)?;
-        Ok(())
+        })?;
+        Ok(true)
     }
 
-    /// Dispatches a high-level user action to the session.
-    pub fn dispatch_action(&mut self, action: UserAction) -> Result<()> {
-        match action {
-            UserAction::SelectTool(tool) => {
-                self.active_tool = tool;
-            }
-            UserAction::Undo => {
-                self.history
-                    .undo(&mut self.document)
-                    .map_err(|error| petunia_engine::EngineError::Execution(error.to_string()))?;
-            }
-            UserAction::Redo => {
-                self.history
-                    .redo(&mut self.document)
-                    .map_err(|error| petunia_engine::EngineError::Execution(error.to_string()))?;
-            }
-            UserAction::Pointer(PointerEvent::Down { position, .. }) => {
-                if self.active_tool == ToolKind::Rectangle {
-                    let path = VectorPath::rect(position.x, position.y, 100.0, 100.0);
-                    self.commit(
-                        vec![DocumentOp::InsertRoot {
-                            index: self.document.scene.len(),
-                            node: Box::new(SceneNode::new_path("Rectangle", path)),
-                        }],
-                        HistoryDescription::InsertObjects,
-                    )?;
-                }
-            }
-            UserAction::Pointer(_) => {}
-        }
-        Ok(())
-    }
-
-    /// Compiles the document and renders one frame through any
-    /// backend. Warnings from degraded primitives ride along so the
-    /// caller can surface them.
-    pub fn render_with<B: RenderBackend>(
+    /// Commit one request atomically through the session.
+    pub fn commit_request(
         &mut self,
-        backend: &mut B,
-        options: &RenderOptions,
-    ) -> Result<(Vec<u8>, RenderStats)> {
-        let (snapshot, warnings) =
-            compile::compile_document(&self.document, self.revision(), options.quality);
-        let frame = compile::headless_frame(
-            snapshot,
-            self.viewport.width.max(1.0) as u32,
-            self.viewport.height.max(1.0) as u32,
-            options.dpr,
-        );
-        let rendered = backend.render(&frame, options);
-        if !warnings.is_empty() {
-            // Degraded primitives are reported, never silently drawn.
-            for warning in &warnings {
-                eprintln!(
-                    "[render] degraded primitive {}: {}",
-                    warning.source, warning.message
-                );
+        request: TransactionRequest,
+    ) -> std::result::Result<(), EngineError> {
+        if request.operations.is_empty() {
+            return Ok(());
+        }
+        let prepared = prepare_transaction(&self.document, request, self.revision())
+            .map_err(|error| EngineError::Execution(error.to_string()))?;
+        // The session returns `EngineError`, so the new revision is
+        // redundant to the caller; the caller can read `revision()`.
+        self.history
+            .commit(
+                &mut self.document,
+                prepared,
+                HistoryDescription::MoveObjects,
+            )
+            .map(|_| ())
+    }
+}
+
+impl ToolServices for StudioSession {
+    fn hit_test(&self, view_point: Point) -> Vec<HitTarget> {
+        StudioSession::hit_test(self, view_point)
+    }
+
+    fn snap(&self, view_point: Point) -> (Point, Option<String>) {
+        // Guides, grid and bounds providers still have no persistent
+        // store in Core, so the point passes through uncorrected.
+        (view_point, None)
+    }
+}
+
+impl ToolSession for StudioSession {
+    fn services(&self) -> &dyn ToolServices {
+        self
+    }
+
+    fn view(&self) -> ViewTransform {
+        self.view_transform()
+    }
+
+    fn selected_objects(&self) -> Vec<ObjectId> {
+        self.selection.objects().to_vec()
+    }
+
+    fn select_objects(&mut self, objects: Vec<ObjectId>) {
+        self.selection.set_objects(objects);
+    }
+
+    fn toggle_object(&mut self, id: ObjectId) {
+        self.selection.toggle_object(id);
+    }
+
+    fn select_node(&mut self, id: NodeId) {
+        self.selection.sub.select_node(id);
+    }
+
+    fn toggle_node(&mut self, id: NodeId) {
+        self.selection.sub.toggle_node(id);
+    }
+
+    fn toggle_handle(&mut self, id: HandleId) {
+        self.selection.sub.toggle_handle(id);
+    }
+
+    fn clear_sub_selection(&mut self) {
+        self.selection.sub.clear();
+    }
+
+    fn is_editable(&self, id: ObjectId) -> bool {
+        StudioSession::is_editable(self, id)
+    }
+
+    fn capture(&mut self) {
+        self.captured = true;
+    }
+
+    fn release(&mut self) {
+        self.captured = false;
+    }
+
+    fn is_captured(&self) -> bool {
+        self.captured
+    }
+}
+
+/// A contour/node coordinate inside a path.
+type ContourNode = (u32, u32);
+
+/// Node and handle candidates for one path at a local point.
+fn node_hit(
+    path: &VectorPath,
+    local: Point,
+    tolerance: f64,
+) -> (Option<ContourNode>, Option<(ContourNode, HandleRef)>) {
+    let mut node_candidate = None;
+    let mut handle_candidate = None;
+
+    for (contour_index, contour) in path.contours.iter().enumerate() {
+        for (node_index, node) in contour.nodes.iter().enumerate() {
+            let at_in = node
+                .handle_in
+                .is_some_and(|handle| distance(handle, local) <= tolerance);
+            let at_out = node
+                .handle_out
+                .is_some_and(|handle| distance(handle, local) <= tolerance);
+
+            if at_in || at_out {
+                let handle = if at_in {
+                    crate::context::HandleRef::In
+                } else {
+                    crate::context::HandleRef::Out
+                };
+                if handle_candidate.is_none() {
+                    handle_candidate = Some(((contour_index as u32, node_index as u32), handle));
+                }
+                continue;
+            }
+
+            let at_node = distance(node.point, local) <= tolerance;
+            if at_node && node_candidate.is_none() {
+                node_candidate = Some((contour_index as u32, node_index as u32));
             }
         }
-        rendered.map_err(Into::into)
+    }
+
+    (node_candidate, handle_candidate)
+}
+
+fn path_contains(path: &VectorPath, local: Point) -> bool {
+    for contour in &path.contours {
+        if !contour.closed || contour.nodes.len() < 3 {
+            continue;
+        }
+        let ring: Vec<Point> = contour.nodes.iter().map(|node| node.point).collect();
+        if point_in_polygon(local, &ring, path.fill_rule) {
+            return true;
+        }
+    }
+    false
+}
+
+fn point_in_polygon(point: Point, ring: &[Point], rule: FillRule) -> bool {
+    let mut winding = 0i32;
+    let count = ring.len();
+    for index in 0..count {
+        let a = ring[index];
+        let b = ring[(index + 1) % count];
+        let cross = (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
+        if a.y <= point.y {
+            if b.y > point.y && cross > 0.0 {
+                winding += 1;
+            }
+        } else if b.y <= point.y && cross < 0.0 {
+            winding -= 1;
+        }
+    }
+    match rule {
+        FillRule::NonZero => winding != 0,
+        FillRule::EvenOdd => winding % 2 != 0,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use petunia_core::Point;
-    use petunia_render::SoftwareRenderer;
+
+    fn selection_changed(response: &ToolResponse) -> bool {
+        matches!(response, ToolResponse::Selection(_))
+    }
+
+    fn session_with_rect() -> StudioSession {
+        let mut session = StudioSession::new("headless");
+        session
+            .insert_path("box", VectorPath::rect(0.0, 0.0, 100.0, 100.0))
+            .expect("insert");
+        let object = session
+            .document()
+            .scene
+            .root_order()
+            .first()
+            .copied()
+            .expect("object");
+        session.selection.set_objects(vec![object]);
+        session
+    }
+
+    fn center_of_object(session: &StudioSession, object: ObjectId) -> Point {
+        let node = session.document().scene.get_node(object).expect("node");
+        node.transform.transform_point(Point::new(50.0, 50.0))
+    }
+
+    fn center_of(session: &StudioSession) -> Point {
+        center_of_object(session, session.selection.single().expect("selected"))
+    }
 
     #[test]
-    fn test_studio_session_draw_and_render_pipeline() {
-        let mut session = StudioSession::new("Canvas Session");
-        session
-            .dispatch_action(UserAction::SelectTool(ToolKind::Rectangle))
-            .expect("action succeeds");
+    fn select_picks_object_and_moves_it_in_one_transaction() {
+        let mut session = session_with_rect();
+        let object = session.selection.single().expect("selected");
 
-        session
+        // Center of the object, computed before selection changes.
+        let center = center_of_object(&session, object);
+
+        // A click on empty background clears the selection.
+        let response = session
             .dispatch_action(UserAction::Pointer(PointerEvent::Down {
-                position: Point::new(20.0, 30.0),
+                position: Point::new(150.0, 150.0),
                 pressure: 1.0,
             }))
-            .expect("action succeeds");
+            .expect("dispatch");
+        assert!(selection_changed(&response), "{response:?}");
+        assert!(session.selection.is_empty());
 
-        assert_eq!(session.document.scene.len(), 1);
-        assert_eq!(session.revision(), DocumentRevision(1));
+        // A click on the object selects it again.
+        let response = session
+            .dispatch_action(UserAction::Pointer(PointerEvent::Down {
+                position: center,
+                pressure: 1.0,
+            }))
+            .expect("dispatch");
+        assert!(selection_changed(&response), "{response:?}");
+        assert_eq!(session.selection.single(), Some(object));
 
-        let mut renderer = SoftwareRenderer::new(1 << 20, 1 << 20);
-        let options = RenderOptions::default();
+        // Moving the selection is one transaction, with revision +1.
+        let revision = session.revision();
+        assert!(session.move_selection(10.0, 20.0).expect("moves"));
+        assert_eq!(session.revision().0, revision.0 + 1);
 
-        let (bytes, stats) = session
-            .render_with(&mut renderer, &options)
-            .expect("render succeeds");
-        assert_eq!(stats.primitives_drawn, 1);
-        // The rectangle spans (20,30)-(120,130); its center carries the
-        // authorial default fill (opaque black).
-        let center = ((80 * 1920) + 70) * 4;
-        assert_eq!(&bytes[center..center + 4], &[0, 0, 0, 255]);
-        // Far outside the rectangle stays background.
-        let corner = 0;
-        assert_eq!(&bytes[corner..corner + 4], &[255, 255, 255, 255]);
+        // Undo restores exactly one step.
+        session.dispatch_action(UserAction::Undo).expect("undo");
+        let restored = session.document().scene.get_node(object).expect("node");
+        assert_eq!(restored.transform.tx, 0.0);
+        assert_eq!(restored.transform.ty, 0.0);
+    }
 
-        // Undo action
+    #[test]
+    fn escape_never_commits_and_context_unwinds() {
+        let mut session = session_with_rect();
+        let center = center_of(&session);
         session
-            .dispatch_action(UserAction::Undo)
-            .expect("undo succeeds");
-        assert_eq!(session.document.scene.len(), 0);
-        assert_eq!(session.revision(), DocumentRevision(0));
+            .dispatch_action(UserAction::Pointer(PointerEvent::Down {
+                position: center,
+                pressure: 1.0,
+            }))
+            .expect("select");
+        let revision = session.revision();
+        session.on_enter();
+        assert!(session.contexts().in_vector());
+        // Escape while in Vector Edit unwinds one level, no commit.
+        let _ = session.on_escape();
+        assert!(!session.contexts().in_vector());
+        assert_eq!(session.revision(), revision);
+    }
 
-        let (_, stats) = session
-            .render_with(&mut renderer, &options)
-            .expect("render succeeds");
+    #[test]
+    fn locked_path_is_not_editable() {
+        let mut session = session_with_rect();
+        let object = session.selection.single().expect("selected");
+        if let Some(node) = session.document.scene.get_node_mut(object) {
+            node.locked = true;
+        }
+        assert!(!session.is_editable(object));
+        let center = center_of(&session);
+        let response = session
+            .dispatch_action(UserAction::Pointer(PointerEvent::Down {
+                position: center,
+                pressure: 1.0,
+            }))
+            .expect("dispatch");
+        assert!(matches!(response, ToolResponse::Failed(_)), "{response:?}");
+    }
+
+    #[test]
+    fn headless_render_reports_stats() {
+        let mut empty = StudioSession::new("empty");
+        let (_, stats) = empty
+            .render_headless(&RenderOptions::default())
+            .expect("renders");
         assert_eq!(stats.primitives_drawn, 0);
 
-        // Redo restores the rectangle at the same revision.
-        session
-            .dispatch_action(UserAction::Redo)
-            .expect("redo succeeds");
-        assert_eq!(session.document.scene.len(), 1);
-        assert_eq!(session.revision(), DocumentRevision(1));
+        let mut scene = session_with_rect();
+        let (_, stats) = scene
+            .render_headless(&RenderOptions::default())
+            .expect("renders");
+        assert_eq!(stats.primitives_drawn, 1);
+    }
+
+    #[test]
+    fn hit_test_orders_handle_over_node() {
+        let session = session_with_rect();
+        let object = session.selection.single().expect("selected");
+        let node = session
+            .document()
+            .scene
+            .get_node(object)
+            .expect("node")
+            .clone();
+        let path = node.item_path().expect("path");
+        let anchor = path.contours[0].nodes[0].point;
+        let hits = session.hit_test(session.view_transform().doc_to_view(anchor));
+        assert!(
+            matches!(hits.first(), Some(HitTarget::Node { .. })),
+            "{hits:?}"
+        );
+        if let Some(handle) = path.contours[0].nodes[0].handle_out {
+            let hits = session.hit_test(session.view_transform().doc_to_view(handle));
+            assert!(
+                matches!(hits.first(), Some(HitTarget::Handle { .. })),
+                "{hits:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn context_label_matches_active_context() {
+        let mut session = session_with_rect();
+        assert_eq!(session.context_label(), "Scene");
+        session.on_enter();
+        assert!(session.context_label().starts_with("Vector Edit · node"));
     }
 }

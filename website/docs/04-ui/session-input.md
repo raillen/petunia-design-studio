@@ -101,3 +101,24 @@ Canvas keyboard handling só recebe shortcuts quando foco/contexto permitem. Tex
 ## Pointer capture
 
 Ferramenta em drag mantém capture até up/cancel para não perder transação quando o cursor sai do canvas.
+
+## Verificacao ADR-0012 (headless, 2026-10-09)
+
+Escopo: camada de sessao e interacao de `petunia-ui`, sem Qt/QML. Revisao `56575ea3fb2ee393111755209e758c67d92bbe9d` sobre branch `petunia-design-rust`.
+
+Changed: `context.rs` (ContextStack, ContextRejection, NodeId/SegmentId/HandleId, SubSelection, SelectionState), `tools/mod.rs` (ToolController, ToolResponse, SelectionDelta, HitTarget, SelectTool, NodeTool), `shortcuts.rs` (ActionId, KeyCombo, tabela com 15 acoes e editor de rebind), `numeric.rs` (NumericField, SizeFields), `workspace.rs` (WorkspaceState, ViewState, document_tolerance) e `app.rs` (StudioSession com hit-test na ordem D1 Handle > Node > Segment > Fill, índice de z pelo root_order, aplicacao dos deltas e commit por transacao).
+
+Gap: as tools devolvem resposta declarativa, mas nada aplicava `SelectionDelta`/`Commit`; o primeiro clique em vazio nao limpava a selecao e o teste pressupunha mutacao direta do stub. A sessao passou a ser a unica escritora, alinhado a ADR-0012.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 278 passed / 0 failed (petunia-ui 35 testes) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass: 14 processos, 101 documentos, TODO 0 / IN PROGRESS 1 / DONE 13 |
+| `node --test website/tests/progress.test.cjs` | pass: 6 testes |
+| `#![forbid(unsafe_code)]` nos 5 crates | pass: nenhum `unsafe` fora do forbid |
+
+Riscos/limites: verificacao headless apenas. Nenhuma GUI real, foco, leitor de tela ou contraste exercitado; overlays, snapping e arraste de node ainda emitem resposta sem geometria final. U01 permanece IN PROGRESS (2/3 checkpoints).
+
+Next checkpoint: paineis visuais e QA de acessibilidade por padrao (U01), que exigem GUI.

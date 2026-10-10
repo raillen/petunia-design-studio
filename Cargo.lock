@@ -727,6 +727,7 @@ dependencies = [
  "petunia-engine",
  "petunia-render",
  "petunia-render-model",
+ "serde",
  "thiserror",
 ]
 

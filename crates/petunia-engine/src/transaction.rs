@@ -78,6 +78,13 @@ pub enum DocumentOp {
         object: ObjectId,
         transform: Transform2D,
     },
+    /// Translate an object by a document-space delta, preserving its
+    /// current rotation and scale.
+    MoveObjects {
+        object: ObjectId,
+        dx: f64,
+        dy: f64,
+    },
     ReplacePath {
         object: ObjectId,
         path: VectorPath,
@@ -265,6 +272,16 @@ fn inverse_of(
                 transform: node.transform,
             }])
         }
+        DocumentOp::MoveObjects { object, .. } => {
+            let node = document
+                .scene
+                .get_node(*object)
+                .ok_or_else(|| missing(*object))?;
+            Ok(vec![DocumentOp::SetTransform {
+                object: *object,
+                transform: node.transform,
+            }])
+        }
         DocumentOp::ReplacePath { object, .. } => {
             let node = document
                 .scene
@@ -382,6 +399,7 @@ fn affected_object(op: &DocumentOp, affected: &mut Vec<ObjectId>) {
         }
         DocumentOp::RemoveSubtree { root } => push(*root),
         DocumentOp::SetTransform { object, .. } => push(*object),
+        DocumentOp::MoveObjects { object, .. } => push(*object),
         DocumentOp::ReplacePath { object, .. } => push(*object),
         DocumentOp::SetEffectParameter { .. } => {}
         DocumentOp::ReorderChild { parent, child, .. } => {
@@ -439,6 +457,13 @@ fn validate_operation(
             collect_subtree(document, *root).map(|_| ())
         }
         DocumentOp::SetTransform { object, .. } => {
+            document
+                .scene
+                .get_node(*object)
+                .ok_or_else(|| missing(*object))?;
+            Ok(())
+        }
+        DocumentOp::MoveObjects { object, .. } => {
             document
                 .scene
                 .get_node(*object)
@@ -554,6 +579,14 @@ fn apply_operation(
                 CommitError::ApplyFailed(format!("object {object} vanished at commit"))
             })?;
             node.transform = transform;
+            Ok(())
+        }
+        DocumentOp::MoveObjects { object, dx, dy } => {
+            let node = document.scene.get_node_mut(object).ok_or_else(|| {
+                CommitError::ApplyFailed(format!("object {object} vanished at commit"))
+            })?;
+            node.transform.tx += dx;
+            node.transform.ty += dy;
             Ok(())
         }
         DocumentOp::ReplacePath { object, path } => {

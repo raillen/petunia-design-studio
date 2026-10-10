@@ -5,6 +5,7 @@ use crate::crop::ClipBinding;
 use crate::error::{CoreError, Result};
 use crate::generated::{GeneratedVectorObject, TraceObject};
 use crate::id::ObjectId;
+use crate::math::Point;
 use crate::math::Transform2D;
 use crate::path::VectorPath;
 use crate::raster::{ImageObject, PixelLayer};
@@ -58,6 +59,25 @@ pub struct SceneNode {
 }
 
 impl SceneNode {
+    /// Borrow the path of a `SceneItem::Path`, when it is one.
+    #[must_use]
+    pub fn item_path(&self) -> Option<&VectorPath> {
+        match &self.item {
+            SceneItem::Path(path) => Some(path),
+            _ => None,
+        }
+    }
+
+    /// First anchor of a path item, for headless hit-test helpers.
+    #[must_use]
+    pub fn item_path_point(&self) -> Option<Point> {
+        self.item_path()?
+            .contours
+            .first()
+            .and_then(|contour| contour.nodes.first())
+            .map(|node| node.point)
+    }
+
     #[must_use]
     pub fn new_path(name: impl Into<String>, path: VectorPath) -> Self {
         Self {

@@ -195,6 +195,11 @@
       "revision": "463d6ef0f5274a5d75e5c6b06a2ab1c1a0a0b2c9",
       "document": "00-architecture/adr/0012-interaction-contract.md",
       "summary": "ADR-0012 Accepted em 2026-10-09: 10 decisões (D1-D10) fechando hit-test, context bar, targets/ancoras, atalhos + editor, tooltip, aparencia/temas, Smart Delete, campos numericos, workspace e ponte Qt. Paginas 04-ui e matriz atualizadas; nenhuma funcionalidade de GUI implementada."
+    },
+    "ev-u01-headless": {
+      "revision": "56575ea3fb2ee393111755209e758c67d92bbe9d",
+      "document": "04-ui/session-input.md",
+      "summary": "Camada headless do ADR-0012 implementada em petunia-ui em 2026-10-09 (sem Qt/QML): ContextStack com escapes, ToolControllers declarativos (Select/Node) com hit-test D1, ShortcutTable, campos numericos e WorkspaceState. A sessao e a unica escritora: a tool devolve SelectionDelta/Commit e a sessao aplica. Gates executados: cargo test --workspace 278 passed / 0 failed (petunia-ui 35), cargo clippy --workspace --all-targets -- -D warnings limpo e cargo fmt --all -- --check limpo. Limite: nenhuma GUI real exercitada; workspace/acessibilidade seguem abertos."
     }
   },
   "tasks": [
@@ -575,11 +580,11 @@
       "id": "U01",
       "phase": "interface",
       "title": "Interface: sessão, ferramentas e workspace",
-      "description": "Sessão e input mínimos hoje; tools, Vector Edit, workspace e acessibilidade voltam em discussão conjunta.",
+      "description": "Sessao, input, tools e Vector Edit hibrbridos ja existem headless em petunia-ui (ADR-0012); workspace tem estado de paineis e acessibilidade por padrao segue em discussao conjunta.",
       "document": "04-ui/session-input.md",
       "status": "IN PROGRESS",
       "updated": "2026-10-09",
-      "baseline": "Contrato de interacao aprovado em ADR-0012 (2026-10-09): hit-test, context bar, targets, atalhos, tooltip, aparencia, Smart Delete, campos numericos, workspace e ponte Qt. Fase de decisao fechada; implementacao do ContextStack/ToolControllers e QA de GUI seguem como trabalho futuro.",
+      "baseline": "Contrato de interacao aprovado em ADR-0012 (2026-10-09) e camada headless implementada com evidencia ev-u01-headless (2026-10-09): contexto, tools, atalhos, campos numericos e workspace como Session State. Faltam paineis visuais e QA de GUI/acessibilidade.",
       "checkpoints": [
         {
           "title": "Sessão mínima com input, tools e ações",
@@ -589,7 +594,7 @@
         {
           "title": "Vector Edit híbrido com ADR-0011 (após discussão conjunta)",
           "completed": true,
-          "evidence": "ev-u01-adr12"
+          "evidence": "ev-u01-headless"
         },
         {
           "title": "Workspace, painéis e acessibilidade por padrão",
