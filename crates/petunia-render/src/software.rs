@@ -894,4 +894,136 @@ mod tests {
             &bytes[edge..edge + 4]
         );
     }
+
+    #[test]
+    fn golden_linear_gradient_renders_color_ramp() {
+        use petunia_core::paint::{GradientInterpolation, GradientSpread, PaintSpace};
+        use petunia_render_model::{RenderGradient, RenderGradientStop};
+
+        let mut frame = frame_with_square();
+        let gradient = RenderGradient {
+            stops: vec![
+                RenderGradientStop {
+                    offset: 0.0,
+                    color: RenderColor {
+                        r: 1.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    },
+                    midpoint: 0.5,
+                },
+                RenderGradientStop {
+                    offset: 1.0,
+                    color: RenderColor {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 1.0,
+                        a: 1.0,
+                    },
+                    midpoint: 0.5,
+                },
+            ],
+            interpolation: GradientInterpolation::LinearRgb,
+            spread: GradientSpread::Pad,
+            space: PaintSpace::Document,
+            start: (10.0, 20.0),
+            end: (30.0, 20.0),
+            radius: 0.0,
+        };
+        let RenderPrimitive::Vector(vector) = &mut frame.snapshot.pages[0].primitives[0] else {
+            panic!("expected vector");
+        };
+        vector.appearance.fill = Some(RenderPaint::LinearGradient(gradient));
+
+        let mut renderer = SoftwareRenderer::new(1 << 20, 1 << 20);
+        let (bytes, stats) = renderer.render(&frame, &options()).expect("renders");
+        assert_eq!(stats.primitives_drawn, 1);
+
+        let left_idx = (20 * 64 + 11) * 4;
+        let mid_idx = (20 * 64 + 20) * 4;
+        let right_idx = (20 * 64 + 29) * 4;
+
+        // Near the start (x=11, y=20): predominantly red.
+        assert!(bytes[left_idx] > 200, "red: {}", bytes[left_idx]);
+        assert!(bytes[left_idx + 2] < 90, "blue: {}", bytes[left_idx + 2]);
+
+        // Near the end (x=29, y=20): predominantly blue.
+        assert!(bytes[right_idx + 2] > 200, "blue: {}", bytes[right_idx + 2]);
+        assert!(bytes[right_idx] < 90, "red: {}", bytes[right_idx]);
+
+        // Middle (x=20, y=20): smooth mixture of red and blue.
+        assert!(
+            bytes[mid_idx] > 80 && bytes[mid_idx] < 220,
+            "mid red: {}",
+            bytes[mid_idx]
+        );
+        assert!(
+            bytes[mid_idx + 2] > 80 && bytes[mid_idx + 2] < 220,
+            "mid blue: {}",
+            bytes[mid_idx + 2]
+        );
+        assert_eq!(bytes[mid_idx + 3], 255);
+    }
+
+    #[test]
+    fn golden_radial_gradient_renders_radial_ramp() {
+        use petunia_core::paint::{GradientInterpolation, GradientSpread, PaintSpace};
+        use petunia_render_model::{RenderGradient, RenderGradientStop};
+
+        let mut frame = frame_with_square();
+        let gradient = RenderGradient {
+            stops: vec![
+                RenderGradientStop {
+                    offset: 0.0,
+                    color: RenderColor {
+                        r: 1.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    },
+                    midpoint: 0.5,
+                },
+                RenderGradientStop {
+                    offset: 1.0,
+                    color: RenderColor {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 1.0,
+                        a: 1.0,
+                    },
+                    midpoint: 0.5,
+                },
+            ],
+            interpolation: GradientInterpolation::LinearRgb,
+            spread: GradientSpread::Pad,
+            space: PaintSpace::Document,
+            start: (20.0, 20.0),
+            end: (20.0, 20.0),
+            radius: 10.0,
+        };
+        let RenderPrimitive::Vector(vector) = &mut frame.snapshot.pages[0].primitives[0] else {
+            panic!("expected vector");
+        };
+        vector.appearance.fill = Some(RenderPaint::RadialGradient(gradient));
+
+        let mut renderer = SoftwareRenderer::new(1 << 20, 1 << 20);
+        let (bytes, stats) = renderer.render(&frame, &options()).expect("renders");
+        assert_eq!(stats.primitives_drawn, 1);
+
+        // Center (x=20, y=20): predominantly red.
+        let center_idx = (20 * 64 + 20) * 4;
+        let edge_idx = (20 * 64 + 29) * 4;
+
+        assert!(bytes[center_idx] > 200, "center red: {}", bytes[center_idx]);
+        assert!(bytes[center_idx + 2] < 90);
+
+        // Near perimeter (x=29, y=20, r=9): predominantly blue.
+        assert!(
+            bytes[edge_idx + 2] > 180,
+            "edge blue: {}",
+            bytes[edge_idx + 2]
+        );
+        assert!(bytes[edge_idx] < 90, "edge red: {}", bytes[edge_idx]);
+    }
 }

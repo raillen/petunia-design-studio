@@ -153,7 +153,7 @@ impl Compiler {
             match &item.kind {
                 petunia_core::AppearanceKind::Fill(paint) => {
                     if fill.is_none() {
-                        fill = self.compile_paint(document, node.id, paint);
+                        fill = self.compile_paint(document, node, node.id, paint);
                     }
                 }
                 petunia_core::AppearanceKind::Stroke(style) => {
@@ -186,17 +186,74 @@ impl Compiler {
     fn compile_paint(
         &mut self,
         document: &petunia_core::Document,
+        node: &SceneNode,
         id: ObjectId,
         paint: &petunia_core::Paint,
     ) -> Option<RenderPaint> {
         match paint {
             petunia_core::Paint::Solid(source) => self.compile_color(document, id, source),
-            petunia_core::Paint::LinearGradient(_)
-            | petunia_core::Paint::RadialGradient(_)
-            | petunia_core::Paint::Pattern(_) => {
-                self.warn(id, "gradient/pattern paint needs a renderer pass; skipped");
+            petunia_core::Paint::LinearGradient(gradient)
+            | petunia_core::Paint::RadialGradient(gradient) => {
+                self.compile_gradient(document, node, id, paint, gradient)
+            }
+            petunia_core::Paint::Pattern(_) => {
+                self.warn(id, "pattern paint needs a resource pass; skipped");
                 None
             }
+        }
+    }
+
+    fn compile_gradient(
+        &mut self,
+        document: &petunia_core::Document,
+        node: &SceneNode,
+        id: ObjectId,
+        paint: &petunia_core::Paint,
+        gradient: &petunia_core::Gradient,
+    ) -> Option<RenderPaint> {
+        if gradient.validate().is_err() {
+            self.warn(id, "invalid gradient definition; skipped");
+            return None;
+        }
+        let mut stops = Vec::with_capacity(gradient.stops.len());
+        for stop in &gradient.stops {
+            let Some(color) = self.resolve_color(document, id, &stop.color) else {
+                self.warn(id, "gradient stop without a resolvable color; skipped");
+                return None;
+            };
+            stops.push(petunia_render_model::RenderGradientStop {
+                offset: stop.offset,
+                color,
+                midpoint: stop.midpoint,
+            });
+        }
+        let (start, end, radius) = match &gradient.geometry {
+            petunia_core::GradientGeometry::Linear { start, end } => (*start, *end, 0.0),
+            petunia_core::GradientGeometry::Radial { center, radius } => {
+                (*center, *center, *radius)
+            }
+        };
+        let place = |point: petunia_core::Point| {
+            if gradient.space == petunia_core::PaintSpace::Object {
+                node.transform.transform_point(point)
+            } else {
+                point
+            }
+        };
+        let start = place(start);
+        let end = place(end);
+        let evaluated = petunia_render_model::RenderGradient {
+            stops,
+            interpolation: gradient.interpolation,
+            spread: gradient.spread,
+            space: gradient.space,
+            start: (start.x, start.y),
+            end: (end.x, end.y),
+            radius,
+        };
+        match paint {
+            petunia_core::Paint::LinearGradient(_) => Some(RenderPaint::LinearGradient(evaluated)),
+            _ => Some(RenderPaint::RadialGradient(evaluated)),
         }
     }
 
@@ -206,6 +263,18 @@ impl Compiler {
         id: ObjectId,
         source: &petunia_core::ColorSource,
     ) -> Option<RenderPaint> {
+        self.resolve_color(document, id, source)
+            .map(RenderPaint::Solid)
+    }
+
+    /// Resolve one color source to a render color, following swatches
+    /// and spot alternates. Paint-level wrappers decide the rest.
+    fn resolve_color(
+        &mut self,
+        document: &petunia_core::Document,
+        id: ObjectId,
+        source: &petunia_core::ColorSource,
+    ) -> Option<petunia_render_model::RenderColor> {
         use petunia_core::{BuiltinColorSpace, ColorSpaceRef, ColorValue, ProcessColorValue};
         let color = match source {
             petunia_core::ColorSource::Value(value) => value.clone(),
@@ -228,16 +297,16 @@ impl Compiler {
                 (
                     ProcessColorValue::Rgb(channels),
                     ColorSpaceRef::Builtin(BuiltinColorSpace::Srgb),
-                ) => Some(RenderPaint::Solid(srgb_to_linear(channels))),
+                ) => Some(srgb_to_linear(channels)),
                 (
                     ProcessColorValue::Rgb(channels),
                     ColorSpaceRef::Builtin(BuiltinColorSpace::LinearSrgb),
-                ) => Some(RenderPaint::Solid(RenderColor {
+                ) => Some(RenderColor {
                     r: channels.r,
                     g: channels.g,
                     b: channels.b,
                     a: channels.alpha.clamp(0.0, 1.0),
-                })),
+                }),
                 _ => {
                     self.warn(id, "color needs a managed transform; skipped");
                     None
@@ -252,12 +321,15 @@ impl Compiler {
                     self.warn(id, "spot tint outside 0..=1; skipped");
                     return None;
                 }
-                // The alternate preview stands in for the ink.
-                self.compile_color(
+                // The alternate preview stands in for the ink, scaled
+                // by the tint the use declares.
+                let mut preview = self.resolve_color(
                     document,
                     id,
                     &petunia_core::ColorSource::Value(ColorValue::Process(ink.alternate.clone())),
-                )
+                )?;
+                preview.a = (preview.a * reference.tint).clamp(0.0, 1.0);
+                Some(preview)
             }
         }
     }
@@ -636,6 +708,78 @@ mod tests {
             panic!("expected solid fill");
         };
         assert_eq!((fill.r, fill.g, fill.b), (0.0, 0.0, 1.0));
+    }
+
+    #[test]
+    fn linear_gradient_evaluates_with_resolved_stops() {
+        use petunia_core::{
+            Gradient, GradientGeometry, GradientInterpolation, GradientSpread, GradientStop,
+            PaintSpace,
+        };
+        fn stop(offset: f32, v: f32) -> GradientStop {
+            GradientStop::new(
+                offset,
+                petunia_core::ColorSource::Value(petunia_core::ColorValue::Process(
+                    petunia_core::ProcessColor {
+                        value: petunia_core::ProcessColorValue::Rgb(petunia_core::Rgba {
+                            r: v,
+                            g: v,
+                            b: v,
+                            alpha: 1.0,
+                        }),
+                        space: petunia_core::ColorSpaceRef::Builtin(
+                            petunia_core::BuiltinColorSpace::Srgb,
+                        ),
+                    },
+                )),
+                0.5,
+            )
+            .expect("stop")
+        }
+        let mut document = document_with_rect();
+        let id = document.scene.root_order()[0];
+        let gradient = Gradient::new(
+            vec![stop(0.0, 0.0), stop(1.0, 1.0)],
+            GradientInterpolation::LinearRgb,
+            GradientSpread::Pad,
+            PaintSpace::Object,
+            GradientGeometry::Linear {
+                start: petunia_core::Point::new(10.0, 10.0),
+                end: petunia_core::Point::new(30.0, 10.0),
+            },
+        )
+        .expect("gradient");
+        if let petunia_core::SceneItem::Path(object) =
+            &mut document.scene.get_node_mut(id).expect("node").item
+        {
+            object.appearance = petunia_core::Appearance {
+                items: vec![petunia_core::AppearanceItem {
+                    id: petunia_core::AppearanceItemId::new_v4(),
+                    enabled: true,
+                    opacity: 1.0,
+                    blend_mode: petunia_core::BlendMode::Normal,
+                    kind: petunia_core::AppearanceKind::Fill(petunia_core::Paint::LinearGradient(
+                        gradient,
+                    )),
+                }],
+            };
+        }
+        let (snapshot, warnings) = compile_document(
+            &document,
+            DocumentRevision::GENESIS,
+            RenderQuality::Authoring,
+        );
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let RenderPrimitive::Vector(vector) = &snapshot.pages[0].primitives[0] else {
+            panic!("expected vector");
+        };
+        let RenderPaint::LinearGradient(resolved) = vector.appearance.fill.as_ref().expect("fill")
+        else {
+            panic!("expected a linear gradient");
+        };
+        assert_eq!(resolved.stops.len(), 2);
+        assert_eq!(resolved.start, (10.0, 10.0));
+        assert_eq!(resolved.end, (30.0, 10.0));
     }
 
     #[test]
