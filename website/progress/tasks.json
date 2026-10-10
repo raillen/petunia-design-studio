@@ -270,6 +270,11 @@
       "revision": "406b8e80f4283402eff990fe47050bcc3d10b85d",
       "document": "04-ui/session-input.md",
       "summary": "Painel Layers em 2026-10-10: árvore semântica com labels de leitor de tela, navegação por teclado, Enter seleciona, Space alterna visibilidade via SetVisibility com inverso. Gates: workspace 389 passed/0 failed, clippy -D warnings limpo, fmt limpo."
+    },
+    "ev-u01-smart-preview": {
+      "revision": "a525866c2b3f2b04e0a27dc42f7a562dffb142",
+      "document": "04-ui/session-input.md",
+      "summary": "Preview do Smart Delete em 2026-10-10: preview_delete compartilhado entre ghost e commit, Hard Delete com erro próprio do join, sessão expõe ghost points + erro honesto. Gates: workspace 391 passed/0 failed, clippy -D warnings limpo, fmt limpo."
     }
   },
   "tasks": [
