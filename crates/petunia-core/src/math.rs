@@ -722,7 +722,7 @@ mod tests {
             Rect::from_points(&[Point::new(3.0, 1.0), Point::new(1.0, 4.0)]),
             Rect::new(1.0, 1.0, 2.0, 3.0)
         );
-        assert!(Rect::new(0.0, 0.0, f64::NAN, 1.0).is_finite() == false);
+        assert!(!Rect::new(0.0, 0.0, f64::NAN, 1.0).is_finite());
     }
 
     #[test]
