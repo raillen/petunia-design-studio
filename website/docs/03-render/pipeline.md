@@ -405,3 +405,16 @@ Essa é a base de CI e batch processing.
 10. ROI/culling respeitam efeitos, masks e dependências.
 11. Preview quality nunca altera semântica autoral.
 12. Headless render é requisito, não caminho secundário.
+
+## Verificação de tile size configurável (2026-10-10)
+
+Escopo: `RenderOptions.tile_size` configurável no `RenderGraph` e `SoftwareRenderer` com validação de invariante de equivalência de pixels entre 32px, 64px e 128px. Revisão `e0c3b3a61a3fe209bfc8b2f3836a1ad421691dc2` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 400 passed / 0 failed (Render com medição de tile size) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: 64px permanece o default ideal para localidade de cache L1/L2 de CPU.

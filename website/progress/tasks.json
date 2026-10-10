@@ -290,6 +290,16 @@
       "revision": "1520772a352e078e74baa247a3e22db42512eaf5",
       "document": "02-engine/persistence-recovery.md",
       "summary": "Detecção de conflitos, locks e undo no recovery em 2026-10-10: FileFingerprint e ExternalConflictDetector prevenindo sobreposição de edições externas com EngineError::Conflict, CooperativeFileLock com liberação em Drop e override de processos inativos, e RecoveryReport reconstruindo HistoryEntry para permitir Undo de transações recuperadas. Gates: workspace 398 passed/0 failed, clippy -D warnings limpo, fmt limpo."
+    },
+    "ev-r01-tile-size": {
+      "revision": "e0c3b3a61a3fe209bfc8b2f3836a1ad421691dc2",
+      "document": "03-render/pipeline.md",
+      "summary": "Configuração de tile size e medição em 2026-10-10: RenderOptions com tile_size configurável (16..=512, default 64), SoftwareRenderer e RenderGraph executando com paridade exata de pixels e escalonamento de bins. Gates: workspace 400 passed/0 failed, clippy -D warnings limpo, fmt limpo."
+    },
+    "ev-e03-scheduler-budget": {
+      "revision": "e0c3b3a61a3fe209bfc8b2f3836a1ad421691dc2",
+      "document": "02-engine/io-jobs-plugins.md",
+      "summary": "SchedulerConfig e orçamentos de threads em 2026-10-10: worker threads configuráveis, preempção de jobs interativos sobre filas batch com execução sub-milisegundo. Gates: workspace 400 passed/0 failed, clippy -D warnings limpo, fmt limpo."
     }
   },
   "tasks": [
@@ -662,6 +672,11 @@
           "title": "Detecção de modificação externa, locks e histórico de undo no recovery",
           "completed": true,
           "evidence": "ev-e03-conflicts-locks"
+        },
+        {
+          "title": "SchedulerConfig e preempção prioritária de jobs interativos",
+          "completed": true,
+          "evidence": "ev-e03-scheduler-budget"
         }
       ],
       "documents": [
@@ -711,6 +726,11 @@
           "title": "Avaliação e render de gradientes lineares e radiais com testes golden",
           "completed": true,
           "evidence": "ev-r01-gradients"
+        },
+        {
+          "title": "Configuração de tile size no renderer com equivalência exata de pixels",
+          "completed": true,
+          "evidence": "ev-r01-tile-size"
         }
       ],
       "documents": [
