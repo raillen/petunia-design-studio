@@ -210,6 +210,11 @@
       "revision": "cf5c4891a38112ed6a4c8281765a675edfabe440",
       "document": "01-core/path.md",
       "summary": "Modelo persistente de path em 2026-10-10: ContourId/NodeId UUID, SegmentKind Line/Cubic, retângulo com segmentos Line explícitos, IDs preservados em serialização e HardDelete, novos IDs só em geometria refitada sem correspondência. Gates: workspace 306 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
+    },
+    "ev-c02-scene-structure": {
+      "revision": "f09257729b235258e59121906cf4bc6e11e749f4",
+      "document": "01-core/scene.md",
+      "summary": "Modelo estrutural da Scene em 2026-10-10: ParentRef Page/Object em SceneNode, root lists por página com default page, operações estreitas verificadas (insert_root/insert_child/remove_subtree/reparent/reorder), validate() de ownership, finitude, bindings vivos e aciclicidade, queries determinísticas e world transform derivado. Commit lane do Engine roteado para as narrow ops. Gates: workspace 320 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
     }
   },
   "tasks": [
@@ -302,7 +307,7 @@
       "document": "01-core/path.md",
       "status": "IN PROGRESS",
       "updated": "2026-10-10",
-      "baseline": "Path persistente entregue em cf5c489 (IDs/SegmentKind). Segue IN PROGRESS pelo modelo estrutural Scene/Document: ParentRef, páginas, registries, validação e DTO.",
+      "baseline": "Scene estrutural entregue em f092577 (ParentRef, páginas, narrow ops, validação e ciclos). Segue IN PROGRESS pelo aggregate Document: páginas, registries, validação e DTO.",
       "checkpoints": [
         {
           "title": "path.rs com ContourId/NodeId persistentes e SegmentKind",
@@ -335,7 +340,12 @@
           "evidence": "ev-crop"
         },
         {
-          "title": "Modelo estrutural Scene/Document (ParentRef, páginas, registries, validação, DTO)",
+          "title": "Scene estrutural: ParentRef, páginas, operações estreitas, validação e ciclos",
+          "completed": true,
+          "evidence": "ev-c02-scene-structure"
+        },
+        {
+          "title": "Document aggregate: páginas, registries, validação e DTO",
           "completed": false,
           "evidence": null
         }

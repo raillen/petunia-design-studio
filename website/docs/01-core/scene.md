@@ -459,3 +459,15 @@ Engine acessa Scene por APIs estáveis como `get`, `parent_of`, `children_of`, `
 21. Symbol cycles são rejeitados no Core.
 22. Overrides built-in são tipados.
 23. Scene queries escondem o layout de storage.
+## Verificação do modelo estrutural (2026-10-10)
+
+Escopo: `ParentRef`, root lists por página, operações estreitas, validação e ciclos. Revisão `f09257729b235258e59121906cf4bc6e11e749f4` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 320 passed / 0 failed (Core com 89 unit + 12 property) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: `insert_node`/`remove_node` permanecem como shims de compatibilidade; `remove_node` histórico ainda pode deixar referências pendentes — código novo usa `remove_subtree`. Aggregate `Document` (páginas, registries, DTO) continua pendente.
