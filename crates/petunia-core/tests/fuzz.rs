@@ -171,28 +171,35 @@ fn uuid_text_is_canonical_and_strict() {
     }
 }
 
-/// Content hashes accept exactly 64 lowercase-or-uppercase hex
-/// characters; everything else is a typed error, never a panic.
+/// Content hashes accept exactly `blake3:` plus 64 hex characters;
+/// everything else is a typed error, never a panic.
 #[test]
 fn content_hash_rejects_hostile_digests() {
-    let good = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-    assert!(ContentHash::from_hex(good).is_ok());
-    assert!(ContentHash::from_hex(&good.to_uppercase()).is_ok());
+    let good = ContentHash::new(b"petunia");
+    assert_eq!(
+        ContentHash::from_tagged(&good.to_tagged()).expect("parses"),
+        good
+    );
+    // Either hex case parses; only lowercase serializes.
+    let upper = format!("blake3:{}", "E3B0".to_string() + &"c4".repeat(30));
+    assert!(ContentHash::from_tagged(&upper).is_ok());
     for hostile in [
         String::new(),
         "xyz".to_string(),
-        "a".repeat(63),
-        "a".repeat(65),
-        "z".repeat(64),
-        "aa".repeat(31) + "!",
-        "é".repeat(32),
+        format!("blake3:{}", "a".repeat(63)),
+        format!("blake3:{}", "a".repeat(65)),
+        format!("blake3:{}", "z".repeat(64)),
+        format!("blake3:{}", "aa".repeat(31) + "!"),
+        format!("blake3:{}", "é".repeat(32)),
+        "a".repeat(64),
+        "sha256:".to_string() + &"a".repeat(64),
     ] {
-        assert!(ContentHash::from_hex(&hostile).is_err(), "{hostile:?}");
+        assert!(ContentHash::from_tagged(&hostile).is_err(), "{hostile:?}");
     }
     for seed in 0..128u64 {
         let bytes = Rng(seed).bytes((seed as usize) % 80);
         let text = String::from_utf8_lossy(&bytes).into_owned();
-        let _ = ContentHash::from_hex(&text);
+        let _ = ContentHash::from_tagged(&text);
     }
 }
 

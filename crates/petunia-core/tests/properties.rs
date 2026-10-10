@@ -155,11 +155,11 @@ proptest! {
         prop_assert_eq!(built.is_ok(), expected, "tint = {}", tint);
     }
 
-    /// Content hashes parse only well-formed 64-char hex digests.
+    /// Content hashes parse only well-formed tagged digests.
     #[test]
     fn content_hash_rejects_malformed_hex(len in 0usize..80) {
-        let digest = "a".repeat(len);
-        prop_assert_eq!(ContentHash::from_hex(&digest).is_ok(), len == 64);
+        let digest = format!("blake3:{}", "a".repeat(len));
+        prop_assert_eq!(ContentHash::from_tagged(&digest).is_ok(), len == 64);
     }
 
     /// Rects contain their centers and exclude one pixel outside.

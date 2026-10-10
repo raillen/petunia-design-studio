@@ -53,27 +53,83 @@ impl ResourceSource {
     }
 }
 
-/// SHA-256 over known bytes: detects external change, shares caches,
+/// BLAKE3-256 over known bytes: detects external change, shares caches,
 /// deduplicates blobs and validates integrity. Never identity.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// The persistent text form is algorithm-tagged (`blake3:<hex>`) so a
+/// future algorithm change cannot silently reinterpret old hashes.
+/// Parsing accepts either hex case but always canonicalizes; only the
+/// lowercase tagged form ever serializes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ContentHash {
-    pub sha256: [u8; 32],
+    blake3: [u8; 32],
 }
 
+/// Tag prefixing every persisted content hash.
+pub const CONTENT_HASH_TAG: &str = "blake3:";
+
 impl ContentHash {
-    /// Parse a 64-character lowercase hex digest.
-    pub fn from_hex(digest: &str) -> Result<Self> {
-        if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(CoreError::InvariantViolation(
-                "content hash needs 64 hex characters".to_string(),
-            ));
+    /// Hash known bytes.
+    #[must_use]
+    pub fn new(bytes: &[u8]) -> Self {
+        Self {
+            blake3: *blake3::hash(bytes).as_bytes(),
         }
-        let mut sha256 = [0u8; 32];
-        for (index, chunk) in digest.as_bytes().chunks(2).enumerate() {
-            let text = std::str::from_utf8(chunk).expect("ascii hex");
-            sha256[index] = u8::from_str_radix(text, 16).expect("hex pair");
+    }
+
+    /// Raw digest bytes.
+    #[must_use]
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.blake3
+    }
+
+    /// Canonical tagged text: `blake3:<lowercase hex>`.
+    #[must_use]
+    pub fn to_tagged(&self) -> String {
+        format!(
+            "{CONTENT_HASH_TAG}{}",
+            blake3::Hash::from_bytes(self.blake3).to_hex()
+        )
+    }
+
+    /// Parse a tagged digest, refusing bare hex, wrong tags and
+    /// malformed digits with typed errors.
+    pub fn from_tagged(text: &str) -> Result<Self> {
+        let hex = text.strip_prefix(CONTENT_HASH_TAG).ok_or_else(|| {
+            CoreError::InvariantViolation(format!(
+                "content hash needs the `{CONTENT_HASH_TAG}` tag: {text:?}"
+            ))
+        })?;
+        if hex.len() != 64 {
+            return Err(CoreError::InvariantViolation(format!(
+                "content hash needs 64 hex characters, got {}",
+                hex.len()
+            )));
         }
-        Ok(Self { sha256 })
+        let digest = blake3::Hash::from_hex(hex)
+            .map_err(|_| CoreError::InvariantViolation("content hash is not hex".to_string()))?;
+        Ok(Self {
+            blake3: *digest.as_bytes(),
+        })
+    }
+}
+
+impl serde::Serialize for ContentHash {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_tagged())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ContentHash {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+        Self::from_tagged(&text).map_err(serde::de::Error::custom)
     }
 }
 
@@ -162,11 +218,21 @@ mod tests {
     }
 
     #[test]
-    fn content_hash_parses_strict_hex() {
-        let digest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-        assert!(ContentHash::from_hex(digest).is_ok());
-        assert!(ContentHash::from_hex("xyz").is_err());
-        assert!(ContentHash::from_hex(&digest[..63]).is_err());
+    fn content_hash_is_tagged_blake3() {
+        let hash = ContentHash::new(b"petunia");
+        let tagged = hash.to_tagged();
+        assert!(tagged.starts_with("blake3:"), "{tagged}");
+        assert_eq!(tagged, tagged.to_lowercase(), "canonical form is lowercase");
+        assert_eq!(ContentHash::from_tagged(&tagged).expect("parses"), hash);
+        // Bare digests never slip in untagged.
+        assert!(ContentHash::from_tagged(tagged.trim_start_matches("blake3:")).is_err());
+        assert!(ContentHash::from_tagged("sha256:abc").is_err());
+        assert!(ContentHash::from_tagged("xyz").is_err());
+        // Serialization round-trips through the tagged text.
+        let json = serde_json::to_string(&hash).expect("serializes");
+        assert_eq!(json, format!("\"{tagged}\""));
+        let back: ContentHash = serde_json::from_str(&json).expect("parses");
+        assert_eq!(back, hash);
     }
 
     #[test]
