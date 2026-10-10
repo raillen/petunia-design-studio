@@ -136,6 +136,21 @@ impl Transform2D {
         }
     }
 
+    /// Compose two transforms: `self.concat(other)` applies `other`
+    /// first and then `self`, matching the documented `A * B * p`
+    /// convention.
+    #[must_use]
+    pub fn concat(self, other: Self) -> Self {
+        Self {
+            a: self.a * other.a + self.c * other.b,
+            b: self.b * other.a + self.d * other.b,
+            c: self.a * other.c + self.c * other.d,
+            d: self.b * other.c + self.d * other.d,
+            tx: self.a * other.tx + self.c * other.ty + self.tx,
+            ty: self.b * other.tx + self.d * other.ty + self.ty,
+        }
+    }
+
     /// Invert this transform. Singular or numerically unsafe matrices
     /// return `None`: the Core refuses to hand out an inverse that
     /// would silently corrupt geometry.
@@ -357,6 +372,17 @@ mod tests {
         assert_eq!(document_tolerance(4.0, 0.0), None);
         assert_eq!(document_tolerance(4.0, -1.0), None);
         assert_eq!(document_tolerance(f64::NAN, 1.0), None);
+    }
+
+    #[test]
+    fn concat_applies_other_first() {
+        let shift = Transform2D::translation(10.0, 0.0);
+        let scale = Transform2D::scale(2.0, 2.0);
+        let point = Point::new(1.0, 1.0);
+        // scale.concat(shift): shift first, then scale.
+        let composed = scale.concat(shift).transform_point(point);
+        assert_eq!(composed, Point::new(22.0, 2.0));
+        assert_eq!(Transform2D::IDENTITY.concat(shift), shift);
     }
 
     #[test]

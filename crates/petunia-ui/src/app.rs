@@ -20,7 +20,9 @@ use crate::tools::{
 };
 use crate::tooltips::tooltip_for;
 use crate::workspace::{ViewState, WorkspaceState};
-use petunia_core::{Document, FillRule, ObjectId, Point, SceneItem, SceneNode, Size2, VectorPath};
+use petunia_core::{
+    Document, FillRule, ObjectId, ParentRef, Point, SceneItem, SceneNode, Size2, VectorPath,
+};
 use petunia_engine::compile;
 use petunia_engine::geometry::{delete_node, SmartDeleteMode, SmartDeleteOutcome};
 use petunia_engine::EngineError;
@@ -550,7 +552,8 @@ impl StudioSession {
         name: impl Into<String>,
         path: VectorPath,
     ) -> std::result::Result<(), EngineError> {
-        let node = SceneNode::new_path(name, path);
+        let page = self.document.scene.default_page();
+        let node = SceneNode::new_path(name, path, ParentRef::Page(page));
         let request = TransactionRequest {
             command_id: CommandId::new_v4(),
             operations: vec![DocumentOp::InsertRoot {

@@ -378,9 +378,11 @@ mod tests {
 
     fn document_with_rect() -> petunia_core::Document {
         let mut document = petunia_core::Document::new("compile");
+        let page = document.scene.default_page();
         document.scene.insert_node(SceneNode::new_path(
             "box",
             VectorPath::rect(0.0, 0.0, 10.0, 10.0),
+            petunia_core::ParentRef::Page(page),
         ));
         document
     }
@@ -411,9 +413,11 @@ mod tests {
     fn unsupported_items_degrade_with_warnings() {
         use petunia_core::{SceneItem, TextFlow, TextObject};
         let mut document = document_with_rect();
+        let page = document.scene.default_page();
         let text = SceneNode {
             id: ObjectId::new_v4(),
             name: "text".to_string(),
+            parent: petunia_core::ParentRef::Page(page),
             visible: true,
             locked: false,
             transform: petunia_core::Transform2D::IDENTITY,
@@ -421,6 +425,7 @@ mod tests {
             fill: None,
             stroke: None,
             clip: None,
+            mask: None,
             item: SceneItem::Text(
                 TextObject::new(
                     "Hi".to_string(),
@@ -450,11 +455,20 @@ mod tests {
         let target = ids[0];
         // Wrap the box in a translucent group so the compiler emits
         // a Group primitive carrying the clip binding.
-        let mut group = SceneNode::new_path("group", VectorPath::new());
+        let page = document.scene.default_page();
+        let mut group = SceneNode::new_path(
+            "group",
+            VectorPath::new(),
+            petunia_core::ParentRef::Page(page),
+        );
         let group_id = group.id;
         group.item = SceneItem::Group(vec![target]);
         group.opacity = 0.5;
-        let frame_rect = SceneNode::new_path("frame", VectorPath::rect(2.0, 2.0, 6.0, 6.0));
+        let frame_rect = SceneNode::new_path(
+            "frame",
+            VectorPath::rect(2.0, 2.0, 6.0, 6.0),
+            petunia_core::ParentRef::Page(page),
+        );
         let source = frame_rect.id;
         document.scene.insert_node(frame_rect);
         document.scene.insert_node(group);

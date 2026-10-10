@@ -186,7 +186,11 @@ mod tests {
             enabled: true,
             ..McpServerConfig::default()
         };
-        let node = SceneNode::new_path("box", VectorPath::rect(0.0, 0.0, 5.0, 5.0));
+        let node = SceneNode::new_path(
+            "box",
+            VectorPath::rect(0.0, 0.0, 5.0, 5.0),
+            petunia_core::ParentRef::Page(petunia_core::PageId::new_v4()),
+        );
         let submit = McpCommandSubmit {
             description: HistoryDescription::DeleteObjects,
             operations: vec![DocumentOp::RemoveSubtree { root: node.id }],

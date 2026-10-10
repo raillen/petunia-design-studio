@@ -74,11 +74,13 @@ proptest! {
         let mut document = Document::new("prop");
         document.setup.width = width;
         document.setup.height = height;
+        let page = document.scene.default_page();
         document
             .scene
             .insert_node(petunia_core::SceneNode::new_path(
                 "box",
                 VectorPath::rect(0.0, 0.0, width, height),
+                petunia_core::ParentRef::Page(page),
             ));
         let json = document.to_json().expect("serializes");
         let back = Document::from_json(&json).expect("deserializes");

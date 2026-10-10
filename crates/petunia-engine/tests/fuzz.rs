@@ -169,6 +169,7 @@ fn fuzz_document_compilation_never_panics() {
                 .insert_node(petunia_core::SceneNode::new_path(
                     format!("n{index}"),
                     petunia_core::VectorPath::new(),
+                    petunia_core::ParentRef::Page(document.scene.default_page()),
                 ));
         }
         let (snapshot, warnings) = compile::compile_document(

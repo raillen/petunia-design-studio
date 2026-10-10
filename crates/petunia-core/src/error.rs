@@ -14,6 +14,24 @@ pub enum CoreError {
     #[error("Cycle detected in scene hierarchy at object {0}")]
     CycleDetected(String),
 
+    #[error("Unknown page: {0}")]
+    UnknownPage(String),
+
+    #[error("Duplicate object ID: {0}")]
+    DuplicateObject(String),
+
+    #[error("Not a container: {0}")]
+    NotAContainer(String),
+
+    #[error("Invalid parent: {0}")]
+    InvalidParent(String),
+
+    #[error("Non-invertible transform: {0}")]
+    NonInvertibleTransform(String),
+
+    #[error("Dangling reference: {0}")]
+    DanglingReference(String),
+
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 

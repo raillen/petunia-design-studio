@@ -63,7 +63,12 @@ mod tests {
     #[test]
     fn test_document_roundtrip_json() {
         let mut doc = Document::new("My Poster");
-        let node = SceneNode::new_path("Rectangle", VectorPath::rect(10.0, 10.0, 200.0, 100.0));
+        let page = doc.scene.default_page();
+        let node = SceneNode::new_path(
+            "Rectangle",
+            VectorPath::rect(10.0, 10.0, 200.0, 100.0),
+            crate::scene::ParentRef::Page(page),
+        );
         doc.scene.insert_node(node);
 
         let json = doc.to_json().expect("to_json succeeds");

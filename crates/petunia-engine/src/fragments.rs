@@ -9,7 +9,7 @@
 use crate::error::{EngineError, Result};
 use crate::transaction::DocumentOp;
 use petunia_core::{
-    ClipBinding, Document, DocumentId, ObjectId, ResourceRecord, SceneItem, SceneNode,
+    ClipBinding, Document, DocumentId, ObjectId, ParentRef, ResourceRecord, SceneItem, SceneNode,
     StyleDefinition, StyleId, Swatch, SymbolDefinition,
 };
 use serde::{Deserialize, Serialize};
@@ -202,12 +202,17 @@ pub fn fragment_into_ops(
                 }
             }
         };
+        // Ownership travels with the paste: the cloned node declares
+        // its new host so the commit lane can verify both sides.
+        let mut node = node.clone();
+        node.parent = ParentRef::Object(host);
+        let id = node.id;
         ops.push(DocumentOp::InsertNode {
             parent: host,
             index,
-            node: Box::new(node.clone()),
+            node: Box::new(node),
         });
-        placed.push(node.id);
+        placed.push(id);
     }
     Ok(ops)
 }
@@ -239,11 +244,20 @@ mod tests {
 
     fn document_with_group() -> (Document, ObjectId, ObjectId) {
         let mut document = Document::new("frag");
-        let mut group = SceneNode::new_path("group", VectorPath::new());
+        let page = document.scene.default_page();
+        let mut group = SceneNode::new_path(
+            "group",
+            VectorPath::new(),
+            petunia_core::ParentRef::Page(page),
+        );
         group.item = SceneItem::Group(Vec::new());
         let parent = group.id;
         document.scene.insert_node(group);
-        let child = SceneNode::new_path("box", VectorPath::rect(0.0, 0.0, 5.0, 5.0));
+        let child = SceneNode::new_path(
+            "box",
+            VectorPath::rect(0.0, 0.0, 5.0, 5.0),
+            petunia_core::ParentRef::Page(page),
+        );
         let child_id = child.id;
         document.scene.insert_node(child);
         if let Some(parent_node) = document.scene.get_node_mut(parent) {

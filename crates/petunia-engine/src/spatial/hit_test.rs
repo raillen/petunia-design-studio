@@ -275,11 +275,20 @@ mod tests {
 
     fn document_with_square() -> (Document, ObjectId, ObjectId) {
         let mut document = Document::new("hit");
-        let mut group = SceneNode::new_path("group", VectorPath::new());
+        let page = document.scene.default_page();
+        let mut group = SceneNode::new_path(
+            "group",
+            VectorPath::new(),
+            petunia_core::ParentRef::Page(page),
+        );
         group.item = SceneItem::Group(Vec::new());
         let parent = group.id;
         document.scene.insert_node(group);
-        let node = SceneNode::new_path("box", VectorPath::rect(0.0, 0.0, 10.0, 10.0));
+        let node = SceneNode::new_path(
+            "box",
+            VectorPath::rect(0.0, 0.0, 10.0, 10.0),
+            petunia_core::ParentRef::Page(page),
+        );
         let id = node.id;
         document.scene.insert_node(node);
         if let Some(parent_node) = document.scene.get_node_mut(parent) {

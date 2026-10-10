@@ -80,7 +80,7 @@ pub use resources::{
     ContentHash, FontEmbedPolicy, ResourceKind, ResourceMetadata, ResourceRecord, ResourceRegistry,
     ResourceSource,
 };
-pub use scene::{Fill, SceneGraph, SceneItem, SceneNode, Stroke};
+pub use scene::{Fill, MaskBinding, MaskMode, ParentRef, SceneGraph, SceneItem, SceneNode, Stroke};
 pub use shape::{
     CornerRadii, EllipseArc, EllipseSpec, ParametricShape, PolygonSpec, RectangleSpec, StarSpec,
 };

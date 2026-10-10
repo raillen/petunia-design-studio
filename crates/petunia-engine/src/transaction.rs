@@ -8,7 +8,8 @@
 
 use crate::error::EngineError;
 use petunia_core::{
-    BlendMode, Document, EffectId, ObjectId, SceneItem, SceneNode, Transform2D, VectorPath,
+    BlendMode, Document, EffectId, ObjectId, ParentRef, SceneItem, SceneNode, Transform2D,
+    VectorPath,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -427,6 +428,14 @@ fn validate_operation(
                     node.id
                 )));
             }
+            // Roots land on the default page; the node must declare it.
+            if node.parent != ParentRef::Page(document.scene.default_page()) {
+                return Err(TransactionError::InvariantViolation(format!(
+                    "root node {} declares {parent:?}, not the default page",
+                    node.id,
+                    parent = node.parent,
+                )));
+            }
             Ok(())
         }
         DocumentOp::InsertNode {
@@ -516,11 +525,17 @@ fn apply_operation(
     match op {
         DocumentOp::InsertRoot { index, node } => {
             let id = node.id;
-            document.scene.insert_node(*node);
-            // `insert_node` appends to the root order; move to the
-            // requested index (clamped) so z-order stays authorial.
-            let last = document.scene.root_order().len().saturating_sub(1);
-            document.scene.place_root(id, index.min(last));
+            let page = document.scene.default_page();
+            document
+                .scene
+                .insert_root(page, *node)
+                .map_err(|error| CommitError::ApplyFailed(error.to_string()))?;
+            // `insert_root` appends; move to the requested index
+            // (clamped) so z-order stays authorial.
+            document
+                .scene
+                .reorder_child(ParentRef::Page(page), id, index)
+                .map_err(|error| CommitError::ApplyFailed(error.to_string()))?;
             Ok(())
         }
         DocumentOp::InsertNode {
@@ -528,51 +543,20 @@ fn apply_operation(
             index,
             node,
         } => {
-            let id = node.id;
-            document.scene.insert_node(*node);
-            let parent_node = document.scene.get_node_mut(parent).ok_or_else(|| {
-                CommitError::ApplyFailed(format!("parent {parent} vanished at commit"))
-            })?;
-            match &mut parent_node.item {
-                SceneItem::Group(children) => {
-                    let at = index.min(children.len());
-                    children.insert(at, id);
-                    // `insert_node` records every node in the root order;
-                    // children belong under their parent, not at root.
-                    document.scene.unlist_root(id);
-                }
-                _ => {
-                    return Err(CommitError::ApplyFailed(format!(
-                        "parent {parent} is not a group"
-                    )));
-                }
-            }
+            document
+                .scene
+                .insert_child(parent, *node, Some(index))
+                .map_err(|error| CommitError::ApplyFailed(error.to_string()))?;
             Ok(())
         }
         DocumentOp::RemoveSubtree { root } => {
-            let mut stack = vec![root];
-            while let Some(id) = stack.pop() {
-                let node = document.scene.get_node(id).ok_or_else(|| {
-                    CommitError::ApplyFailed(format!("object {id} vanished at commit"))
-                })?;
-                if let SceneItem::Group(children) = &node.item {
-                    stack.extend(children.iter().copied());
-                }
-                if let Some((parent, index)) = find_parent(document, id) {
-                    if let Some(parent_node) = document.scene.get_node_mut(parent) {
-                        if let SceneItem::Group(children) = &mut parent_node.item {
-                            if children.get(index) == Some(&id) {
-                                children.remove(index);
-                            }
-                        }
-                    }
-                }
-                document
-                    .scene
-                    .remove_node(id)
-                    .map_err(|error| CommitError::ApplyFailed(error.to_string()))?;
-            }
-            Ok(())
+            // The narrow removal detaches both sides atomically and
+            // refuses to orphan live clip/mask sources.
+            document
+                .scene
+                .remove_subtree(root)
+                .map(|_| ())
+                .map_err(|error| CommitError::ApplyFailed(error.to_string()))
         }
         DocumentOp::SetTransform { object, transform } => {
             let node = document.scene.get_node_mut(object).ok_or_else(|| {
@@ -610,25 +594,10 @@ fn apply_operation(
             parent,
             child,
             index,
-        } => {
-            let parent_node = document.scene.get_node_mut(parent).ok_or_else(|| {
-                CommitError::ApplyFailed(format!("parent {parent} vanished at commit"))
-            })?;
-            match &mut parent_node.item {
-                SceneItem::Group(children) => {
-                    let from = children.iter().position(|id| *id == child).ok_or_else(|| {
-                        CommitError::ApplyFailed(format!("child {child} vanished at commit"))
-                    })?;
-                    children.remove(from);
-                    let at = index.min(children.len());
-                    children.insert(at, child);
-                    Ok(())
-                }
-                _ => Err(CommitError::ApplyFailed(format!(
-                    "parent {parent} is not a group"
-                ))),
-            }
-        }
+        } => document
+            .scene
+            .reorder_child(ParentRef::Object(parent), child, index)
+            .map_err(|error| CommitError::ApplyFailed(error.to_string())),
     }
 }
 
@@ -678,7 +647,12 @@ mod tests {
 
     fn group_fixture() -> (Document, ObjectId) {
         let mut document = Document::new("tx");
-        let mut group = SceneNode::new_path("group", VectorPath::new());
+        let page = document.scene.default_page();
+        let mut group = SceneNode::new_path(
+            "group",
+            VectorPath::new(),
+            petunia_core::ParentRef::Page(page),
+        );
         group.item = SceneItem::Group(Vec::new());
         let parent = group.id;
         document.scene.insert_node(group);
@@ -696,7 +670,11 @@ mod tests {
     #[test]
     fn atomic_commit_applies_all_or_nothing() {
         let (document, parent) = group_fixture();
-        let node = SceneNode::new_path("box", VectorPath::rect(0.0, 0.0, 10.0, 10.0));
+        let node = SceneNode::new_path(
+            "box",
+            VectorPath::rect(0.0, 0.0, 10.0, 10.0),
+            petunia_core::ParentRef::Object(parent),
+        );
         let good = DocumentOp::InsertNode {
             parent,
             index: 0,
@@ -718,7 +696,11 @@ mod tests {
     #[test]
     fn insert_and_remove_round_trip_through_inverses() {
         let (mut document, parent) = group_fixture();
-        let node = SceneNode::new_path("box", VectorPath::rect(0.0, 0.0, 10.0, 10.0));
+        let node = SceneNode::new_path(
+            "box",
+            VectorPath::rect(0.0, 0.0, 10.0, 10.0),
+            petunia_core::ParentRef::Object(parent),
+        );
         let id = node.id;
         let prepared = prepare_transaction(
             &document,
@@ -744,9 +726,18 @@ mod tests {
     #[test]
     fn insert_at_roots_orders_z_and_undoes() {
         let mut document = Document::new("roots");
-        let first = SceneNode::new_path("first", VectorPath::rect(0.0, 0.0, 5.0, 5.0));
+        let page = document.scene.default_page();
+        let first = SceneNode::new_path(
+            "first",
+            VectorPath::rect(0.0, 0.0, 5.0, 5.0),
+            petunia_core::ParentRef::Page(page),
+        );
         let first_id = first.id;
-        let second = SceneNode::new_path("second", VectorPath::rect(5.0, 0.0, 5.0, 5.0));
+        let second = SceneNode::new_path(
+            "second",
+            VectorPath::rect(5.0, 0.0, 5.0, 5.0),
+            petunia_core::ParentRef::Page(page),
+        );
         let second_id = second.id;
         // Append the second first, then insert the first at index 0.
         let insert_second = prepare_transaction(
@@ -779,7 +770,11 @@ mod tests {
             &document,
             request(vec![DocumentOp::InsertRoot {
                 index: 9,
-                node: Box::new(SceneNode::new_path("x", VectorPath::new())),
+                node: Box::new(SceneNode::new_path(
+                    "x",
+                    VectorPath::new(),
+                    petunia_core::ParentRef::Page(page),
+                )),
             }]),
             DocumentRevision(1),
         )

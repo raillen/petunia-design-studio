@@ -283,7 +283,12 @@ mod tests {
 
     fn group_document() -> (Document, petunia_core::ObjectId) {
         let mut document = Document::new("history");
-        let mut group = SceneNode::new_path("group", VectorPath::new());
+        let page = document.scene.default_page();
+        let mut group = SceneNode::new_path(
+            "group",
+            VectorPath::new(),
+            petunia_core::ParentRef::Page(page),
+        );
         group.item = SceneItem::Group(Vec::new());
         let parent = group.id;
         document.scene.insert_node(group);
@@ -302,6 +307,7 @@ mod tests {
                 node: Box::new(SceneNode::new_path(
                     "box",
                     VectorPath::rect(0.0, 0.0, 5.0, 5.0),
+                    petunia_core::ParentRef::Object(parent),
                 )),
             }],
             merge_key: merge_key.map(|key| MergeKey(key.to_string())),

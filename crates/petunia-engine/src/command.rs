@@ -170,7 +170,12 @@ mod tests {
         let mut doc = Document::new("Undo Test");
         let mut history = CommandHistory::new();
 
-        let node = SceneNode::new_path("Box", VectorPath::rect(0.0, 0.0, 100.0, 100.0));
+        let page = doc.scene.default_page();
+        let node = SceneNode::new_path(
+            "Box",
+            VectorPath::rect(0.0, 0.0, 100.0, 100.0),
+            petunia_core::ParentRef::Page(page),
+        );
         let id = node.id;
 
         history

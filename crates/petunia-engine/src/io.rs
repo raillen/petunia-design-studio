@@ -417,6 +417,7 @@ mod tests {
             .insert_node(petunia_core::SceneNode::new_path(
                 "box",
                 VectorPath::rect(0.0, 0.0, 5.0, 5.0),
+                petunia_core::ParentRef::Page(document.scene.default_page()),
             ));
         let full = ExporterCapabilities {
             vector_paths: true,

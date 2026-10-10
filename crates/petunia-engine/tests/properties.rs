@@ -144,7 +144,11 @@ proptest! {
     #[test]
     fn transactions_undo_exactly(size in 1.0f64..1_000.0) {
         let mut document = Document::new("prop");
-        let node = SceneNode::new_path("box", VectorPath::rect(0.0, 0.0, size, size));
+        let node = SceneNode::new_path(
+            "box",
+            VectorPath::rect(0.0, 0.0, size, size),
+            petunia_core::ParentRef::Page(document.scene.default_page()),
+        );
         let id = node.id;
         let prepared = prepare_transaction(
             &document,
@@ -211,6 +215,7 @@ fn document_fragments_remap_identities() {
     document.scene.insert_node(SceneNode::new_path(
         "a",
         VectorPath::rect(0.0, 0.0, 4.0, 4.0),
+        petunia_core::ParentRef::Page(document.scene.default_page()),
     ));
     let ids: Vec<ObjectId> = document.scene.root_order().to_vec();
     let fragment = collect_fragment(
