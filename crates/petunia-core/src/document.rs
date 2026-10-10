@@ -967,7 +967,9 @@ impl Document {
     fn check_paint(&self, paint: &Paint, what: &str) -> Result<()> {
         match paint {
             Paint::Solid(source) => self.check_color_source(source, what),
-            Paint::LinearGradient(gradient) | Paint::RadialGradient(gradient) => {
+            Paint::LinearGradient(gradient)
+            | Paint::RadialGradient(gradient)
+            | Paint::ConicalGradient(gradient) => {
                 gradient.validate()?;
                 for stop in &gradient.stops {
                     self.check_color_source(&stop.color, &format!("{what} stop"))?;

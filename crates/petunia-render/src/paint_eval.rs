@@ -7,7 +7,8 @@
 
 use crate::error::{RenderError, Result};
 use petunia_core::paint::{GradientInterpolation, GradientSpread};
-use petunia_render_model::{RenderColor, RenderGradient, RenderGradientStop};
+use petunia_core::PatternRepeat;
+use petunia_render_model::{RenderColor, RenderGradient, RenderGradientStop, RenderPattern};
 
 /// Sample one gradient at parameter `t`.
 pub fn sample_gradient(gradient: &RenderGradient, t: f64) -> Result<RenderColor> {
@@ -46,6 +47,66 @@ pub fn sample_radial(gradient: &RenderGradient, point: (f64, f64)) -> Result<Ren
     let dx = (point.0 - gradient.start.0) / gradient.radius;
     let dy = (point.1 - gradient.start.1) / gradient.radius;
     sample_gradient(gradient, dx.hypot(dy))
+}
+
+/// Evaluate a conical (sweep/angular) gradient at a document point.
+///
+/// In Y-down coordinates, positive visual rotation is clockwise.
+/// Angles map to normalized parameter `t in 0..1` starting from
+/// `start_angle`.
+pub fn sample_conical(gradient: &RenderGradient, point: (f64, f64)) -> Result<RenderColor> {
+    let dx = point.0 - gradient.start.0;
+    let dy = point.1 - gradient.start.1;
+    if dx == 0.0 && dy == 0.0 {
+        return sample_gradient(gradient, 0.0);
+    }
+    let angle = dy.atan2(dx);
+    let delta = angle - gradient.start_angle;
+    let tau = 2.0 * std::f64::consts::PI;
+    let t = delta.rem_euclid(tau) / tau;
+    sample_gradient(gradient, t)
+}
+
+/// Sample a pattern at a document-space point using wrap/repeat mode.
+pub fn sample_pattern(
+    pattern: &RenderPattern,
+    pixels: &[RenderColor],
+    point: (f64, f64),
+) -> Result<RenderColor> {
+    if pattern.width == 0 || pattern.height == 0 || pixels.is_empty() {
+        return Ok(RenderColor::TRANSPARENT);
+    }
+    let local = pattern
+        .transform
+        .transform_point(petunia_core::Point::new(point.0, point.1));
+    let u = wrap_coordinate(local.x, pattern.width as f64, pattern.repeat_x);
+    let v = wrap_coordinate(local.y, pattern.height as f64, pattern.repeat_y);
+    let x = (u as usize).min(pattern.width as usize - 1);
+    let y = (v as usize).min(pattern.height as usize - 1);
+    let index = y * pattern.width as usize + x;
+    Ok(pixels
+        .get(index)
+        .copied()
+        .unwrap_or(RenderColor::TRANSPARENT))
+}
+
+fn wrap_coordinate(coord: f64, size: f64, repeat: PatternRepeat) -> f64 {
+    if size <= 0.0 || !coord.is_finite() {
+        return 0.0;
+    }
+    match repeat {
+        PatternRepeat::Clamp => coord.clamp(0.0, size - 1.0),
+        PatternRepeat::Repeat => coord.rem_euclid(size),
+        PatternRepeat::Mirror => {
+            let period = (coord / size).floor();
+            let rem = coord.rem_euclid(size);
+            if (period as i64) & 1 == 0 {
+                rem
+            } else {
+                size - 1.0 - rem
+            }
+        }
+    }
 }
 
 fn apply_spread(t: f64, spread: GradientSpread) -> f64 {
@@ -324,6 +385,7 @@ mod tests {
             start: (0.0, 0.0),
             end: (100.0, 0.0),
             radius: 1.0,
+            start_angle: 0.0,
         }
     }
 

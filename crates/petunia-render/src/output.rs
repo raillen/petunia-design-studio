@@ -28,11 +28,56 @@ pub fn linear_to_srgb_byte(value: f32, dither: f32) -> u8 {
     (encoded.clamp(0.0, 1.0) * 255.0).round().clamp(0.0, 255.0) as u8
 }
 
+/// Tone mapping operators mapping high dynamic range (HDR) working
+/// buffers into standard dynamic range (SDR) display targets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ToneMapping {
+    /// Direct clamp to 0..=1 (SDR default).
+    #[default]
+    Clamp,
+    /// Simple Reinhard tone mapping: `x / (1 + x)`.
+    Reinhard,
+    /// Filmic ACES approximation for smooth highlight rolloff.
+    Aces,
+}
+
+impl ToneMapping {
+    /// Apply operator to a non-negative linear intensity.
+    #[must_use]
+    pub fn map(self, x: f32) -> f32 {
+        let x = x.max(0.0);
+        match self {
+            Self::Clamp => x.min(1.0),
+            Self::Reinhard => x / (1.0 + x),
+            Self::Aces => {
+                let a = 2.51;
+                let b = 0.03;
+                let c = 2.43;
+                let d = 0.59;
+                let e = 0.14;
+                ((x * (a * x + b)) / (x * (c * x + d) + e)).clamp(0.0, 1.0)
+            }
+        }
+    }
+}
+
 /// Convert one premultiplied linear frame to RGBA8. Straight alpha
 /// returns on the way out; fully transparent pixels canonicalize to
 /// zero color.
 #[must_use]
 pub fn frame_to_rgba8(pixels: &[Pixel], width: u32, dither: bool) -> Vec<u8> {
+    frame_to_rgba8_mapped(pixels, width, dither, ToneMapping::Clamp)
+}
+
+/// Convert one premultiplied linear frame to RGBA8 applying tone mapping
+/// to HDR intensities.
+#[must_use]
+pub fn frame_to_rgba8_mapped(
+    pixels: &[Pixel],
+    width: u32,
+    dither: bool,
+    tone_mapping: ToneMapping,
+) -> Vec<u8> {
     let mut out = Vec::with_capacity(pixels.len() * 4);
     for (index, pixel) in pixels.iter().enumerate() {
         let (x, y) = (index as u32 % width, index as u32 / width);
@@ -44,7 +89,10 @@ pub fn frame_to_rgba8(pixels: &[Pixel], width: u32, dither: bool) -> Vec<u8> {
         let (r, g, b) = if pixel.a <= 0.0 {
             (0.0, 0.0, 0.0)
         } else {
-            (pixel.r / pixel.a, pixel.g / pixel.a, pixel.b / pixel.a)
+            let r = tone_mapping.map(pixel.r / pixel.a);
+            let g = tone_mapping.map(pixel.g / pixel.a);
+            let b = tone_mapping.map(pixel.b / pixel.a);
+            (r, g, b)
         };
         out.push(linear_to_srgb_byte(r, amount));
         out.push(linear_to_srgb_byte(g, amount));

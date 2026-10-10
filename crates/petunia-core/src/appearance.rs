@@ -119,6 +119,7 @@ pub enum Paint {
     Solid(ColorSource),
     LinearGradient(Gradient),
     RadialGradient(Gradient),
+    ConicalGradient(Gradient),
     Pattern(PatternPaint),
 }
 

@@ -7,7 +7,7 @@
 use crate::color::ColorValue;
 use crate::error::{CoreError, Result};
 use crate::id::SwatchId;
-use crate::math::Point;
+use crate::math::{Angle, Point};
 use serde::{Deserialize, Serialize};
 
 /// Linked-versus-local paint choice: a literal value or a live
@@ -159,11 +159,12 @@ pub enum PaintSpace {
     Document,
 }
 
-/// Linear and radial gradient geometry in the declared space.
+/// Linear, radial and conical gradient geometry in the declared space.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum GradientGeometry {
     Linear { start: Point, end: Point },
     Radial { center: Point, radius: f64 },
+    Conical { center: Point, start_angle: Angle },
 }
 
 impl GradientGeometry {
@@ -175,6 +176,19 @@ impl GradientGeometry {
             )));
         }
         Ok(Self::Radial { center, radius })
+    }
+
+    /// Conical center must be finite; angle is validated by [`Angle`].
+    pub fn conical(center: Point, start_angle: Angle) -> Result<Self> {
+        if !center.x.is_finite() || !center.y.is_finite() {
+            return Err(CoreError::InvariantViolation(format!(
+                "non-finite conical gradient center rejected: {center:?}"
+            )));
+        }
+        Ok(Self::Conical {
+            center,
+            start_angle,
+        })
     }
 }
 
@@ -238,6 +252,21 @@ impl Gradient {
                 if !radius.is_finite() || *radius < 0.0 {
                     return Err(CoreError::InvariantViolation(format!(
                         "invalid radial gradient radius rejected: {radius}"
+                    )));
+                }
+            }
+            GradientGeometry::Conical {
+                center,
+                start_angle,
+            } => {
+                if !center.x.is_finite() || !center.y.is_finite() {
+                    return Err(CoreError::InvariantViolation(format!(
+                        "non-finite conical gradient center rejected: {center:?}"
+                    )));
+                }
+                if !start_angle.radians().is_finite() {
+                    return Err(CoreError::InvariantViolation(format!(
+                        "non-finite conical gradient angle rejected: {start_angle:?}"
                     )));
                 }
             }

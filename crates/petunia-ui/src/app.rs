@@ -66,6 +66,7 @@ pub struct StudioSession {
     layers: LayersPanel,
     layers_revision: DocumentRevision,
     layers_selection: Vec<ObjectId>,
+    show_multi_node_bounds: bool,
     captured: bool,
 }
 
@@ -99,6 +100,7 @@ impl StudioSession {
             layers: LayersPanel::new(),
             layers_revision: DocumentRevision(0),
             layers_selection: Vec::new(),
+            show_multi_node_bounds: true,
             captured: false,
         }
     }
@@ -275,6 +277,60 @@ impl StudioSession {
                 });
             }
         }
+    }
+
+    /// Whether discrete bounding boxes appear automatically for 2+
+    /// sub-selected nodes (Decision C of A–F). Session State only.
+    #[must_use]
+    pub fn show_multi_node_bounds(&self) -> bool {
+        self.show_multi_node_bounds
+    }
+
+    /// Toggle or set discrete multi-node bounding box visibility.
+    pub fn set_show_multi_node_bounds(&mut self, show: bool) {
+        self.show_multi_node_bounds = show;
+    }
+
+    /// Geometric bounding box over all 2+ sub-selected nodes in document
+    /// space. Returns `None` if fewer than 2 distinct nodes are selected.
+    #[must_use]
+    pub fn multi_node_bounds(&self) -> Option<petunia_core::Rect> {
+        let nodes = self.selection.sub.nodes();
+        if nodes.len() < 2 {
+            return None;
+        }
+        let mut bounds: Option<petunia_core::Rect> = None;
+        for node in nodes {
+            let scene_node = self.document.scene.get_node(node.object)?;
+            let path = scene_node.item_path()?;
+            let contour = path.contours.get(node.contour as usize)?;
+            let path_node = contour.nodes.get(node.node as usize)?;
+            let doc_point = scene_node.transform.transform_point(path_node.point);
+            let slot = petunia_core::Rect::new(doc_point.x, doc_point.y, 0.0, 0.0);
+            bounds = Some(match bounds {
+                Some(existing) => existing.union(slot),
+                None => slot,
+            });
+        }
+        bounds
+    }
+
+    /// Discrete multi-node bounding box overlay primitive (Decision C).
+    #[must_use]
+    pub fn multi_node_bounds_overlay(&self) -> Option<crate::tools::OverlayPrimitive> {
+        if !self.show_multi_node_bounds {
+            return None;
+        }
+        let bounds = self.multi_node_bounds()?;
+        let view = self.view_transform();
+        let min = view.doc_to_view(bounds.min());
+        let max = view.doc_to_view(bounds.max());
+        Some(crate::tools::OverlayPrimitive::Rect {
+            x: min.x,
+            y: min.y,
+            width: (max.x - min.x).max(1.0),
+            height: (max.y - min.y).max(1.0),
+        })
     }
 
     /// Whether an object may be edited: exists, visible and unlocked.
@@ -1537,5 +1593,48 @@ mod tests {
         assert_eq!(session.context_label(), "Scene");
         session.on_enter();
         assert!(session.context_label().starts_with("Vector Edit · node"));
+    }
+
+    #[test]
+    fn multi_node_bounds_overlay_appears_for_two_plus_nodes() {
+        let mut session = session_with_rect();
+        let object = session.selection.single().expect("selected");
+        session.on_enter();
+
+        // With zero or one node, no multi-node bounds overlay is emitted:
+        assert!(session.multi_node_bounds_overlay().is_none());
+        session.selection.sub.select_node(NodeId {
+            object,
+            contour: 0,
+            node: 0,
+        });
+        assert!(session.multi_node_bounds_overlay().is_none());
+
+        // Selecting a second node generates the discrete bounding box (Decision C):
+        session.selection.sub.toggle_node(NodeId {
+            object,
+            contour: 0,
+            node: 2,
+        });
+        assert_eq!(session.selection.sub.nodes().len(), 2);
+        let overlay = session
+            .multi_node_bounds_overlay()
+            .expect("overlay generated");
+        let crate::tools::OverlayPrimitive::Rect {
+            x,
+            y,
+            width,
+            height,
+        } = overlay
+        else {
+            panic!("expected rect overlay");
+        };
+        // Node 0 is (0,0), Node 2 is (100,100); view transform is identity:
+        assert_eq!((x, y, width, height), (0.0, 0.0, 100.0, 100.0));
+
+        // When toggled off by user preference, overlay is suppressed:
+        session.set_show_multi_node_bounds(false);
+        assert!(!session.show_multi_node_bounds());
+        assert!(session.multi_node_bounds_overlay().is_none());
     }
 }

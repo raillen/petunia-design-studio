@@ -11,7 +11,7 @@ use crate::compositor::{composite, Pixel};
 use crate::error::{RenderError, Result};
 use crate::graph::RenderGraph;
 use crate::output::frame_to_rgba8;
-use crate::paint_eval::{sample_linear, sample_radial};
+use crate::paint_eval::{sample_conical, sample_linear, sample_radial};
 use crate::rasterize::{fill_path, stroke_path, Target};
 use petunia_core::appearance::BlendMode;
 use petunia_core::FillRule;
@@ -118,6 +118,7 @@ enum PaintSampler {
     Solid(petunia_render_model::RenderColor),
     Linear(RenderGradient),
     Radial(RenderGradient),
+    Conical(RenderGradient),
 }
 
 impl PaintSampler {
@@ -128,6 +129,8 @@ impl PaintSampler {
                 .unwrap_or(petunia_render_model::RenderColor::TRANSPARENT),
             Self::Radial(gradient) => sample_radial(gradient, (doc_x, doc_y))
                 .unwrap_or(petunia_render_model::RenderColor::TRANSPARENT),
+            Self::Conical(gradient) => sample_conical(gradient, (doc_x, doc_y))
+                .unwrap_or(petunia_render_model::RenderColor::TRANSPARENT),
         }
     }
 }
@@ -137,6 +140,10 @@ fn sampler_for(paint: &RenderPaint) -> PaintSampler {
         RenderPaint::Solid(color) => PaintSampler::Solid(*color),
         RenderPaint::LinearGradient(gradient) => PaintSampler::Linear(gradient.clone()),
         RenderPaint::RadialGradient(gradient) => PaintSampler::Radial(gradient.clone()),
+        RenderPaint::ConicalGradient(gradient) => PaintSampler::Conical(gradient.clone()),
+        RenderPaint::Pattern(_) => {
+            PaintSampler::Solid(petunia_render_model::RenderColor::TRANSPARENT)
+        }
     }
 }
 
@@ -943,6 +950,7 @@ mod tests {
             start: (10.0, 20.0),
             end: (30.0, 20.0),
             radius: 0.0,
+            start_angle: 0.0,
         };
         let RenderPrimitive::Vector(vector) = &mut frame.snapshot.pages[0].primitives[0] else {
             panic!("expected vector");
@@ -1014,6 +1022,7 @@ mod tests {
             start: (20.0, 20.0),
             end: (20.0, 20.0),
             radius: 10.0,
+            start_angle: 0.0,
         };
         let RenderPrimitive::Vector(vector) = &mut frame.snapshot.pages[0].primitives[0] else {
             panic!("expected vector");

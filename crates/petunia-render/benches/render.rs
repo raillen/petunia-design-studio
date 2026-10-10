@@ -99,6 +99,7 @@ fn bench_gradients(c: &mut Criterion) {
         start: (0.0, 0.0),
         end: (100.0, 0.0),
         radius: 50.0,
+        start_angle: 0.0,
     };
     let oklab = RenderGradient {
         interpolation: GradientInterpolation::Oklab,
@@ -112,6 +113,13 @@ fn bench_gradients(c: &mut Criterion) {
     });
     group.bench_function("radial/sample", |b| {
         b.iter(|| sample_radial(&gradient, (25.0, 25.0)).expect("samples").r)
+    });
+    group.bench_function("conical/sample", |b| {
+        b.iter(|| {
+            petunia_render::paint_eval::sample_conical(&gradient, (25.0, 25.0))
+                .expect("samples")
+                .r
+        })
     });
     group.finish();
 }

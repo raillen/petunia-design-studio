@@ -193,13 +193,31 @@ impl Compiler {
         match paint {
             petunia_core::Paint::Solid(source) => self.compile_color(document, id, source),
             petunia_core::Paint::LinearGradient(gradient)
-            | petunia_core::Paint::RadialGradient(gradient) => {
+            | petunia_core::Paint::RadialGradient(gradient)
+            | petunia_core::Paint::ConicalGradient(gradient) => {
                 self.compile_gradient(document, node, id, paint, gradient)
             }
-            petunia_core::Paint::Pattern(_) => {
-                self.warn(id, "pattern paint needs a resource pass; skipped");
-                None
-            }
+            petunia_core::Paint::Pattern(pattern) => match &pattern.source {
+                petunia_core::PatternSource::Raster(res_id) => {
+                    let transform = if pattern.space == petunia_core::PaintSpace::Object {
+                        node.transform.concat(pattern.transform)
+                    } else {
+                        pattern.transform
+                    };
+                    Some(RenderPaint::Pattern(petunia_render_model::RenderPattern {
+                        resource: *res_id,
+                        width: 64,
+                        height: 64,
+                        repeat_x: pattern.repeat_x,
+                        repeat_y: pattern.repeat_y,
+                        transform,
+                    }))
+                }
+                petunia_core::PatternSource::Vector(_) => {
+                    self.warn(id, "vector pattern paint needs a rasterizer pass; skipped");
+                    None
+                }
+            },
         }
     }
 
@@ -227,11 +245,15 @@ impl Compiler {
                 midpoint: stop.midpoint,
             });
         }
-        let (start, end, radius) = match &gradient.geometry {
-            petunia_core::GradientGeometry::Linear { start, end } => (*start, *end, 0.0),
+        let (start, end, radius, start_angle) = match &gradient.geometry {
+            petunia_core::GradientGeometry::Linear { start, end } => (*start, *end, 0.0, 0.0),
             petunia_core::GradientGeometry::Radial { center, radius } => {
-                (*center, *center, *radius)
+                (*center, *center, *radius, 0.0)
             }
+            petunia_core::GradientGeometry::Conical {
+                center,
+                start_angle,
+            } => (*center, *center, 0.0, start_angle.radians()),
         };
         let place = |point: petunia_core::Point| {
             if gradient.space == petunia_core::PaintSpace::Object {
@@ -250,10 +272,15 @@ impl Compiler {
             start: (start.x, start.y),
             end: (end.x, end.y),
             radius,
+            start_angle,
         };
         match paint {
             petunia_core::Paint::LinearGradient(_) => Some(RenderPaint::LinearGradient(evaluated)),
-            _ => Some(RenderPaint::RadialGradient(evaluated)),
+            petunia_core::Paint::RadialGradient(_) => Some(RenderPaint::RadialGradient(evaluated)),
+            petunia_core::Paint::ConicalGradient(_) => {
+                Some(RenderPaint::ConicalGradient(evaluated))
+            }
+            _ => None,
         }
     }
 

@@ -5,7 +5,9 @@
 //! straight-alpha floats; the compositor premultiplies at the last
 //! step.
 
-use petunia_core::{GradientInterpolation, GradientSpread, PaintSpace, Rect};
+use petunia_core::{
+    GradientInterpolation, GradientSpread, PaintSpace, PatternRepeat, Rect, ResourceId, Transform2D,
+};
 use serde::{Deserialize, Serialize};
 
 /// Linear-space straight-alpha color for composition input.
@@ -71,14 +73,28 @@ pub struct RenderGradient {
     pub start: (f64, f64),
     pub end: (f64, f64),
     pub radius: f64,
+    pub start_angle: f64,
 }
 
-/// Paint ready to sample: solid, linear or radial gradient.
+/// Evaluated pattern paint ready to sample from decoded image resources.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RenderPattern {
+    pub resource: ResourceId,
+    pub width: u32,
+    pub height: u32,
+    pub repeat_x: PatternRepeat,
+    pub repeat_y: PatternRepeat,
+    pub transform: Transform2D,
+}
+
+/// Paint ready to sample: solid, linear, radial, conical gradient or pattern.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RenderPaint {
     Solid(RenderColor),
     LinearGradient(RenderGradient),
     RadialGradient(RenderGradient),
+    ConicalGradient(RenderGradient),
+    Pattern(RenderPattern),
 }
 
 /// Stroke ready to rasterize: paint plus resolved width.

@@ -33,7 +33,8 @@ pub use effect::{
 pub use error::{CompileError, CompileWarning, Result};
 pub use image::{ImagePrimitive, RasterPrimitive};
 pub use paint::{
-    RenderAppearance, RenderColor, RenderGradient, RenderGradientStop, RenderPaint, RenderStroke,
+    RenderAppearance, RenderColor, RenderGradient, RenderGradientStop, RenderPaint, RenderPattern,
+    RenderStroke,
 };
 pub use primitive::{RenderPath, RenderPrimitive, VectorPrimitive};
 pub use resource::{RenderResourceTable, ResourceEntry};
