@@ -289,9 +289,9 @@ fn inverse_of(
                 .get_node(*object)
                 .ok_or_else(|| missing(*object))?;
             match &node.item {
-                SceneItem::Path(path) => Ok(vec![DocumentOp::ReplacePath {
+                SceneItem::Path(item) => Ok(vec![DocumentOp::ReplacePath {
                     object: *object,
-                    path: path.clone(),
+                    path: item.path.clone(),
                 }]),
                 _ => Err(TransactionError::InvariantViolation(format!(
                     "object {object} is not a path"
@@ -578,8 +578,8 @@ fn apply_operation(
                 CommitError::ApplyFailed(format!("object {object} vanished at commit"))
             })?;
             match &mut node.item {
-                SceneItem::Path(slot) => {
-                    *slot = path;
+                SceneItem::Path(object) => {
+                    object.path = path;
                     Ok(())
                 }
                 _ => Err(CommitError::ApplyFailed(format!(

@@ -5,6 +5,7 @@
 //! expanded outlines and raster caches are derived state owned by
 //! the Engine and Render stages.
 
+use crate::color::ColorValue;
 use crate::error::{CoreError, Result};
 use crate::id::{AppearanceItemId, ObjectId, ResourceId, StyleId};
 use crate::math::Transform2D;
@@ -15,6 +16,38 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Appearance {
     pub items: Vec<AppearanceItem>,
+}
+
+impl Appearance {
+    /// The historical new-path default, now explicit: one enabled
+    /// solid sRGB black fill. New paths keep rendering exactly as
+    /// before; any other look is an explicit edit.
+    #[must_use]
+    pub fn solid_black() -> Self {
+        use crate::color::{
+            BuiltinColorSpace, ColorSpaceRef, ProcessColor, ProcessColorValue, Rgba,
+        };
+        use crate::id::AppearanceItemId;
+        Self {
+            items: vec![AppearanceItem {
+                id: AppearanceItemId::new_v4(),
+                enabled: true,
+                opacity: 1.0,
+                blend_mode: BlendMode::Normal,
+                kind: AppearanceKind::Fill(Paint::Solid(ColorSource::Value(ColorValue::Process(
+                    ProcessColor {
+                        value: ProcessColorValue::Rgb(Rgba {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            alpha: 1.0,
+                        }),
+                        space: ColorSpaceRef::Builtin(BuiltinColorSpace::Srgb),
+                    },
+                )))),
+            }],
+        }
+    }
 }
 
 impl Appearance {
@@ -370,6 +403,9 @@ impl VariableWidthProfile {
 }
 
 /// Stroke intent; expanded outlines stay derived until Expand Stroke.
+/// The stroke carries its own paint: a stroke item never borrows the
+/// fill paint implicitly, so the rendered color stays explicit in the
+/// stack order.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StrokeStyle {
     pub width: f64,
@@ -378,6 +414,7 @@ pub struct StrokeStyle {
     pub miter_limit: f64,
     pub alignment: StrokeAlignment,
     pub dash: DashPattern,
+    pub paint: ColorSource,
     pub variable_width: Option<VariableWidthProfile>,
     pub start_marker: Option<ObjectId>,
     pub end_marker: Option<ObjectId>,
@@ -387,7 +424,7 @@ impl StrokeStyle {
     /// Width must be finite and non-negative; miter limit finite.
     /// Markers persist reference plus parameters only; placement is
     /// derived from path tangent and never mutates path nodes.
-    pub fn new(width: f64, cap: StrokeCap, join: StrokeJoin) -> Result<Self> {
+    pub fn new(width: f64, cap: StrokeCap, join: StrokeJoin, paint: ColorSource) -> Result<Self> {
         if !width.is_finite() || width < 0.0 {
             return Err(CoreError::InvariantViolation(format!(
                 "invalid stroke width rejected: {width}"
@@ -400,6 +437,7 @@ impl StrokeStyle {
             miter_limit: 4.0,
             alignment: StrokeAlignment::Center,
             dash: DashPattern::new(Vec::new(), 0.0)?,
+            paint,
             variable_width: None,
             start_marker: None,
             end_marker: None,
@@ -519,6 +557,29 @@ mod tests {
         assert_eq!(profile.sample(0.0), 1.0);
         assert_eq!(profile.sample(0.5), 2.0);
         assert_eq!(profile.sample(1.0), 3.0);
+    }
+
+    #[test]
+    fn stroke_style_carries_its_own_paint() {
+        let paint = ColorSource::Swatch(crate::id::SwatchId::new_v4());
+        let style = StrokeStyle::new(2.0, StrokeCap::Round, StrokeJoin::Round, paint.clone())
+            .expect("valid");
+        assert_eq!(style.width, 2.0);
+        assert!(style.validate().is_ok());
+        assert!(StrokeStyle::new(-1.0, StrokeCap::Butt, StrokeJoin::Miter, paint).is_err());
+    }
+
+    #[test]
+    fn solid_black_matches_the_historical_default() {
+        let appearance = Appearance::solid_black();
+        assert_eq!(appearance.items.len(), 1);
+        let AppearanceKind::Fill(Paint::Solid(ColorSource::Value(color))) =
+            &appearance.items[0].kind
+        else {
+            panic!("default is one solid fill");
+        };
+        assert!(appearance.validate().is_ok());
+        let _ = color;
     }
 
     #[test]

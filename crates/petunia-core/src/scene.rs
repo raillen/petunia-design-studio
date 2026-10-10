@@ -1,6 +1,6 @@
 //! Scene graph tree, scene nodes, and appearance models.
 
-use crate::color::ColorRgba;
+use crate::appearance::Appearance;
 use crate::crop::ClipBinding;
 use crate::error::{CoreError, Result};
 use crate::generated::{GeneratedVectorObject, TraceObject};
@@ -15,17 +15,22 @@ use crate::text::TextObject;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 
-/// Appearance fill definition.
+/// A path object: materialized vector geometry plus the appearance
+/// stack that paints it. Geometry effects shared by paths and shapes
+/// live on the node; the evaluated path never replaces this source.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Fill {
-    Solid(ColorRgba),
+pub struct PathObject {
+    pub path: VectorPath,
+    pub appearance: Appearance,
 }
 
-/// Appearance stroke definition.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct Stroke {
-    pub color: ColorRgba,
-    pub width: f64,
+/// A parametric shape object: high-level intent plus the appearance
+/// stack that paints its evaluated path. Stays parametric until an
+/// explicit Convert to Curves command materializes it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ShapeObject {
+    pub shape: ParametricShape,
+    pub appearance: Appearance,
 }
 
 /// Structural owner of a node: a page root list or a container object.
@@ -58,9 +63,9 @@ pub struct MaskBinding {
 /// authorial payload; containers below carry ordered children.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SceneItem {
-    Path(VectorPath),
+    Path(PathObject),
     Group(Vec<ObjectId>),
-    Shape(ParametricShape),
+    Shape(ShapeObject),
     Text(TextObject),
     Image(ImageObject),
     PixelLayer(PixelLayer),
@@ -93,8 +98,6 @@ pub struct SceneNode {
     pub locked: bool,
     pub transform: Transform2D,
     pub opacity: f32,
-    pub fill: Option<Fill>,
-    pub stroke: Option<Stroke>,
     pub clip: Option<ClipBinding>,
     pub mask: Option<MaskBinding>,
     pub item: SceneItem,
@@ -105,7 +108,26 @@ impl SceneNode {
     #[must_use]
     pub fn item_path(&self) -> Option<&VectorPath> {
         match &self.item {
-            SceneItem::Path(path) => Some(path),
+            SceneItem::Path(object) => Some(&object.path),
+            _ => None,
+        }
+    }
+
+    /// Borrow the path object of a `SceneItem::Path`, when it is one.
+    #[must_use]
+    pub fn item_path_object(&self) -> Option<&PathObject> {
+        match &self.item {
+            SceneItem::Path(object) => Some(object),
+            _ => None,
+        }
+    }
+
+    /// Borrow the appearance of a path or shape item, when it is one.
+    #[must_use]
+    pub fn item_appearance(&self) -> Option<&Appearance> {
+        match &self.item {
+            SceneItem::Path(object) => Some(&object.appearance),
+            SceneItem::Shape(object) => Some(&object.appearance),
             _ => None,
         }
     }
@@ -130,11 +152,12 @@ impl SceneNode {
             locked: false,
             transform: Transform2D::IDENTITY,
             opacity: 1.0,
-            fill: Some(Fill::Solid(ColorRgba::BLACK)),
-            stroke: None,
             clip: None,
             mask: None,
-            item: SceneItem::Path(path),
+            item: SceneItem::Path(PathObject {
+                path,
+                appearance: Appearance::solid_black(),
+            }),
         }
     }
 }
@@ -905,8 +928,6 @@ mod tests {
             locked: false,
             transform: Transform2D::IDENTITY,
             opacity: 1.0,
-            fill: None,
-            stroke: None,
             clip: None,
             mask: None,
             item: SceneItem::Group(Vec::new()),
@@ -977,8 +998,6 @@ mod tests {
             locked: false,
             transform: Transform2D::IDENTITY,
             opacity: 1.0,
-            fill: None,
-            stroke: None,
             clip: None,
             mask: None,
             item: SceneItem::Group(Vec::new()),
@@ -1062,8 +1081,6 @@ mod tests {
             locked: false,
             transform: Transform2D::IDENTITY,
             opacity: 1.0,
-            fill: None,
-            stroke: None,
             clip: None,
             mask: None,
             item: SceneItem::Group(Vec::new()),
@@ -1162,6 +1179,21 @@ mod tests {
         assert_eq!(scene.page_roots(first_page), Some([first_id].as_slice()));
         assert_eq!(scene.page_roots(second_page), Some([second_id].as_slice()));
         assert!(scene.validate().is_ok());
+    }
+
+    #[test]
+    fn path_object_round_trip_preserves_appearance() {
+        let mut scene = SceneGraph::new();
+        let page = scene.default_page();
+        let node = boxed(&scene, "painted");
+        let id = node.id;
+        scene.insert_root(page, node).expect("insert");
+        let json = serde_json::to_string(&scene).expect("serializes");
+        let back: SceneGraph = serde_json::from_str(&json).expect("parses");
+        let node = back.get_node(id).expect("node");
+        let appearance = node.item_appearance().expect("appearance");
+        assert_eq!(appearance.items.len(), 1);
+        assert!(back.validate().is_ok());
     }
 
     #[test]

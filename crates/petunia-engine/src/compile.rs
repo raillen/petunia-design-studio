@@ -9,9 +9,7 @@
 
 use crate::geometry::bezier::flatten_contour;
 use crate::transaction::DocumentRevision;
-use petunia_core::{
-    Fill, ObjectId, PageId, Rect, SceneItem, SceneNode, Size2, Tolerance, VectorPath,
-};
+use petunia_core::{ObjectId, PageId, Rect, SceneItem, SceneNode, Size2, Tolerance, VectorPath};
 use petunia_render_model::{
     CompileWarning, RenderAppearance, RenderClip, RenderColor, RenderFrame, RenderGroup,
     RenderPaint, RenderPath, RenderPrimitive, RenderQuality, RenderResourceTable, RenderSnapshot,
@@ -85,8 +83,8 @@ impl Compiler {
             return;
         };
         match &node.item {
-            SceneItem::Path(path) => {
-                out.push(self.compile_path(node, path));
+            SceneItem::Path(object) => {
+                out.push(self.compile_path(document, node, object));
             }
             SceneItem::Group(children) => {
                 let mut compiled = Vec::new();
@@ -133,31 +131,48 @@ impl Compiler {
         }
     }
 
-    fn compile_path(&mut self, node: &SceneNode, path: &VectorPath) -> RenderPrimitive {
+    fn compile_path(
+        &mut self,
+        document: &petunia_core::Document,
+        node: &SceneNode,
+        object: &petunia_core::PathObject,
+    ) -> RenderPrimitive {
         let mut geometry = RenderPath::new();
-        for contour in &path.contours {
+        for contour in &object.path.contours {
             let flat = flatten_contour(contour, self.tolerance);
             geometry.push_contour(
                 flat.iter().map(|point| (point.x, point.y)).collect(),
                 contour.closed,
             );
         }
-        let fill = node.fill.as_ref().map(|fill| match fill {
-            Fill::Solid(color) => RenderPaint::Solid(srgb_to_linear(color)),
-        });
-        let bounds = self.node_bounds_opt(node, path);
+        // First enabled fill and stroke win; the stack order beyond
+        // that belongs to a multi-pass compositor, not this compiler.
+        let mut fill = None;
+        let mut stroke = None;
+        for item in object.appearance.items.iter().filter(|item| item.enabled) {
+            match &item.kind {
+                petunia_core::AppearanceKind::Fill(paint) => {
+                    if fill.is_none() {
+                        fill = self.compile_paint(document, node.id, paint);
+                    }
+                }
+                petunia_core::AppearanceKind::Stroke(style) => {
+                    if stroke.is_none() {
+                        let width = style.width.max(0.0);
+                        if let Some(paint) = self.compile_color(document, node.id, &style.paint) {
+                            stroke = Some(petunia_render_model::RenderStroke { paint, width });
+                        }
+                    }
+                }
+            }
+        }
+        let bounds = self.node_bounds_opt(object);
         RenderPrimitive::Vector(VectorPrimitive {
             source: node.id,
             geometry,
             appearance: RenderAppearance {
                 fill,
-                stroke: node
-                    .stroke
-                    .as_ref()
-                    .map(|stroke| petunia_render_model::RenderStroke {
-                        paint: RenderPaint::Solid(srgb_to_linear_stroke(stroke)),
-                        width: stroke.width.max(0.0),
-                    }),
+                stroke,
                 opacity: node.opacity.clamp(0.0, 1.0),
             },
             transform: node.transform,
@@ -165,10 +180,82 @@ impl Compiler {
         })
     }
 
+    /// Resolve one authorial paint to a render paint. Solid colors
+    /// resolve; gradients, patterns and unimplemented spaces degrade
+    /// with a warning instead of a silent fallback.
+    fn compile_paint(
+        &mut self,
+        document: &petunia_core::Document,
+        id: ObjectId,
+        paint: &petunia_core::Paint,
+    ) -> Option<RenderPaint> {
+        match paint {
+            petunia_core::Paint::Solid(source) => self.compile_color(document, id, source),
+            petunia_core::Paint::LinearGradient(_)
+            | petunia_core::Paint::RadialGradient(_)
+            | petunia_core::Paint::Pattern(_) => {
+                self.warn(id, "gradient/pattern paint needs a renderer pass; skipped");
+                None
+            }
+        }
+    }
+
+    fn compile_color(
+        &mut self,
+        document: &petunia_core::Document,
+        id: ObjectId,
+        source: &petunia_core::ColorSource,
+    ) -> Option<RenderPaint> {
+        use petunia_core::{BuiltinColorSpace, ColorSpaceRef, ColorValue, ProcessColorValue};
+        let color = match source {
+            petunia_core::ColorSource::Value(value) => value.clone(),
+            petunia_core::ColorSource::Swatch(swatch) => {
+                let Some(linked) = document.swatches.get(*swatch) else {
+                    self.warn(id, "paint references a missing swatch; skipped");
+                    return None;
+                };
+                match &linked.value {
+                    petunia_core::SwatchValue::Color(color) => color.clone(),
+                    petunia_core::SwatchValue::Gradient(_) => {
+                        self.warn(id, "swatch gradient needs a renderer pass; skipped");
+                        return None;
+                    }
+                }
+            }
+        };
+        match color {
+            ColorValue::Process(process) => match (&process.value, &process.space) {
+                (
+                    ProcessColorValue::Rgb(channels),
+                    ColorSpaceRef::Builtin(BuiltinColorSpace::Srgb),
+                ) => Some(RenderPaint::Solid(srgb_to_linear(channels))),
+                (
+                    ProcessColorValue::Rgb(channels),
+                    ColorSpaceRef::Builtin(BuiltinColorSpace::LinearSrgb),
+                ) => Some(RenderPaint::Solid(RenderColor {
+                    r: channels.r,
+                    g: channels.g,
+                    b: channels.b,
+                    a: channels.alpha.clamp(0.0, 1.0),
+                })),
+                _ => {
+                    self.warn(id, "color needs a managed transform; skipped");
+                    None
+                }
+            },
+            ColorValue::Spot(_) => {
+                // Spot inks have no definition registry in this
+                // revision, so no alternate preview can resolve.
+                self.warn(id, "spot ink without a definition registry; skipped");
+                None
+            }
+        }
+    }
+
     fn node_bounds(&self, document: &petunia_core::Document, node: &SceneNode) -> Rect {
         match &node.item {
-            SceneItem::Path(path) => self
-                .path_bounds(path)
+            SceneItem::Path(object) => self
+                .path_bounds(&object.path)
                 .unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0)),
             SceneItem::Group(children) => {
                 let mut bounds: Option<Rect> = None;
@@ -187,9 +274,9 @@ impl Compiler {
         }
     }
 
-    fn node_bounds_opt(&self, node: &SceneNode, path: &VectorPath) -> Rect {
+    fn node_bounds_opt(&self, object: &petunia_core::PathObject) -> Rect {
         let mut bounds: Option<Rect> = None;
-        for contour in &path.contours {
+        for contour in &object.path.contours {
             for point in &contour.nodes {
                 let slot = Rect::new(point.point.x, point.point.y, 0.0, 0.0);
                 bounds = Some(match bounds {
@@ -199,9 +286,14 @@ impl Compiler {
             }
         }
         let mut bounds = bounds.unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0));
-        // Conservative pad for stroke width.
-        if let Some(stroke) = &node.stroke {
-            let pad = (stroke.width / 2.0).max(0.0);
+        // Conservative pad for the widest enabled stroke.
+        let mut pad = 0.0f64;
+        for item in object.appearance.items.iter().filter(|item| item.enabled) {
+            if let petunia_core::AppearanceKind::Stroke(style) = &item.kind {
+                pad = pad.max((style.width / 2.0).max(0.0));
+            }
+        }
+        if pad > 0.0 {
             bounds = Rect::new(
                 bounds.x - pad,
                 bounds.y - pad,
@@ -236,22 +328,13 @@ fn union_rect(a: Rect, b: Rect) -> Rect {
     )
 }
 
-fn srgb_to_linear(color: &petunia_core::ColorRgba) -> RenderColor {
+fn srgb_to_linear(color: &petunia_core::Rgba) -> RenderColor {
     RenderColor {
         r: encoded_to_linear(color.r),
         g: encoded_to_linear(color.g),
         b: encoded_to_linear(color.b),
-        a: color.a.clamp(0.0, 1.0),
+        a: color.alpha.clamp(0.0, 1.0),
     }
-}
-
-fn srgb_to_linear_stroke(stroke: &petunia_core::scene::Stroke) -> RenderColor {
-    srgb_to_linear(&petunia_core::ColorRgba::new(
-        stroke.color.r,
-        stroke.color.g,
-        stroke.color.b,
-        stroke.color.a,
-    ))
 }
 
 fn encoded_to_linear(channel: f32) -> f32 {
@@ -312,9 +395,9 @@ impl ClipResolver for PathClipResolver {
     ) -> Option<Vec<(f64, f64)>> {
         let node = document.scene.get_node(binding.source)?;
         match &node.item {
-            SceneItem::Path(path) => {
+            SceneItem::Path(object) => {
                 let mut polygon = Vec::new();
-                for contour in &path.contours {
+                for contour in &object.path.contours {
                     if !contour.closed {
                         continue;
                     }
@@ -408,6 +491,124 @@ mod tests {
     }
 
     #[test]
+    fn appearance_stack_drives_fill_and_stroke() {
+        use petunia_core::{
+            Appearance, AppearanceItem, AppearanceItemId, AppearanceKind, BlendMode,
+            BuiltinColorSpace, ColorSource, ColorSpaceRef, ColorValue, ProcessColor,
+            ProcessColorValue, Rgba, StrokeCap, StrokeJoin, StrokeStyle,
+        };
+        fn solid(r: f32, g: f32, b: f32) -> petunia_core::Paint {
+            petunia_core::Paint::Solid(ColorSource::Value(ColorValue::Process(ProcessColor {
+                value: ProcessColorValue::Rgb(Rgba {
+                    r,
+                    g,
+                    b,
+                    alpha: 1.0,
+                }),
+                space: ColorSpaceRef::Builtin(BuiltinColorSpace::Srgb),
+            })))
+        }
+        fn item(kind: petunia_core::AppearanceKind) -> AppearanceItem {
+            AppearanceItem {
+                id: AppearanceItemId::new_v4(),
+                enabled: true,
+                opacity: 1.0,
+                blend_mode: BlendMode::Normal,
+                kind,
+            }
+        }
+        let mut document = document_with_rect();
+        let id = document.scene.root_order()[0];
+        let appearance = Appearance {
+            items: vec![
+                item(AppearanceKind::Fill(solid(1.0, 0.0, 0.0))),
+                item(AppearanceKind::Fill(solid(0.0, 0.0, 1.0))),
+                item(AppearanceKind::Stroke(
+                    StrokeStyle::new(
+                        4.0,
+                        StrokeCap::Round,
+                        StrokeJoin::Round,
+                        ColorSource::Value(ColorValue::Process(ProcessColor {
+                            value: ProcessColorValue::Rgb(Rgba {
+                                r: 0.0,
+                                g: 1.0,
+                                b: 0.0,
+                                alpha: 1.0,
+                            }),
+                            space: ColorSpaceRef::Builtin(BuiltinColorSpace::Srgb),
+                        })),
+                    )
+                    .expect("stroke"),
+                )),
+            ],
+        };
+        if let petunia_core::SceneItem::Path(object) =
+            &mut document.scene.get_node_mut(id).expect("node").item
+        {
+            object.appearance = appearance;
+        }
+        let (snapshot, warnings) = compile_document(
+            &document,
+            DocumentRevision::GENESIS,
+            RenderQuality::Authoring,
+        );
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let RenderPrimitive::Vector(vector) = &snapshot.pages[0].primitives[0] else {
+            panic!("expected vector");
+        };
+        // First enabled fill wins: sRGB red linearizes to 1.0.
+        let RenderPaint::Solid(fill) = vector.appearance.fill.as_ref().expect("fill") else {
+            panic!("expected solid fill");
+        };
+        assert_eq!((fill.r, fill.g, fill.b), (1.0, 0.0, 0.0));
+        // The stroke resolves with its own paint and width.
+        let stroke = vector.appearance.stroke.as_ref().expect("stroke");
+        assert_eq!(stroke.width, 4.0);
+        let RenderPaint::Solid(paint) = &stroke.paint else {
+            panic!("expected solid stroke");
+        };
+        assert!(paint.g > 0.9, "{paint:?}");
+    }
+
+    #[test]
+    fn unresolvable_paint_degrades_with_warnings() {
+        use petunia_core::{
+            Appearance, AppearanceItem, AppearanceItemId, AppearanceKind, BlendMode,
+        };
+        let mut document = document_with_rect();
+        let id = document.scene.root_order()[0];
+        let appearance = Appearance {
+            items: vec![AppearanceItem {
+                id: AppearanceItemId::new_v4(),
+                enabled: true,
+                opacity: 1.0,
+                blend_mode: BlendMode::Normal,
+                kind: AppearanceKind::Fill(petunia_core::Paint::Solid(
+                    petunia_core::ColorSource::Swatch(petunia_core::SwatchId::new_v4()),
+                )),
+            }],
+        };
+        if let petunia_core::SceneItem::Path(object) =
+            &mut document.scene.get_node_mut(id).expect("node").item
+        {
+            object.appearance = appearance;
+        }
+        let (snapshot, warnings) = compile_document(
+            &document,
+            DocumentRevision::GENESIS,
+            RenderQuality::Authoring,
+        );
+        let RenderPrimitive::Vector(vector) = &snapshot.pages[0].primitives[0] else {
+            panic!("expected vector");
+        };
+        assert!(
+            vector.appearance.fill.is_none(),
+            "missing swatch skips the fill"
+        );
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+    }
+
+    #[test]
     fn unsupported_items_degrade_with_warnings() {
         use petunia_core::{SceneItem, TextFlow, TextObject};
         let mut document = document_with_rect();
@@ -420,8 +621,6 @@ mod tests {
             locked: false,
             transform: petunia_core::Transform2D::IDENTITY,
             opacity: 1.0,
-            fill: None,
-            stroke: None,
             clip: None,
             mask: None,
             item: SceneItem::Text(

@@ -87,7 +87,9 @@ pub use resources::{
     ContentHash, FontEmbedPolicy, ResourceKind, ResourceMetadata, ResourceRecord, ResourceRegistry,
     ResourceSource,
 };
-pub use scene::{Fill, MaskBinding, MaskMode, ParentRef, SceneGraph, SceneItem, SceneNode, Stroke};
+pub use scene::{
+    MaskBinding, MaskMode, ParentRef, PathObject, SceneGraph, SceneItem, SceneNode, ShapeObject,
+};
 pub use serialization::deserialize_unique_btree_map;
 pub use shape::{
     CornerRadii, EllipseArc, EllipseSpec, ParametricShape, PolygonSpec, RectangleSpec, StarSpec,

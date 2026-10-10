@@ -729,38 +729,15 @@ impl Document {
                 let Some(node) = self.scene.get_node(id) else {
                     continue;
                 };
-                // Legacy node paint stays finite; the appearance
-                // system wires in through its own slice.
-                if let Some(crate::scene::Fill::Solid(color)) = &node.fill {
-                    for channel in [color.r, color.g, color.b, color.a] {
-                        if !channel.is_finite() {
-                            return Err(CoreError::InvariantViolation(format!(
-                                "non-finite fill channel on {id}"
-                            )));
-                        }
-                    }
-                }
-                if let Some(stroke) = &node.stroke {
-                    for channel in [
-                        stroke.color.r,
-                        stroke.color.g,
-                        stroke.color.b,
-                        stroke.color.a,
-                    ] {
-                        if !channel.is_finite() {
-                            return Err(CoreError::InvariantViolation(format!(
-                                "non-finite stroke channel on {id}"
-                            )));
-                        }
-                    }
-                    if !stroke.width.is_finite() || stroke.width < 0.0 {
-                        return Err(CoreError::InvariantViolation(format!(
-                            "invalid stroke width on {id}: {}",
-                            stroke.width
-                        )));
-                    }
-                }
+                // Appearance lives on path and shape items, never on
+                // the node: every paint resolves through the stack.
                 match &node.item {
+                    SceneItem::Path(object) => {
+                        self.check_appearance(&object.appearance, &format!("path {id}"))?;
+                    }
+                    SceneItem::Shape(object) => {
+                        self.check_appearance(&object.appearance, &format!("shape {id}"))?;
+                    }
                     SceneItem::Text(text) => {
                         crate::text::TextObject::validate(
                             &text.text,
@@ -791,7 +768,7 @@ impl Document {
                         self.check_generator(&generated.generator, id)?;
                         self.check_appearance(&generated.appearance, &format!("generated {id}"))?;
                     }
-                    SceneItem::Shape(_) | SceneItem::Path(_) | SceneItem::Group(_) => {}
+                    SceneItem::Group(_) => {}
                     SceneItem::SymbolInstance(_) => {}
                 }
                 if let Some(children) = node.item.children() {
@@ -944,6 +921,10 @@ impl Document {
             match &item.kind {
                 AppearanceKind::Fill(paint) => self.check_paint(paint, &format!("{what} fill"))?,
                 AppearanceKind::Stroke(style) => {
+                    self.check_paint(
+                        &Paint::Solid(style.paint.clone()),
+                        &format!("{what} stroke"),
+                    )?;
                     for marker in [style.start_marker, style.end_marker].iter().flatten() {
                         if self.scene.get_node(*marker).is_none() {
                             return Err(CoreError::DanglingReference(format!(
@@ -1137,8 +1118,6 @@ mod tests {
             locked: false,
             transform: crate::math::Transform2D::IDENTITY,
             opacity: 1.0,
-            fill: None,
-            stroke: None,
             clip: None,
             mask: None,
             item: SceneItem::Text(text),

@@ -72,11 +72,14 @@ pub struct StrokeStyle {
     pub miter_limit: f64,
     pub alignment: StrokeAlignment,
     pub dash: DashPattern,
+    pub paint: ColorSource,
     pub variable_width: Option<VariableWidthProfile>,
     pub start_marker: Option<MarkerRef>,
     pub end_marker: Option<MarkerRef>,
 }
 ```
+
+O stroke carrega a própria tinta: um item de stroke nunca toma a tinta do fill por implicitude, então a cor renderizada continua explícita na ordem da stack.
 
 **Cap** pode ser Butt, Round ou Square. **Join** pode ser Miter, Round ou Bevel. `miter_limit` limita spikes em ângulos agudos.
 

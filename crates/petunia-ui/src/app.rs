@@ -474,9 +474,10 @@ impl StudioSession {
             if !node.visible {
                 continue;
             }
-            let SceneItem::Path(path) = &node.item else {
+            let SceneItem::Path(object) = &node.item else {
                 continue;
             };
+            let path = &object.path;
             let Some(local) = self.to_local(node, document_point) else {
                 continue;
             };

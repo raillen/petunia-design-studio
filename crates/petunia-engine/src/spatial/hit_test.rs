@@ -126,7 +126,7 @@ fn narrow_hit(
     tolerance: Tolerance,
 ) -> Option<f64> {
     match item {
-        SceneItem::Path(path) => hit_path(&path, request, tolerance, document, id),
+        SceneItem::Path(object) => hit_path(&object.path, request, tolerance, document, id),
         SceneItem::Group(_) => None,
         _ => hit_bounds(document, id, request),
     }
@@ -147,7 +147,7 @@ fn hit_bounds(document: &Document, id: ObjectId, request: HitTestRequest) -> Opt
 fn item_bounds(document: &Document, id: ObjectId) -> Option<Bounds> {
     let node = document.scene.get_node(id)?;
     match &node.item {
-        SceneItem::Path(path) => path_bounds(path),
+        SceneItem::Path(object) => path_bounds(&object.path),
         SceneItem::Group(_)
         | SceneItem::Shape(_)
         | SceneItem::Text(_)
@@ -211,11 +211,16 @@ fn hit_stroke(
     tolerance: Tolerance,
 ) -> Option<f64> {
     let node = document.scene.get_node(id)?;
-    let half_width = node
-        .stroke
-        .as_ref()
-        .map(|stroke| stroke.width / 2.0)
-        .unwrap_or(0.5);
+    // Widest enabled stroke, falling back to the legacy 1px probe
+    // when the appearance carries no stroke.
+    let mut half_width = 0.5f64;
+    if let Some(object) = node.item_path_object() {
+        for item in object.appearance.items.iter().filter(|item| item.enabled) {
+            if let petunia_core::AppearanceKind::Stroke(style) = &item.kind {
+                half_width = half_width.max(style.width.max(0.0) / 2.0);
+            }
+        }
+    }
     let limit = half_width + request.tolerance_px;
     let mut best: Option<f64> = None;
     for contour in &path.contours {
