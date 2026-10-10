@@ -122,7 +122,6 @@ pub fn delete_node(
 /// anything. The caller decides whether the error is acceptable:
 /// `within_tolerance` mirrors the `delete_node` decision boundary
 /// exactly, so preview and commit can never disagree.
-#[must_use]
 pub fn preview_delete(
     contour: &Contour,
     index: usize,
