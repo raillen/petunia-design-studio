@@ -245,6 +245,11 @@
       "revision": "cdd5fa68cd8798936e6a81ec05c176ce7b5f793a",
       "document": "01-core/ids-serialization.md",
       "summary": "ContentHash BLAKE3 em 2026-10-10: digest BLAKE3-256 com forma textual tagueada blake3:<hex>, parse estrito com erros tipados, serialização só minúscula, fuzz de digests hostis. Gates: workspace 361 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
+    },
+    "ev-c03-appearance": {
+      "revision": "ad596c500765cd34e4dc56ce2478e110af44fb25",
+      "document": "01-core/appearance-effects.md",
+      "summary": "Appearance ligada aos itens em 2026-10-10: PathObject/ShapeObject com stack, Fill/Stroke legados removidos, StrokeStyle com paint própria, compilador resolve stack com degraded tipado, pixels de conteúdo sólido preservados. Gates: workspace 366 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
     }
   },
   "tasks": [
@@ -401,8 +406,8 @@
       "description": "Valor de cor com perfil explícito, Spot, swatches, gradients, appearance e effects.",
       "document": "01-core/color.md",
       "status": "DONE",
-      "updated": "2026-10-09",
-      "baseline": "Implementado em b16d4eb: canais f32 validados, ProcessColor com espaço, Spot, swatches, gradients, appearance/effects e fronteira ICC. Follow-up: CMM de bytes ICC no Engine, schemas de Adjustment, conical/mesh.",
+      "updated": "2026-10-10",
+      "baseline": "Cor e appearance em revisões anteriores; fiação PathObject/ShapeObject e StrokeStyle com paint em ad596c5. Segue futuro: render de gradients/patterns e effect stacks no node.",
       "checkpoints": [
         {
           "title": "color.rs com RGBA e espaços básicos",
@@ -423,6 +428,11 @@
           "title": "Color management com ICC encapsulado",
           "completed": true,
           "evidence": "ev-c03"
+        },
+        {
+          "title": "Appearance ligada aos itens Path/Shape com compilação preservando pixels",
+          "completed": true,
+          "evidence": "ev-c03-appearance"
         }
       ],
       "documents": [

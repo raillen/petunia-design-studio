@@ -418,3 +418,16 @@ Dois Appearances locais visualmente idênticos continuam valores independentes a
 16. Effects/Adjustments built-in usam params tipados/versionáveis.
 17. Linked Style e Local Appearance são estados distintos.
 18. Igualdade visual não substitui identidade de Style.
+
+## Verificação da fiação nos itens (2026-10-10)
+
+Escopo: `PathObject`/`ShapeObject`, remoção do `Fill`/`Stroke` legados, `StrokeStyle` com paint e compilação via stack. Revisão `ad596c500765cd34e4dc56ce2478e110af44fb25` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 366 passed / 0 failed |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: gradients, patterns e spots degradam com aviso até o renderer suportá-los; effect stacks no node e swatch/spot registries dedicados seguem futuros.
