@@ -250,6 +250,11 @@
       "revision": "ad596c500765cd34e4dc56ce2478e110af44fb25",
       "document": "01-core/appearance-effects.md",
       "summary": "Appearance ligada aos itens em 2026-10-10: PathObject/ShapeObject com stack, Fill/Stroke legados removidos, StrokeStyle com paint própria, compilador resolve stack com degraded tipado, pixels de conteúdo sólido preservados. Gates: workspace 366 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
+    },
+    "ev-c01-numeric": {
+      "revision": "4612b66304b18a1d2e44399b56d5a006fd11fc",
+      "document": "01-core/math.md",
+      "summary": "Dívidas numéricas em 2026-10-10: Rect canônico com API completa, -0.0 dobrado em todos os construtores, TransformError com try_inverse por tolerância, decompose/recompose determinístico com round-trip, RandomSeed persistente. Gates: workspace 371 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
     }
   },
   "tasks": [
@@ -332,6 +337,11 @@
           "title": "ContentHash BLAKE3-256 tagueado com parse estrito",
           "completed": true,
           "evidence": "ev-c01-blake3"
+        },
+        {
+          "title": "Dívidas numéricas: Rect canônico, erros de inversão, decompose e seed",
+          "completed": true,
+          "evidence": "ev-c01-numeric"
         }
       ],
       "documents": [
