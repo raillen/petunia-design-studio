@@ -396,3 +396,16 @@ Casos obrigatórios:
 10. Resource/tile recovery evita cópias integrais desnecessárias.
 11. Mudança externa de arquivo gera conflito explícito.
 12. Recovery é dado privado local por padrão.
+
+## Verificação do journal com replay (2026-10-10)
+
+Escopo: framing com checksum, replay por prefixo confirmado e sessões de recovery. Revisão `a3e20794ebc79ea8774aa4b66de049e5d8ede080` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 349 passed / 0 failed (Engine com 7 de journal + 8 de recovery) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: blobs de resource viajam inline no record (COW/content-addressed é futuro); histórico de Undo não é restaurado pelo recovery; detecção de modificação externa e locks seguem pendentes.

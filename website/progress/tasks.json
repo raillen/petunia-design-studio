@@ -225,6 +225,11 @@
       "revision": "290be45d5d7d782fdb91cf12b9d147d1c54c76a4",
       "document": "00-architecture/ptnd-format.md",
       "summary": "Container PTND físico em 2026-10-10: manifest real com marker/schema/UUID/capabilities/entry-set, save_document/load_document com validação total e blobs por ResourceId, suporte Zip64 de leitura e escrita, inflação limitada, guard de ratio e budgets, recusa de traversal/dup/symlink, erros tipados Package/Manifest/Capability/Limit e save_atomic com sync. Gates: workspace 336 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
+    },
+    "ev-e03-recovery": {
+      "revision": "a3e20794ebc79ea8774aa4b66de049e5d8ede080",
+      "document": "02-engine/persistence-recovery.md",
+      "summary": "Journal de recovery em 2026-10-10: framing com magic/schema/checksum por record, replay por prefixo confirmado com stop reasons tipados, appends com continuidade de revision, sessões de recovery com checkpoint validado antes do replace, rotação do journal só depois, replay pelo commit lane com skip de records obsoletos e parada no último consistente, clean shutdown e permissões restritivas. Gates: workspace 349 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
     }
   },
   "tasks": [
@@ -536,7 +541,7 @@
       "document": "02-engine/brush-raster.md",
       "status": "DONE",
       "updated": "2026-10-10",
-      "baseline": "I/O com PTND ZIP, recovery journal e fragments em 7d0cbb6; container físico completo (manifest real, save/load, Zip64, hardening) em 290be45. Seguem futuros: runtime WASM, importers SVG/PDF, hyphenation.",
+      "baseline": "I/O com PTND ZIP, recovery journal e fragments em 7d0cbb6; container físico em 290be45; journal com replay por prefixo em a3e2079. Seguem futuros: runtime WASM, importers SVG/PDF, hyphenation.",
       "checkpoints": [
         {
           "title": "Brush/raster com resampling, tiles COW e filtros",
@@ -562,6 +567,11 @@
           "title": "PTND físico: manifest real, save/load, Zip64 e hardening",
           "completed": true,
           "evidence": "ev-e03-ptnd"
+        },
+        {
+          "title": "Recovery: journal com framing/checksum e replay por prefixo confirmado",
+          "completed": true,
+          "evidence": "ev-e03-recovery"
         }
       ],
       "documents": [
