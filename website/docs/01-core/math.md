@@ -88,12 +88,14 @@ Drag invertido é normalizado antes de produzir Size2; width/height negativos n�
 
 ## Rect
 
-`Rect` usa `min` e `max` canonicalizados:
+`Rect` usa origem mais extensões não negativas, sempre canonicalizado:
 
 ~~~text
-min.x <= max.x
-min.y <= max.y
+width  >= 0
+height >= 0
 ~~~
+
+Todo construtor normaliza: extensão negativa inverte para o canto canônico e `-0.0` vira `0.0`. Arrastar invertido nunca cria uma segunda representação implícita. `min()`, `max()`, `center()`, `union`, `intersection`, `expand`, `contains_rect` e `is_empty` completam a API mínima; valores não finitos continuam representáveis, mas inválidos na fronteira do domínio (`is_finite()`).
 
 API mínima:
 
@@ -643,7 +645,7 @@ Isso evita acoplar PTND e invariantes públicas ao versionamento de uma dependê
 
 1. Geometria canônica usa `f64`.
 2. Point, Vec2 e Size2 possuem semânticas diferentes.
-3. Rect usa representação canonicalizada por min/max.
+3. Rect usa origem mais extensões não negativas, sempre canonicalizado.
 4. A ordem de multiplicação de Transform2D é única e documentada.
 5. Inversão rejeita transform singular ou numericamente inseguro.
 6. Espaços de coordenadas não são misturados implicitamente.

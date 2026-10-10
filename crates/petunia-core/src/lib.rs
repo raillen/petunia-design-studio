@@ -73,7 +73,10 @@ pub use id::{
     AppearanceItemId, ContourId, DocumentId, EffectId, GridId, GuideId, NodeId, ObjectId, PageId,
     ResourceId, SliceId, SpotColorId, SpreadId, StyleId, SwatchId, SymbolId,
 };
-pub use math::{Angle, Insets, Point, Rect, Size2, Tolerance, Transform2D, Vec2};
+pub use math::{
+    Angle, DecomposedTransform, Insets, Point, RandomSeed, Rect, Size2, Tolerance, Transform2D,
+    TransformError, Vec2,
+};
 pub use paint::{
     ColorSource, Gradient, GradientGeometry, GradientInterpolation, GradientSpread, GradientStop,
     PaintSpace, Swatch, SwatchRegistry, SwatchValue,
