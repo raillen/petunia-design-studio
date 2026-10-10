@@ -5,9 +5,25 @@ use std::fmt;
 use uuid::Uuid;
 
 /// Strongly-typed identifier for objects in the scene graph.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct ObjectId(Uuid);
+
+impl<'de> Deserialize<'de> for ObjectId {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+        let uuid = Uuid::parse_str(&text).map_err(serde::de::Error::custom)?;
+        if uuid.hyphenated().to_string() != text {
+            return Err(serde::de::Error::custom(
+                "UUID text must stay canonical lowercase hyphenated",
+            ));
+        }
+        Ok(Self(uuid))
+    }
+}
 
 impl ObjectId {
     /// Generates a new random (v4) unique identifier.
@@ -43,14 +59,32 @@ impl fmt::Display for ObjectId {
 
 /// Defines a UUID-backed entity identifier with the standard
 /// Petunia API (`new_v4`, `from_uuid`, `as_uuid`, `Display`).
+///
+/// Serialization is the canonical lowercase hyphenated UUID text;
+/// deserialization rejects anything else (uppercase, URNs, bare hex)
+/// so foreign spellings never slip into identity maps silently.
 macro_rules! entity_id {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(
-            Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-        )]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
         #[serde(transparent)]
         pub struct $name(Uuid);
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let text = String::deserialize(deserializer)?;
+                let uuid = Uuid::parse_str(&text).map_err(serde::de::Error::custom)?;
+                if uuid.hyphenated().to_string() != text {
+                    return Err(serde::de::Error::custom(
+                        "UUID text must stay canonical lowercase hyphenated",
+                    ));
+                }
+                Ok(Self(uuid))
+            }
+        }
 
         impl $name {
             /// Generates a new random (v4) unique identifier.

@@ -323,7 +323,21 @@ impl Document {
     /// today, and full domain validation. Untrusted input never
     /// becomes a `Document` without passing both layers.
     pub fn from_json(json: &str) -> Result<Self> {
+        Self::from_json_limited(json, u64::MAX)
+    }
+
+    /// Same as [`Document::from_json`], refusing inputs above
+    /// `max_bytes` before any allocation beyond the input itself.
+    /// Untrusted callers use this; the PTND loader enforces its own
+    /// entry budgets first.
+    pub fn from_json_limited(json: &str, max_bytes: u64) -> Result<Self> {
         use crate::dto::DocumentDtoV1;
+        if json.len() as u64 > max_bytes {
+            return Err(CoreError::InvariantViolation(format!(
+                "document of {} bytes exceeds limit {max_bytes}",
+                json.len(),
+            )));
+        }
         let dto: DocumentDtoV1 = serde_json::from_str(json)?;
         dto.into_document()
     }
