@@ -300,6 +300,11 @@
       "revision": "e0c3b3a61a3fe209bfc8b2f3836a1ad421691dc2",
       "document": "02-engine/io-jobs-plugins.md",
       "summary": "SchedulerConfig e orçamentos de threads em 2026-10-10: worker threads configuráveis, preempção de jobs interativos sobre filas batch com execução sub-milisegundo. Gates: workspace 400 passed/0 failed, clippy -D warnings limpo, fmt limpo."
+    },
+    "ev-e03-wasm-host": {
+      "revision": "d236eb01c9e5fd681213991a0703c2c4b8d8143e",
+      "document": "02-engine/io-jobs-plugins.md",
+      "summary": "Runtime WASM e sandbox em 2026-10-10: WasmPluginHost com verificação de magic de bytecode, medição de combustível (fuel), limites de memória linear, tabela de handles opacos com rejeição de stale handles, e Host API mediada por políticas deny-by-default. Gates: workspace 404 passed/0 failed, clippy -D warnings limpo, fmt limpo."
     }
   },
   "tasks": [
@@ -677,6 +682,11 @@
           "title": "SchedulerConfig e preempção prioritária de jobs interativos",
           "completed": true,
           "evidence": "ev-e03-scheduler-budget"
+        },
+        {
+          "title": "Runtime WASM e sandbox com medição de combustível e limites de memória",
+          "completed": true,
+          "evidence": "ev-e03-wasm-host"
         }
       ],
       "documents": [

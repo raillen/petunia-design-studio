@@ -689,3 +689,16 @@ Load do documento nunca executa plugin automaticamente apenas porque um payload 
 10. MCP usa a mesma Query/Command boundary.
 11. Load de PTND não executa payload de plugin/MCP automaticamente.
 12. Host API, package version e data schema version são independentes.
+
+## Verificação do runtime WASM e sandbox (2026-10-10)
+
+Escopo: `WasmPluginHost` com validação de magic `\0asm\1\0\0\0`, medição de combustível (fuel metering), limites de memória linear, tabela de handles com detecção de stale handles, e invocação de Host API com gates de permissão deny-by-default. Revisão `d236eb01c9e5fd681213991a0703c2c4b8d8143e` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 404 passed / 0 failed (Engine com testes de runtime WASM) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: plugins de interface gráfica (QML/UI) permanecem fora do escopo v0.1.
