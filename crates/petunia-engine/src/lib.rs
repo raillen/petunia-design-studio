@@ -23,6 +23,7 @@ pub mod journal;
 pub mod mcp;
 pub mod plugins;
 pub mod ptnd;
+pub mod recovery;
 pub mod snapping;
 pub mod spatial;
 pub mod text;

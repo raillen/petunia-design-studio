@@ -36,6 +36,10 @@ pub enum EngineError {
     /// Size, count, ratio or depth budget exceeded.
     #[error("PTND limit exceeded: {0}")]
     Limit(String),
+
+    /// Recovery journal framing, replay or store failure.
+    #[error("Recovery error: {0}")]
+    Recovery(String),
 }
 
 /// Convenience result type for engine operations.

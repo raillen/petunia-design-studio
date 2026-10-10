@@ -850,6 +850,12 @@ pub fn load_document(
 /// first, platform rename second. The old file is never truncated
 /// before the new one is whole.
 pub fn save_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    atomic_write(path, bytes, "ptnd")
+}
+
+/// Atomically replace `path` with `bytes`, tagging the temporary
+/// sibling with `tag`. Shared by package saves and recovery files.
+pub(crate) fn atomic_write(path: &std::path::Path, bytes: &[u8], tag: &str) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| EngineError::Execution("save path needs a parent directory".to_string()))?;
@@ -858,7 +864,7 @@ pub fn save_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
         .map(|duration| duration.subsec_nanos())
         .unwrap_or(0);
     let temporary = parent.join(format!(
-        ".{}.tmp-{stamp}-{}.ptnd",
+        ".{}.tmp-{stamp}-{}.{tag}",
         path.file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("document"),
