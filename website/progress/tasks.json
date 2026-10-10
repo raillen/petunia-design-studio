@@ -235,6 +235,11 @@
       "revision": "8a214d418dfe62475baa46149ebb545309a5ee6d",
       "document": "00-architecture/verification.md",
       "summary": "Fuzz guards do Core em 2026-10-10: truncamentos, mutações com seed e bytes aleatórios nunca causam panic no DTO; nesting profundo atinge o budget de recursão; escalares e floats overflow falham tipados; from_json_limited impõe budget exato; UUID canônico estrito na serialização e no parse; duplicate keys sem panic. Gates: workspace 359 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
+    },
+    "ev-q01-dup-keys": {
+      "revision": "f2ba26553d2451ba8efb914f879bfedeab9ce940",
+      "document": "00-architecture/verification.md",
+      "summary": "Chaves duplicadas em 2026-10-10: helper compartilhado em serialization.rs recusa a primeira chave repetida nomeando-a, ligado a todos os mapas de identidade do Core e aos blobs do journal; roots de symbols validados. Teste ponta a ponta duplica entrada real do scene map. Gates: workspace 361 passed/0 failed, clippy -D warnings limpo, fmt limpo, verify-progress pass."
     }
   },
   "tasks": [
@@ -691,7 +696,7 @@
       "document": "00-architecture/verification.md",
       "status": "DONE",
       "updated": "2026-10-10",
-      "baseline": "Gates e fuzzing em 7f259f1; superfícies externas do Core (DTO, UUID, hash) endurecidas em 8a214d4. Segue futuro: benchmark de interação e fuzzing contínuo.",
+      "baseline": "Gates e fuzzing em 7f259f1; superfícies externas do Core em 8a214d4; chaves duplicadas estritas em f2ba265. Segue futuro: benchmark de interação e fuzzing contínuo.",
       "checkpoints": [
         {
           "title": "Quality gates por módulo executados e registrados",
@@ -712,6 +717,11 @@
           "title": "Fuzzing de superfícies externas do Core (DTO, UUID, hash)",
           "completed": true,
           "evidence": "ev-q01-core-fuzz"
+        },
+        {
+          "title": "Chaves duplicadas em mapas de identidade recusadas com erro tipado",
+          "completed": true,
+          "evidence": "ev-q01-dup-keys"
         }
       ],
       "documents": [

@@ -703,3 +703,16 @@ Escopo: fuzz guards determinísticos do DTO, UUID e ContentHash. Revisão `8a214
 | `node website/scripts/verify-progress.cjs` | pass |
 
 Riscos/limites: detecção estrita de chaves duplicadas em mapas de identidade continua futura; ContentHash segue SHA-256 sem tag de algoritmo (BLAKE3 tagueado é follow-up).
+
+## Verificação de chaves duplicadas (2026-10-10)
+
+Escopo: `serialization.rs` com rejeição estrita ligada a todos os mapas de identidade. Revisão `f2ba26553d2451ba8efb914f879bfedeab9ce940` sobre branch `petunia-design-rust`.
+
+| Gate executado | Resultado |
+|---|---|
+| `cargo test --workspace` | pass: 361 passed / 0 failed |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo fmt --all -- --check` | pass |
+| `node website/scripts/verify-progress.cjs` | pass |
+
+Riscos/limites: duplicatas em vetores ordenados (children, roots, order) continuam validadas por invariante própria, não no parse.
